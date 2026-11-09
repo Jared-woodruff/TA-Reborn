@@ -1,0 +1,18 @@
+# Binary payload recipe used by installer/package_unix.py on the native Linux
+# builder. Cargo has already built and tested this CPU's executables. The helper
+# supplies the verified /opt + /usr payload and records this recipe's exact hash.
+# This is not an AUR source build or an invocation of Arch's makepkg environment.
+pkgname=ta-reborn
+pkgver="${TA_REBORN_PKGVER:?The packaging helper supplies the release version}"
+pkgrel=1
+pkgdesc='Unofficial Total Annihilation engine and launcher; requires original game data'
+arch=(x86_64 aarch64)
+url='https://github.com/Jared-woodruff/TA-Reborn'
+license=(GPL-3.0-or-later)
+
+package() {
+    test -d "${TA_REBORN_PAYLOAD:?}/opt/ta-reborn"
+    test -d "$TA_REBORN_PAYLOAD/usr"
+    test -d "${pkgdir:?}"
+    cp -R -- "$TA_REBORN_PAYLOAD/opt" "$TA_REBORN_PAYLOAD/usr" "$pkgdir/"
+}

@@ -1,0 +1,7 @@
+# wgpu's create_buffer_init expects the mapping of the buffer it makes, and panics when the graphics
+# card refused the memory (the buffer comes back invalid): a battlefield loading on a full card
+# crashed the game. ta_render's CheckedBufferInit::create_buffer_checked makes the same buffer
+# without the panic.
+disallowed-methods = [
+    { path = "wgpu::util::DeviceExt::create_buffer_init", reason = "panics when the graphics card is out of memory: use ta_render::CheckedBufferInit::create_buffer_checked" },
+]

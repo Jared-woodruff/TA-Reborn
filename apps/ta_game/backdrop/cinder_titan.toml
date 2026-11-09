@@ -1,0 +1,102 @@
+# The menu's film (apps/ta_game/src/backdrop.rs): Cinder Basin at dusk. A Krogoth strides south off
+# the shore of the lava lake towards a camera almost on the ground, the lake glowing behind it;
+# the Arm sends Hammers, Bulldogs and Zeus at it, wave on wave, and it walks on through them. The
+# camera almost on the ground in their way, looking up at it. (Play it alone: --demo stage,
+# TA_STAGE=<this file>.)
+map = "Cinder Basin"
+time = [[0, 17.6], [26, 18.1]]
+seed = 8
+missing = "skip"
+
+[[clear]]
+at = [8650, 8650]
+radius = 700
+
+[[unit]]
+type = "CORKROG"
+side = 1
+at = [8650, 8330]
+heading = 180
+label = "krog"
+hold = true
+
+# The Arm sends in what it has, wave on wave from behind the camera, each into its guns in turn:
+# Hammers first, then Bulldogs, then Zeus, coming in past it on the right.
+[[unit]]
+type = "ARMHAM"
+side = 0
+at = [8830, 9170]
+heading = 345
+label = "first"
+count = 4
+rows = 2
+spacing = [62, 60]
+
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [9060, 9260]
+heading = 330
+label = "second"
+count = 4
+rows = 2
+spacing = [80, 80]
+hold = true
+
+[[unit]]
+type = "ARMZEUS"
+side = 0
+at = [8930, 9380]
+heading = 345
+label = "third"
+count = 4
+rows = 2
+spacing = [62, 60]
+hold = true
+
+# (The Core's enemy player beyond the lake's shore: the Krogoth alone.)
+
+[[order]]
+t = 1.0
+units = "krog"
+do = "move"
+at = [8660, 8920]
+
+[[order]]
+t = 0.5
+units = "first"
+do = "fight"
+at = [8600, 8300]
+formation = true
+
+[[order]]
+t = 6.0
+units = "second"
+do = "fight"
+at = [8560, 8400]
+formation = true
+
+[[order]]
+t = 12.0
+units = "third"
+do = "fight"
+at = [8700, 8500]
+formation = true
+
+# Almost on the ground in its way, a wide lens, looking up at its chest more and more as it comes
+# on.
+[[camera.key]]
+t = 0
+eye = [8620, 9070]
+height = 7
+track = "krog"
+look_height = 34
+fov = 46
+
+[[camera.key]]
+t = 26
+eye = [8660, 9090]
+height = 6
+track = "krog"
+look_height = 56
+fov = 52

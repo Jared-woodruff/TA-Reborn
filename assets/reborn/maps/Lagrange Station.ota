@@ -1,0 +1,82 @@
+[GlobalHeader]
+	{
+	missionname=Lagrange Station;
+	missiondescription=20 X 20  Six rocks round a station at the balance point, gantries spoked out to them across the void. Up to 6 players.;
+	planet=Asteroid Belt;
+	missionhint=;
+	brief=;
+	narration=;
+	glamour=;
+	lineofsight=1;
+	mapping=1;
+	tidalstrength=0;
+	solarstrength=30;
+	lavaworld=0;
+	killmul=50;
+	timemul=0;
+	minwindspeed=0;
+	maxwindspeed=0;
+	gravity=60;
+	numplayers=2, 4, 6;
+	size=20 x 20;
+	memory=32 mb;
+	DestroyAllUnits=1;
+	AllUnitsKilled=1;
+	SCHEMACOUNT=1;
+	[Schema 0]
+		{
+		Type=Network 1;
+		aiprofile=DEFAULT;
+		SurfaceMetal=3;
+		MohoMetal=30;
+		HumanMetal=1000;
+		ComputerMetal=1000;
+		HumanEnergy=1000;
+		ComputerEnergy=1000;
+		MeteorWeapon=;
+		MeteorRadius=0;
+		MeteorDensity=0;
+		MeteorDuration=0;
+		MeteorInterval=0;
+		[specials]
+			{
+			[special0]
+				{
+				specialwhat=StartPos1;
+				XPos=3208;
+				ZPos=8392;
+				}
+			[special1]
+				{
+				specialwhat=StartPos2;
+				XPos=7032;
+				ZPos=1848;
+				}
+			[special2]
+				{
+				specialwhat=StartPos3;
+				XPos=1608;
+				ZPos=4680;
+				}
+			[special3]
+				{
+				specialwhat=StartPos4;
+				XPos=8632;
+				ZPos=5560;
+				}
+			[special4]
+				{
+				specialwhat=StartPos5;
+				XPos=3592;
+				ZPos=1864;
+				}
+			[special5]
+				{
+				specialwhat=StartPos6;
+				XPos=6648;
+				ZPos=8376;
+				}
+			}
+		}
+	}
+

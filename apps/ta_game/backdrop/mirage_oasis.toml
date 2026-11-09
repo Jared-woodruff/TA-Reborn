@@ -1,0 +1,114 @@
+# The menu's film (apps/ta_game/src/backdrop.rs): Mirage Basin by night. Core Raiders and
+# Instigators come in across the basin floor at an Arm outpost on the far side of an oasis, its
+# laser towers firing back; the fight's fire and the moon on the still water between. The camera
+# low on the near shore. (Play it alone: --demo stage, TA_STAGE=<this file>.)
+map = "Mirage Basin"
+time = [[0, 21.1], [26, 21.3]]
+moon = [288, 11]
+seed = 22
+missing = "skip"
+
+# The outpost's ground beyond the water, and the near shore under the lens.
+[[clear]]
+at = [10620, 9960]
+radius = 300
+
+[[clear]]
+at = [11180, 10180]
+radius = 110
+
+# The Arm's outpost on the west shore: a radar tower, a solar collector, laser towers, Peewees.
+[[unit]]
+type = "ARMRAD"
+side = 0
+at = [10640, 9960]
+
+[[unit]]
+type = "ARMSOLAR"
+side = 0
+at = [10560, 9820]
+
+[[unit]]
+type = "ARMLLT"
+side = 0
+at = [10560, 10120]
+heading = 270
+
+[[unit]]
+type = "ARMLLT"
+side = 0
+at = [10620, 9700]
+heading = 270
+
+[[unit]]
+type = "ARMHLT"
+side = 0
+at = [10500, 9980]
+heading = 270
+
+[[unit]]
+type = "ARMPW"
+side = 0
+at = [10700, 10080]
+heading = 270
+label = "guard"
+count = 4
+spacing = 40
+
+# The Core's raid from the west.
+[[unit]]
+type = "CORRAID"
+side = 1
+at = [10020, 9930]
+heading = 90
+label = "raid"
+count = 6
+rows = 2
+spacing = [60, 64]
+
+[[unit]]
+type = "CORGATOR"
+side = 1
+at = [9900, 9930]
+heading = 90
+label = "raid"
+count = 4
+spacing = 52
+
+[[order]]
+t = 0.5
+units = "raid"
+do = "fight"
+at = [10620, 9960]
+formation = true
+
+# The palms on the far shore catch as the fight comes to them, their fire in the water.
+[[event]]
+t = 9.0
+do = "fire"
+at = [10800, 9900]
+size = 130
+
+[[event]]
+t = 14.0
+do = "fire"
+at = [10830, 10080]
+size = 110
+
+# Low on the south-east shore, looking north-west across the water at the outpost and the moon
+# low over it.
+[[camera.key]]
+t = 0
+eye = [11180, 10180]
+height = 8
+look = [10600, 9920]
+look_height = 34
+fov = 30
+
+[[camera.key]]
+t = 26
+eye = [11150, 10200]
+height = 7
+look = [10580, 9930]
+look_height = 30
+fov = 28

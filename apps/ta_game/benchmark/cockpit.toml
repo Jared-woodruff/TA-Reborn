@@ -1,0 +1,182 @@
+# TA Reborn's benchmark: Greenmantle, riding in a Stumpy. Written by tools/benchmark/scenes.py (edit that, not this).
+map = "Greenmantle"
+time = [[0, 8.4], [25, 8.7]]
+reveal = true
+hud = false
+icons = false
+unlimited = true
+seed = 21
+missing = "skip"
+[[player]]
+index = 0
+faction = "ARM"
+invulnerable = true
+[[unit]]
+type = "ARMSTUMP"
+side = 0
+at = [9044, 9735]
+heading = 41
+label = "lead"
+[[order]]
+t = 0.3
+units = "lead"
+do = "move"
+at = [10081, 8437]
+formation = false
+[[unit]]
+type = "ARMSTUMP"
+side = 0
+at = [8957, 9766]
+heading = 41
+label = "wing"
+[[unit]]
+type = "ARMSTUMP"
+side = 0
+at = [9026, 9826]
+heading = 41
+label = "wing"
+[[order]]
+t = 0.3
+units = "wing"
+do = "fight"
+by = [986, -1131]
+formation = false
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [8897, 9859]
+heading = 41
+label = "column"
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [8942, 9898]
+heading = 41
+label = "column"
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [8857, 9904]
+heading = 41
+label = "column"
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [8903, 9944]
+heading = 41
+label = "column"
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [8818, 9949]
+heading = 41
+label = "column"
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [8863, 9989]
+heading = 41
+label = "column"
+[[order]]
+t = 0.3
+units = "column"
+do = "fight"
+by = [986, -1131]
+formation = false
+[[unit]]
+type = "ARMMART"
+side = 0
+at = [8768, 10052]
+heading = 41
+label = "lugers"
+[[unit]]
+type = "ARMMART"
+side = 0
+at = [8729, 10097]
+heading = 41
+label = "lugers"
+[[unit]]
+type = "ARMMART"
+side = 0
+at = [8690, 10143]
+heading = 41
+label = "lugers"
+[[order]]
+t = 3
+units = "lugers"
+do = "fight"
+by = [394, -452]
+formation = false
+[[unit]]
+type = "CORRAID"
+side = 1
+at = [9621, 8964]
+heading = 221
+label = "core_line"
+count = 5
+spacing = 70
+[[unit]]
+type = "CORREAP"
+side = 1
+at = [9673, 8904]
+heading = 221
+label = "core_line"
+count = 4
+spacing = 90
+[[unit]]
+type = "CORLLT"
+side = 1
+at = [9637, 8687]
+heading = 221
+label = "core_towers"
+[[unit]]
+type = "CORLLT"
+side = 1
+at = [9894, 8910]
+heading = 221
+label = "core_towers"
+[[unit]]
+type = "CORHLT"
+side = 1
+at = [9831, 8723]
+heading = 221
+label = "core_towers"
+[[unit]]
+type = "ARMTHUND"
+side = 0
+at = [8493, 10581]
+heading = 41
+label = "thunders"
+count = 5
+spacing = 60
+airborne = true
+altitude = 150
+[[order]]
+t = 4
+units = "thunders"
+do = "attack"
+target = "core_towers"
+[[order]]
+t = 4.1
+units = "thunders"
+do = "patrol"
+at = [9818, 8738]
+queue = true
+[[camera.key]]
+t = 0
+eye = [9180, 9601]
+height = 9
+track = "lead"
+look_height = 9
+fov = 50
+[[camera.key]]
+t = 2.5
+eye = [9162, 9619]
+height = 8
+track = "lead"
+look_height = 9
+fov = 48
+[[ride]]
+t = 3
+unit = "lead"
+# Greenmantle: Arm 17 units, Core 12

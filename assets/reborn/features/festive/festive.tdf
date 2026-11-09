@@ -1,0 +1,488 @@
+// TA Reborn's own festive features (original art), written by tools/features/sprites.py from
+// festive.py's FEATURES: their paintings anims/festive.gaf, their models in features.glb.
+[SnowPine1]
+	{
+	world=Ice;
+	description=Snowy Pine;
+	category=festive;
+	footprintx=1;
+	footprintz=1;
+	height=40;
+	blocking=1;
+	filename=festive;
+	seqname=snowpine1;
+	seqnameshad=snowpine1shad;
+	shadtrans=1;
+	flamable=0;
+	reclaimable=1;
+	energy=200;
+	damage=500;
+	hitdensity=10;
+	rebornmodel=snowpine_a;
+	}
+[SnowPine2]
+	{
+	world=Ice;
+	description=Snowy Pine;
+	category=festive;
+	footprintx=1;
+	footprintz=1;
+	height=36;
+	blocking=1;
+	filename=festive;
+	seqname=snowpine2;
+	seqnameshad=snowpine2shad;
+	shadtrans=1;
+	flamable=0;
+	reclaimable=1;
+	energy=180;
+	damage=450;
+	hitdensity=10;
+	rebornmodel=snowpine_b;
+	}
+[SnowPine3]
+	{
+	world=Ice;
+	description=Snowy Pine;
+	category=festive;
+	footprintx=1;
+	footprintz=1;
+	height=44;
+	blocking=1;
+	filename=festive;
+	seqname=snowpine3;
+	seqnameshad=snowpine3shad;
+	shadtrans=1;
+	flamable=0;
+	reclaimable=1;
+	energy=220;
+	damage=550;
+	hitdensity=10;
+	rebornmodel=snowpine_c;
+	}
+[FestiveFir1]
+	{
+	world=All Worlds;
+	description=Decorated Fir;
+	category=festive;
+	footprintx=1;
+	footprintz=1;
+	height=40;
+	blocking=1;
+	filename=festive;
+	seqname=festivefir1;
+	seqnameshad=festivefir1shad;
+	shadtrans=1;
+	flamable=0;
+	reclaimable=1;
+	energy=250;
+	damage=500;
+	hitdensity=10;
+	rebornlight=1.2 0.75 0.45 80 30;
+	rebornmodel=festive_fir_a;
+	}
+[FestiveFir2]
+	{
+	world=Ice;
+	description=Decorated Fir;
+	category=festive;
+	footprintx=1;
+	footprintz=1;
+	height=42;
+	blocking=1;
+	filename=festive;
+	seqname=festivefir2;
+	seqnameshad=festivefir2shad;
+	shadtrans=1;
+	flamable=0;
+	reclaimable=1;
+	energy=250;
+	damage=500;
+	hitdensity=10;
+	rebornlight=1.3 1.0 0.7 80 30;
+	rebornmodel=festive_fir_b;
+	}
+[GreatFir]
+	{
+	world=All Worlds;
+	description=Great Decorated Fir;
+	category=festive;
+	footprintx=4;
+	footprintz=4;
+	height=80;
+	blocking=1;
+	filename=festive;
+	seqname=greatfir;
+	seqnameshad=greatfirshad;
+	shadtrans=1;
+	flamable=0;
+	indestructible=1;
+	hitdensity=20;
+	rebornlight=2.4 1.5 0.9 220 70;
+	rebornmodel=great_fir_a;
+	}
+[Snowman1]
+	{
+	world=Ice;
+	description=Snowman;
+	category=festive;
+	footprintx=1;
+	footprintz=1;
+	height=24;
+	blocking=1;
+	filename=festive;
+	seqname=snowman1;
+	seqnameshad=snowman1shad;
+	shadtrans=1;
+	flamable=0;
+	damage=200;
+	hitdensity=5;
+	rebornmodel=snowman_a;
+	}
+[Snowman2]
+	{
+	world=Ice;
+	description=Snowman;
+	category=festive;
+	footprintx=1;
+	footprintz=1;
+	height=24;
+	blocking=1;
+	filename=festive;
+	seqname=snowman2;
+	seqnameshad=snowman2shad;
+	shadtrans=1;
+	flamable=0;
+	damage=200;
+	hitdensity=5;
+	rebornmodel=snowman_b;
+	}
+[Presents1]
+	{
+	world=All Worlds;
+	description=Presents;
+	category=festive;
+	footprintx=2;
+	footprintz=2;
+	height=10;
+	blocking=1;
+	filename=festive;
+	seqname=presents1;
+	seqnameshad=presents1shad;
+	shadtrans=1;
+	flamable=0;
+	reclaimable=1;
+	metal=25;
+	damage=150;
+	hitdensity=5;
+	rebornmodel=presents_a;
+	}
+[Presents2]
+	{
+	world=All Worlds;
+	description=Presents;
+	category=festive;
+	footprintx=2;
+	footprintz=2;
+	height=10;
+	blocking=1;
+	filename=festive;
+	seqname=presents2;
+	seqnameshad=presents2shad;
+	shadtrans=1;
+	flamable=0;
+	reclaimable=1;
+	metal=40;
+	damage=200;
+	hitdensity=5;
+	rebornmodel=presents_b;
+	}
+[StreetLantern]
+	{
+	world=All Worlds;
+	description=Street Lantern;
+	category=festive;
+	footprintx=1;
+	footprintz=1;
+	height=30;
+	blocking=1;
+	filename=festive;
+	seqname=streetlantern;
+	seqnameshad=streetlanternshad;
+	shadtrans=1;
+	flamable=0;
+	damage=300;
+	hitdensity=5;
+	rebornlight=1.6 1.05 0.5 90 30;
+	rebornmodel=lantern_a;
+	}
+[IceStar]
+	{
+	world=Ice;
+	description=Ice Sculpture;
+	category=festive;
+	footprintx=2;
+	footprintz=2;
+	height=30;
+	blocking=1;
+	filename=festive;
+	seqname=icestar;
+	seqnameshad=icestarshad;
+	shadtrans=1;
+	flamable=0;
+	damage=600;
+	hitdensity=10;
+	rebornlight=0.45 0.75 1.1 70 18;
+	rebornmodel=ice_star_a;
+	}
+[IceFir]
+	{
+	world=Ice;
+	description=Ice Sculpture;
+	category=festive;
+	footprintx=2;
+	footprintz=2;
+	height=32;
+	blocking=1;
+	filename=festive;
+	seqname=icefir;
+	seqnameshad=icefirshad;
+	shadtrans=1;
+	flamable=0;
+	damage=600;
+	hitdensity=10;
+	rebornlight=0.45 0.75 1.1 70 18;
+	rebornmodel=ice_tree_a;
+	}
+[IceLanterns]
+	{
+	world=Ice;
+	description=Ice Lanterns;
+	category=festive;
+	footprintx=1;
+	footprintz=1;
+	height=8;
+	blocking=1;
+	filename=festive;
+	seqname=icelanterns;
+	seqnameshad=icelanternsshad;
+	shadtrans=1;
+	flamable=0;
+	damage=150;
+	hitdensity=5;
+	rebornlight=1.2 0.65 0.3 50 6;
+	rebornmodel=ice_lanterns_a;
+	}
+[Cottage1]
+	{
+	world=Ice;
+	description=Cottage;
+	category=festive;
+	footprintx=4;
+	footprintz=4;
+	height=40;
+	blocking=1;
+	filename=festive;
+	seqname=cottage1;
+	seqnameshad=cottage1shad;
+	shadtrans=1;
+	flamable=0;
+	damage=3000;
+	hitdensity=40;
+	rebornlight=1.3 0.8 0.4 110 14;
+	rebornmodel=cottage_a;
+	}
+[Cottage2]
+	{
+	world=Ice;
+	description=Cottage;
+	category=festive;
+	footprintx=4;
+	footprintz=4;
+	height=40;
+	blocking=1;
+	filename=festive;
+	seqname=cottage2;
+	seqnameshad=cottage2shad;
+	shadtrans=1;
+	flamable=0;
+	damage=3500;
+	hitdensity=40;
+	rebornlight=1.3 0.8 0.4 110 14;
+	rebornmodel=cottage_b;
+	}
+[Cottage3]
+	{
+	world=Ice;
+	description=Cottage;
+	category=festive;
+	footprintx=4;
+	footprintz=4;
+	height=40;
+	blocking=1;
+	filename=festive;
+	seqname=cottage3;
+	seqnameshad=cottage3shad;
+	shadtrans=1;
+	flamable=0;
+	damage=3000;
+	hitdensity=40;
+	rebornlight=1.4 0.9 0.5 120 14;
+	rebornmodel=cottage_c;
+	}
+[Sleigh]
+	{
+	world=All Worlds;
+	description=Sleigh;
+	category=festive;
+	footprintx=3;
+	footprintz=2;
+	height=14;
+	blocking=1;
+	filename=festive;
+	seqname=sleigh;
+	seqnameshad=sleighshad;
+	shadtrans=1;
+	flamable=0;
+	reclaimable=1;
+	metal=30;
+	damage=400;
+	hitdensity=10;
+	rebornmodel=sleigh_a;
+	}
+[ClockTower]
+	{
+	world=All Worlds;
+	description=Clock Tower;
+	category=festive;
+	footprintx=4;
+	footprintz=4;
+	height=100;
+	blocking=1;
+	filename=festive;
+	seqname=clocktower;
+	seqnameshad=clocktowershad;
+	shadtrans=1;
+	flamable=0;
+	indestructible=1;
+	hitdensity=60;
+	rebornlight=1.5 1.35 1.0 170 92;
+	rebornmodel=clock_tower_a;
+	}
+[Fireworks1]
+	{
+	world=All Worlds;
+	description=Fireworks;
+	category=festive;
+	footprintx=2;
+	footprintz=1;
+	height=16;
+	blocking=1;
+	filename=festive;
+	seqname=fireworks1;
+	seqnameshad=fireworks1shad;
+	shadtrans=1;
+	flamable=0;
+	damage=150;
+	hitdensity=5;
+	rebornfireworks=1;
+	rebornmodel=fireworks_a;
+	}
+[Fireworks2]
+	{
+	world=All Worlds;
+	description=Fireworks;
+	category=festive;
+	footprintx=2;
+	footprintz=1;
+	height=24;
+	blocking=1;
+	filename=festive;
+	seqname=fireworks2;
+	seqnameshad=fireworks2shad;
+	shadtrans=1;
+	flamable=0;
+	damage=150;
+	hitdensity=5;
+	rebornfireworks=1;
+	rebornmodel=fireworks_b;
+	}
+[LanternString]
+	{
+	world=All Worlds;
+	description=Lantern String;
+	category=festive;
+	footprintx=3;
+	footprintz=1;
+	height=20;
+	blocking=1;
+	filename=festive;
+	seqname=lanternstring;
+	seqnameshad=lanternstringshad;
+	shadtrans=1;
+	flamable=0;
+	damage=200;
+	hitdensity=5;
+	rebornlight=1.6 0.65 0.3 90 20;
+	rebornmodel=lantern_line_a;
+	}
+[SnowRock1]
+	{
+	world=Ice;
+	description=Snowy Boulder;
+	category=festive;
+	footprintx=2;
+	footprintz=2;
+	height=14;
+	blocking=1;
+	filename=festive;
+	seqname=snowrock1;
+	seqnameshad=snowrock1shad;
+	shadtrans=1;
+	flamable=0;
+	reclaimable=1;
+	metal=12;
+	damage=2000;
+	hitdensity=30;
+	rebornmodel=snowrock_a;
+	}
+[SnowRock2]
+	{
+	world=Ice;
+	description=Snowy Boulder;
+	category=festive;
+	footprintx=2;
+	footprintz=2;
+	height=16;
+	blocking=1;
+	filename=festive;
+	seqname=snowrock2;
+	seqnameshad=snowrock2shad;
+	shadtrans=1;
+	flamable=0;
+	reclaimable=1;
+	metal=12;
+	damage=2000;
+	hitdensity=30;
+	rebornmodel=snowrock_b;
+	}
+[SnowRock3]
+	{
+	world=Ice;
+	description=Snowy Boulder;
+	category=festive;
+	footprintx=3;
+	footprintz=3;
+	height=18;
+	blocking=1;
+	filename=festive;
+	seqname=snowrock3;
+	seqnameshad=snowrock3shad;
+	shadtrans=1;
+	flamable=0;
+	reclaimable=1;
+	metal=20;
+	damage=3000;
+	hitdensity=30;
+	rebornmodel=snowrock_c;
+	}

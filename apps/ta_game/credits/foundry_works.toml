@@ -1,0 +1,337 @@
+# The credits' scene foundry_works (tools/credits/acts.py writes it; credits_show.rs plays it).
+# The shift begins at the foundry: a road of cards through a battle on Foundry Deck.
+map = "Foundry Deck"
+seed = 8
+missing = "skip"
+
+[act]
+title = "The shift begins at the foundry"
+themes = ["programming", "engine", "network", "editor", "production"]
+hours = [9.0, 10.2]
+style = "nano"
+height = 250
+back = 330
+fov = 40
+clear = 300
+road = 340
+
+[[player]]
+index = 0
+invulnerable = true
+
+[[player]]
+index = 1
+invulnerable = true
+
+[[station]]
+at = [2816, 1184]
+heading = 247
+
+[[station]]
+at = [2632, 1262]
+heading = 247
+
+[[station]]
+at = [2448, 1340]
+heading = 247
+
+[[station]]
+at = [2264, 1418]
+heading = 247
+
+[[station]]
+at = [2080, 1497]
+heading = 247
+
+[[station]]
+at = [1895, 1575]
+heading = 247
+
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [2802, 1407]
+heading = 337
+
+[[unit]]
+type = "ARMZEUS"
+side = 0
+at = [2618, 1485]
+heading = 337
+
+[[unit]]
+type = "ARMPW"
+side = 0
+at = [2250, 1642]
+heading = 337
+
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [2066, 1720]
+heading = 337
+
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [2758, 1415]
+heading = 337
+
+[[unit]]
+type = "ARMFIDO"
+side = 0
+at = [2574, 1493]
+heading = 337
+
+[[unit]]
+type = "ARMFIDO"
+side = 0
+at = [2205, 1650]
+heading = 337
+
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [2021, 1728]
+heading = 337
+
+[[unit]]
+type = "CORRAID"
+side = 1
+at = [2646, 1039]
+heading = 157
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [2462, 1117]
+heading = 157
+
+[[unit]]
+type = "CORTHUD"
+side = 1
+at = [2278, 1195]
+heading = 157
+
+[[unit]]
+type = "CORAK"
+side = 1
+at = [2094, 1273]
+heading = 157
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [2609, 1065]
+heading = 157
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [2425, 1144]
+heading = 157
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [2241, 1222]
+heading = 157
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [2057, 1300]
+heading = 157
+
+[[unit]]
+type = "ARMCK"
+side = 0
+at = [2899, 1481]
+heading = 337
+label = "b00"
+
+[[unit]]
+type = "CORCK"
+side = 1
+at = [2660, 918]
+heading = 157
+label = "b10"
+
+[[unit]]
+type = "ARMCK"
+side = 0
+at = [2715, 1559]
+heading = 337
+label = "b01"
+
+[[unit]]
+type = "CORCK"
+side = 1
+at = [2476, 996]
+heading = 157
+label = "b11"
+
+[[unit]]
+type = "ARMCK"
+side = 0
+at = [2531, 1638]
+heading = 337
+label = "b02"
+
+[[unit]]
+type = "CORCK"
+side = 1
+at = [2291, 1074]
+heading = 157
+label = "b12"
+
+[[unit]]
+type = "ARMCK"
+side = 0
+at = [2402, 1692]
+heading = 337
+label = "b03"
+
+[[unit]]
+type = "CORCK"
+side = 1
+at = [2107, 1152]
+heading = 157
+label = "b13"
+
+[[unit]]
+type = "ARMCK"
+side = 0
+at = [2162, 1794]
+heading = 337
+label = "b04"
+
+[[unit]]
+type = "CORCK"
+side = 1
+at = [1923, 1231]
+heading = 157
+label = "b14"
+
+[[unit]]
+type = "ARMCK"
+side = 0
+at = [1978, 1872]
+heading = 337
+label = "b05"
+
+[[unit]]
+type = "CORCK"
+side = 1
+at = [1813, 1277]
+heading = 157
+label = "b15"
+
+[[order]]
+t = 0.8
+units = "b00"
+do = "build"
+type = "ARMSOLAR"
+at = [2886, 1400]
+seconds = 4.5
+label = "frame00"
+
+[[order]]
+t = 0.8
+units = "b10"
+do = "build"
+type = "CORSOLAR"
+at = [2709, 984]
+seconds = 4.5
+label = "frame10"
+
+[[order]]
+t = 5.4
+units = "b01"
+do = "build"
+type = "ARMWIN"
+at = [2702, 1478]
+seconds = 4.5
+label = "frame01"
+
+[[order]]
+t = 5.4
+units = "b11"
+do = "build"
+type = "CORWIN"
+at = [2525, 1062]
+seconds = 4.5
+label = "frame11"
+
+[[order]]
+t = 10.0
+units = "b02"
+do = "build"
+type = "ARMLLT"
+at = [2518, 1556]
+seconds = 4.5
+label = "frame02"
+
+[[order]]
+t = 10.0
+units = "b12"
+do = "build"
+type = "CORLLT"
+at = [2341, 1140]
+seconds = 4.5
+label = "frame12"
+
+[[order]]
+t = 14.6
+units = "b03"
+do = "build"
+type = "ARMSOLAR"
+at = [2389, 1611]
+seconds = 4.5
+label = "frame03"
+
+[[order]]
+t = 14.6
+units = "b13"
+do = "build"
+type = "CORSOLAR"
+at = [2157, 1218]
+seconds = 4.5
+label = "frame13"
+
+[[order]]
+t = 19.2
+units = "b04"
+do = "build"
+type = "ARMRAD"
+at = [2149, 1712]
+seconds = 4.5
+label = "frame04"
+
+[[order]]
+t = 19.2
+units = "b14"
+do = "build"
+type = "CORRAD"
+at = [1973, 1296]
+seconds = 4.5
+label = "frame14"
+
+[[order]]
+t = 23.8
+units = "b05"
+do = "build"
+type = "ARMWIN"
+at = [1965, 1791]
+seconds = 4.5
+label = "frame05"
+
+[[order]]
+t = 23.8
+units = "b15"
+do = "build"
+type = "CORWIN"
+at = [1862, 1343]
+seconds = 4.5
+label = "frame15"
+

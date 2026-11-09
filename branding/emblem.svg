@@ -1,0 +1,65 @@
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 1024' width='1024' height='1024'>
+<defs>
+  <linearGradient id="rim" x1="0" y1="0" x2="0.35" y2="1">
+    <stop offset="0" stop-color="#ffecaa"/><stop offset="0.45" stop-color="#e2ba5c"/><stop offset="1" stop-color="#8a6422"/>
+  </linearGradient>
+  <radialGradient id="plate" cx="0.46" cy="0.32" r="0.75">
+    <stop offset="0" stop-color="#4e4a42"/><stop offset="0.55" stop-color="#262420"/><stop offset="1" stop-color="#0e0d0b"/>
+  </radialGradient>
+  <linearGradient id="chevron" x1="0" y1="0" x2="0.2" y2="1">
+    <stop offset="0" stop-color="#ffecaa"/><stop offset="0.5" stop-color="#e2ba5c"/><stop offset="1" stop-color="#8a6422"/>
+  </linearGradient>
+  <linearGradient id="lip" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#8a6422"/><stop offset="1" stop-color="#543a12"/>
+  </linearGradient>
+  <radialGradient id="rivet" cx="0.35" cy="0.3" r="0.8">
+    <stop offset="0" stop-color="#fff4d0"/><stop offset="0.35" stop-color="#e2ba5c"/><stop offset="1" stop-color="#543a12"/>
+  </radialGradient>
+  <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+    <feGaussianBlur in="SourceAlpha" stdDeviation="9"/><feOffset dx="7" dy="14"/>
+    <feComponentTransfer><feFuncA type="linear" slope="0.75"/></feComponentTransfer>
+  </filter>
+  <filter id="sunk" x="-10%" y="-10%" width="120%" height="120%">
+    <feGaussianBlur in="SourceAlpha" stdDeviation="14"/><feOffset dx="0" dy="16"/>
+    <feComposite in2="SourceAlpha" operator="arithmetic" k2="-1" k3="1"/>
+    <feComponentTransfer><feFuncA type="linear" slope="0.85"/></feComponentTransfer>
+  </filter>
+</defs>
+<polygon points='512.00,4.00 951.94,258.00 951.94,766.00 512.00,1020.00 72.06,766.00 72.06,258.00' fill='#0a0907'/>
+<polygon points='512.00,16.00 941.55,264.00 941.55,760.00 512.00,1008.00 82.45,760.00 82.45,264.00' fill='url(#rim)'/>
+<path d='M512.00,16.00 L941.55,264.00 L924.23,274.00 L512.00,36.00 Z' fill='#ceb97e'/>
+<path d='M941.55,264.00 L941.55,760.00 L924.23,750.00 L924.23,274.00 Z' fill='#786032'/>
+<path d='M941.55,760.00 L512.00,1008.00 L512.00,988.00 L924.23,750.00 Z' fill='#543a12'/>
+<path d='M512.00,1008.00 L82.45,760.00 L99.77,750.00 L512.00,988.00 Z' fill='#856d3e'/>
+<path d='M82.45,760.00 L82.45,264.00 L99.77,274.00 L99.77,750.00 Z' fill='#dbc68a'/>
+<path d='M82.45,264.00 L512.00,16.00 L512.00,36.00 L99.77,274.00 Z' fill='#ffecaa'/>
+<path d='M512.00,74.00 L891.32,293.00 L874.00,303.00 L512.00,94.00 Z' fill='#856d3e'/>
+<path d='M891.32,293.00 L891.32,731.00 L874.00,721.00 L874.00,303.00 Z' fill='#dbc68a'/>
+<path d='M891.32,731.00 L512.00,950.00 L512.00,930.00 L874.00,721.00 Z' fill='#ffecaa'/>
+<path d='M512.00,950.00 L132.68,731.00 L150.00,721.00 L512.00,930.00 Z' fill='#ceb97e'/>
+<path d='M132.68,731.00 L132.68,293.00 L150.00,303.00 L150.00,721.00 Z' fill='#786032'/>
+<path d='M132.68,293.00 L512.00,74.00 L512.00,94.00 L150.00,303.00 Z' fill='#543a12'/>
+<polygon points='512.00,94.00 874.00,303.00 874.00,721.00 512.00,930.00 150.00,721.00 150.00,303.00' fill='#0a0907'/>
+<polygon points='512.00,108.00 861.87,310.00 861.87,714.00 512.00,916.00 162.13,714.00 162.13,310.00' fill='url(#plate)'/>
+<polygon points='512.00,108.00 861.87,310.00 861.87,714.00 512.00,916.00 162.13,714.00 162.13,310.00' fill='black' filter='url(#sunk)'/>
+<circle cx='512.0' cy='57.0' r='15' fill='#543a12'/>
+<circle cx='511.0' cy='56.0' r='11.5' fill='url(#rivet)'/>
+<circle cx='906.0' cy='284.5' r='15' fill='#543a12'/>
+<circle cx='905.0' cy='283.5' r='11.5' fill='url(#rivet)'/>
+<circle cx='906.0' cy='739.5' r='15' fill='#543a12'/>
+<circle cx='905.0' cy='738.5' r='11.5' fill='url(#rivet)'/>
+<circle cx='512.0' cy='967.0' r='15' fill='#543a12'/>
+<circle cx='511.0' cy='966.0' r='11.5' fill='url(#rivet)'/>
+<circle cx='118.0' cy='739.5' r='15' fill='#543a12'/>
+<circle cx='117.0' cy='738.5' r='11.5' fill='url(#rivet)'/>
+<circle cx='118.0' cy='284.5' r='15' fill='#543a12'/>
+<circle cx='117.0' cy='283.5' r='11.5' fill='url(#rivet)'/>
+<path d='M512.00,255.00 L732.00,435.00 L732.00,531.00 L512.00,351.00 L292.00,531.00 L292.00,435.00 Z' fill='black' filter='url(#shadow)'/>
+<path d='M512.00,265.00 L732.00,445.00 L732.00,541.00 L512.00,361.00 L292.00,541.00 L292.00,445.00 Z' fill='url(#lip)'/>
+<path d='M512.00,255.00 L732.00,435.00 L732.00,531.00 L512.00,351.00 L292.00,531.00 L292.00,435.00 Z' fill='url(#chevron)'/>
+<path d='M512.00,255.00 L732.00,435.00 L732.00,531.00 L512.00,351.00 L292.00,531.00 L292.00,435.00 Z' fill='none' stroke='#fff2c2' stroke-opacity='0.55' stroke-width='3'/>
+<path d='M512.00,425.00 L732.00,605.00 L732.00,701.00 L512.00,521.00 L292.00,701.00 L292.00,605.00 Z' fill='black' filter='url(#shadow)'/>
+<path d='M512.00,435.00 L732.00,615.00 L732.00,711.00 L512.00,531.00 L292.00,711.00 L292.00,615.00 Z' fill='url(#lip)'/>
+<path d='M512.00,425.00 L732.00,605.00 L732.00,701.00 L512.00,521.00 L292.00,701.00 L292.00,605.00 Z' fill='url(#chevron)'/>
+<path d='M512.00,425.00 L732.00,605.00 L732.00,701.00 L512.00,521.00 L292.00,701.00 L292.00,605.00 Z' fill='none' stroke='#fff2c2' stroke-opacity='0.55' stroke-width='3'/>
+</svg>

@@ -1,0 +1,79 @@
+# Five minutes of armistice, then war, both sides building at a furious pace (the skirmish
+# mutators: a ceasefire, double resources and build speed, no missiles).
+
+id = "armistice"
+title = "The Armistice"
+tagline = "Five minutes of peace to build an army. Then the war resumes."
+kind = "battle"
+minutes = 25
+map = "Reactor Grid"
+briefing = """
+Commander, the peace talks on Reactor Grid have failed. The armistice holds for five more \
+minutes: until then no weapon may fire, and neither side may build near the other's base. \
+When it ends, the war resumes.
+
+Both sides are rearming at a furious pace: resources and construction run at twice their \
+usual speed, and the treaty's one lasting clause bans missile silos. Their Commander knows \
+the clock as well as you do.
+
+Build as you have never built. When the armistice ends, destroy the Core Commander.
+"""
+
+victory = [{ destroy = "commander" }]
+defeat = [{ lose = "commander" }]
+
+[mutators]
+no_rush_minutes = 5
+resources = 8
+build_speed = 2
+no_nukes = true
+
+[player]
+side = "ARM"
+start = "start 1"
+metal = 1500
+energy = 2000
+commander = true
+units = [
+    { unit = "ARMMEX", count = 2, at = "start 1", formation = "deposits" },
+    { unit = "ARMCK", at = "start 1 + 110 -60", formation = "grid", spacing = 64 },
+    { unit = "ARMCK", at = "start 1 + -110 -60", until = "normal", formation = "grid", spacing = 64 },
+    { unit = "ARMSOLAR", count = 4, at = "start 1 + -280 0", formation = "grid", spacing = 128 },
+    { unit = "ARMLAB", at = "start 1 + 240 -160", formation = "grid" },
+]
+
+[[enemy]]
+side = "CORE"
+start = "start 2"
+ai = "chosen"
+commander = true
+metal = 1500
+energy = 2000
+units = [
+    { unit = "CORMEX", count = 2, at = "start 2", formation = "deposits" },
+    { unit = "CORCK", at = "start 2 + -110 60", formation = "grid", spacing = 64 },
+    { unit = "CORCK", at = "start 2 + 110 60", from = "hard", formation = "grid", spacing = 64 },
+    { unit = "CORSOLAR", count = 4, at = "start 2 + -280 0", formation = "grid", spacing = 128 },
+    { unit = "CORLAB", at = "start 2 + 240 -160", formation = "grid" },
+]
+
+[[message]]
+at = 2
+from = "Arm Command"
+text = "The talks have failed. For five minutes no weapon fires and nobody builds near the other's base. Then it is war: build as you have never built."
+
+[[message]]
+at = 150
+from = "Arm Command"
+text = "Their factories are running day and night. Ours should be too."
+
+[[message]]
+at = 290
+side = "enemy 1"
+from = "Core Overseer"
+text = "Ten seconds, Arm. We have counted every one of your factories."
+
+[[message]]
+at = 420
+from = "Arm Command"
+text = "Their Commander is somewhere in that grid. Find it, and end this war for good."

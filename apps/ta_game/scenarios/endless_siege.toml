@@ -1,0 +1,87 @@
+# Waves forever, each worse than the last. How long can you last?
+
+id = "endless-siege"
+title = "Endless Siege"
+tagline = "The waves never stop. Survive as long as you can."
+kind = "endless"
+minutes = 0
+map = "Painted Desert"
+briefing = """
+Commander, there is no rescue coming, no reinforcements, no victory. The Core has found \
+your outpost in the mesas and will throw everything it has at it, from three directions, \
+for as long as it takes.
+
+Kbots, then tanks, then artillery and bombers; heavier every time, and now and then \
+something enormous. Build an economy, build defences, and hold on.
+
+Your best time is kept. Beat it.
+"""
+
+victory = []
+defeat = [{ lose = "commander" }]
+
+[player]
+side = "ARM"
+start = "start 3"
+metal = 2500
+energy = 3000
+commander = true
+units = [
+    { unit = "ARMMEX", count = 2, at = "start 3", formation = "deposits" },
+    { unit = "ARMCK", count = 2, at = "start 3 + 120 80", formation = "grid", spacing = 64 },
+    { unit = "ARMLAB", at = "start 3 + 240 -160", formation = "grid", spacing = 128 },
+    { unit = "ARMSOLAR", count = 4, at = "start 3 + -240 40", formation = "grid", spacing = 128 },
+    { unit = "ARMRL", at = "start 3 + 120 -120", formation = "line", spacing = 160 },
+    { unit = "ARMPW", count = 6, at = "start 3 + 260 60", formation = "grid", spacing = 64 },
+    { unit = "ARMLLT", count = 2, at = "start 3 + 460 0", formation = "line", spacing = 192 },
+    { unit = "ARMLLT", at = "start 3 + 260 -400", formation = "grid" },
+    { unit = "ARMLLT", at = "start 3 + 260 400", formation = "grid" },
+    { unit = "ARMRAD", at = "start 3 + -100 -240", formation = "grid" },
+]
+
+[[enemy]]
+side = "CORE"
+start = "centre"
+# Supplies for the full repeating wave schedule, without an on-map enemy base.
+energy = 100000000
+
+[[wave]]
+at = 40
+every = 50
+grow = 1.08
+from = "start 3 + 2600 -1800 | start 3 + 2800 0 | start 3 + 2600 1800"
+units = [{ unit = "CORAK", count = 4 }, { unit = "CORTHUD", count = 2 }]
+
+[[wave]]
+at = 150
+every = 100
+grow = 1.1
+from = "start 3 + 2800 0 | start 3 + 2600 1800 | start 3 + 2600 -1800"
+units = [{ unit = "CORRAID", count = 3 }, { unit = "CORLEVLR", count = 2 }]
+
+[[wave]]
+at = 300
+every = 150
+grow = 1.1
+from = "start 3 + 2600 1800 | start 3 + 2600 -1800 | start 3 + 2800 0"
+units = [{ unit = "CORMORT", count = 2 }, { unit = "CORSTORM", count = 3 }]
+
+[[wave]]
+at = 420
+every = 180
+grow = 1.12
+from = "start 3 + 3000 -2400 | start 3 + 3000 2400"
+units = [{ unit = "CORSHAD", count = 3 }, { unit = "CORAPE", count = 1 }]
+
+[[wave]]
+at = 600
+every = 240
+grow = 1.15
+from = "start 3 + 2800 0"
+units = [{ unit = "CORSUMO", count = 2 }, { unit = "CORCAN", count = 3 }, { unit = "CORREAP", count = 2 }]
+
+[[wave]]
+at = 900
+every = 480
+from = "start 3 + 2800 0"
+units = [{ unit = "CORKROG", count = 1, boss = true }]

@@ -1,0 +1,94 @@
+[GlobalHeader]
+	{
+	missionname=Hammerfall Works;
+	missiondescription=28 X 28  A world-forge of decks stacked four high over coolant canals, towers and pipework on every level. Up to 8 players.;
+	planet=Metal;
+	missionhint=;
+	brief=;
+	narration=;
+	glamour=;
+	lineofsight=1;
+	mapping=1;
+	tidalstrength=22;
+	solarstrength=90;
+	lavaworld=0;
+	killmul=50;
+	timemul=0;
+	minwindspeed=0;
+	maxwindspeed=3500;
+	gravity=112;
+	numplayers=2, 4, 6, 8;
+	size=28 x 28;
+	memory=32 mb;
+	DestroyAllUnits=1;
+	AllUnitsKilled=1;
+	SCHEMACOUNT=1;
+	[Schema 0]
+		{
+		Type=Network 1;
+		aiprofile=DEFAULT;
+		SurfaceMetal=255;
+		MohoMetal=255;
+		HumanMetal=1000;
+		ComputerMetal=1000;
+		HumanEnergy=1000;
+		ComputerEnergy=1000;
+		MeteorWeapon=;
+		MeteorRadius=0;
+		MeteorDensity=0;
+		MeteorDuration=0;
+		MeteorInterval=0;
+		[specials]
+			{
+			[special0]
+				{
+				specialwhat=StartPos1;
+				XPos=1752;
+				ZPos=12888;
+				}
+			[special1]
+				{
+				specialwhat=StartPos2;
+				XPos=12584;
+				ZPos=1448;
+				}
+			[special2]
+				{
+				specialwhat=StartPos3;
+				XPos=1880;
+				ZPos=4824;
+				}
+			[special3]
+				{
+				specialwhat=StartPos4;
+				XPos=12456;
+				ZPos=9512;
+				}
+			[special4]
+				{
+				specialwhat=StartPos5;
+				XPos=6744;
+				ZPos=10008;
+				}
+			[special5]
+				{
+				specialwhat=StartPos6;
+				XPos=7592;
+				ZPos=4328;
+				}
+			[special6]
+				{
+				specialwhat=StartPos7;
+				XPos=2776;
+				ZPos=8856;
+				}
+			[special7]
+				{
+				specialwhat=StartPos8;
+				XPos=11560;
+				ZPos=5480;
+				}
+			}
+		}
+	}
+

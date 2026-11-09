@@ -1,0 +1,82 @@
+[GlobalHeader]
+	{
+	missionname=Timberline;
+	missiondescription=20 X 20  Forested ridges climb to bare peaks over a river and its lakes: passes, fords and long timber trails. Up to 6 players.;
+	planet=Green planet;
+	missionhint=;
+	brief=;
+	narration=;
+	glamour=;
+	lineofsight=1;
+	mapping=1;
+	tidalstrength=15;
+	solarstrength=130;
+	lavaworld=0;
+	killmul=50;
+	timemul=0;
+	minwindspeed=700;
+	maxwindspeed=2600;
+	gravity=112;
+	numplayers=2, 4, 6;
+	size=20 x 20;
+	memory=32 mb;
+	DestroyAllUnits=1;
+	AllUnitsKilled=1;
+	SCHEMACOUNT=1;
+	[Schema 0]
+		{
+		Type=Network 1;
+		aiprofile=DEFAULT;
+		SurfaceMetal=3;
+		MohoMetal=30;
+		HumanMetal=1000;
+		ComputerMetal=1000;
+		HumanEnergy=1000;
+		ComputerEnergy=1000;
+		MeteorWeapon=;
+		MeteorRadius=0;
+		MeteorDensity=0;
+		MeteorDuration=0;
+		MeteorInterval=0;
+		[specials]
+			{
+			[special0]
+				{
+				specialwhat=StartPos1;
+				XPos=1416;
+				ZPos=1032;
+				}
+			[special1]
+				{
+				specialwhat=StartPos2;
+				XPos=8824;
+				ZPos=9208;
+				}
+			[special2]
+				{
+				specialwhat=StartPos3;
+				XPos=1224;
+				ZPos=8840;
+				}
+			[special3]
+				{
+				specialwhat=StartPos4;
+				XPos=9016;
+				ZPos=1400;
+				}
+			[special4]
+				{
+				specialwhat=StartPos5;
+				XPos=2760;
+				ZPos=5000;
+				}
+			[special5]
+				{
+				specialwhat=StartPos6;
+				XPos=7480;
+				ZPos=5240;
+				}
+			}
+		}
+	}
+

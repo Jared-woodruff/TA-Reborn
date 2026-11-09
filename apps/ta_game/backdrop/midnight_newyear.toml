@@ -1,0 +1,96 @@
+# The menu's film (apps/ta_game/src/backdrop.rs), at the New Year: Midnight Square, a minute to
+# midnight. The Arm's and the Core's Commanders stand side by side in the town square under the
+# clock tower, facing the crowd of their kbots, a truce for the night, while the fireworks go up
+# round it; the camera low in the square before them, drawing in. (Play it alone: --demo stage,
+# TA_STAGE=<this file>.)
+map = "Midnight Square"
+time = [[0, 23.9], [26, 23.99]]
+moon = [200, 34]
+seed = 1
+missing = "skip"
+
+# A truce: the Core on the Arm's side tonight.
+[[player]]
+index = 1
+faction = "CORE"
+team = 0
+
+[[unit]]
+type = "ARMCOM"
+side = 0
+at = [4046, 4250]
+heading = 165
+label = "coms"
+
+[[unit]]
+type = "CORCOM"
+side = 1
+at = [4146, 4250]
+heading = 195
+label = "coms"
+
+# Their kbots round them, turned in to them.
+[[unit]]
+type = "ARMPW"
+side = 0
+at = [3950, 4300]
+heading = 70
+label = "crowd"
+
+[[unit]]
+type = "ARMPW"
+side = 0
+at = [3975, 4345]
+heading = 55
+label = "crowd"
+
+[[unit]]
+type = "CORAK"
+side = 1
+at = [4242, 4300]
+heading = 290
+label = "crowd"
+
+[[unit]]
+type = "CORAK"
+side = 1
+at = [4216, 4346]
+heading = 305
+label = "crowd"
+
+[[unit]]
+type = "ARMZEUS"
+side = 0
+at = [3905, 4240]
+heading = 85
+label = "crowd"
+
+[[unit]]
+type = "CORCAN"
+side = 1
+at = [4290, 4238]
+heading = 275
+label = "crowd"
+
+# (Nothing at the lens: the firs by the square's corner beside the camera.)
+[[clear]]
+at = [4132, 4430]
+radius = 50
+
+# Low in the square in front of them, between their kbots (the cabin on the square's corner out of
+# the picture), looking up past them at the tower and the fireworks, drawing in.
+[[camera.key]]
+t = 0
+eye = [4150, 4440]
+height = 18
+look = [4084, 4235]
+look_height = 44
+fov = 46
+
+[[camera.key]]
+t = 26
+eye = [4146, 4405]
+height = 16
+look = [4086, 4220]
+look_height = 60
+fov = 46

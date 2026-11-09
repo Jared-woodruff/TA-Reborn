@@ -1,0 +1,21 @@
+[package]
+name = "ta_net"
+description = "Lockstep multiplayer for TA Reborn: TCP transport, lobby and tick bundles"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+ta_sim.workspace = true
+serde.workspace = true
+bincode.workspace = true
+log.workspace = true
+getrandom.workspace = true
+
+[dev-dependencies]
+ta_ai.workspace = true
+ta_vfs.workspace = true
+ta_data.workspace = true
+ta_formats.workspace = true

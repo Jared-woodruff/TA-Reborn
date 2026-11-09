@@ -1,0 +1,120 @@
+# The menu's film (apps/ta_game/src/backdrop.rs): Sapphire Reach as night falls. Two battle lines
+# steam west side by side down the channel, trading broadsides across the dark water under the
+# rising moon; the camera low on the water between their wakes, the shells' fire and the flashes
+# lighting the ships. (Play it alone: --demo
+# stage, TA_STAGE=<this file>.)
+map = "Sapphire Reach"
+time = [[0, 18.55], [26, 18.95]]
+moon = [276, 12]
+seed = 6
+missing = "skip"
+
+# The lines, 470 px apart, a ship every 300: destroyers at either end, battleships and a cruiser
+# between them.
+[[unit]]
+type = "ARMROY"
+side = 0
+at = [7400, 6160]
+heading = 270
+label = "arm"
+
+[[unit]]
+type = "ARMBATS"
+side = 0
+at = [7700, 6160]
+heading = 270
+label = "arm"
+
+[[unit]]
+type = "ARMCRUS"
+side = 0
+at = [8000, 6160]
+heading = 270
+label = "arm"
+
+[[unit]]
+type = "ARMBATS"
+side = 0
+at = [8300, 6160]
+heading = 270
+label = "arm"
+
+[[unit]]
+type = "ARMROY"
+side = 0
+at = [8600, 6160]
+heading = 270
+label = "arm"
+
+[[unit]]
+type = "CORROY"
+side = 1
+at = [7300, 5690]
+heading = 270
+label = "core"
+
+[[unit]]
+type = "CORBATS"
+side = 1
+at = [7600, 5690]
+heading = 270
+label = "core"
+
+[[unit]]
+type = "CORCRUS"
+side = 1
+at = [7900, 5690]
+heading = 270
+label = "core"
+
+[[unit]]
+type = "CORBATS"
+side = 1
+at = [8200, 5690]
+heading = 270
+label = "core"
+
+[[unit]]
+type = "CORROY"
+side = 1
+at = [8500, 5690]
+heading = 270
+label = "core"
+
+[[order]]
+t = 0.2
+units = "arm"
+do = "move"
+at = [5600, 6160]
+formation = true
+
+[[order]]
+t = 0.2
+units = "core"
+do = "move"
+at = [5500, 5690]
+formation = true
+
+# The Core's cruiser hit in its magazine, going up in the night.
+[[event]]
+t = 16.5
+do = "kill"
+units = "CORCRUS"
+
+# Low on the water between the lines' sterns, looking west up the gap between them at the moon,
+# keeping pace with them.
+[[camera.key]]
+t = 0
+eye = [8950, 5925]
+height = 18
+look = [6600, 5925]
+look_height = 14
+fov = 27
+
+[[camera.key]]
+t = 26
+eye = [7650, 5925]
+height = 16
+look = [5300, 5925]
+look_height = 16
+fov = 27

@@ -1,0 +1,59 @@
+[package]
+name = "ta_launcher"
+description = "TA Reborn desktop launcher: install detection, mods, settings"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "ta-launcher"
+path = "src/main.rs"
+
+[dependencies]
+ta_vfs.workspace = true
+ta_config.workspace = true
+ta_skins.workspace = true
+ta_render.workspace = true
+ta_sim.workspace = true
+glam.workspace = true
+ta_formats.workspace = true
+ta_data.workspace = true
+ta_ui.workspace = true
+# TA's interface sounds from the install, played as the game plays them.
+ta_audio.workspace = true
+egui.workspace = true
+anyhow.workspace = true
+log.workspace = true
+env_logger.workspace = true
+image.workspace = true
+clap.workspace = true
+toml.workspace = true
+# Reads GitHub's release answers (update check), and `--film`'s scripts.
+serde.workspace = true
+serde_json.workspace = true
+md-5.workspace = true
+# An update's setup is checked against its release's SHA-256 sums.
+sha2.workspace = true
+url = "2.5.8"
+percent-encoding = "2.3.2"
+semver = "1.0.28"
+
+# The launcher UI uses glow; a lazy headless wgpu worker renders the skin previews.
+# `x11`/`wayland` only matter on Linux, where winit needs at least one.
+eframe = { version = "0.36.2", default-features = false, features = ["accesskit", "glow", "default_fonts", "x11", "wayland"] }
+# Native folder picker.
+rfd = "0.17.2"
+# Opens URLs (including the goggalaxy:// scheme) and folders with the system handler, via
+# ShellExecuteExW on Windows rather than a hidden PowerShell process.
+open = { version = "5.4.4", features = ["shellexecute-on-windows"] }
+
+[target.'cfg(windows)'.dependencies]
+# A removed mod goes to the Recycle Bin (SHFileOperationW); one launcher at a time (a named
+# event: a second launcher brings the first to the front); the Menu key read for the libraries'
+# context menus (GetKeyState: egui has no key for it).
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+
+[build-dependencies]
+embed-resource.workspace = true

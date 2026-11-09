@@ -1,0 +1,70 @@
+[GlobalHeader]
+	{
+	missionname=Hollyridge;
+	missiondescription=20 X 20  Four bases on the snowy ridges, a frozen river winding through the vale below, villages along its banks hung with lights for Christmas. Up to 4 players.;
+	planet=Ice;
+	missionhint=;
+	brief=;
+	narration=;
+	glamour=;
+	lineofsight=1;
+	mapping=1;
+	tidalstrength=0;
+	solarstrength=25;
+	lavaworld=0;
+	killmul=50;
+	timemul=0;
+	minwindspeed=1800;
+	maxwindspeed=4400;
+	gravity=112;
+	numplayers=2, 4;
+	size=20 x 20;
+	memory=32 mb;
+	DestroyAllUnits=1;
+	AllUnitsKilled=1;
+	SCHEMACOUNT=1;
+	[Schema 0]
+		{
+		Type=Network 1;
+		aiprofile=DEFAULT;
+		SurfaceMetal=3;
+		MohoMetal=30;
+		HumanMetal=1000;
+		ComputerMetal=1000;
+		HumanEnergy=1000;
+		ComputerEnergy=1000;
+		MeteorWeapon=;
+		MeteorRadius=0;
+		MeteorDensity=0;
+		MeteorDuration=0;
+		MeteorInterval=0;
+		[specials]
+			{
+			[special0]
+				{
+				specialwhat=StartPos1;
+				XPos=1096;
+				ZPos=1096;
+				}
+			[special1]
+				{
+				specialwhat=StartPos2;
+				XPos=9144;
+				ZPos=9144;
+				}
+			[special2]
+				{
+				specialwhat=StartPos3;
+				XPos=1032;
+				ZPos=8904;
+				}
+			[special3]
+				{
+				specialwhat=StartPos4;
+				XPos=9208;
+				ZPos=1336;
+				}
+			}
+		}
+	}
+

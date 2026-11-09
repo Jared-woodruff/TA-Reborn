@@ -1,0 +1,106 @@
+name: Quality
+
+# Runs by hand only (Actions > Quality > Run workflow): the account's Actions minutes ran out,
+# so pull requests no longer start it either. Add `pull_request:` back to check them again.
+on:
+  workflow_dispatch:
+    inputs:
+      release_packages:
+        description: Build and verify all six release targets instead of the normal checks (does not publish)
+        type: boolean
+        default: false
+      coverage:
+        description: Measure unit-test line coverage and enforce game/data floors on Linux
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  # Keep package evidence for an older revision when validating a follow-up fix.
+  # Repeated runs of the same revision still replace one another.
+  group: quality-${{ github.workflow }}-${{ inputs.release_packages && github.sha || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  check-and-test:
+    if: ${{ !inputs.release_packages }}
+    name: Check and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install Linux audio and gamepad development libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y libasound2-dev libudev-dev pkg-config
+
+      - name: Install the minimum supported Rust toolchain
+        run: rustup toolchain install 1.95.0 --profile minimal
+
+      - name: Cache Cargo downloads
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Check every workspace target
+        run: cargo +1.95.0 check --workspace --all-targets --locked
+
+      - name: Test coverage checks
+        run: python -m unittest discover -s tools/qa/tests -v
+
+      - name: Test release scripts
+        run: python -m unittest discover -s tools/release/tests -v
+
+      - name: Test packaging scripts
+        run: python -m unittest discover -s installer/tests -v
+
+      # Hosted runners have no TA installation. Shader validation, generated assets and
+      # synthetic-data tests run here; tests requiring the player's game data skip.
+      # The installed-game, GPU screenshot and AI soak checks in docs/ROADMAP.md remain
+      # part of local release validation. Original game data must never be uploaded.
+      - name: Run workspace tests without an original game installation
+        run: cargo +1.95.0 test --workspace --locked -- --nocapture
+
+      - name: Install optional coverage tools
+        if: inputs.coverage && runner.os == 'Linux'
+        run: |
+          rustup component add llvm-tools-preview --toolchain 1.95.0
+          cargo install cargo-llvm-cov --version 0.9.1 --locked
+
+      - name: Measure unit coverage and enforce boundary floors
+        if: inputs.coverage && runner.os == 'Linux'
+        run: |
+          cargo +1.95.0 llvm-cov --profile ci --locked --workspace --lib --bins --summary-only --json --output-path target/coverage/units.json
+          python tools/qa/game_coverage.py target/coverage/units.json --scope all
+
+      - name: Retain optional unit coverage report
+        if: ${{ always() && inputs.coverage && runner.os == 'Linux' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unit-coverage-linux
+          path: target/coverage/units.json
+          if-no-files-found: warn
+
+  release-packages:
+    if: inputs.release_packages
+    uses: ./.github/workflows/packages.yml

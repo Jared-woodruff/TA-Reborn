@@ -1,0 +1,97 @@
+# Take the spiral hill and hold it for four minutes while the Core does the same.
+
+id = "king-of-the-hill"
+title = "King of the Hill"
+tagline = "Hold the summit for four minutes before the Core does."
+kind = "hold"
+minutes = 15
+map = "King of the Hill"
+briefing = """
+Commander, the spiral mountain at the heart of this plain is rich in metal, and whoever \
+holds its summit holds the planet. A Core Commander has landed to the north with the same \
+idea.
+
+Take the summit and keep it: four minutes in all with only your forces on top wins it. \
+Contested, the clock stands still. If the Core holds it alone for four minutes, the \
+mountain is theirs.
+
+The Core will keep sending troops up the slopes. Build up, get there first, and dig in.
+"""
+
+victory = [{ hold = "4030 4090", radius = 420, seconds = 240 }]
+defeat = [{ enemy_holds = "4030 4090", radius = 420, seconds = 240 }, { lose = "commander" }]
+
+[player]
+side = "ARM"
+start = "start 1"
+metal = 3000
+energy = 3000
+commander = true
+units = [
+    # (The plain has one deposit by each base: the second extractor stands forward, on the
+    # next one toward the hill, where the Core's raiders find it first.)
+    { unit = "ARMMEX", count = 2, at = "start 1", formation = "deposits" },
+    { unit = "ARMCV", count = 2, at = "start 1 + 150 -80", formation = "grid", spacing = 64 },
+    { unit = "ARMVP", at = "start 1 + 220 -260", formation = "grid", spacing = 128 },
+    { unit = "ARMSOLAR", count = 4, at = "start 1 + -260 -40", formation = "grid", spacing = 128 },
+    { unit = "ARMSTUMP", count = 4, at = "start 1 toward centre by 300", formation = "grid", spacing = 64 },
+    { unit = "ARMSAM", count = 2, at = "start 1 toward centre by 250", formation = "grid", spacing = 64 },
+    { unit = "ARMJETH", at = "start 1 toward centre by 200", formation = "grid", spacing = 64 },
+    { unit = "ARMFLASH", count = 4, at = "start 1 toward centre by 350", until = "easy", formation = "grid", spacing = 64 },
+]
+
+[[enemy]]
+side = "CORE"
+start = "start 2"
+ai = "chosen"
+commander = true
+metal = 3000
+energy = 3000
+units = [
+    { unit = "CORMEX", count = 2, at = "start 2", formation = "deposits" },
+    { unit = "CORRAID", count = 6, at = "start 2 toward centre by 300", formation = "grid", spacing = 64 },
+    { unit = "CORSTORM", count = 3, at = "start 2 toward centre by 250", formation = "grid", spacing = 64 },
+    { unit = "CORSOLAR", count = 6, at = "start 2 + -280 0", formation = "grid", spacing = 128 },
+    { unit = "CORVP", at = "start 2 + 240 0", formation = "grid" },
+    { unit = "CORCV", at = "start 2 + -120 160", formation = "grid" },
+]
+
+# Troops sent to take the summit and sit on it.
+[[wave]]
+at = 80
+every = 60
+times = 15
+grow = 1.15
+from = "start 2 toward centre by 600"
+to = "4030 4090"
+stay = true
+units = [{ unit = "CORAK", count = 7 }, { unit = "CORTHUD", count = 4 }]
+
+[[wave]]
+at = 180
+every = 120
+times = 7
+grow = 1.15
+from = "start 2 toward centre by 600"
+to = "4030 4090"
+stay = true
+units = [{ unit = "CORLEVLR", count = 3 }, { unit = "CORREAP", count = 2 }, { unit = "CORMORT", count = 2 }]
+
+# And now and then a raid on your base.
+[[wave]]
+at = 300
+every = 180
+times = 4
+from = "start 2 toward centre by 800"
+units = [{ unit = "CORRAID", count = 4 }]
+from_difficulty = "normal"
+
+[[message]]
+at = 75
+from = "Arm Command"
+text = "Core troops are climbing the north slope. Don't let them dig in on the summit."
+
+[[message]]
+at = 295
+from = "Arm Command"
+text = "Raiders are coming round the mountain for your base."

@@ -1,0 +1,94 @@
+[GlobalHeader]
+	{
+	missionname=Sapphire Reach;
+	missiondescription=32 X 32  Wooded islands on a turquoise sea: beaches, coves and deep channels for the fleets. Up to 8 players.;
+	planet=Archipelago;
+	missionhint=;
+	brief=;
+	narration=;
+	glamour=;
+	lineofsight=1;
+	mapping=1;
+	tidalstrength=30;
+	solarstrength=170;
+	lavaworld=0;
+	killmul=50;
+	timemul=0;
+	minwindspeed=900;
+	maxwindspeed=3000;
+	gravity=112;
+	numplayers=2, 4, 6, 8;
+	size=32 x 32;
+	memory=32 mb;
+	DestroyAllUnits=1;
+	AllUnitsKilled=1;
+	SCHEMACOUNT=1;
+	[Schema 0]
+		{
+		Type=Network 1;
+		aiprofile=DEFAULT;
+		SurfaceMetal=3;
+		MohoMetal=30;
+		HumanMetal=1000;
+		ComputerMetal=1000;
+		HumanEnergy=1000;
+		ComputerEnergy=1000;
+		MeteorWeapon=;
+		MeteorRadius=0;
+		MeteorDensity=0;
+		MeteorDuration=0;
+		MeteorInterval=0;
+		[specials]
+			{
+			[special0]
+				{
+				specialwhat=StartPos1;
+				XPos=10456;
+				ZPos=10584;
+				}
+			[special1]
+				{
+				specialwhat=StartPos2;
+				XPos=5976;
+				ZPos=10776;
+				}
+			[special2]
+				{
+				specialwhat=StartPos3;
+				XPos=5144;
+				ZPos=7768;
+				}
+			[special3]
+				{
+				specialwhat=StartPos4;
+				XPos=11288;
+				ZPos=7256;
+				}
+			[special4]
+				{
+				specialwhat=StartPos5;
+				XPos=2840;
+				ZPos=1816;
+				}
+			[special5]
+				{
+				specialwhat=StartPos6;
+				XPos=8792;
+				ZPos=1816;
+				}
+			[special6]
+				{
+				specialwhat=StartPos7;
+				XPos=14552;
+				ZPos=14552;
+				}
+			[special7]
+				{
+				specialwhat=StartPos8;
+				XPos=12888;
+				ZPos=3224;
+				}
+			}
+		}
+	}
+

@@ -1,0 +1,59 @@
+name: Bug report
+description: Something in TA Reborn does not work as it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. Please never attach files from the original game:
+        TA Reborn's repository holds no original game data.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen
+      description: The map, mode, units and steps. A replay (`.tarep`) or saved game (`.tasav`) helps most.
+      placeholder: |
+        1. Skirmish on Coast To Coast against a Hard computer player
+        2. ...
+  - type: input
+    id: version
+    attributes:
+      label: TA Reborn version
+      description: Shown in the launcher's header and on the title screen.
+      placeholder: "1.12.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: copy
+    attributes:
+      label: Your copy of Total Annihilation
+      options:
+        - GOG Commander Pack
+        - Steam
+        - Original CDs
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Windows version and graphics card
+      placeholder: "Windows 11, NVIDIA GeForce RTX 4070"
+  - type: input
+    id: mods
+    attributes:
+      label: Mods enabled
+      placeholder: "None"
+  - type: textarea
+    id: log
+    attributes:
+      label: Game log
+      description: "The end of `%APPDATA%\\TA Reborn\\logs\\game.log` after it happened."
+      render: text

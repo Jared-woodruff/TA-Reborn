@@ -1,0 +1,58 @@
+[GlobalHeader]
+	{
+	missionname=Rift Belt;
+	missiondescription=12 X 12  Two rocks drifting in the void, joined by gantries, outcrops for the bold and the stars below. Up to 2 players.;
+	planet=Asteroid Belt;
+	missionhint=;
+	brief=;
+	narration=;
+	glamour=;
+	lineofsight=1;
+	mapping=1;
+	tidalstrength=0;
+	solarstrength=30;
+	lavaworld=0;
+	killmul=50;
+	timemul=0;
+	minwindspeed=0;
+	maxwindspeed=0;
+	gravity=60;
+	numplayers=2;
+	size=12 x 12;
+	memory=32 mb;
+	DestroyAllUnits=1;
+	AllUnitsKilled=1;
+	SCHEMACOUNT=1;
+	[Schema 0]
+		{
+		Type=Network 1;
+		aiprofile=DEFAULT;
+		SurfaceMetal=3;
+		MohoMetal=30;
+		HumanMetal=1000;
+		ComputerMetal=1000;
+		HumanEnergy=1000;
+		ComputerEnergy=1000;
+		MeteorWeapon=;
+		MeteorRadius=0;
+		MeteorDensity=0;
+		MeteorDuration=0;
+		MeteorInterval=0;
+		[specials]
+			{
+			[special0]
+				{
+				specialwhat=StartPos1;
+				XPos=1192;
+				ZPos=1448;
+				}
+			[special1]
+				{
+				specialwhat=StartPos2;
+				XPos=4952;
+				ZPos=4696;
+				}
+			}
+		}
+	}
+

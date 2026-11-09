@@ -1,0 +1,85 @@
+# The Core is arming a nuclear missile. Destroy the silo before it launches.
+
+id = "doomsday-clock"
+title = "Doomsday Clock"
+tagline = "The Core's missile launches in fifteen minutes. Stop it."
+kind = "clock"
+minutes = 15
+map = "Metal Heck"
+briefing = """
+Commander, a Silencer nuclear silo stands at the heart of the Core base across these metal \
+plains, and it is arming. In fifteen minutes the missile flies, and your base is the \
+target.
+
+Destroy the silo. Nothing else matters: not their Commander, not their factories. The \
+silo sits behind heavy laser towers and a Punisher battery, and their Commander will not \
+sit still while you come for it.
+
+You have a base, two factories and two construction kbots. The clock is running.
+"""
+
+victory = [{ destroy = "CORSILO" }]
+defeat = [{ time = 900 }, { lose = "commander" }]
+
+[player]
+side = "ARM"
+start = "start 1"
+metal = 2500
+energy = 4000
+commander = true
+units = [
+    { unit = "ARMMEX", count = 2, at = "start 1", formation = "deposits" },
+    { unit = "ARMCK", count = 2, at = "start 1 + 120 90", formation = "grid", spacing = 64 },
+    { unit = "ARMLAB", at = "start 1 + 250 160", formation = "grid", spacing = 128 },
+    { unit = "ARMVP", at = "start 1 + -220 200", formation = "grid", spacing = 128 },
+    { unit = "ARMSOLAR", count = 8, at = "start 1 + -300 -40", formation = "grid", spacing = 128 },
+    { unit = "ARMMAKR", count = 2, at = "start 1 + 320 -40", formation = "grid", spacing = 128 },
+    { unit = "ARMSTUMP", count = 4, at = "start 1 toward start 2 by 280", formation = "grid", spacing = 64 },
+    { unit = "ARMHAM", count = 4, at = "start 1 toward start 2 by 230", formation = "grid", spacing = 64 },
+    { unit = "ARMMART", count = 2, at = "start 1 toward start 2 by 180", until = "easy", formation = "grid", spacing = 64 },
+]
+
+[[enemy]]
+side = "CORE"
+start = "start 2"
+ai = "chosen"
+commander = true
+metal = 2500
+energy = 4000
+units = [
+    { unit = "CORMEX", count = 2, at = "start 2", formation = "deposits" },
+    { unit = "CORSILO", at = "start 2 + 180 160", formation = "grid", spacing = 128 },
+    { unit = "CORHLT", count = 3, at = "start 2 toward start 1 by 350", formation = "line", spacing = 160 },
+    { unit = "CORPUN", count = 2, at = "start 2 toward start 1 by 250", formation = "line", spacing = 160 },
+    { unit = "CORLLT", count = 4, at = "start 2 toward start 1 by 420", formation = "line", spacing = 160 },
+    { unit = "CORRL", count = 2, at = "start 2 + 100 -150", formation = "line", spacing = 160 },
+    { unit = "CORHLT", count = 2, at = "start 2 toward start 1 by 300", from = "hard", formation = "line", spacing = 160 },
+    { unit = "CORLAB", at = "start 2 + -250 -120", formation = "grid", spacing = 128 },
+    { unit = "CORSOLAR", count = 8, at = "start 2 + -300 120", formation = "grid", spacing = 128 },
+    { unit = "CORTHUD", count = 4, at = "start 2 toward start 1 by 500", formation = "grid", spacing = 64 },
+    { unit = "CORCK", count = 2, at = "start 2 + 100 80", formation = "grid" },
+]
+
+# Raids to keep you busy.
+[[wave]]
+at = 200
+every = 150
+times = 4
+grow = 1.2
+from = "start 2 toward start 1 by 700"
+units = [{ unit = "CORRAID", count = 4 }, { unit = "CORSTORM", count = 2 }]
+
+[[message]]
+at = 300
+from = "Arm Command"
+text = "Ten minutes to launch, Commander."
+
+[[message]]
+at = 600
+from = "Arm Command"
+text = "Five minutes to launch. That silo has to go."
+
+[[message]]
+at = 840
+from = "Arm Command"
+text = "One minute! Get to that silo!"

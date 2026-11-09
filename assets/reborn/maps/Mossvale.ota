@@ -1,0 +1,58 @@
+[GlobalHeader]
+	{
+	missionname=Mossvale;
+	missiondescription=12 X 12  An old wood in a mossy vale: a stream and its tarn between two clearings, fords and forest paths. Up to 2 players.;
+	planet=Green planet;
+	missionhint=;
+	brief=;
+	narration=;
+	glamour=;
+	lineofsight=1;
+	mapping=1;
+	tidalstrength=15;
+	solarstrength=140;
+	lavaworld=0;
+	killmul=50;
+	timemul=0;
+	minwindspeed=500;
+	maxwindspeed=1800;
+	gravity=112;
+	numplayers=2;
+	size=12 x 12;
+	memory=32 mb;
+	DestroyAllUnits=1;
+	AllUnitsKilled=1;
+	SCHEMACOUNT=1;
+	[Schema 0]
+		{
+		Type=Network 1;
+		aiprofile=DEFAULT;
+		SurfaceMetal=3;
+		MohoMetal=30;
+		HumanMetal=1000;
+		ComputerMetal=1000;
+		HumanEnergy=1000;
+		ComputerEnergy=1000;
+		MeteorWeapon=;
+		MeteorRadius=0;
+		MeteorDensity=0;
+		MeteorDuration=0;
+		MeteorInterval=0;
+		[specials]
+			{
+			[special0]
+				{
+				specialwhat=StartPos1;
+				XPos=616;
+				ZPos=616;
+				}
+			[special1]
+				{
+				specialwhat=StartPos2;
+				XPos=5528;
+				ZPos=5528;
+				}
+			}
+		}
+	}
+

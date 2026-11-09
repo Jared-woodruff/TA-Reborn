@@ -1,0 +1,142 @@
+# The menu's film (apps/ta_game/src/backdrop.rs), at Halloween: Highland Rift at nightfall. Core
+# Pyros come out of the wood across the lake's outlet with the hunter's moon low behind it,
+# setting the trees alight as they go, and wade over at the Peewees waiting on the near bank.
+# (Play it alone: --demo stage, TA_STAGE=<this file>.)
+map = "Highland Rift"
+time = [[0, 19.75], [26, 20.15]]
+moon = [176, 11]
+seed = 13
+missing = "skip"
+
+[[clear]]
+at = [6840, 6760]
+radius = 240
+
+[[unit]]
+type = "CORPYRO"
+side = 1
+at = [6760, 7230]
+heading = 0
+label = "pyros"
+hold = true
+
+[[unit]]
+type = "CORPYRO"
+side = 1
+at = [6808, 7270]
+heading = 0
+label = "pyros"
+hold = true
+
+[[unit]]
+type = "CORPYRO"
+side = 1
+at = [6856, 7230]
+heading = 0
+label = "pyros"
+hold = true
+
+[[unit]]
+type = "CORPYRO"
+side = 1
+at = [6904, 7270]
+heading = 0
+label = "pyros"
+hold = true
+
+[[unit]]
+type = "CORPYRO"
+side = 1
+at = [6952, 7230]
+heading = 0
+label = "pyros"
+hold = true
+
+[[unit]]
+type = "CORPYRO"
+side = 1
+at = [7000, 7270]
+heading = 0
+label = "pyros"
+hold = true
+
+[[unit]]
+type = "ARMPW"
+side = 0
+at = [6800, 6870]
+heading = 180
+label = "peewees"
+hold = true
+
+[[unit]]
+type = "ARMPW"
+side = 0
+at = [6940, 6876]
+heading = 180
+label = "peewees"
+hold = true
+
+[[unit]]
+type = "ARMPW"
+side = 0
+at = [6730, 6858]
+heading = 180
+label = "peewees"
+hold = true
+
+[[unit]]
+type = "ARMPW"
+side = 0
+at = [7010, 6862]
+heading = 180
+label = "peewees"
+hold = true
+
+[[order]]
+t = 3.0
+units = "pyros"
+do = "fight"
+at = [6840, 6780]
+formation = true
+
+[[order]]
+t = 9.0
+units = "peewees"
+do = "stop"
+
+# The wood behind them catches as they come out of it.
+[[event]]
+t = 2.0
+do = "fire"
+at = [6800, 7330]
+size = 140
+
+[[event]]
+t = 6.0
+do = "fire"
+at = [6980, 7360]
+size = 160
+
+[[event]]
+t = 11.0
+do = "fire"
+at = [6640, 7360]
+size = 160
+
+# Low on the near bank among the Peewees, looking south over the water at the wood and the moon
+# rising over it, the blue going out of the sky; the Pyros coming out of the fire at them.
+[[camera.key]]
+t = 0
+eye = [6872, 6770]
+height = 7
+look = [6876, 7160]
+look_height = 30
+fov = 38
+
+[[camera.key]]
+t = 26
+eye = [6876, 6800]
+height = 6
+look = [6878, 7110]
+look_height = 26
+fov = 36

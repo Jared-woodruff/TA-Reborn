@@ -1,0 +1,17 @@
+[package]
+name = "ta_mp4"
+description = "Writes MP4 films (H.264 pictures, AAC sound) through Windows' Media Foundation: the replays' export"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+log.workspace = true
+thiserror.workspace = true
+# The pictures turned into the encoder's NV12 a band of rows per core.
+rayon.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Media_MediaFoundation", "Win32_System_Com"] }

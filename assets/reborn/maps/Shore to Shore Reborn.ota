@@ -1,0 +1,94 @@
+[GlobalHeader]
+	{
+	missionname=Shore to Shore Reborn;
+	missiondescription=48 X 20  Two coasts face each other across a wide ocean: headlands and beaches, coves and river mouths, island chains rich in metal, and a shallow bank for hovercraft cut by deep channels for the fleets. Up to 8 players.;
+	planet=Archipelago;
+	missionhint=;
+	brief=;
+	narration=;
+	glamour=;
+	lineofsight=1;
+	mapping=1;
+	tidalstrength=36;
+	solarstrength=150;
+	lavaworld=0;
+	killmul=50;
+	timemul=0;
+	minwindspeed=1400;
+	maxwindspeed=3800;
+	gravity=112;
+	numplayers=2, 4, 6, 8;
+	size=48 x 20;
+	memory=32 mb;
+	DestroyAllUnits=1;
+	AllUnitsKilled=1;
+	SCHEMACOUNT=1;
+	[Schema 0]
+		{
+		Type=Network 1;
+		aiprofile=DEFAULT;
+		SurfaceMetal=3;
+		MohoMetal=30;
+		HumanMetal=1000;
+		ComputerMetal=1000;
+		HumanEnergy=1000;
+		ComputerEnergy=1000;
+		MeteorWeapon=;
+		MeteorRadius=0;
+		MeteorDensity=0;
+		MeteorDuration=0;
+		MeteorInterval=0;
+		[specials]
+			{
+			[special0]
+				{
+				specialwhat=StartPos1;
+				XPos=3752;
+				ZPos=6536;
+				}
+			[special1]
+				{
+				specialwhat=StartPos2;
+				XPos=20824;
+				ZPos=3704;
+				}
+			[special2]
+				{
+				specialwhat=StartPos3;
+				XPos=3624;
+				ZPos=1848;
+				}
+			[special3]
+				{
+				specialwhat=StartPos4;
+				XPos=20952;
+				ZPos=8392;
+				}
+			[special4]
+				{
+				specialwhat=StartPos5;
+				XPos=3560;
+				ZPos=4232;
+				}
+			[special5]
+				{
+				specialwhat=StartPos6;
+				XPos=21016;
+				ZPos=6008;
+				}
+			[special6]
+				{
+				specialwhat=StartPos7;
+				XPos=3784;
+				ZPos=8664;
+				}
+			[special7]
+				{
+				specialwhat=StartPos8;
+				XPos=20792;
+				ZPos=1576;
+				}
+			}
+		}
+	}
+

@@ -1,0 +1,137 @@
+# Hold a mountain pass against ten waves of the Core.
+
+id = "last-stand"
+title = "Last Stand"
+tagline = "Hold the pass for twelve minutes. They will not stop coming."
+kind = "survive"
+minutes = 13
+map = "The Pass"
+briefing = """
+Commander, the Core has broken through at Varrin Gap. The only way into the valley behind \
+you is the winding pass ahead, and your outpost at its western mouth is all that stands in \
+the way.
+
+Reinforcements are twelve minutes out. Hold until they arrive. Core forces will come through \
+the pass in waves, each heavier than the last; expect bombers, and expect worse at the end: \
+our scouts have seen something very large moving in the east.
+
+You have a small base, a kbot lab and two construction kbots. Build what you can. Keep your \
+Commander alive.
+"""
+
+victory = [{ survive = 750 }]
+defeat = [{ lose = "commander" }]
+
+[player]
+side = "ARM"
+start = "start 1"
+metal = 2500
+energy = 4000
+commander = true
+units = [
+    # Mining and production behind the pass defenses.
+    { unit = "ARMMEX", count = 2, at = "start 1", formation = "deposits" },
+    { unit = "ARMCK", count = 2, at = "start 1 + 120 60", formation = "grid", spacing = 64 },
+    { unit = "ARMLAB", at = "start 1 + 100 300", formation = "grid", spacing = 128 },
+    { unit = "ARMSOLAR", count = 8, at = "start 1 + -220 100", formation = "grid", spacing = 128 },
+    { unit = "ARMMAKR", count = 2, at = "start 1 + -220 420", formation = "grid", spacing = 128 },
+    # Anti-air: the Commander cannot shoot at aircraft (nor can the towers), and the gunships
+    # of the bomber wave go for him; two Defenders by him, two more behind the line, and on
+    # Easy three Jethros.
+    { unit = "ARMRL", count = 2, at = "start 1 + 180 300", formation = "line", spacing = 320 },
+    { unit = "ARMRL", count = 2, at = "start 1 + 40 -60", formation = "line", spacing = 160 },
+    { unit = "ARMJETH", count = 3, at = "start 1 + 60 160", until = "easy", formation = "grid", spacing = 64 },
+    # Light screen, heavy line and supporting artillery.
+    { unit = "ARMLLT", count = 3, at = "start 1 + 560 200", formation = "line", spacing = 176 },
+    { unit = "ARMHLT", count = 2, at = "start 1 + 430 200", formation = "line", spacing = 224 },
+    { unit = "ARMGUARD", at = "start 1 + 280 120", formation = "line", spacing = 160 },
+    { unit = "ARMHLT", count = 2, at = "start 1 + 340 520", until = "easy", formation = "line", spacing = 176 },
+    # Leave the lab apron clear of the garrison.
+    { unit = "ARMPW", count = 6, at = "start 1 + 320 280", formation = "grid", spacing = 64 },
+    { unit = "ARMHAM", count = 4, at = "start 1 + 260 400", formation = "grid", spacing = 64 },
+    { unit = "ARMROCK", count = 2, at = "start 1 + 180 500", formation = "grid", spacing = 64 },
+]
+
+[[enemy]]
+side = "CORE"
+start = "start 2"
+# Off-map supplies for the energy weapons in the later waves.
+energy = 1000000
+
+[[wave]]
+at = 45
+from = "start 2"
+units = [{ unit = "CORAK", count = 4 }]
+
+[[wave]]
+at = 105
+from = "start 2"
+units = [{ unit = "CORAK", count = 6 }, { unit = "CORTHUD", count = 2 }]
+
+[[wave]]
+at = 165
+from = "start 2"
+units = [{ unit = "CORSTORM", count = 4 }, { unit = "CORTHUD", count = 4 }]
+
+[[wave]]
+at = 225
+from = "start 2"
+units = [{ unit = "CORRAID", count = 6 }, { unit = "CORLEVLR", count = 3 }]
+
+[[wave]]
+at = 285
+from = "start 2"
+units = [{ unit = "CORTHUD", count = 8 }, { unit = "CORPYRO", count = 4 }, { unit = "CORMORT", count = 2 }]
+
+[[wave]]
+at = 300
+from = "start 2"
+units = [{ unit = "CORSHAD", count = 3 }]
+from_difficulty = "hard"
+
+[[wave]]
+at = 345
+from = "start 2"
+units = [{ unit = "CORREAP", count = 4 }, { unit = "CORMORT", count = 4 }, { unit = "CORAK", count = 6 }]
+
+[[wave]]
+at = 405
+from = "start 2"
+units = [{ unit = "CORCAN", count = 6 }, { unit = "CORSUMO", count = 2 }]
+
+# Bombers: the Defenders (and on Easy the Jethros) are all the anti-air you start with.
+[[wave]]
+at = 465
+from = "start 2"
+units = [{ unit = "CORSHAD", count = 6 }, { unit = "CORAPE", count = 4 }]
+
+[[wave]]
+at = 525
+from = "start 2"
+units = [{ unit = "CORREAP", count = 6 }, { unit = "CORGOL", count = 2 }, { unit = "CORMORT", count = 4 }]
+
+# The very large thing.
+[[wave]]
+at = 570
+from = "start 2"
+units = [{ unit = "CORKROG", count = 1, boss = true }, { unit = "CORAK", count = 8 }]
+
+[[message]]
+at = 3
+from = "Arm Command"
+text = "Outpost, this is Arm Command. The relief force is twelve minutes out. Nothing gets through that pass before it arrives."
+
+[[message]]
+at = 460
+from = "Arm Command"
+text = "Radar: aircraft inbound from the east. Bombers! Get your anti-air up."
+
+[[message]]
+at = 565
+from = "Arm Command"
+text = "Seismic contact in the pass. It's the big one, Commander: a Krogoth."
+
+[[message]]
+at = 690
+from = "Arm Command"
+text = "One minute! The relief force is entering the valley."

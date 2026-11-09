@@ -1,0 +1,89 @@
+# Two great armies meet on the plains of Mars. No bases, no Commanders: just the battle.
+
+id = "armageddon"
+title = "Armageddon"
+tagline = "Two armies, one plain, no retreat. Win the battle of the war."
+kind = "battle"
+minutes = 8
+map = "Mounds of Mars"
+briefing = """
+Commander, the Core's main army is marching north across the Mounds, and ours stands in \
+its way. There are no bases here, no factories, no reinforcements: what you have is all \
+you will ever have.
+
+They outnumber us. We outgun them. Put the Lugers and the Merls on their columns as they \
+close, hold the line with the Zeus, and keep the Jethros with the tanks: they will bring \
+gunships. Their reserves arrive two and a half minutes in.
+
+Destroy every one of them.
+"""
+
+victory = [{ destroy = "everything" }]
+defeat = [{ lose = "everything" }]
+
+[player]
+side = "ARM"
+start = "start 1 toward start 2 by 2500"
+metal = 0
+energy = 500
+units = [
+    { unit = "ARMBULL", count = 10, at = "start 1 toward start 2 by 2660 + -160 0", formation = "grid", spacing = 64 },
+    { unit = "ARMSTUMP", count = 16, at = "start 1 toward start 2 by 2660 + 160 0", formation = "grid", spacing = 64 },
+    { unit = "ARMZEUS", count = 10, at = "start 1 toward start 2 by 2600", formation = "grid", spacing = 64 },
+    { unit = "ARMROCK", count = 8, at = "start 1 toward start 2 by 2560 + -220 40", formation = "grid", spacing = 64 },
+    { unit = "ARMFIDO", count = 4, at = "start 1 toward start 2 by 2560 + 220 40", formation = "grid", spacing = 64 },
+    { unit = "ARMMAV", count = 4, at = "start 1 toward start 2 by 2620", until = "easy", formation = "grid", spacing = 64 },
+    { unit = "ARMJETH", count = 6, at = "start 1 toward start 2 by 2500", formation = "grid", spacing = 64 },
+    { unit = "ARMSAM", count = 6, at = "start 1 toward start 2 by 2480 + 120 0", formation = "grid", spacing = 64 },
+    { unit = "ARMMART", count = 8, at = "start 1 toward start 2 by 2400 + -80 0", formation = "grid", spacing = 64 },
+    { unit = "ARMMERL", count = 4, at = "start 1 toward start 2 by 2400 + 120 0", formation = "line", spacing = 160 },
+    { unit = "ARMBRAWL", count = 6, at = "start 1 toward start 2 by 2280", formation = "grid", spacing = 64 },
+]
+
+[[enemy]]
+side = "CORE"
+start = "start 2 toward start 1 by 2500"
+# The army has no generators; its laser kbots draw on these battle supplies.
+energy = 1000000
+
+# The main army, which comes straight at you.
+[[wave]]
+at = 3
+from = "start 2 toward start 1 by 2700"
+units = [
+    { unit = "CORRAID", count = 10 },
+    { unit = "CORREAP", count = 6 },
+    { unit = "CORLEVLR", count = 5 },
+    { unit = "CORCAN", count = 5 },
+    { unit = "CORMORT", count = 4 },
+    { unit = "CORSTORM", count = 5 },
+    # (Anti-air: they leave the tanks alone and go for the Brawlers.)
+    { unit = "CORCRASH", count = 3 },
+    { unit = "CORSUMO", count = 2 },
+]
+
+[[wave]]
+at = 20
+from = "start 2 toward start 1 by 2300"
+units = [{ unit = "CORAPE", count = 4 }, { unit = "CORSHAD", count = 3 }]
+
+# The reserves.
+[[wave]]
+at = 150
+from = "start 2 toward start 1 by 1500"
+units = [
+    { unit = "CORGOL", count = 1 },
+    { unit = "CORREAP", count = 5 },
+    { unit = "CORPYRO", count = 3 },
+    { unit = "CORMART", count = 2 },
+]
+
+[[message]]
+at = 2
+from = "Arm Command"
+text = "Here they come. Hold the line, and keep the Jethros with the tanks."
+
+[[message]]
+at = 140
+from = "Arm Command"
+text = "Their reserves are coming up behind the mounds, a Goliath at their head."

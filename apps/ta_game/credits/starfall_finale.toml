@@ -1,0 +1,353 @@
+# The credits' scene starfall_finale (tools/credits/acts.py writes it; credits_show.rs plays it).
+# The last light, among the asteroids: a road of cards through a battle on Rift Belt.
+map = "Rift Belt"
+seed = 5
+missing = "skip"
+
+[act]
+title = "The last light, among the asteroids"
+themes = ["finale"]
+hours = [16.6, 18.4]
+style = "burn"
+height = 250
+back = 330
+fov = 40
+clear = 300
+road = 340
+
+[[player]]
+index = 0
+invulnerable = true
+
+[[player]]
+index = 1
+invulnerable = true
+
+[[station]]
+at = [943, 1972]
+heading = 68
+
+[[station]]
+at = [1128, 1897]
+heading = 68
+
+[[station]]
+at = [1314, 1822]
+heading = 68
+
+[[station]]
+at = [1499, 1747]
+heading = 68
+
+[[station]]
+at = [1685, 1672]
+heading = 68
+
+[[station]]
+at = [1870, 1597]
+heading = 68
+
+[[station]]
+at = [2056, 1522]
+heading = 68
+
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [825, 1804]
+heading = 158
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMZEUS"
+side = 0
+at = [1011, 1729]
+heading = 158
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMHAM"
+side = 0
+at = [1196, 1654]
+heading = 158
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMPW"
+side = 0
+at = [1382, 1579]
+heading = 158
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [1567, 1504]
+heading = 158
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMZEUS"
+side = 0
+at = [1753, 1429]
+heading = 158
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [914, 1779]
+heading = 158
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMFIDO"
+side = 0
+at = [1100, 1704]
+heading = 158
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [1285, 1629]
+heading = 158
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMFIDO"
+side = 0
+at = [1471, 1554]
+heading = 158
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [1656, 1479]
+heading = 158
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMFIDO"
+side = 0
+at = [1842, 1404]
+heading = 158
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMMERL"
+side = 0
+at = [935, 1684]
+heading = 158
+count = 2
+spacing = 62
+
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [1120, 1609]
+heading = 158
+count = 2
+spacing = 62
+
+[[unit]]
+type = "ARMMERL"
+side = 0
+at = [1305, 1534]
+heading = 158
+count = 2
+spacing = 62
+
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [1491, 1459]
+heading = 158
+count = 2
+spacing = 62
+
+[[unit]]
+type = "ARMMERL"
+side = 0
+at = [1676, 1385]
+heading = 158
+count = 2
+spacing = 62
+
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [1862, 1310]
+heading = 158
+count = 2
+spacing = 62
+
+[[unit]]
+type = "CORRAID"
+side = 1
+at = [975, 2175]
+heading = 338
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [1161, 2100]
+heading = 338
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORTHUD"
+side = 1
+at = [1346, 2025]
+heading = 338
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORAK"
+side = 1
+at = [1532, 1950]
+heading = 338
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORRAID"
+side = 1
+at = [1717, 1875]
+heading = 338
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [1902, 1800]
+heading = 338
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [1057, 2131]
+heading = 338
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [1242, 2056]
+heading = 338
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [1428, 1981]
+heading = 338
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [1613, 1906]
+heading = 338
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [1799, 1831]
+heading = 338
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [1984, 1756]
+heading = 338
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORMART"
+side = 1
+at = [1137, 2185]
+heading = 338
+count = 2
+spacing = 62
+
+[[unit]]
+type = "CORVROC"
+side = 1
+at = [1322, 2110]
+heading = 338
+count = 2
+spacing = 62
+
+[[unit]]
+type = "CORMART"
+side = 1
+at = [1508, 2035]
+heading = 338
+count = 2
+spacing = 62
+
+[[unit]]
+type = "CORVROC"
+side = 1
+at = [1693, 1960]
+heading = 338
+count = 2
+spacing = 62
+
+[[unit]]
+type = "CORMART"
+side = 1
+at = [1879, 1885]
+heading = 338
+count = 2
+spacing = 62
+
+[[unit]]
+type = "CORVROC"
+side = 1
+at = [2064, 1810]
+heading = 338
+count = 2
+spacing = 62
+
+[[unit]]
+type = "ARMCOM"
+side = 0
+at = [1981, 1337]
+heading = 158
+
+[[unit]]
+type = "CORCOM"
+side = 1
+at = [2131, 1708]
+heading = 338
+

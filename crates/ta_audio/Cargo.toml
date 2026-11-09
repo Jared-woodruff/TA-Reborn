@@ -1,0 +1,29 @@
+[package]
+name = "ta_audio"
+description = "Game audio engine for TA Reborn: WAV/MP3 decoding, positional mixing, unit sounds and music"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+ta_vfs.workspace = true
+ta_formats.workspace = true
+ta_config.workspace = true
+thiserror.workspace = true
+log.workspace = true
+serde.workspace = true
+toml.workspace = true
+
+# Audio output. 0.18 returns paused streams on every backend and has a unified error type.
+cpal = "0.18.2"
+# Streaming music decoding (MP3 for the GOG release; Ogg Vorbis for mods and other releases;
+# FLAC, WAV and M4A/AAC too for the player's own music).
+symphonia = { version = "0.5.5", default-features = false, features = ["mp3", "ogg", "vorbis", "flac", "wav", "pcm", "isomp4", "aac"] }
+# Wait-free single-producer/single-consumer queues between the game and the audio thread.
+rtrb = "0.4.0"
+
+[dev-dependencies]
+anyhow.workspace = true
+env_logger.workspace = true

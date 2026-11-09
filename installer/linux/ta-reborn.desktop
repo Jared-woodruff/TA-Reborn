@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=TA Reborn
+Comment=A new engine for Total Annihilation (requires your own game data)
+Exec=ta-launcher
+TryExec=ta-launcher
+Icon=ta-reborn
+Terminal=false
+Categories=Game;StrategyGame;
+Keywords=Total Annihilation;RTS;Strategy;
+StartupNotify=true
+StartupWMClass=ta-reborn-launcher

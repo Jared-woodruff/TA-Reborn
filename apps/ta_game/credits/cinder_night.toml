@@ -1,0 +1,495 @@
+# The credits' scene cinder_night (tools/credits/acts.py writes it; credits_show.rs plays it).
+# Night falls on the basalt: a road of cards through a battle on Cinder Basin.
+map = "Cinder Basin"
+seed = 12
+missing = "skip"
+moon = [20, 26]
+
+[act]
+title = "Night falls on the basalt"
+themes = ["music", "sound", "composition", "art", "artist", "thanks"]
+hours = [21.9, 22.7]
+style = "burn"
+height = 250
+back = 330
+fov = 40
+clear = 300
+road = 340
+floor = 0.04
+searchlights = 3
+
+[[player]]
+index = 0
+invulnerable = true
+
+[[player]]
+index = 1
+invulnerable = true
+
+[[station]]
+at = [8192, 8534]
+heading = 90
+
+[[station]]
+at = [8422, 8534]
+heading = 90
+style = "paint"
+
+[[station]]
+at = [8652, 8534]
+heading = 90
+
+[[station]]
+at = [8882, 8534]
+heading = 90
+style = "paint"
+
+[[station]]
+at = [9112, 8534]
+heading = 90
+style = "paint"
+
+[[station]]
+at = [9342, 8534]
+heading = 90
+
+[[station]]
+at = [9572, 8534]
+heading = 90
+
+[[station]]
+at = [9802, 8534]
+heading = 90
+style = "paint"
+
+[[station]]
+at = [10032, 8534]
+heading = 90
+
+[[station]]
+at = [10262, 8534]
+heading = 90
+style = "paint"
+
+[[unit]]
+type = "ARMZEUS"
+side = 0
+at = [8146, 8334]
+heading = 180
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMHAM"
+side = 0
+at = [8376, 8334]
+heading = 180
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMPW"
+side = 0
+at = [8606, 8334]
+heading = 180
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMZEUS"
+side = 0
+at = [8836, 8334]
+heading = 180
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMZEUS"
+side = 0
+at = [9066, 8334]
+heading = 180
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMHAM"
+side = 0
+at = [9296, 8334]
+heading = 180
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMPW"
+side = 0
+at = [9526, 8334]
+heading = 180
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMZEUS"
+side = 0
+at = [9756, 8334]
+heading = 180
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMZEUS"
+side = 0
+at = [9986, 8334]
+heading = 180
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMHAM"
+side = 0
+at = [10216, 8334]
+heading = 180
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [8238, 8344]
+heading = 180
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMFIDO"
+side = 0
+at = [8468, 8344]
+heading = 180
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [8698, 8344]
+heading = 180
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMFIDO"
+side = 0
+at = [8928, 8344]
+heading = 180
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [9158, 8344]
+heading = 180
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMFIDO"
+side = 0
+at = [9388, 8344]
+heading = 180
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [9618, 8344]
+heading = 180
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMFIDO"
+side = 0
+at = [9848, 8344]
+heading = 180
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [10078, 8344]
+heading = 180
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMFIDO"
+side = 0
+at = [10308, 8344]
+heading = 180
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMBRTHA"
+side = 0
+at = [8307, 8264]
+heading = 180
+
+[[unit]]
+type = "ARMBRTHA"
+side = 0
+at = [8767, 8264]
+heading = 180
+
+[[unit]]
+type = "ARMBRTHA"
+side = 0
+at = [9227, 8264]
+heading = 180
+
+[[unit]]
+type = "ARMBRTHA"
+side = 0
+at = [9687, 8264]
+heading = 180
+
+[[unit]]
+type = "ARMBRTHA"
+side = 0
+at = [10147, 8264]
+heading = 180
+
+[[unit]]
+type = "ARMLLT"
+side = 0
+at = [8307, 8330]
+heading = 180
+
+[[unit]]
+type = "ARMLLT"
+side = 0
+at = [8997, 8330]
+heading = 180
+
+[[unit]]
+type = "ARMLLT"
+side = 0
+at = [9687, 8330]
+heading = 180
+
+[[unit]]
+type = "ARMLLT"
+side = 0
+at = [10377, 8330]
+heading = 180
+
+[[unit]]
+type = "CORPUN"
+side = 1
+at = [8142, 8744]
+heading = 0
+count = 2
+spacing = 72
+
+[[unit]]
+type = "CORPUN"
+side = 1
+at = [8372, 8744]
+heading = 0
+count = 2
+spacing = 72
+
+[[unit]]
+type = "CORPUN"
+side = 1
+at = [8602, 8744]
+heading = 0
+count = 2
+spacing = 72
+
+[[unit]]
+type = "CORPUN"
+side = 1
+at = [8832, 8744]
+heading = 0
+count = 2
+spacing = 72
+
+[[unit]]
+type = "CORPUN"
+side = 1
+at = [9062, 8744]
+heading = 0
+count = 2
+spacing = 72
+
+[[unit]]
+type = "CORPUN"
+side = 1
+at = [9292, 8744]
+heading = 0
+count = 2
+spacing = 72
+
+[[unit]]
+type = "CORPUN"
+side = 1
+at = [9522, 8744]
+heading = 0
+count = 2
+spacing = 72
+
+[[unit]]
+type = "CORPUN"
+side = 1
+at = [9752, 8804]
+heading = 0
+count = 2
+spacing = 72
+
+[[unit]]
+type = "CORPUN"
+side = 1
+at = [9982, 8744]
+heading = 0
+count = 2
+spacing = 72
+
+[[unit]]
+type = "CORPUN"
+side = 1
+at = [10212, 8744]
+heading = 0
+count = 2
+spacing = 72
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [8242, 8724]
+heading = 0
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [8472, 8724]
+heading = 0
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [8702, 8724]
+heading = 0
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [8932, 8724]
+heading = 0
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [9162, 8724]
+heading = 0
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [9392, 8724]
+heading = 0
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [9622, 8724]
+heading = 0
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [9852, 8804]
+heading = 0
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [10082, 8749]
+heading = 0
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [10312, 8724]
+heading = 0
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORTOAST"
+side = 1
+at = [8307, 8804]
+heading = 0
+
+[[unit]]
+type = "CORHLT"
+side = 1
+at = [8767, 8804]
+heading = 0
+
+[[unit]]
+type = "CORTOAST"
+side = 1
+at = [9227, 8804]
+heading = 0
+
+[[unit]]
+type = "CORHLT"
+side = 1
+at = [9687, 8874]
+heading = 0
+
+[[unit]]
+type = "CORHLT"
+side = 1
+at = [8307, 8738]
+heading = 0
+
+[[unit]]
+type = "CORHLT"
+side = 1
+at = [8997, 8738]
+heading = 0
+
+[[unit]]
+type = "CORHLT"
+side = 1
+at = [10377, 8738]
+heading = 0
+
+[[unit]]
+type = "CORDOOM"
+side = 1
+at = [9802, 8864]
+heading = 0
+

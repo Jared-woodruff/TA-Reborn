@@ -1,0 +1,94 @@
+[GlobalHeader]
+	{
+	missionname=Cinder Basin;
+	missiondescription=32 X 32  Basalt terraces over a river of fire and its molten lakes, spires on the heights. Up to 8 players.;
+	planet=Lava;
+	missionhint=;
+	brief=;
+	narration=;
+	glamour=;
+	lineofsight=1;
+	mapping=1;
+	tidalstrength=0;
+	solarstrength=120;
+	lavaworld=1;
+	killmul=50;
+	timemul=0;
+	minwindspeed=200;
+	maxwindspeed=1400;
+	gravity=112;
+	numplayers=2, 4, 6, 8;
+	size=32 x 32;
+	memory=32 mb;
+	DestroyAllUnits=1;
+	AllUnitsKilled=1;
+	SCHEMACOUNT=1;
+	[Schema 0]
+		{
+		Type=Network 1;
+		aiprofile=DEFAULT;
+		SurfaceMetal=4;
+		MohoMetal=30;
+		HumanMetal=1000;
+		ComputerMetal=1000;
+		HumanEnergy=1000;
+		ComputerEnergy=1000;
+		MeteorWeapon=;
+		MeteorRadius=0;
+		MeteorDensity=0;
+		MeteorDuration=0;
+		MeteorInterval=0;
+		[specials]
+			{
+			[special0]
+				{
+				specialwhat=StartPos1;
+				XPos=10456;
+				ZPos=10712;
+				}
+			[special1]
+				{
+				specialwhat=StartPos2;
+				XPos=5592;
+				ZPos=10456;
+				}
+			[special2]
+				{
+				specialwhat=StartPos3;
+				XPos=6488;
+				ZPos=5272;
+				}
+			[special3]
+				{
+				specialwhat=StartPos4;
+				XPos=10840;
+				ZPos=5976;
+				}
+			[special4]
+				{
+				specialwhat=StartPos5;
+				XPos=14552;
+				ZPos=14552;
+				}
+			[special5]
+				{
+				specialwhat=StartPos6;
+				XPos=1816;
+				ZPos=14552;
+				}
+			[special6]
+				{
+				specialwhat=StartPos7;
+				XPos=14552;
+				ZPos=1816;
+				}
+			[special7]
+				{
+				specialwhat=StartPos8;
+				XPos=1880;
+				ZPos=2456;
+				}
+			}
+		}
+	}
+

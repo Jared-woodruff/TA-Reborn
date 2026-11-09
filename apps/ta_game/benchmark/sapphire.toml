@@ -1,0 +1,481 @@
+# TA Reborn's benchmark: Sapphire Reach at dawn. Written by tools/benchmark/scenes.py (edit that, not this).
+map = "Sapphire Reach"
+time = [[0, 6.15], [28, 7.1]]
+reveal = true
+hud = false
+icons = false
+unlimited = true
+seed = 7
+missing = "skip"
+orders_per_tick = 20
+[[clear]]
+at = [7130, 8946]
+radius = 1050
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [6710, 8915]
+heading = 90
+label = "arm_front"
+count = 10
+spacing = 124
+[[unit]]
+type = "ARMHAM"
+side = 0
+at = [6710, 8977]
+heading = 90
+label = "arm_front"
+count = 10
+spacing = 124
+[[unit]]
+type = "CORREAP"
+side = 1
+at = [7390, 8426]
+heading = 270
+label = "core_front"
+count = 5
+spacing = 160
+[[unit]]
+type = "CORGOL"
+side = 1
+at = [7390, 8426]
+heading = 270
+label = "core_front"
+count = 4
+spacing = 160
+[[unit]]
+type = "CORREAP"
+side = 1
+at = [7390, 9466]
+heading = 270
+label = "core_front"
+count = 5
+spacing = 160
+[[unit]]
+type = "CORGOL"
+side = 1
+at = [7390, 9466]
+heading = 270
+label = "core_front"
+count = 4
+spacing = 160
+[[unit]]
+type = "ARMFIDO"
+side = 0
+at = [6600, 8922]
+heading = 90
+label = "arm_kbots"
+count = 10
+spacing = 96
+[[unit]]
+type = "ARMJETH"
+side = 0
+at = [6600, 8970]
+heading = 90
+label = "arm_kbots"
+count = 10
+spacing = 96
+[[unit]]
+type = "CORMORT"
+side = 1
+at = [7500, 8426]
+heading = 270
+label = "core_kbots"
+count = 5
+spacing = 160
+[[unit]]
+type = "CORCRASH"
+side = 1
+at = [7500, 8426]
+heading = 270
+label = "core_kbots"
+count = 4
+spacing = 160
+[[unit]]
+type = "CORMORT"
+side = 1
+at = [7500, 9466]
+heading = 270
+label = "core_kbots"
+count = 5
+spacing = 160
+[[unit]]
+type = "CORCRASH"
+side = 1
+at = [7500, 9466]
+heading = 270
+label = "core_kbots"
+count = 4
+spacing = 160
+[[unit]]
+type = "ARMMART"
+side = 0
+at = [6450, 8914]
+heading = 90
+label = "arm_art"
+count = 10
+spacing = 128
+[[unit]]
+type = "ARMMERL"
+side = 0
+at = [6450, 8978]
+heading = 90
+label = "arm_art"
+count = 10
+spacing = 128
+[[unit]]
+type = "CORMART"
+side = 1
+at = [7650, 8426]
+heading = 270
+label = "core_art"
+count = 5
+spacing = 160
+[[unit]]
+type = "CORVROC"
+side = 1
+at = [7650, 8426]
+heading = 270
+label = "core_art"
+count = 4
+spacing = 160
+[[unit]]
+type = "CORMART"
+side = 1
+at = [7650, 9466]
+heading = 270
+label = "core_art"
+count = 5
+spacing = 160
+[[unit]]
+type = "CORVROC"
+side = 1
+at = [7650, 9466]
+heading = 270
+label = "core_art"
+count = 4
+spacing = 160
+[[order]]
+t = 0.05
+units = "arm_front"
+do = "move"
+by = [400, 0]
+formation = false
+[[order]]
+t = 0.05
+units = "arm_kbots"
+do = "move"
+by = [400, 0]
+formation = false
+[[order]]
+t = 0.05
+units = "arm_art"
+do = "move"
+by = [400, 0]
+formation = false
+[[unit]]
+type = "CORKROG"
+side = 1
+at = [7810, 8946]
+heading = 270
+label = "krogoths"
+count = 2
+spacing = 150
+[[order]]
+t = 4
+units = "krogoths"
+do = "move"
+by = [-560, 0]
+formation = false
+[[unit]]
+type = "ARMROY"
+side = 0
+at = [4293, 5718]
+heading = 90
+label = "arm_fleet"
+[[unit]]
+type = "ARMROY"
+side = 0
+at = [4123, 5718]
+heading = 90
+label = "arm_fleet"
+[[unit]]
+type = "ARMROY"
+side = 0
+at = [3953, 5718]
+heading = 90
+label = "arm_fleet"
+[[unit]]
+type = "ARMCRUS"
+side = 0
+at = [3783, 5718]
+heading = 90
+label = "arm_fleet"
+[[unit]]
+type = "ARMCRUS"
+side = 0
+at = [3613, 5718]
+heading = 90
+label = "arm_fleet"
+[[unit]]
+type = "ARMCRUS"
+side = 0
+at = [3443, 5718]
+heading = 90
+label = "arm_fleet"
+[[unit]]
+type = "ARMBATS"
+side = 0
+at = [3273, 5718]
+heading = 90
+label = "arm_fleet"
+[[unit]]
+type = "ARMBATS"
+side = 0
+at = [3103, 5718]
+heading = 90
+label = "arm_fleet"
+[[order]]
+t = 0.05
+units = "arm_fleet"
+do = "move"
+by = [3407.87, 0]
+formation = false
+[[unit]]
+type = "CORROY"
+side = 1
+at = [4293, 6018]
+heading = 90
+label = "core_fleet"
+[[unit]]
+type = "CORROY"
+side = 1
+at = [4123, 6018]
+heading = 90
+label = "core_fleet"
+[[unit]]
+type = "CORROY"
+side = 1
+at = [3953, 6018]
+heading = 90
+label = "core_fleet"
+[[unit]]
+type = "CORCRUS"
+side = 1
+at = [3783, 6018]
+heading = 90
+label = "core_fleet"
+[[unit]]
+type = "CORCRUS"
+side = 1
+at = [3613, 6018]
+heading = 90
+label = "core_fleet"
+[[unit]]
+type = "CORCRUS"
+side = 1
+at = [3443, 6018]
+heading = 90
+label = "core_fleet"
+[[unit]]
+type = "CORBATS"
+side = 1
+at = [3273, 6018]
+heading = 90
+label = "core_fleet"
+[[unit]]
+type = "CORBATS"
+side = 1
+at = [3103, 6018]
+heading = 90
+label = "core_fleet"
+[[order]]
+t = 0.05
+units = "core_fleet"
+do = "move"
+by = [3407.87, 0]
+formation = false
+[[unit]]
+type = "CORHLT"
+side = 1
+at = [5633, 4096]
+heading = 180
+label = "fort"
+count = 11
+spacing = 160
+[[unit]]
+type = "CORTOAST"
+side = 1
+at = [5553, 3899]
+heading = 180
+label = "fort"
+count = 7
+spacing = 240
+[[unit]]
+type = "CORFLAK"
+side = 1
+at = [5633, 3801]
+heading = 180
+label = "fort"
+count = 6
+spacing = 320
+[[unit]]
+type = "CORDOOM"
+side = 1
+at = [5553, 3703]
+heading = 180
+label = "fort"
+count = 5
+spacing = 360
+[[unit]]
+type = "CORPUN"
+side = 1
+at = [5583, 3506]
+heading = 180
+label = "fort"
+count = 6
+spacing = 300
+[[unit]]
+type = "ARMANAC"
+side = 0
+at = [5652, 4833]
+heading = 0
+label = "landing"
+count = 10
+spacing = 64
+[[unit]]
+type = "ARMAH"
+side = 0
+at = [5652, 4905]
+heading = 0
+label = "landing"
+count = 5
+spacing = 128
+[[order]]
+t = 0.05
+units = "landing"
+do = "fight"
+by = [0, -1720.32]
+formation = false
+[[unit]]
+type = "ARMTHUND"
+side = 0
+at = [4751, 8520]
+heading = 90
+label = "arm_bombers"
+count = 9
+rows = 3
+spacing = 150
+airborne = true
+[[unit]]
+type = "CORSHAD"
+side = 1
+at = [9175, 9830]
+heading = 270
+label = "core_bombers"
+count = 6
+rows = 2
+spacing = 150
+airborne = true
+[[order]]
+t = 2
+units = "arm_bombers"
+do = "attack"
+target = "core_art"
+[[order]]
+t = 3
+units = "core_bombers"
+do = "attack"
+target = "arm_art"
+[[order]]
+t = 2.1
+units = "arm_bombers"
+do = "patrol"
+at = [8069, 8946]
+queue = true
+[[order]]
+t = 3.1
+units = "core_bombers"
+do = "patrol"
+at = [6431, 8946]
+queue = true
+[[unit]]
+type = "ARMHAWK"
+side = 0
+at = [5407, 8192]
+heading = 90
+label = "arm_fighters"
+count = 8
+rows = 2
+spacing = 130
+airborne = true
+[[unit]]
+type = "CORVAMP"
+side = 1
+at = [8520, 9011]
+heading = 270
+label = "core_fighters"
+count = 8
+rows = 2
+spacing = 130
+airborne = true
+[[order]]
+t = 0.5
+units = "arm_fighters"
+do = "patrol"
+at = [7578, 8946]
+[[order]]
+t = 0.5
+units = "core_fighters"
+do = "patrol"
+at = [6922, 8946]
+[[camera.key]]
+t = 0
+eye = [3700, 6520]
+height = 38
+look = [3650, 5860]
+look_height = 12
+fov = 50
+[[camera.key]]
+t = 6
+eye = [4500, 6560]
+height = 60
+look = [4650, 5860]
+look_height = 14
+fov = 48
+[[camera.key]]
+t = 11
+eye = [5350, 5650]
+height = 240
+look = [5650, 4200]
+look_height = 0
+fov = 46
+[[camera.key]]
+t = 15
+eye = [6250, 7350]
+height = 230
+look = [7250, 8900]
+look_height = 10
+fov = 46
+[[camera.key]]
+t = 20
+eye = [6750, 8300]
+height = 50
+look = [7400, 8950]
+look_height = 25
+fov = 50
+[[camera.key]]
+t = 24
+eye = [7700, 9750]
+height = 95
+look = [7200, 8900]
+look_height = 20
+fov = 46
+[[camera.key]]
+t = 28
+eye = [5400, 11400]
+height = 1500
+look = [6300, 6600]
+look_height = 0
+fov = 46
+# Sapphire Reach: Arm 100 units, Core 113

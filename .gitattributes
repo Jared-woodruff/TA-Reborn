@@ -1,0 +1,18 @@
+# LF line endings in the repository and in working copies.
+* text=auto eol=lf
+# Windows batch files keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+# Binary files.
+*.png binary
+*.gif binary
+*.jpg binary
+*.ico binary
+*.exe binary
+*.wav binary
+*.ogg binary
+*.bmp binary
+*.glb binary
+*.tnt binary
+# TA's map descriptions keep the CRLF line endings TA writes (and the map generator).
+*.ota -text

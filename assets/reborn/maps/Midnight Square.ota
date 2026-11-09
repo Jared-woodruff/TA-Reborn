@@ -1,0 +1,58 @@
+[GlobalHeader]
+	{
+	missionname=Midnight Square;
+	missiondescription=16 X 16  A town in the snow waits for the New Year: its clock tower in the square between the bases, fireworks ready round it, lanterns strung over the lanes. Up to 2 players.;
+	planet=Ice;
+	missionhint=;
+	brief=;
+	narration=;
+	glamour=;
+	lineofsight=1;
+	mapping=1;
+	tidalstrength=0;
+	solarstrength=25;
+	lavaworld=0;
+	killmul=50;
+	timemul=0;
+	minwindspeed=1600;
+	maxwindspeed=3800;
+	gravity=112;
+	numplayers=2;
+	size=16 x 16;
+	memory=32 mb;
+	DestroyAllUnits=1;
+	AllUnitsKilled=1;
+	SCHEMACOUNT=1;
+	[Schema 0]
+		{
+		Type=Network 1;
+		aiprofile=DEFAULT;
+		SurfaceMetal=3;
+		MohoMetal=30;
+		HumanMetal=1000;
+		ComputerMetal=1000;
+		HumanEnergy=1000;
+		ComputerEnergy=1000;
+		MeteorWeapon=;
+		MeteorRadius=0;
+		MeteorDensity=0;
+		MeteorDuration=0;
+		MeteorInterval=0;
+		[specials]
+			{
+			[special0]
+				{
+				specialwhat=StartPos1;
+				XPos=824;
+				ZPos=824;
+				}
+			[special1]
+				{
+				specialwhat=StartPos2;
+				XPos=7368;
+				ZPos=7368;
+				}
+			}
+		}
+	}
+

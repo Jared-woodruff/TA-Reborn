@@ -1,0 +1,10 @@
+target/
+*.pdb
+/scratch/
+/dist/
+/.claude/
+__pycache__/
+*.py[cod]
+
+# Notes for Claude Code, kept locally.
+CLAUDE.md

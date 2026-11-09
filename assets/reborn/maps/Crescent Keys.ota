@@ -1,0 +1,82 @@
+[GlobalHeader]
+	{
+	missionname=Crescent Keys;
+	missiondescription=20 X 20  A ring of wooded keys round a turquoise lagoon, reefs in the shallows and deep water between: a map for fleets. Up to 6 players.;
+	planet=Archipelago;
+	missionhint=;
+	brief=;
+	narration=;
+	glamour=;
+	lineofsight=1;
+	mapping=1;
+	tidalstrength=36;
+	solarstrength=180;
+	lavaworld=0;
+	killmul=50;
+	timemul=0;
+	minwindspeed=1000;
+	maxwindspeed=3200;
+	gravity=112;
+	numplayers=2, 4, 6;
+	size=20 x 20;
+	memory=32 mb;
+	DestroyAllUnits=1;
+	AllUnitsKilled=1;
+	SCHEMACOUNT=1;
+	[Schema 0]
+		{
+		Type=Network 1;
+		aiprofile=DEFAULT;
+		SurfaceMetal=3;
+		MohoMetal=30;
+		HumanMetal=1000;
+		ComputerMetal=1000;
+		HumanEnergy=1000;
+		ComputerEnergy=1000;
+		MeteorWeapon=;
+		MeteorRadius=0;
+		MeteorDensity=0;
+		MeteorDuration=0;
+		MeteorInterval=0;
+		[specials]
+			{
+			[special0]
+				{
+				specialwhat=StartPos1;
+				XPos=3592;
+				ZPos=8776;
+				}
+			[special1]
+				{
+				specialwhat=StartPos2;
+				XPos=6648;
+				ZPos=1464;
+				}
+			[special2]
+				{
+				specialwhat=StartPos3;
+				XPos=2056;
+				ZPos=4872;
+				}
+			[special3]
+				{
+				specialwhat=StartPos4;
+				XPos=8184;
+				ZPos=5368;
+				}
+			[special4]
+				{
+				specialwhat=StartPos5;
+				XPos=3656;
+				ZPos=2440;
+				}
+			[special5]
+				{
+				specialwhat=StartPos6;
+				XPos=6584;
+				ZPos=7800;
+				}
+			}
+		}
+	}
+

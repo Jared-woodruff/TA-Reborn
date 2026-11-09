@@ -1,0 +1,70 @@
+# Walk the Commander down a lava river, past the guns on the far bank, to the pick-up.
+
+id = "extraction"
+title = "Extraction"
+tagline = "Get your Commander down the lava river to the pick-up point."
+kind = "escort"
+minutes = 12
+map = "Lava Run"
+briefing = """
+Commander, your drop went wrong. You are on the south bank of a river of lava at the \
+western end of the Run, with what is left of your escort, and the dropships can only land \
+at the far eastern end.
+
+The Core has guns all along the north bank, and patrols on your side of the river. Keep \
+away from the lava's edge (their laser towers reach no further), deal with the patrols, \
+and get your Commander to the pick-up point. Whatever guards it will not come to you. Core troops are already following your tracks; do not stop for long.
+
+Anything else is expendable. Your Commander is not.
+"""
+
+victory = [{ reach = "6000 1030", radius = 260, unit = "commander" }]
+defeat = [{ lose = "commander" }]
+
+[player]
+side = "ARM"
+start = "380 1030"
+metal = 400
+energy = 1500
+commander = true
+units = [
+    { unit = "ARMZEUS", count = 4, at = "560 1000", formation = "grid", spacing = 64 },
+    { unit = "ARMHAM", count = 4, at = "520 1100", formation = "grid", spacing = 64 },
+    # (Rockos, not Jethros: nothing flies here, and anti-air kbots never fire at the ground on
+    # their own.)
+    { unit = "ARMROCK", count = 2, at = "460 960", formation = "grid", spacing = 64 },
+    { unit = "ARMFIDO", count = 2, at = "600 1120", formation = "grid", spacing = 64 },
+    { unit = "ARMWAR", count = 4, at = "560 1050", until = "easy", formation = "grid", spacing = 64 },
+]
+
+[[enemy]]
+side = "CORE"
+start = "6100 200"
+energy = 4000
+units = [
+    # The north bank's guns: the lasers on the bank reach the lava's far edge and no further (as
+    # the briefing warns), the Punishers far back reach the whole south bank.
+    { unit = "CORLLT", count = 2, at = "1500 350", formation = "line", spacing = 192, facing = "1500 1350" },
+    { unit = "CORHLT", at = "2200 280", formation = "line", spacing = 192, facing = "2200 1280" },
+    { unit = "CORLLT", count = 2, at = "2900 350", formation = "line", spacing = 192, facing = "2900 1350" },
+    { unit = "CORPUN", at = "3600 150", from = "normal", formation = "line", spacing = 192, facing = "3600 1150" },
+    { unit = "CORHLT", count = 2, at = "4300 280", formation = "line", spacing = 192, facing = "4300 1280" },
+    { unit = "CORLLT", count = 2, at = "5000 350", formation = "line", spacing = 192, facing = "5000 1350" },
+    { unit = "CORPUN", count = 2, at = "2600 140", from = "hard", formation = "line", spacing = 192, facing = "2600 1140" },
+    { unit = "CORAK", count = 4, at = "1900 1050", patrol = "2500 1050", formation = "grid", spacing = 64 },
+    { unit = "CORTHUD", count = 3, at = "3200 1000", patrol = "3800 1100", formation = "grid", spacing = 64 },
+    { unit = "CORPYRO", count = 3, at = "4400 1100", patrol = "4900 1000", formation = "grid", spacing = 64 },
+    { unit = "CORLEVLR", count = 3, at = "5500 1000", hold = true, from = "normal", formation = "grid", spacing = 64 },
+    { unit = "CORSTORM", count = 3, at = "5650 1150", hold = true, formation = "grid", spacing = 64 },
+    { unit = "CORHLT", at = "5800 850", from = "hard", formation = "line", spacing = 192, facing = "south" },
+    { unit = "CORSOLAR", count = 8, at = "3400 180", formation = "line", spacing = 400, facing = "3400 1180" },
+]
+
+# Hunters on your tracks.
+[[wave]]
+at = 90
+every = 80
+times = 8
+grow = 1.1
+from = "150 1030"
+units = [{ unit = "CORAK", count = 3 }, { unit = "CORFAV", count = 2 }]

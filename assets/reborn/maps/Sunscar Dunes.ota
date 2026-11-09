@@ -1,0 +1,58 @@
+[GlobalHeader]
+	{
+	missionname=Sunscar Dunes;
+	missiondescription=12 X 12  A sea of dunes between two rock plateaus, an oasis on either flank and ruins half buried in the sand. Up to 2 players.;
+	planet=Desert;
+	missionhint=;
+	brief=;
+	narration=;
+	glamour=;
+	lineofsight=1;
+	mapping=1;
+	tidalstrength=0;
+	solarstrength=200;
+	lavaworld=0;
+	killmul=50;
+	timemul=0;
+	minwindspeed=1200;
+	maxwindspeed=3200;
+	gravity=112;
+	numplayers=2;
+	size=12 x 12;
+	memory=32 mb;
+	DestroyAllUnits=1;
+	AllUnitsKilled=1;
+	SCHEMACOUNT=1;
+	[Schema 0]
+		{
+		Type=Network 1;
+		aiprofile=DEFAULT;
+		SurfaceMetal=3;
+		MohoMetal=30;
+		HumanMetal=1000;
+		ComputerMetal=1000;
+		HumanEnergy=1000;
+		ComputerEnergy=1000;
+		MeteorWeapon=;
+		MeteorRadius=0;
+		MeteorDensity=0;
+		MeteorDuration=0;
+		MeteorInterval=0;
+		[specials]
+			{
+			[special0]
+				{
+				specialwhat=StartPos1;
+				XPos=616;
+				ZPos=616;
+				}
+			[special1]
+				{
+				specialwhat=StartPos2;
+				XPos=5528;
+				ZPos=5528;
+				}
+			}
+		}
+	}
+

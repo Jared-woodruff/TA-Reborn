@@ -1,0 +1,122 @@
+# Three Krogoths walk across the salt pans toward your base, one after another, as the sun
+# goes down.
+
+id = "titans"
+title = "Titans"
+tagline = "Three Krogoths are walking toward your base. Bring them down."
+kind = "strike"
+minutes = 17
+map = "Mirage Basin"
+# Late afternoon into night: they come out of the sunset.
+time = [[0, 16.6], [900, 19.8]]
+briefing = """
+Commander, seismic stations round the basin are reading footfalls: three Krogoths, the \
+Core's walking fortresses, are crossing the salt pans toward your base, one after \
+another, each with an escort.
+
+Nothing out there can stop them but you. A Krogoth's head laser reaches further than your \
+D-gun, so keep your Commander back. Bombers, artillery and massed Zeus will bring one down. \
+Lose your nerve and it will walk through your base.
+
+You have a base with three factories, four construction kbots and a garrison. Destroy all \
+three of them.
+"""
+
+victory = [{ destroy = "CORKROG" }]
+defeat = [{ lose = "commander" }]
+
+[player]
+side = "ARM"
+start = "start 7"
+metal = 6000
+energy = 10000
+commander = true
+units = [
+    { unit = "ARMMEX", count = 2, at = "start 7", formation = "deposits" },
+    { unit = "ARMCK", count = 2, at = "start 7 + 140 80", formation = "grid", spacing = 64 },
+    { unit = "ARMALAB", at = "start 7 + 260 200", formation = "grid", spacing = 128 },
+    { unit = "ARMAVP", at = "start 7 + -260 200", formation = "grid", spacing = 128 },
+    { unit = "ARMAP", at = "start 7 + 0 360", formation = "grid", spacing = 128 },
+    { unit = "ARMSOLAR", count = 8, at = "start 7 + -420 40", formation = "grid", spacing = 128 },
+    { unit = "ARMMAKR", count = 2, at = "start 7 + 420 40", formation = "grid", spacing = 128 },
+    { unit = "ARMRAD", at = "start 7 + 120 -180", formation = "grid", spacing = 128 },
+    { unit = "ARMGUARD", count = 2, at = "start 7 toward start 8 by 520", formation = "line", spacing = 160 },
+    { unit = "ARMHLT", count = 3, at = "start 7 toward start 8 by 470", formation = "line", spacing = 160 },
+    { unit = "ARMRL", count = 2, at = "start 7 toward start 8 by 400", formation = "line", spacing = 160 },
+    { unit = "ARMZEUS", count = 8, at = "start 7 toward start 8 by 360", formation = "grid", spacing = 64 },
+    { unit = "ARMFIDO", count = 4, at = "start 7 toward start 8 by 300", formation = "grid", spacing = 64 },
+    { unit = "ARMBULL", count = 4, at = "start 7 toward start 8 by 260", formation = "grid", spacing = 64 },
+    { unit = "ARMJETH", count = 3, at = "start 7 toward start 8 by 240", formation = "grid", spacing = 64 },
+    { unit = "ARMTHUND", count = 4, at = "start 7 + 0 520", until = "normal", formation = "grid", spacing = 64 },
+    { unit = "ARMZEUS", count = 4, at = "start 7 toward start 8 by 320", until = "easy", formation = "grid", spacing = 64 },
+    { unit = "ARMACK", count = 2, at = "start 7 + -140 80", formation = "grid" },
+    { unit = "ARMFUS", at = "start 7 + -480 -300", formation = "grid" },
+]
+
+[[enemy]]
+side = "CORE"
+start = "start 8"
+energy = 1000000
+
+# The first, out of the north-west.
+[[wave]]
+at = 90
+from = "start 2 toward start 7 by 2600"
+to = "start 7"
+units = [{ unit = "CORKROG", count = 1, boss = true }, { unit = "CORAK", count = 6 }, { unit = "CORCRASH", count = 2 }]
+
+# Raids between them.
+[[wave]]
+at = 200
+from = "start 6"
+units = [{ unit = "CORRAID", count = 5 }, { unit = "CORLEVLR", count = 3 }]
+
+[[wave]]
+at = 230
+from = "start 8"
+units = [{ unit = "CORSHAD", count = 3 }]
+from_difficulty = "hard"
+
+# The second, from the north.
+[[wave]]
+at = 300
+from = "start 8 toward start 7 by 2600"
+to = "start 7"
+units = [{ unit = "CORKROG", count = 1, boss = true }, { unit = "CORSTORM", count = 6 }, { unit = "CORCRASH", count = 3 }, { unit = "CORTHUD", count = 4 }]
+
+[[wave]]
+at = 420
+from = "start 5"
+units = [{ unit = "CORREAP", count = 4 }, { unit = "CORMORT", count = 4 }]
+
+# The last, out of the north-east, with the strongest escort.
+[[wave]]
+at = 500
+from = "start 4 toward start 7 by 2600"
+to = "start 7"
+units = [{ unit = "CORKROG", count = 1, boss = true }, { unit = "CORCAN", count = 6 }, { unit = "CORCRASH", count = 4 }, { unit = "CORSUMO", count = 2 }]
+
+[[message]]
+at = 3
+from = "Arm Command"
+text = "Commander, seismic stations are reading footfalls round the basin. Three Krogoths are walking toward your base, one after another."
+
+[[message]]
+at = 92
+from = "Arm Command"
+text = "The first Krogoth has crossed the north-western rim. It is coming straight for you."
+
+[[message]]
+at = 180
+from = "Arm Command"
+text = "Keep your Commander back: that head laser reaches further than your D-gun."
+
+[[message]]
+at = 302
+from = "Arm Command"
+text = "The second Krogoth is through the northern pass, with rockets and anti-air round it."
+
+[[message]]
+at = 502
+from = "Arm Command"
+text = "The last of them, out of the north-east, with the heaviest escort yet. End this, Commander."

@@ -1,0 +1,75 @@
+# The menu's film (apps/ta_game/src/backdrop.rs), at Christmas: Hollyridge at dusk, in its
+# snow. An Arm patrol stops in the village square by the great fir as the lights come on,
+# the Commander looking up at it; the camera circling slowly round the fir. (Play it alone: --demo
+# stage, TA_STAGE=<this file>.)
+map = "Hollyridge"
+time = [[0, 17.85], [26, 18.4]]
+seed = 2
+missing = "skip"
+
+[[unit]]
+type = "ARMCOM"
+side = 0
+at = [6610, 6500]
+heading = 40
+label = "com"
+
+[[unit]]
+type = "ARMPW"
+side = 0
+at = [6560, 6420]
+heading = 80
+label = "patrol"
+
+[[unit]]
+type = "ARMPW"
+side = 0
+at = [6730, 6520]
+heading = 330
+label = "patrol"
+
+[[unit]]
+type = "ARMPW"
+side = 0
+at = [6760, 6340]
+heading = 250
+label = "patrol"
+
+[[unit]]
+type = "ARMPW"
+side = 0
+at = [6585, 6330]
+heading = 120
+label = "patrol"
+
+[[order]]
+t = 4.0
+units = "patrol"
+do = "patrol"
+by = [60, -40]
+
+# Round the fir, slowly, low over the square, the whole tree in the picture, its star against the
+# sky going blue.
+[[camera.key]]
+t = 0
+eye = [6440, 6690]
+height = 30
+look = [6670, 6410]
+look_height = 70
+fov = 46
+
+[[camera.key]]
+t = 13
+eye = [6540, 6730]
+height = 26
+look = [6670, 6410]
+look_height = 72
+fov = 46
+
+[[camera.key]]
+t = 26
+eye = [6790, 6720]
+height = 28
+look = [6670, 6410]
+look_height = 74
+fov = 46

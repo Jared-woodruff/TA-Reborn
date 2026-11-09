@@ -1,0 +1,144 @@
+# The menu's film (apps/ta_game/src/backdrop.rs): Sapphire Reach in the morning. An Arm fleet sails
+# west along the channel between the islands in two columns, Skeeters out ahead and Hawks flying
+# cover; the camera over the water ahead of it, the sun at its back, backing away before it.
+# (Play it alone: --demo stage, TA_STAGE=<this file>.)
+map = "Sapphire Reach"
+time = [[0, 8.4], [26, 8.8]]
+seed = 4
+missing = "skip"
+
+# The columns: destroyers, cruisers and battleships, 280 px between them, 190 px apart.
+[[unit]]
+type = "ARMROY"
+side = 0
+at = [10300, 5150]
+heading = 270
+label = "fleet"
+
+[[unit]]
+type = "ARMBATS"
+side = 0
+at = [10590, 5150]
+heading = 270
+label = "fleet"
+
+[[unit]]
+type = "ARMCRUS"
+side = 0
+at = [10880, 5150]
+heading = 270
+label = "fleet"
+
+[[unit]]
+type = "ARMROY"
+side = 0
+at = [11150, 5150]
+heading = 270
+label = "fleet"
+
+[[unit]]
+type = "ARMCRUS"
+side = 0
+at = [10420, 5340]
+heading = 270
+label = "fleet"
+
+[[unit]]
+type = "ARMBATS"
+side = 0
+at = [10720, 5340]
+heading = 270
+label = "fleet"
+
+[[unit]]
+type = "ARMROY"
+side = 0
+at = [11000, 5340]
+heading = 270
+label = "fleet"
+
+[[unit]]
+type = "ARMBATS"
+side = 0
+at = [11280, 5340]
+heading = 270
+label = "fleet"
+
+# Skeeters out ahead.
+[[unit]]
+type = "ARMPT"
+side = 0
+at = [10020, 5130]
+heading = 270
+label = "fleet"
+
+[[unit]]
+type = "ARMPT"
+side = 0
+at = [10080, 5360]
+heading = 270
+label = "fleet"
+
+[[unit]]
+type = "ARMPT"
+side = 0
+at = [9900, 5245]
+heading = 270
+label = "fleet"
+
+# Hawks flying cover, up and down the columns.
+[[unit]]
+type = "ARMHAWK"
+side = 0
+at = [9600, 5180]
+heading = 90
+label = "cover"
+airborne = true
+altitude = 130
+
+[[unit]]
+type = "ARMHAWK"
+side = 0
+at = [9520, 5260]
+heading = 90
+label = "cover"
+airborne = true
+altitude = 130
+
+[[order]]
+t = 0
+units = "cover"
+do = "patrol"
+at = [11400, 5250]
+
+# (Nobody of the Core's near: one far off, for the battle's second side.)
+[[unit]]
+type = "CORAK"
+side = 1
+at = [2500, 14500]
+hold = true
+
+[[order]]
+t = 0.2
+units = "fleet"
+do = "move"
+at = [7400, 5245]
+formation = true
+
+# Over the water ahead of the fleet and north of its way, the sun over the camera's shoulder:
+# the columns coming on down the channel, backing away before them as they close.
+[[camera.key]]
+t = 0
+eye = [9250, 4960]
+height = 38
+track = "fleet"
+look_height = 10
+fov = 28
+
+[[camera.key]]
+t = 26
+eye = [8780, 4990]
+height = 32
+track = "fleet"
+look_height = 14
+fov = 31

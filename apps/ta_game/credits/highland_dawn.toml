@@ -1,0 +1,597 @@
+# The credits' scene highland_dawn (tools/credits/acts.py writes it; credits_show.rs plays it).
+# First light over the highlands: a road of cards through a battle on Highland Rift.
+map = "Highland Rift"
+seed = 21
+missing = "skip"
+rain = false
+
+[act]
+title = "First light over the highlands"
+themes = ["original", "project", "lead", "producer", "art", "design"]
+hours = [5.7, 7.2]
+style = "burn"
+height = 250
+back = 330
+fov = 40
+clear = 300
+road = 340
+
+[[player]]
+index = 0
+invulnerable = true
+
+[[player]]
+index = 1
+invulnerable = true
+
+[[station]]
+at = [14675, 9728]
+heading = 0
+
+[[station]]
+at = [14675, 9498]
+heading = 0
+
+[[station]]
+at = [14675, 9268]
+heading = 0
+style = "light"
+
+[[station]]
+at = [14675, 9038]
+heading = 0
+
+[[station]]
+at = [14675, 8808]
+heading = 0
+
+[[station]]
+at = [14675, 8578]
+heading = 0
+style = "light"
+
+[[station]]
+at = [14675, 8348]
+heading = 0
+
+[[station]]
+at = [14675, 8118]
+heading = 0
+
+[[station]]
+at = [14675, 7888]
+heading = 0
+style = "light"
+
+[[station]]
+at = [14675, 7658]
+heading = 0
+
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [14475, 9774]
+heading = 90
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMZEUS"
+side = 0
+at = [14475, 9544]
+heading = 90
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMHAM"
+side = 0
+at = [14475, 9314]
+heading = 90
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMPW"
+side = 0
+at = [14475, 9084]
+heading = 90
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [14475, 8854]
+heading = 90
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMZEUS"
+side = 0
+at = [14475, 8624]
+heading = 90
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMHAM"
+side = 0
+at = [14475, 8394]
+heading = 90
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMPW"
+side = 0
+at = [14475, 8164]
+heading = 90
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [14475, 7934]
+heading = 90
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMZEUS"
+side = 0
+at = [14475, 7704]
+heading = 90
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [14485, 9682]
+heading = 90
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMFIDO"
+side = 0
+at = [14485, 9452]
+heading = 90
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [14485, 9222]
+heading = 90
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMFIDO"
+side = 0
+at = [14485, 8992]
+heading = 90
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [14485, 8762]
+heading = 90
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMFIDO"
+side = 0
+at = [14485, 8532]
+heading = 90
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [14485, 8302]
+heading = 90
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMFIDO"
+side = 0
+at = [14485, 8072]
+heading = 90
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [14485, 7842]
+heading = 90
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMFIDO"
+side = 0
+at = [14485, 7612]
+heading = 90
+count = 2
+spacing = 46
+
+[[unit]]
+type = "ARMMERL"
+side = 0
+at = [14405, 9638]
+heading = 90
+count = 2
+spacing = 62
+
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [14405, 9408]
+heading = 90
+count = 2
+spacing = 62
+
+[[unit]]
+type = "ARMMERL"
+side = 0
+at = [14405, 9178]
+heading = 90
+count = 2
+spacing = 62
+
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [14405, 8948]
+heading = 90
+count = 2
+spacing = 62
+
+[[unit]]
+type = "ARMMERL"
+side = 0
+at = [14405, 8718]
+heading = 90
+count = 2
+spacing = 62
+
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [14405, 8488]
+heading = 90
+count = 2
+spacing = 62
+
+[[unit]]
+type = "ARMMERL"
+side = 0
+at = [14405, 8258]
+heading = 90
+count = 2
+spacing = 62
+
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [14405, 8028]
+heading = 90
+count = 2
+spacing = 62
+
+[[unit]]
+type = "ARMMERL"
+side = 0
+at = [14405, 7798]
+heading = 90
+count = 2
+spacing = 62
+
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [14405, 7568]
+heading = 90
+count = 2
+spacing = 62
+
+[[unit]]
+type = "ARMLLT"
+side = 0
+at = [14471, 9613]
+heading = 90
+
+[[unit]]
+type = "ARMLLT"
+side = 0
+at = [14471, 8923]
+heading = 90
+
+[[unit]]
+type = "ARMLLT"
+side = 0
+at = [14471, 8233]
+heading = 90
+
+[[unit]]
+type = "ARMLLT"
+side = 0
+at = [14471, 7543]
+heading = 90
+
+[[unit]]
+type = "CORRAID"
+side = 1
+at = [14875, 9774]
+heading = 270
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [14875, 9544]
+heading = 270
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORTHUD"
+side = 1
+at = [14875, 9314]
+heading = 270
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORAK"
+side = 1
+at = [14875, 9084]
+heading = 270
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORRAID"
+side = 1
+at = [14875, 8854]
+heading = 270
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [14875, 8624]
+heading = 270
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORTHUD"
+side = 1
+at = [14875, 8394]
+heading = 270
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORAK"
+side = 1
+at = [14875, 8164]
+heading = 270
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORRAID"
+side = 1
+at = [14875, 7934]
+heading = 270
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [14875, 7704]
+heading = 270
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [14865, 9682]
+heading = 270
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [14865, 9452]
+heading = 270
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [14865, 9222]
+heading = 270
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [14865, 8992]
+heading = 270
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [14865, 8762]
+heading = 270
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [14865, 8532]
+heading = 270
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [14865, 8302]
+heading = 270
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [14865, 8072]
+heading = 270
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [14865, 7842]
+heading = 270
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [14865, 7612]
+heading = 270
+count = 2
+spacing = 46
+
+[[unit]]
+type = "CORMART"
+side = 1
+at = [14945, 9638]
+heading = 270
+count = 2
+spacing = 62
+
+[[unit]]
+type = "CORVROC"
+side = 1
+at = [14945, 9408]
+heading = 270
+count = 2
+spacing = 62
+
+[[unit]]
+type = "CORMART"
+side = 1
+at = [14945, 9178]
+heading = 270
+count = 2
+spacing = 62
+
+[[unit]]
+type = "CORVROC"
+side = 1
+at = [14945, 8948]
+heading = 270
+count = 2
+spacing = 62
+
+[[unit]]
+type = "CORMART"
+side = 1
+at = [14945, 8718]
+heading = 270
+count = 2
+spacing = 62
+
+[[unit]]
+type = "CORVROC"
+side = 1
+at = [14945, 8488]
+heading = 270
+count = 2
+spacing = 62
+
+[[unit]]
+type = "CORMART"
+side = 1
+at = [14945, 8258]
+heading = 270
+count = 2
+spacing = 62
+
+[[unit]]
+type = "CORVROC"
+side = 1
+at = [14945, 8028]
+heading = 270
+count = 2
+spacing = 62
+
+[[unit]]
+type = "CORMART"
+side = 1
+at = [14945, 7798]
+heading = 270
+count = 2
+spacing = 62
+
+[[unit]]
+type = "CORVROC"
+side = 1
+at = [14945, 7568]
+heading = 270
+count = 2
+spacing = 62
+
+[[unit]]
+type = "CORHLT"
+side = 1
+at = [14879, 9613]
+heading = 270
+
+[[unit]]
+type = "CORHLT"
+side = 1
+at = [14879, 8923]
+heading = 270
+
+[[unit]]
+type = "CORHLT"
+side = 1
+at = [14879, 8233]
+heading = 270
+
+[[unit]]
+type = "CORHLT"
+side = 1
+at = [14879, 7543]
+heading = 270
+

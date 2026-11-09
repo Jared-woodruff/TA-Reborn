@@ -1,0 +1,108 @@
+# The menu's film (apps/ta_game/src/backdrop.rs): Highland Rift at first light. An Arm column
+# fords the west lake's outlet two abreast, Peewees at its head, the sun coming up behind it; the
+# camera low on the near bank's shallows, the column wading down out of the light and past it.
+# (Play it alone: --demo stage, TA_STAGE=<this file>.)
+map = "Highland Rift"
+time = [[0, 6.25], [26, 6.7]]
+seed = 3
+missing = "skip"
+
+# The way down to the ford and up the far bank, clear.
+[[clear]]
+at = [6560, 5800]
+radius = 220
+
+[[clear]]
+at = [6560, 6150]
+radius = 220
+
+[[clear]]
+at = [6560, 6500]
+radius = 240
+
+[[clear]]
+at = [6560, 7350]
+radius = 320
+
+# The column, two abreast and a rank every 70 px: Peewees, Hammers, Rockos, Stumpies, Samsons.
+[[unit]]
+type = "ARMPW"
+side = 0
+at = [6560, 6645]
+heading = 180
+label = "column"
+count = 8
+rows = 4
+spacing = [64, 70]
+
+[[unit]]
+type = "ARMHAM"
+side = 0
+at = [6560, 6365]
+heading = 180
+label = "column"
+count = 8
+rows = 4
+spacing = [64, 70]
+
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [6560, 6155]
+heading = 180
+label = "column"
+count = 4
+rows = 2
+spacing = [64, 70]
+
+[[unit]]
+type = "ARMSTUMP"
+side = 0
+at = [6560, 5945]
+heading = 180
+label = "column"
+count = 8
+rows = 4
+spacing = [64, 70]
+
+[[unit]]
+type = "ARMSAM"
+side = 0
+at = [6560, 5730]
+heading = 180
+label = "column"
+count = 4
+rows = 2
+spacing = [72, 76]
+
+# (Nobody of the Core's near: one far off, for the battle's second side.)
+[[unit]]
+type = "CORAK"
+side = 1
+at = [15800, 15800]
+hold = true
+
+[[order]]
+t = 0.2
+units = "column"
+do = "move"
+at = [6560, 7250]
+formation = true
+
+# Low on the lake's shallows west of the ford, looking up the column at the dawn: the ranks come
+# down the far bank, wade over and pass on the right.
+[[camera.key]]
+t = 0
+eye = [6330, 7200]
+height = 13
+look = [6610, 6860]
+look_height = 16
+fov = 32
+
+[[camera.key]]
+t = 26
+eye = [6360, 7150]
+height = 12
+look = [6600, 6950]
+look_height = 18
+fov = 30

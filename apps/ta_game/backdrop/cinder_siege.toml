@@ -1,0 +1,193 @@
+# The menu's film (apps/ta_game/src/backdrop.rs): Cinder Basin by night. The Core holds the far bank
+# of the lava river: Doomsday Machine, Punishers, laser towers, the Toaster rising to fire; the
+# Arm's assault comes down to the near bank and fires back across the glowing river under the
+# moon. The camera behind the Arm, looking across the river at the Core's line. (Play it alone:
+# --demo stage, TA_STAGE=<this file>.)
+map = "Cinder Basin"
+time = [[0, 21.2], [26, 21.4]]
+moon = [130, 22]
+seed = 12
+missing = "skip"
+
+[[clear]]
+at = [6150, 6150]
+radius = 650
+
+[[clear]]
+at = [6300, 6700]
+radius = 520
+
+# The Core's line on the south bank.
+[[unit]]
+type = "CORDOOM"
+side = 1
+at = [6260, 6640]
+heading = 340
+label = "core"
+
+[[unit]]
+type = "CORPUN"
+side = 1
+at = [5930, 6500]
+heading = 340
+label = "core"
+
+[[unit]]
+type = "CORPUN"
+side = 1
+at = [6600, 6760]
+heading = 340
+label = "core"
+
+[[unit]]
+type = "CORHLT"
+side = 1
+at = [6090, 6560]
+heading = 340
+label = "core"
+
+[[unit]]
+type = "CORHLT"
+side = 1
+at = [6440, 6690]
+heading = 340
+label = "core"
+
+[[unit]]
+type = "CORTOAST"
+side = 1
+at = [6330, 6820]
+heading = 340
+label = "core"
+
+[[unit]]
+type = "CORLLT"
+side = 1
+at = [5800, 6450]
+heading = 340
+label = "core"
+
+[[unit]]
+type = "CORLLT"
+side = 1
+at = [6760, 6820]
+heading = 340
+label = "core"
+
+# The Arm's assault down to the north bank: Bulldogs and Zeus in front, Hammers, rocket artillery
+# behind.
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [5980, 6020]
+heading = 160
+label = "arm"
+
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [6150, 6080]
+heading = 160
+label = "arm"
+
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [6320, 6150]
+heading = 160
+label = "arm"
+
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [6490, 6220]
+heading = 160
+label = "arm"
+
+[[unit]]
+type = "ARMZEUS"
+side = 0
+at = [6060, 5940]
+heading = 160
+label = "arm"
+
+[[unit]]
+type = "ARMZEUS"
+side = 0
+at = [6230, 6000]
+heading = 160
+label = "arm"
+
+[[unit]]
+type = "ARMZEUS"
+side = 0
+at = [6400, 6070]
+heading = 160
+label = "arm"
+
+[[unit]]
+type = "ARMHAM"
+side = 0
+at = [5960, 5880]
+heading = 160
+label = "arm"
+
+[[unit]]
+type = "ARMHAM"
+side = 0
+at = [6130, 5920]
+heading = 160
+label = "arm"
+
+[[unit]]
+type = "ARMHAM"
+side = 0
+at = [6300, 5980]
+heading = 160
+label = "arm"
+
+[[unit]]
+type = "ARMHAM"
+side = 0
+at = [6470, 6050]
+heading = 160
+label = "arm"
+
+[[unit]]
+type = "ARMMERL"
+side = 0
+at = [6100, 5760]
+heading = 160
+label = "arm"
+
+[[unit]]
+type = "ARMMERL"
+side = 0
+at = [6380, 5850]
+heading = 160
+label = "arm"
+
+[[order]]
+t = 0.3
+units = "arm"
+do = "fight"
+at = [6260, 6250]
+formation = true
+
+# Behind the Arm's assault on the north bank, over its backs, looking across the glowing river at
+# the Core's guns firing from the far bank; going down to the bank with it.
+[[camera.key]]
+t = 0
+eye = [6200, 5860]
+height = 24
+look = [6290, 6620]
+look_height = 14
+fov = 34
+
+[[camera.key]]
+t = 26
+eye = [6235, 6000]
+height = 21
+look = [6305, 6650]
+look_height = 16
+fov = 32

@@ -1,0 +1,24 @@
+[package]
+name = "ta_ui"
+description = "TA Reborn's look, shared by the launcher and the game: palette, fonts, egui style and custom widgets"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+egui.workspace = true
+log.workspace = true
+# The settings screen edits the shared settings.
+ta_config.workspace = true
+# Language files (i18n).
+toml.workspace = true
+# The player's picture: read, cropped and kept (`portrait`), chosen in a file dialog.
+image.workspace = true
+rfd = "0.17.2"
+
+[target.'cfg(windows)'.dependencies]
+# Resolve Automatic seasonal effects using the player's local date in every UI host; what the
+# player removes goes to the Recycle Bin (`recycle`).
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_SystemInformation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }

@@ -1,0 +1,94 @@
+[GlobalHeader]
+	{
+	missionname=Australia;
+	missiondescription=28 X 24  The island continent: the red centre's deserts and salt lakes, the tropical north, the Great Dividing Range and the bases round the coasts. Up to 8 players.;
+	planet=Earth;
+	missionhint=;
+	brief=;
+	narration=;
+	glamour=;
+	lineofsight=1;
+	mapping=1;
+	tidalstrength=20;
+	solarstrength=120;
+	lavaworld=0;
+	killmul=50;
+	timemul=0;
+	minwindspeed=1200;
+	maxwindspeed=3600;
+	gravity=112;
+	numplayers=2, 4, 6, 8;
+	size=28 x 24;
+	memory=32 mb;
+	DestroyAllUnits=1;
+	AllUnitsKilled=1;
+	SCHEMACOUNT=1;
+	[Schema 0]
+		{
+		Type=Network 1;
+		aiprofile=DEFAULT;
+		SurfaceMetal=3;
+		MohoMetal=30;
+		HumanMetal=1000;
+		ComputerMetal=1000;
+		HumanEnergy=1000;
+		ComputerEnergy=1000;
+		MeteorWeapon=;
+		MeteorRadius=0;
+		MeteorDensity=0;
+		MeteorDuration=0;
+		MeteorInterval=0;
+		[specials]
+			{
+			[special0]
+				{
+				specialwhat=StartPos1;
+				XPos=1912;
+				ZPos=7976;
+				}
+			[special1]
+				{
+				specialwhat=StartPos2;
+				XPos=12216;
+				ZPos=6856;
+				}
+			[special2]
+				{
+				specialwhat=StartPos3;
+				XPos=6296;
+				ZPos=1848;
+				}
+			[special3]
+				{
+				specialwhat=StartPos4;
+				XPos=10360;
+				ZPos=9384;
+				}
+			[special4]
+				{
+				specialwhat=StartPos5;
+				XPos=10344;
+				ZPos=3352;
+				}
+			[special5]
+				{
+				specialwhat=StartPos6;
+				XPos=8792;
+				ZPos=8936;
+				}
+			[special6]
+				{
+				specialwhat=StartPos7;
+				XPos=2632;
+				ZPos=4440;
+				}
+			[special7]
+				{
+				specialwhat=StartPos8;
+				XPos=11704;
+				ZPos=8360;
+				}
+			}
+		}
+	}
+

@@ -1,0 +1,336 @@
+# TA Reborn's benchmark: Highland Rift in a thunderstorm. Written by tools/benchmark/scenes.py (edit that, not this).
+map = "Highland Rift"
+time = [[0, 15.1], [30, 15.7]]
+reveal = true
+hud = false
+icons = false
+unlimited = true
+seed = 11
+missing = "skip"
+rain = true
+orders_per_tick = 20
+[[clear]]
+at = [5800, 9150]
+radius = 1150
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [5774, 8640]
+heading = 180
+label = "arm_front"
+count = 10
+spacing = 104
+[[unit]]
+type = "ARMSTUMP"
+side = 0
+at = [5826, 8640]
+heading = 180
+label = "arm_front"
+count = 10
+spacing = 104
+[[unit]]
+type = "ARMHAM"
+side = 0
+at = [5760, 8555]
+heading = 180
+label = "arm_kbots"
+count = 8
+spacing = 120
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [5800, 8555]
+heading = 180
+label = "arm_kbots"
+count = 8
+spacing = 120
+[[unit]]
+type = "ARMWAR"
+side = 0
+at = [5840, 8555]
+heading = 180
+label = "arm_kbots"
+count = 8
+spacing = 120
+[[unit]]
+type = "ARMZEUS"
+side = 0
+at = [5776, 8475]
+heading = 180
+label = "arm_kbots"
+count = 9
+spacing = 96
+[[unit]]
+type = "ARMFIDO"
+side = 0
+at = [5824, 8475]
+heading = 180
+label = "arm_kbots"
+count = 9
+spacing = 96
+[[unit]]
+type = "ARMMART"
+side = 0
+at = [5767, 8360]
+heading = 180
+label = "arm_art"
+count = 6
+spacing = 132
+[[unit]]
+type = "ARMMERL"
+side = 0
+at = [5833, 8360]
+heading = 180
+label = "arm_art"
+count = 6
+spacing = 132
+[[unit]]
+type = "ARMFLASH"
+side = 0
+at = [4950, 8600]
+heading = 160
+label = "arm_flank_w"
+count = 12
+rows = 2
+spacing = 44
+[[unit]]
+type = "ARMFLASH"
+side = 0
+at = [6650, 8600]
+heading = 200
+label = "arm_flank_e"
+count = 12
+rows = 2
+spacing = 44
+[[unit]]
+type = "ARMMAV"
+side = 0
+at = [5760, 8230]
+heading = 180
+label = "arm_wave"
+count = 8
+spacing = 120
+[[unit]]
+type = "ARMHAM"
+side = 0
+at = [5800, 8230]
+heading = 180
+label = "arm_wave"
+count = 8
+spacing = 120
+[[unit]]
+type = "ARMJETH"
+side = 0
+at = [5840, 8230]
+heading = 180
+label = "arm_wave"
+count = 8
+spacing = 120
+[[unit]]
+type = "ARMLATNK"
+side = 0
+at = [5800, 8145]
+heading = 180
+label = "arm_wave"
+count = 12
+spacing = 56
+[[unit]]
+type = "CORGOL"
+side = 1
+at = [5752, 9450]
+heading = 0
+label = "core_front"
+count = 8
+spacing = 112
+[[unit]]
+type = "CORREAP"
+side = 1
+at = [5808, 9450]
+heading = 0
+label = "core_front"
+count = 8
+spacing = 112
+[[unit]]
+type = "CORAK"
+side = 1
+at = [5762, 9540]
+heading = 0
+label = "core_kbots"
+count = 7
+spacing = 144
+[[unit]]
+type = "CORTHUD"
+side = 1
+at = [5798, 9540]
+heading = 0
+label = "core_kbots"
+count = 7
+spacing = 144
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [5762, 9540]
+heading = 0
+label = "core_kbots"
+count = 6
+spacing = 144
+[[unit]]
+type = "CORPYRO"
+side = 1
+at = [5798, 9540]
+heading = 0
+label = "core_kbots"
+count = 6
+spacing = 144
+[[unit]]
+type = "CORLLT"
+side = 1
+at = [5800, 9660]
+heading = 0
+label = "core_towers"
+count = 8
+spacing = 170
+[[unit]]
+type = "CORHLT"
+side = 1
+at = [5800, 9780]
+heading = 0
+label = "core_towers"
+count = 4
+spacing = 340
+[[unit]]
+type = "CORPUN"
+side = 1
+at = [5800, 9930]
+heading = 0
+label = "core_towers"
+count = 3
+spacing = 420
+[[unit]]
+type = "CORMART"
+side = 1
+at = [5760, 10060]
+heading = 0
+label = "core_art"
+count = 5
+spacing = 160
+[[unit]]
+type = "CORLEVLR"
+side = 1
+at = [5840, 10060]
+heading = 0
+label = "core_art"
+count = 5
+spacing = 160
+[[unit]]
+type = "ARMTHUND"
+side = 0
+at = [3600, 7700]
+heading = 135
+label = "arm_bombers"
+count = 6
+rows = 2
+spacing = 150
+airborne = true
+[[unit]]
+type = "CORVENG"
+side = 1
+at = [7600, 10500]
+heading = 315
+label = "core_fighters"
+count = 6
+rows = 2
+spacing = 130
+airborne = true
+[[order]]
+t = 4
+units = "arm_bombers"
+do = "attack"
+target = "core_towers"
+[[order]]
+t = 4.1
+units = "arm_bombers"
+do = "patrol"
+at = [5800, 9900]
+queue = true
+[[order]]
+t = 1.5
+units = "core_fighters"
+do = "patrol"
+at = [5800, 9000]
+[[order]]
+t = 0.5
+units = ["arm_front", "arm_kbots"]
+do = "fight"
+by = [0, 700]
+formation = false
+[[order]]
+t = 0.5
+units = "arm_flank_w"
+do = "fight"
+at = [5420, 9470]
+formation = false
+[[order]]
+t = 0.5
+units = "arm_flank_e"
+do = "fight"
+at = [6180, 9470]
+formation = false
+[[order]]
+t = 9
+units = "core_front"
+do = "fight"
+by = [0, -500]
+formation = false
+[[order]]
+t = 18
+units = "arm_wave"
+do = "fight"
+by = [0, 900]
+formation = false
+[[event]]
+t = 12
+do = "fire"
+at = [4950, 8120]
+size = 320
+[[event]]
+t = 15
+do = "fire"
+at = [6650, 7900]
+size = 260
+[[camera.key]]
+t = 0
+eye = [5650, 8000]
+height = 24
+look = [5800, 9300]
+look_height = 30
+fov = 52
+[[camera.key]]
+t = 8
+eye = [4950, 9050]
+height = 90
+look = [5850, 9200]
+look_height = 10
+fov = 48
+[[camera.key]]
+t = 15
+eye = [5450, 10450]
+height = 240
+look = [5800, 8350]
+look_height = 0
+fov = 48
+[[camera.key]]
+t = 23
+eye = [6150, 10350]
+height = 270
+look = [5700, 8250]
+look_height = 0
+fov = 48
+[[camera.key]]
+t = 30
+eye = [6900, 9500]
+height = 520
+look = [5600, 7900]
+look_height = 0
+fov = 46
+# Highland Rift: Arm 140 units, Core 73

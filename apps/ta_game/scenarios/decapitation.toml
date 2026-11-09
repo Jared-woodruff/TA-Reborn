@@ -1,0 +1,79 @@
+# An air strike on a Commander dug in on an island in a sea of lava.
+
+id = "decapitation"
+title = "Decapitation"
+tagline = "Kill the Core Commander on his island fortress. From the air."
+kind = "strike"
+minutes = 12
+map = "Kill the Middle"
+briefing = """
+Commander, a Core Commander has made his fortress on the island at the centre of this lava \
+sea. Nothing on treads or legs will reach him, and his anti-air is the best the Core can \
+build.
+
+You have a small air wing and a forward airfield in the south-west corner: build it up. \
+Strip away his air defences, then send the bombers in; a handful sent straight at him \
+will not get through. Brawler gunships hit hard but die fast over flak, and the Freedom \
+Fighters can keep his fighters off your bombers.
+
+His reinforcements arrive in fifteen minutes. Before then, he must be dead.
+"""
+
+victory = [{ destroy = "commander" }]
+defeat = [{ time = 900 }, { lose = "everything" }]
+
+[player]
+side = "ARM"
+start = "start 1"
+metal = 3000
+energy = 8000
+units = [
+    { unit = "ARMMEX", count = 2, at = "start 1", formation = "deposits" },
+    { unit = "ARMAP", at = "start 1 + 200 -120", formation = "grid", spacing = 128 },
+    { unit = "ARMCA", count = 2, at = "start 1 + 60 -200", formation = "grid", spacing = 64 },
+    { unit = "ARMSOLAR", count = 10, at = "start 1 + -200 60", formation = "grid", spacing = 128 },
+    { unit = "ARMMAKR", count = 2, at = "start 1 + -60 200", formation = "grid", spacing = 128 },
+    { unit = "ARMTHUND", count = 4, at = "start 1 toward start 3 by 300", formation = "grid", spacing = 64 },
+    { unit = "ARMFIG", count = 6, at = "start 1 toward start 3 by 200", formation = "grid", spacing = 64 },
+    { unit = "ARMBRAWL", count = 3, at = "start 1 toward start 3 by 380", formation = "grid", spacing = 64 },
+    { unit = "ARMTHUND", count = 2, at = "start 1 toward start 3 by 250", until = "easy", formation = "grid", spacing = 64 },
+    { unit = "ARMRL", count = 2, at = "start 1 + 160 120", formation = "line", spacing = 160 },
+]
+
+[[enemy]]
+side = "CORE"
+start = "start 3"
+energy = 4000
+units = [
+    { unit = "CORMEX", count = 2, at = "start 3", formation = "deposits" },
+    { unit = "commander", at = "start 3", hold = true, formation = "grid", spacing = 64 },
+    { unit = "CORRL", count = 4, at = "start 3", formation = "grid", spacing = 288 },
+    { unit = "CORFLAK", at = "start 3 + 250 150", from = "normal", formation = "line", spacing = 256 },
+    { unit = "CORFLAK", at = "start 3 + -250 -150", formation = "line", spacing = 256 },
+    { unit = "CORFLAK", count = 2, at = "start 3 + 150 -300", from = "hard", formation = "line", spacing = 256 },
+    { unit = "CORRL", count = 3, at = "start 3 toward start 1 by 400", formation = "line", spacing = 160 },
+    { unit = "CORRL", count = 3, at = "start 3 + 400 -300", formation = "line", spacing = 160 },
+    { unit = "CORRL", count = 2, at = "start 3 + -400 300", from = "hard", formation = "line", spacing = 160 },
+    { unit = "CORHLT", count = 3, at = "start 3 toward start 1 by 300", formation = "line", spacing = 160 },
+    { unit = "CORPUN", count = 2, at = "start 3 + -300 250", formation = "line", spacing = 160 },
+    { unit = "CORRAD", at = "start 3 + 120 200", formation = "grid", spacing = 128 },
+    { unit = "CORVENG", count = 3, at = "start 3 + 0 -400", patrol = "start 3 + 0 400", formation = "grid", spacing = 64 },
+    { unit = "CORVENG", count = 2, at = "start 3 + -400 0", patrol = "start 3 + 400 0", from = "normal", formation = "grid", spacing = 64 },
+    { unit = "CORSOLAR", count = 10, at = "start 3 + 0 -340", formation = "grid", spacing = 144 },
+]
+
+# Fighters scrambled from the mainland.
+[[wave]]
+at = 180
+every = 150
+times = 4
+from = "north"
+units = [{ unit = "CORVENG", count = 3 }]
+
+[[wave]]
+at = 300
+every = 200
+times = 2
+from = "east"
+units = [{ unit = "CORAPE", count = 3 }]
+from_difficulty = "normal"

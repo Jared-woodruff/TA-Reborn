@@ -1,0 +1,168 @@
+name: Build release packages
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: '0'
+  CARGO_BUILD_JOBS: '2'
+  RUST_BACKTRACE: '1'
+
+jobs:
+  package:
+    name: Package ${{ matrix.platform }} ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: windows, arch: x64, runner: windows-2025, target: x86_64-pc-windows-msvc }
+          - { platform: windows, arch: arm64, runner: windows-11-arm, target: aarch64-pc-windows-msvc }
+          - { platform: macos, arch: x64, runner: macos-15-intel, target: x86_64-apple-darwin }
+          - { platform: macos, arch: arm64, runner: macos-15, target: aarch64-apple-darwin }
+          - { platform: linux, arch: x64, runner: ubuntu-22.04, target: x86_64-unknown-linux-gnu }
+          - { platform: linux, arch: arm64, runner: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu }
+    env:
+      RUSTUP_TOOLCHAIN: 1.95.0-${{ matrix.target }}
+      RELEASE_TARGET: ${{ matrix.target }}
+      MACOSX_DEPLOYMENT_TARGET: '13.0'
+    steps:
+      - name: Check out the exact release revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Validate release version and packaging contracts
+        run: |
+          python tools/release/release.py validate
+          python -m unittest discover -s tools/release/tests -v
+          python -m unittest discover -s installer/tests -p "test_*.py" -v
+
+      - name: Install Linux build and packaging dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y pkg-config libasound2-dev libudev-dev libxkbcommon-dev libxkbcommon-x11-0 libx11-xcb1 libwayland-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev libgl1-mesa-dev libegl1-mesa-dev libvulkan1 libarchive-tools zstd desktop-file-utils dpkg-dev
+
+      - name: Install NSIS
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco upgrade nsis --version=3.13.0 --allow-downgrade -y --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          . ./installer/windows_package.ps1
+          $compiler = Find-Makensis
+          if (-not $compiler) { throw 'NSIS was installed but makensis.exe could not be found.' }
+          $compilerVersion = (& $compiler /VERSION | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or $compilerVersion -notmatch '^v?3\.13(?:\.0)?$') { throw "Expected NSIS 3.13, found '$compilerVersion'." }
+          (Split-Path -Parent $compiler) | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          Write-Host "Using NSIS $compilerVersion at $compiler"
+
+      - name: Install the native Rust toolchain
+        shell: bash
+        run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --target "$RELEASE_TARGET"
+
+      - name: Verify Windows packaging tools and contracts
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./installer/tests/windows_package.ps1
+
+      - name: Cache Cargo downloads
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: release-cargo-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: release-cargo-${{ matrix.target }}-
+
+      # Original TA data is neither needed nor uploaded. Tests needing an installation
+      # skip on runners; GPU/gameplay validation on real hardware remains a release check.
+      - name: Compile native workspace tests (without production LTO)
+        id: compile_tests
+        run: python tools/release/run_cargo.py -- cargo test --profile ci --workspace --locked --target ${{ matrix.target }} --no-run --timings
+
+      - name: Run native workspace tests
+        run: python tools/release/run_cargo.py -- cargo test --profile ci --workspace --locked --target ${{ matrix.target }} --no-fail-fast
+
+      - name: Build production binaries (release optimization and symbols)
+        id: production
+        # Still diagnose native packaging after a test assertion fails. The job
+        # remains failed, so records/uploads/assembly/publication stay blocked.
+        if: ${{ !cancelled() && steps.compile_tests.outcome == 'success' }}
+        run: python tools/release/run_cargo.py -- cargo build --release --locked --target ${{ matrix.target }} -p ta_game -p ta_launcher -p ta_tools --timings
+
+      - name: Build Windows installer and portable package
+        if: ${{ !cancelled() && steps.production.outcome == 'success' && runner.os == 'Windows' }}
+        shell: pwsh
+        run: ./installer/build_installer.ps1 -SkipBuild -Target $env:RELEASE_TARGET -DistDir dist/release
+
+      - name: Build Ubuntu, Arch and portable Linux packages
+        if: ${{ !cancelled() && steps.production.outcome == 'success' && runner.os == 'Linux' }}
+        run: bash installer/build_linux.sh --skip-build --target "$RELEASE_TARGET" --dist-dir dist/release
+
+      - name: Build macOS app and disk image
+        if: ${{ !cancelled() && steps.production.outcome == 'success' && runner.os == 'macOS' }}
+        run: bash installer/build_macos.sh --skip-build --target "$RELEASE_TARGET" --dist-dir dist/release
+
+      - name: Bind package hashes to the source revision and target
+        run: python tools/release/release.py record --target ${{ matrix.target }} --dir dist/release
+
+      - name: Retain this platform's release files
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: packages-${{ matrix.platform }}-${{ matrix.arch }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+          path: |
+            dist/release/*.exe
+            dist/release/*.zip
+            dist/release/*.dmg
+            dist/release/*.deb
+            dist/release/*.pkg.tar.zst
+            dist/release/*.tar.gz
+            dist/release/*-SHA256SUMS.txt
+            dist/release/*-build.json
+
+      - name: Retain compiler timings
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: compiler-timings-${{ matrix.platform }}-${{ matrix.arch }}
+          path: target/cargo-timings/*.html
+          if-no-files-found: ignore
+          retention-days: 14
+
+  assemble:
+    name: Verify the complete release set
+    needs: package
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: packages-*
+          merge-multiple: true
+          path: dist/incoming
+      - name: Check all six targets and generate the combined checksums
+        run: python tools/release/release.py assemble --source dist/incoming --output dist/publish
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-files
+          path: dist/publish/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14

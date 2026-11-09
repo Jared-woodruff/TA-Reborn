@@ -1,0 +1,94 @@
+# The menu's film (apps/ta_game/src/backdrop.rs): Mirage Basin at the end of the day. An Arm column
+# of Flashes, Bulldogs, Jethros and Samsons comes down the dry riverbed out of the low sun; Core
+# Rapier gunships swoop on it from the east and its Jethros and Samsons fight them off. The camera
+# low on the riverbed below it, turning with it. (Play it alone: --demo stage, TA_STAGE=<this file>.)
+map = "Mirage Basin"
+time = [[0, 17.6], [26, 17.85]]
+seed = 21
+missing = "skip"
+
+[[clear]]
+at = [7195, 7111]
+radius = 900
+
+# The column, three abreast, coming down the wadi (heading 207, south-south-west) out of the
+# sun: Flashes ahead, Bulldogs, Jethros and Samsons behind.
+[[unit]]
+type = "ARMFLASH"
+side = 0
+at = [7300, 6906]
+heading = 207
+label = "column"
+count = 3
+spacing = [56, 60]
+
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [7354, 6799]
+heading = 207
+label = "column"
+count = 6
+rows = 2
+spacing = [64, 72]
+
+[[unit]]
+type = "ARMJETH"
+side = 0
+at = [7427, 6656]
+heading = 207
+label = "column"
+count = 3
+spacing = [56, 60]
+
+[[unit]]
+type = "ARMSAM"
+side = 0
+at = [7472, 6567]
+heading = 207
+label = "column"
+count = 2
+spacing = [72, 70]
+
+[[order]]
+t = 0.3
+units = "column"
+do = "move"
+at = [7132, 7236]
+formation = true
+
+# The Core's gunships, coming over the dunes from the east at it.
+[[unit]]
+type = "CORAPE"
+side = 1
+at = [8689, 7704]
+heading = 297
+label = "gunships"
+airborne = true
+altitude = 90
+count = 4
+spacing = 70
+
+[[order]]
+t = 6.0
+units = "gunships"
+do = "fight"
+at = [7150, 7200]
+
+# Low on the wadi's floor below the column, turning with it as it comes down out of the low sun
+# and fights the gunships off.
+[[camera.key]]
+t = 0
+eye = [7050, 7441]
+height = 7
+track = "column"
+look_height = 30
+fov = 30
+
+[[camera.key]]
+t = 26
+eye = [7040, 7500]
+height = 8
+track = "column"
+look_height = 26
+fov = 34

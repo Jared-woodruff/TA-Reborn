@@ -1,0 +1,134 @@
+# A night in the timber: hold a ridge outpost from dusk till dawn, in the rain.
+
+id = "until-dawn"
+title = "Until Dawn"
+tagline = "Night falls on the timber. Hold your ridge until the sun comes up."
+kind = "survive"
+minutes = 14
+map = "Timberline"
+# From nine at night to first light (hours past midnight count on: 30.5 is half past six).
+time = [[0, 20.8], [840, 30.5]]
+rain = true
+briefing = """
+Commander, night is falling over Timberline, and the Core is moving through the forest \
+under it. Your outpost holds the western ridge: the only road out of the valley runs \
+past it.
+
+The relief column cannot move before first light. Until then you are on your own. In the \
+dark and the rain their raiders will be on you before you see them, so build radar, and \
+keep your floodlights burning.
+
+You have a small base, a kbot lab and two construction kbots. Hold until dawn, and keep \
+your Commander alive.
+"""
+
+victory = [{ survive = 840 }]
+defeat = [{ lose = "commander" }]
+
+[player]
+side = "ARM"
+start = "start 5"
+metal = 2000
+energy = 3500
+commander = true
+units = [
+    { unit = "ARMMEX", count = 2, at = "start 5", formation = "deposits" },
+    { unit = "ARMCK", count = 2, at = "start 5 + 110 70", formation = "grid", spacing = 64 },
+    { unit = "ARMLAB", at = "start 5 + 150 230", formation = "grid", spacing = 128 },
+    { unit = "ARMSOLAR", count = 8, at = "start 5 + -230 60", formation = "grid", spacing = 128 },
+    { unit = "ARMMAKR", count = 2, at = "start 5 + -220 240", formation = "grid", spacing = 128 },
+    { unit = "ARMRAD", at = "start 5 + -120 -160", formation = "grid", spacing = 128 },
+    { unit = "ARMLLT", count = 3, at = "start 5 toward start 6 by 420", formation = "line", spacing = 160 },
+    { unit = "ARMHLT", at = "start 5 toward start 6 by 360", formation = "line", spacing = 160 },
+    { unit = "ARMLLT", count = 2, at = "start 5 toward start 2 by 380", formation = "line", spacing = 160, facing = "start 2" },
+    { unit = "ARMLLT", count = 2, at = "start 5 toward start 4 by 380", formation = "line", spacing = 160, facing = "start 4" },
+    { unit = "ARMHLT", count = 2, at = "start 5 toward start 6 by 330", until = "easy", formation = "line", spacing = 160 },
+    { unit = "ARMPW", count = 6, at = "start 5 toward start 6 by 260", formation = "grid", spacing = 64 },
+    { unit = "ARMHAM", count = 4, at = "start 5 toward start 6 by 210", formation = "grid", spacing = 64 },
+    { unit = "ARMWAR", count = 2, at = "start 5 toward start 2 by 220", formation = "grid", spacing = 64 },
+]
+
+[[enemy]]
+side = "CORE"
+start = "start 6"
+energy = 1000000
+
+# Raiders first, out of the eastern trees; then from the north-east and the south-east in turn.
+[[wave]]
+at = 60
+every = 70
+times = 9
+grow = 1.15
+from = "start 6|start 4|start 2"
+units = [{ unit = "CORAK", count = 6 }, { unit = "CORSTORM", count = 3 }]
+
+[[wave]]
+at = 150
+from = "start 6"
+units = [{ unit = "CORRAID", count = 5 }, { unit = "CORGATOR", count = 3 }]
+
+# Flamethrowers in the forest.
+[[wave]]
+at = 320
+from = "start 4"
+units = [{ unit = "CORPYRO", count = 6 }, { unit = "CORTHUD", count = 4 }]
+
+[[wave]]
+at = 450
+from = "start 2"
+units = [{ unit = "CORREAP", count = 4 }, { unit = "CORLEVLR", count = 4 }, { unit = "CORMORT", count = 3 }]
+
+[[wave]]
+at = 540
+from = "start 6"
+units = [{ unit = "CORSHAD", count = 3 }]
+from_difficulty = "normal"
+
+# The last hours of the night: the heavy armour.
+[[wave]]
+at = 630
+from = "start 2"
+units = [{ unit = "CORGOL", count = 2 }, { unit = "CORREAP", count = 4 }, { unit = "CORPYRO", count = 4 }]
+
+[[wave]]
+at = 720
+from = "start 6|start 4"
+units = [{ unit = "CORSUMO", count = 2 }, { unit = "CORCAN", count = 6 }, { unit = "CORMORT", count = 4 }]
+
+# The relief column's vanguard: a convoy gets through in the small hours.
+[[wave]]
+at = 420
+player = true
+from = "start 3 toward start 5 by 1800"
+to = "start 5 toward start 6 by 320"
+units = [{ unit = "ARMZEUS", count = 4 }, { unit = "ARMJETH", count = 2 }]
+
+[[message]]
+at = 2
+from = "Arm Command"
+text = "Outpost Echo, the Core is moving through the timber tonight. Hold your ridge until first light: the relief column marches at dawn."
+
+[[message]]
+at = 58
+from = "Arm Command"
+text = "Raiders in the eastern trees. In this rain you will hear them before you see them."
+
+[[message]]
+at = 318
+from = "Arm Command"
+text = "Pyros in the north-eastern woods. Keep them out of the trees round your base: the timber will burn."
+
+[[message]]
+at = 421
+from = "Arm Command"
+text = "A convoy got through from the south-west. Four Zeus and two Jethros are yours, Commander."
+
+[[message]]
+at = 600
+from = "Arm Command"
+text = "Seismic contact in the south-east: heavy treads. They are saving the worst for the last hours of the night."
+
+[[message]]
+at = 780
+from = "Arm Command"
+text = "Sunrise in one minute. The relief column is at the river. Hold on!"

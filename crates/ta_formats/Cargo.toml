@@ -1,0 +1,18 @@
+[package]
+name = "ta_formats"
+description = "Clean-room parsers for Total Annihilation data formats (HPI, TDF, GAF, 3DO, COB, TNT, PCX, PAL)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+memmap2.workspace = true
+flate2.workspace = true
+log.workspace = true
+
+[dev-dependencies]
+# Integration tests read the real maps through the install's archives.
+ta_vfs.workspace = true

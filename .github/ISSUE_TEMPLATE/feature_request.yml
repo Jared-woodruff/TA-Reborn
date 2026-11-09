@@ -1,0 +1,16 @@
+name: Idea
+description: Something TA did that TA Reborn should, or something new
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: What you would like, and when it would matter in a game.
+    validations:
+      required: true
+  - type: textarea
+    id: ta
+    attributes:
+      label: How Total Annihilation did it
+      description: If the original game (or one of its patches) did this, how it behaved there.

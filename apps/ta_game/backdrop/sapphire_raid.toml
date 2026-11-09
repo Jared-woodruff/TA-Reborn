@@ -1,0 +1,226 @@
+# The menu's film (apps/ta_game/src/backdrop.rs): Sapphire Reach at sunset. Eight Arm Thunders
+# come in low out of the setting sun over a Core base on the plains and bomb it through its flak
+# and missiles; the camera on the ground among the buildings, turning to watch them come, pass
+# over and go, then back to the base burning. (Play it alone: --demo stage, TA_STAGE=<this file>.)
+map = "Sapphire Reach"
+time = [[0, 17.55], [26, 17.85]]
+seed = 7
+missing = "skip"
+
+# The base's ground, clear.
+[[clear]]
+at = [4870, 8614]
+radius = 650
+
+# The Core base: its vehicle plant and kbot lab, a fusion plant and energy storage, solar
+# collectors, a radar tower.
+[[unit]]
+type = "CORVP"
+side = 1
+at = [4950, 8484]
+heading = 180
+label = "plant"
+
+[[unit]]
+type = "CORLAB"
+side = 1
+at = [4760, 8764]
+heading = 180
+label = "lab"
+
+[[unit]]
+type = "CORFUS"
+side = 1
+at = [5170, 8674]
+heading = 180
+label = "fusion"
+
+[[unit]]
+type = "CORESTOR"
+side = 1
+at = [4640, 8544]
+heading = 180
+label = "store"
+
+[[unit]]
+type = "CORSOLAR"
+side = 1
+at = [5130, 8424]
+heading = 180
+label = "solar"
+
+[[unit]]
+type = "CORSOLAR"
+side = 1
+at = [5250, 8504]
+heading = 180
+label = "solar"
+
+[[unit]]
+type = "CORRAD"
+side = 1
+at = [4550, 8724]
+heading = 180
+label = "radar"
+
+# Its anti-air, holding its fire until the bombers are close: Pulverizer missile towers and Cobra
+# flak guns.
+[[unit]]
+type = "CORRL"
+side = 1
+at = [4830, 8354]
+heading = 270
+label = "aa"
+hold = true
+
+[[unit]]
+type = "CORRL"
+side = 1
+at = [5050, 8844]
+heading = 270
+label = "aa"
+hold = true
+
+[[unit]]
+type = "CORRL"
+side = 1
+at = [4490, 8414]
+heading = 270
+label = "aa"
+hold = true
+
+[[unit]]
+type = "CORFLAK"
+side = 1
+at = [4990, 8634]
+heading = 270
+label = "aa"
+hold = true
+
+[[unit]]
+type = "CORFLAK"
+side = 1
+at = [4670, 8894]
+heading = 270
+label = "aa"
+hold = true
+
+# The bombers, already flying: Thunders in two waves, low, far out in the west.
+[[unit]]
+type = "ARMTHUND"
+side = 0
+at = [2070, 8554]
+heading = 90
+label = "bombers"
+airborne = true
+altitude = 105
+
+[[unit]]
+type = "ARMTHUND"
+side = 0
+at = [2020, 8634]
+heading = 90
+label = "bombers"
+airborne = true
+altitude = 105
+
+[[unit]]
+type = "ARMTHUND"
+side = 0
+at = [1970, 8474]
+heading = 90
+label = "bombers"
+airborne = true
+altitude = 105
+
+[[unit]]
+type = "ARMTHUND"
+side = 0
+at = [1970, 8714]
+heading = 90
+label = "bombers"
+airborne = true
+altitude = 105
+
+[[unit]]
+type = "ARMTHUND"
+side = 0
+at = [1870, 8574]
+heading = 90
+label = "bombers"
+airborne = true
+altitude = 105
+
+[[unit]]
+type = "ARMTHUND"
+side = 0
+at = [1820, 8494]
+heading = 90
+label = "bombers"
+airborne = true
+altitude = 105
+
+[[unit]]
+type = "ARMTHUND"
+side = 0
+at = [1820, 8674]
+heading = 90
+label = "bombers"
+airborne = true
+altitude = 105
+
+[[unit]]
+type = "ARMTHUND"
+side = 0
+at = [1770, 8594]
+heading = 90
+label = "bombers"
+airborne = true
+altitude = 105
+
+# Each takes a building of the base; the anti-air opens up as they come in.
+[[order]]
+t = 0
+units = "bombers"
+do = "attack"
+target = ["plant", "lab", "fusion", "store"]
+
+[[order]]
+t = 6.5
+units = "aa"
+do = "stop"
+
+# On the ground among the buildings, south of their way, a wide lens: watching them come in out
+# of the sun and pass over; then turning to the base burning as they swing round, the lens
+# closing in on it for their second run.
+[[camera.key]]
+t = 0
+eye = [4890, 8800]
+height = 14
+look_height = 0
+track = "bombers"
+fov = 52
+
+[[camera.key]]
+t = 12.5
+eye = [4880, 8810]
+height = 14
+look_height = 0
+track = "bombers"
+fov = 52
+
+[[camera.key]]
+t = 16
+eye = [4870, 8830]
+height = 16
+look = [4960, 8540]
+look_height = 26
+fov = 46
+
+[[camera.key]]
+t = 26
+eye = [4850, 8850]
+height = 18
+look = [4950, 8560]
+look_height = 22
+fov = 36

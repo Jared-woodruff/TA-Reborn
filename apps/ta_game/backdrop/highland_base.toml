@@ -1,0 +1,124 @@
+# The menu's film (apps/ta_game/src/backdrop.rs): Highland Rift at the end of the day. The Arm
+# Commander raises a fusion reactor on the meadow north of the west lake, its nanolathe's stream
+# green in the low gold light, a construction kbot lending its own, the
+# wind generators turning against the sun going down; Peewees on patrol. The camera low in the
+# east, drifting round the Commander. (Play it alone: --demo stage, TA_STAGE=<this file>.)
+map = "Highland Rift"
+time = [[0, 17.45], [28, 17.85]]
+seed = 5
+missing = "skip"
+
+[[clear]]
+at = [5560, 5880]
+radius = 460
+
+[[clear]]
+at = [5880, 6060]
+radius = 220
+
+# What stands already: wind generators against the sun, a metal extractor, a radar tower and a
+# laser tower.
+[[unit]]
+type = "ARMWIN"
+side = 0
+at = [5270, 5700]
+
+[[unit]]
+type = "ARMWIN"
+side = 0
+at = [5240, 5830]
+
+[[unit]]
+type = "ARMWIN"
+side = 0
+at = [5300, 5960]
+
+[[unit]]
+type = "ARMMEX"
+side = 0
+at = [5700, 6080]
+
+[[unit]]
+type = "ARMRAD"
+side = 0
+at = [5440, 6110]
+
+[[unit]]
+type = "ARMLLT"
+side = 0
+at = [5800, 5640]
+heading = 270
+
+# The Commander and the fusion reactor it raises, the kbot and its solar collector.
+[[unit]]
+type = "ARMCOM"
+side = 0
+at = [5650, 5900]
+heading = 270
+label = "com"
+
+[[unit]]
+type = "ARMFUS"
+side = 0
+at = [5490, 5870]
+built = 0.04
+builder = "com"
+build_seconds = 34
+label = "fusion"
+
+[[unit]]
+type = "ARMCK"
+side = 0
+at = [5600, 5730]
+heading = 240
+label = "ck"
+
+# (The kbot helps with the reactor: a second stream into it. A frame of its own finished on the
+# scene's clock would finish the reactor with it: one player builds instantly for that tick.)
+[[order]]
+t = 1.2
+units = "ck"
+do = "repair"
+target = "fusion"
+
+# Peewees on patrol along the foot of the terrace beyond.
+[[unit]]
+type = "ARMPW"
+side = 0
+at = [5760, 5590]
+heading = 270
+label = "patrol"
+count = 3
+spacing = 34
+
+[[order]]
+t = 0.5
+units = "patrol"
+do = "patrol"
+at = [5300, 5640]
+
+# (Nobody of the Core's near: one far off, for the battle's second side.)
+[[unit]]
+type = "CORAK"
+side = 1
+at = [15800, 15800]
+hold = true
+
+# Low in the east, looking west past the Commander at the reactor rising and the sun going down
+# beyond the wind generators; drifting round to the south-east, the Commander turning into
+# profile against the light.
+[[camera.key]]
+t = 0
+eye = [5800, 5800]
+height = 14
+look = [5570, 5880]
+look_height = 26
+fov = 34
+
+[[camera.key]]
+t = 28
+eye = [5745, 6050]
+height = 12
+look = [5560, 5880]
+look_height = 28
+fov = 32

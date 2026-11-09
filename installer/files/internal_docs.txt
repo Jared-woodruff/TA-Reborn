@@ -1,0 +1,11 @@
+# The documents in docs\ that stay in the repository: the project's internal reviews, QA notes,
+# release process and performance notes. The Windows setup and the Linux and macOS packages ship
+# the rest of docs\ (guides, references, formats) and CHANGELOG.md. One shell-style pattern a
+# line, matched against the file's name (installer\build_installer.ps1, installer\package_unix.py).
+media
+*_REVIEW.md
+*_QA.md
+RELEASE_QA_*.md
+REVIEW_*.md
+PERFORMANCE_*.md
+RELEASING.md

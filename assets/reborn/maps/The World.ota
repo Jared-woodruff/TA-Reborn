@@ -1,0 +1,106 @@
+[GlobalHeader]
+	{
+	missionname=The World;
+	missiondescription=40 X 20  The whole world from the Arctic's ice to the Southern Ocean: the deserts and the rainforests, a base on every inhabited continent, the oceans between them for fleets. Up to 10 players.;
+	planet=Earth;
+	missionhint=;
+	brief=;
+	narration=;
+	glamour=;
+	lineofsight=1;
+	mapping=1;
+	tidalstrength=25;
+	solarstrength=100;
+	lavaworld=0;
+	killmul=50;
+	timemul=0;
+	minwindspeed=800;
+	maxwindspeed=3200;
+	gravity=112;
+	numplayers=2, 4, 6, 8, 10;
+	size=40 x 20;
+	memory=32 mb;
+	DestroyAllUnits=1;
+	AllUnitsKilled=1;
+	SCHEMACOUNT=1;
+	[Schema 0]
+		{
+		Type=Network 1;
+		aiprofile=DEFAULT;
+		SurfaceMetal=3;
+		MohoMetal=30;
+		HumanMetal=1000;
+		ComputerMetal=1000;
+		HumanEnergy=1000;
+		ComputerEnergy=1000;
+		MeteorWeapon=;
+		MeteorRadius=0;
+		MeteorDensity=0;
+		MeteorDuration=0;
+		MeteorInterval=0;
+		[specials]
+			{
+			[special0]
+				{
+				specialwhat=StartPos1;
+				XPos=5208;
+				ZPos=4120;
+				}
+			[special1]
+				{
+				specialwhat=StartPos2;
+				XPos=16504;
+				ZPos=4312;
+				}
+			[special2]
+				{
+				specialwhat=StartPos3;
+				XPos=10712;
+				ZPos=3320;
+				}
+			[special3]
+				{
+				specialwhat=StartPos4;
+				XPos=18552;
+				ZPos=8040;
+				}
+			[special4]
+				{
+				specialwhat=StartPos5;
+				XPos=7128;
+				ZPos=7992;
+				}
+			[special5]
+				{
+				specialwhat=StartPos6;
+				XPos=12328;
+				ZPos=2968;
+				}
+			[special6]
+				{
+				specialwhat=StartPos7;
+				XPos=10328;
+				ZPos=5608;
+				}
+			[special7]
+				{
+				specialwhat=StartPos8;
+				XPos=13976;
+				ZPos=4552;
+				}
+			[special8]
+				{
+				specialwhat=StartPos9;
+				XPos=3576;
+				ZPos=4312;
+				}
+			[special9]
+				{
+				specialwhat=StartPos10;
+				XPos=11928;
+				ZPos=5912;
+				}
+			}
+		}
+	}
+

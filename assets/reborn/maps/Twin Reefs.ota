@@ -1,0 +1,58 @@
+[GlobalHeader]
+	{
+	missionname=Twin Reefs;
+	missiondescription=12 X 12  Two islands face each other across a coral sea, a sand bar to wade between them, islets and a harbour by each base for the fleets. Up to 2 players.;
+	planet=Archipelago;
+	missionhint=;
+	brief=;
+	narration=;
+	glamour=;
+	lineofsight=1;
+	mapping=1;
+	tidalstrength=32;
+	solarstrength=180;
+	lavaworld=0;
+	killmul=50;
+	timemul=0;
+	minwindspeed=1100;
+	maxwindspeed=3000;
+	gravity=112;
+	numplayers=2;
+	size=12 x 12;
+	memory=32 mb;
+	DestroyAllUnits=1;
+	AllUnitsKilled=1;
+	SCHEMACOUNT=1;
+	[Schema 0]
+		{
+		Type=Network 1;
+		aiprofile=DEFAULT;
+		SurfaceMetal=3;
+		MohoMetal=30;
+		HumanMetal=1000;
+		ComputerMetal=1000;
+		HumanEnergy=1000;
+		ComputerEnergy=1000;
+		MeteorWeapon=;
+		MeteorRadius=0;
+		MeteorDensity=0;
+		MeteorDuration=0;
+		MeteorInterval=0;
+		[specials]
+			{
+			[special0]
+				{
+				specialwhat=StartPos1;
+				XPos=936;
+				ZPos=1000;
+				}
+			[special1]
+				{
+				specialwhat=StartPos2;
+				XPos=5208;
+				ZPos=5144;
+				}
+			}
+		}
+	}
+

@@ -1,0 +1,94 @@
+[GlobalHeader]
+	{
+	missionname=United States;
+	missiondescription=32 X 18  From sea to shining sea: the Rockies and the Sierra, the south-west's deserts, the Great Plains, the Great Lakes and the forests of the east. Up to 8 players.;
+	planet=Earth;
+	missionhint=;
+	brief=;
+	narration=;
+	glamour=;
+	lineofsight=1;
+	mapping=1;
+	tidalstrength=20;
+	solarstrength=90;
+	lavaworld=0;
+	killmul=50;
+	timemul=0;
+	minwindspeed=900;
+	maxwindspeed=3000;
+	gravity=112;
+	numplayers=2, 4, 6, 8;
+	size=32 x 18;
+	memory=32 mb;
+	DestroyAllUnits=1;
+	AllUnitsKilled=1;
+	SCHEMACOUNT=1;
+	[Schema 0]
+		{
+		Type=Network 1;
+		aiprofile=DEFAULT;
+		SurfaceMetal=3;
+		MohoMetal=30;
+		HumanMetal=1000;
+		ComputerMetal=1000;
+		HumanEnergy=1000;
+		ComputerEnergy=1000;
+		MeteorWeapon=;
+		MeteorRadius=0;
+		MeteorDensity=0;
+		MeteorDuration=0;
+		MeteorInterval=0;
+		[specials]
+			{
+			[special0]
+				{
+				specialwhat=StartPos1;
+				XPos=1560;
+				ZPos=1624;
+				}
+			[special1]
+				{
+				specialwhat=StartPos2;
+				XPos=12104;
+				ZPos=8344;
+				}
+			[special2]
+				{
+				specialwhat=StartPos3;
+				XPos=1608;
+				ZPos=5352;
+				}
+			[special3]
+				{
+				specialwhat=StartPos4;
+				XPos=13704;
+				ZPos=3464;
+				}
+			[special4]
+				{
+				specialwhat=StartPos5;
+				XPos=5544;
+				ZPos=3304;
+				}
+			[special5]
+				{
+				specialwhat=StartPos6;
+				XPos=10120;
+				ZPos=3048;
+				}
+			[special6]
+				{
+				specialwhat=StartPos7;
+				XPos=8120;
+				ZPos=7000;
+				}
+			[special7]
+				{
+				specialwhat=StartPos8;
+				XPos=8776;
+				ZPos=1864;
+				}
+			}
+		}
+	}
+

@@ -1,0 +1,261 @@
+# TA Reborn's benchmark: Lagrange Station, the void. Written by tools/benchmark/scenes.py (edit that, not this).
+map = "Lagrange Station"
+time = [[0, 15.6], [25, 15.9]]
+reveal = true
+hud = false
+icons = false
+unlimited = true
+seed = 31
+missing = "skip"
+[[unit]]
+type = "ARMZEUS"
+side = 0
+at = [3880, 5116]
+heading = 90
+label = "arm"
+count = 6
+rows = 2
+spacing = 34
+[[unit]]
+type = "ARMHAM"
+side = 0
+at = [3800, 5116]
+heading = 90
+label = "arm"
+count = 6
+rows = 2
+spacing = 30
+[[unit]]
+type = "ARMSTUMP"
+side = 0
+at = [3600, 5142]
+heading = 90
+label = "arm"
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [3485, 5090]
+heading = 90
+label = "arm"
+[[unit]]
+type = "ARMSTUMP"
+side = 0
+at = [3370, 5142]
+heading = 90
+label = "arm"
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [3255, 5090]
+heading = 90
+label = "arm"
+[[unit]]
+type = "ARMSTUMP"
+side = 0
+at = [3140, 5142]
+heading = 90
+label = "arm"
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [3025, 5090]
+heading = 90
+label = "arm"
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [2910, 5142]
+heading = 90
+label = "arm"
+[[unit]]
+type = "ARMSTUMP"
+side = 0
+at = [2795, 5090]
+heading = 90
+label = "arm"
+[[unit]]
+type = "ARMSTUMP"
+side = 0
+at = [2380, 5116]
+heading = 90
+label = "arm"
+count = 6
+rows = 2
+spacing = 44
+[[unit]]
+type = "ARMMART"
+side = 0
+at = [2250, 5116]
+heading = 90
+label = "arm"
+count = 4
+spacing = 60
+[[order]]
+t = 0.3
+units = "arm"
+do = "fight"
+at = [5100, 5116]
+formation = false
+[[unit]]
+type = "CORLLT"
+side = 1
+at = [3960, 4966]
+heading = 270
+label = "core_towers"
+[[unit]]
+type = "CORLLT"
+side = 1
+at = [3960, 5266]
+heading = 270
+label = "core_towers"
+[[unit]]
+type = "CORHLT"
+side = 1
+at = [4180, 5116]
+heading = 270
+label = "core_towers"
+[[unit]]
+type = "CORPUN"
+side = 1
+at = [4560, 4896]
+heading = 270
+label = "core_towers"
+[[unit]]
+type = "CORREAP"
+side = 1
+at = [4350, 5116]
+heading = 270
+label = "core"
+count = 6
+spacing = 60
+[[unit]]
+type = "CORRAID"
+side = 1
+at = [4450, 5116]
+heading = 270
+label = "core"
+count = 6
+spacing = 55
+[[unit]]
+type = "CORAK"
+side = 1
+at = [4250, 5116]
+heading = 270
+label = "core"
+count = 10
+rows = 2
+spacing = 32
+[[order]]
+t = 1
+units = "core"
+do = "fight"
+at = [3900, 5116]
+formation = false
+[[unit]]
+type = "ARMHAWK"
+side = 0
+at = [2600, 4416]
+heading = 90
+label = "arm_fighters"
+count = 8
+rows = 2
+spacing = 120
+airborne = true
+[[unit]]
+type = "CORVENG"
+side = 1
+at = [5600, 5816]
+heading = 270
+label = "core_fighters"
+count = 8
+rows = 2
+spacing = 120
+airborne = true
+[[order]]
+t = 0.5
+units = "arm_fighters"
+do = "patrol"
+at = [4200, 5116]
+[[order]]
+t = 0.5
+units = "core_fighters"
+do = "patrol"
+at = [3600, 5116]
+[[unit]]
+type = "ARMTHUND"
+side = 0
+at = [1600, 4816]
+heading = 90
+label = "arm_bombers"
+count = 6
+rows = 2
+spacing = 140
+airborne = true
+[[order]]
+t = 3
+units = "arm_bombers"
+do = "attack"
+target = "core_towers"
+[[order]]
+t = 3.1
+units = "arm_bombers"
+do = "patrol"
+at = [4400, 5116]
+queue = true
+[[unit]]
+type = "CORSHAD"
+side = 1
+at = [6800, 5516]
+heading = 270
+label = "core_bombers"
+count = 4
+rows = 2
+spacing = 140
+airborne = true
+[[order]]
+t = 5
+units = "core_bombers"
+do = "attack"
+target = "arm"
+[[order]]
+t = 5.1
+units = "core_bombers"
+do = "patrol"
+at = [3500, 5116]
+queue = true
+[[camera.key]]
+t = 0
+eye = [2700, 5376]
+height = 112
+look = [3900, 5076]
+look_height = 100
+fov = 50
+[[camera.key]]
+t = 7
+eye = [3250, 5446]
+height = 120
+look = [4200, 5056]
+look_height = 120
+fov = 50
+[[camera.key]]
+t = 14
+eye = [3600, 5636]
+height = 210
+look = [4300, 5036]
+look_height = 120
+fov = 48
+[[camera.key]]
+t = 20
+eye = [3300, 6416]
+height = 700
+look = [4700, 4816]
+look_height = 100
+fov = 46
+[[camera.key]]
+t = 25
+eye = [2900, 7716]
+height = 1500
+look = [5100, 5100]
+look_height = 60
+fov = 46
+# Lagrange Station: Arm 44 units, Core 38

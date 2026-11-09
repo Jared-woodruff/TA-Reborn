@@ -1,0 +1,104 @@
+# Two Arm Commanders side by side against two of the Core's: a battle with an ally.
+
+id = "brothers-in-arms"
+title = "Brothers in Arms"
+tagline = "You and an allied Commander against two of the Core's."
+kind = "battle"
+minutes = 30
+map = "Highland Rift"
+briefing = """
+Commander, you are not alone on Highland Rift. Commander Holt's forces hold the river \
+crossings in the north, beside yours in the north-western highlands. Two Core Commanders \
+are dug in to the south, across the canyon.
+
+Holt's computer will fight its own war, but it is the same war: back it up when it is hard \
+pressed, and it will do the same for you. Your forces see what its forces see.
+
+Destroy both Core Commanders. Keep yours alive.
+"""
+
+victory = [{ destroy = "commander" }]
+defeat = [{ lose = "commander" }]
+
+[player]
+side = "ARM"
+start = "start 9"
+metal = 1000
+energy = 1000
+commander = true
+units = [
+    { unit = "ARMMEX", count = 2, at = "start 9", formation = "deposits" },
+    { unit = "ARMCK", at = "start 9 + 110 60", until = "normal", formation = "grid", spacing = 64 },
+    { unit = "ARMSOLAR", count = 4, at = "start 9 + -280 0", formation = "grid", spacing = 128 },
+    { unit = "ARMLAB", at = "start 9 + 240 -160", formation = "grid" },
+    { unit = "ARMLLT", count = 2, at = "start 9 toward start 8 by 440", formation = "line", spacing = 192 },
+]
+
+[[ally]]
+side = "ARM"
+start = "start 10"
+ai = "normal"
+commander = true
+metal = 1000
+energy = 1000
+units = [
+    { unit = "ARMMEX", count = 2, at = "start 10", formation = "deposits" },
+    { unit = "ARMSOLAR", count = 4, at = "start 10 + -280 0", formation = "grid", spacing = 128 },
+    { unit = "ARMLAB", at = "start 10 + 240 -160", formation = "grid" },
+    { unit = "ARMLLT", count = 2, at = "start 10 toward start 8 by 440", formation = "line", spacing = 192 },
+    { unit = "ARMCK", at = "start 10 + 100 80", formation = "grid" },
+]
+
+[[enemy]]
+side = "CORE"
+start = "start 8"
+ai = "chosen"
+commander = true
+metal = 1000
+energy = 1000
+units = [
+    { unit = "CORMEX", count = 2, at = "start 8", formation = "deposits" },
+    { unit = "CORSOLAR", count = 4, at = "start 8 + -280 0", formation = "grid", spacing = 128 },
+    { unit = "CORLAB", at = "start 8 + 240 -160", formation = "grid" },
+    { unit = "CORLLT", count = 2, at = "start 8 toward start 9 by 440", formation = "line", spacing = 192 },
+    { unit = "CORCK", at = "start 8 + 100 80", formation = "grid" },
+]
+
+[[enemy]]
+side = "CORE"
+start = "start 6"
+ai = "chosen"
+commander = true
+metal = 1000
+energy = 1000
+units = [
+    { unit = "CORMEX", count = 2, at = "start 6", formation = "deposits" },
+    { unit = "CORSOLAR", count = 4, at = "start 6 + -280 0", formation = "grid", spacing = 128 },
+    { unit = "CORLAB", at = "start 6 + 240 -160", formation = "grid" },
+    { unit = "CORLLT", count = 2, at = "start 6 toward start 9 by 440", formation = "line", spacing = 192 },
+    { unit = "CORCK", at = "start 6 + 100 80", formation = "grid" },
+]
+
+[[message]]
+at = 3
+side = "ally 1"
+from = "Commander Holt"
+text = "Good to have you on the line. I'll hold the river crossings in the north; you take the western highlands."
+
+[[message]]
+at = 240
+side = "ally 1"
+from = "Commander Holt"
+text = "My scouts have found both of their bases. The south-western one is yours; I'll keep the other busy."
+
+[[message]]
+at = 600
+side = "ally 1"
+from = "Commander Holt"
+text = "They're massing at the canyon. If they come for one of us, the other hits them from the side."
+
+[[message]]
+at = 1080
+side = "ally 1"
+from = "Commander Holt"
+text = "Still with me? Then let's finish it. Everything we have, at their Commanders."

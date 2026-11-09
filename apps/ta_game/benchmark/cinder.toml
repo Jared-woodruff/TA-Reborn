@@ -1,0 +1,1286 @@
+# TA Reborn's benchmark: Cinder Basin at nightfall. Written by tools/benchmark/scenes.py (edit that, not this).
+map = "Cinder Basin"
+time = [[0, 17.55], [10, 17.85], [25, 18.6]]
+reveal = true
+hud = false
+icons = false
+unlimited = true
+seed = 7
+missing = "skip"
+orders_per_tick = 800
+[[clear]]
+at = [13700, 4800]
+radius = 4200
+[[unit]]
+type = "ARMSTUMP"
+side = 0
+at = [13264, 2138]
+heading = 86
+label = "arm"
+count = 30
+rows = 3
+spacing = 43
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [13264, 2577]
+heading = 86
+label = "arm"
+count = 30
+rows = 3
+spacing = 39
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [13253, 3419]
+heading = 94
+label = "arm"
+count = 30
+rows = 3
+spacing = 41
+[[unit]]
+type = "ARMSTUMP"
+side = 0
+at = [13234, 3863]
+heading = 85
+label = "arm"
+count = 30
+rows = 3
+spacing = 42
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [13277, 4322]
+heading = 86
+label = "arm"
+count = 30
+rows = 3
+spacing = 41
+[[unit]]
+type = "ARMSTUMP"
+side = 0
+at = [13271, 4775]
+heading = 91
+label = "arm"
+count = 30
+rows = 3
+spacing = 45
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [13256, 5246]
+heading = 86
+label = "arm"
+count = 30
+rows = 3
+spacing = 42
+[[unit]]
+type = "ARMSTUMP"
+side = 0
+at = [13251, 5665]
+heading = 89
+label = "arm"
+count = 30
+rows = 3
+spacing = 40
+[[unit]]
+type = "ARMBULL"
+side = 0
+at = [13259, 6105]
+heading = 88
+label = "arm"
+count = 30
+rows = 3
+spacing = 44
+[[unit]]
+type = "ARMSTUMP"
+side = 0
+at = [13235, 7515]
+heading = 86
+label = "arm"
+count = 30
+rows = 3
+spacing = 41
+[[unit]]
+type = "ARMZEUS"
+side = 0
+at = [13097, 1687]
+heading = 85
+label = "arm"
+count = 30
+rows = 3
+spacing = 32
+[[unit]]
+type = "ARMJETH"
+side = 0
+at = [13087, 2446]
+heading = 91
+label = "arm"
+count = 30
+rows = 3
+spacing = 33
+[[unit]]
+type = "ARMZEUS"
+side = 0
+at = [13081, 2811]
+heading = 94
+label = "arm"
+count = 30
+rows = 3
+spacing = 34
+[[unit]]
+type = "ARMJETH"
+side = 0
+at = [13073, 3571]
+heading = 93
+label = "arm"
+count = 30
+rows = 3
+spacing = 36
+[[unit]]
+type = "ARMZEUS"
+side = 0
+at = [13088, 3934]
+heading = 85
+label = "arm"
+count = 30
+rows = 3
+spacing = 34
+[[unit]]
+type = "ARMHAM"
+side = 0
+at = [13112, 4288]
+heading = 86
+label = "arm"
+count = 30
+rows = 3
+spacing = 32
+[[unit]]
+type = "ARMJETH"
+side = 0
+at = [13107, 4643]
+heading = 89
+label = "arm"
+count = 30
+rows = 3
+spacing = 32
+[[unit]]
+type = "ARMZEUS"
+side = 0
+at = [13099, 4999]
+heading = 90
+label = "arm"
+count = 30
+rows = 3
+spacing = 32
+[[unit]]
+type = "ARMHAM"
+side = 0
+at = [13077, 5379]
+heading = 88
+label = "arm"
+count = 30
+rows = 3
+spacing = 37
+[[unit]]
+type = "ARMJETH"
+side = 0
+at = [13079, 5752]
+heading = 95
+label = "arm"
+count = 30
+rows = 3
+spacing = 34
+[[unit]]
+type = "ARMZEUS"
+side = 0
+at = [13107, 6094]
+heading = 87
+label = "arm"
+count = 30
+rows = 3
+spacing = 32
+[[unit]]
+type = "ARMHAM"
+side = 0
+at = [13086, 7582]
+heading = 86
+label = "arm"
+count = 30
+rows = 3
+spacing = 35
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [12966, 2122]
+heading = 91
+label = "arm"
+count = 30
+rows = 3
+spacing = 36
+[[unit]]
+type = "ARMFIDO"
+side = 0
+at = [12964, 2478]
+heading = 87
+label = "arm"
+count = 30
+rows = 3
+spacing = 34
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [12940, 3553]
+heading = 86
+label = "arm"
+count = 30
+rows = 3
+spacing = 39
+[[unit]]
+type = "ARMFIDO"
+side = 0
+at = [12955, 3943]
+heading = 86
+label = "arm"
+count = 30
+rows = 3
+spacing = 36
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [12946, 4360]
+heading = 90
+label = "arm"
+count = 30
+rows = 3
+spacing = 40
+[[unit]]
+type = "ARMFIDO"
+side = 0
+at = [12958, 4739]
+heading = 88
+label = "arm"
+count = 30
+rows = 3
+spacing = 34
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [12971, 5116]
+heading = 95
+label = "arm"
+count = 30
+rows = 3
+spacing = 34
+[[unit]]
+type = "ARMFIDO"
+side = 0
+at = [12949, 5484]
+heading = 85
+label = "arm"
+count = 30
+rows = 3
+spacing = 34
+[[unit]]
+type = "ARMROCK"
+side = 0
+at = [12929, 5881]
+heading = 92
+label = "arm"
+count = 30
+rows = 3
+spacing = 40
+[[unit]]
+type = "ARMFIDO"
+side = 0
+at = [12963, 6276]
+heading = 93
+label = "arm"
+count = 30
+rows = 3
+spacing = 36
+[[unit]]
+type = "ARMFIDO"
+side = 0
+at = [12949, 7905]
+heading = 89
+label = "arm"
+count = 30
+rows = 3
+spacing = 35
+[[unit]]
+type = "ARMFLASH"
+side = 0
+at = [12814, 2149]
+heading = 94
+label = "arm"
+count = 20
+rows = 2
+spacing = 44
+[[unit]]
+type = "ARMLATNK"
+side = 0
+at = [12818, 2641]
+heading = 87
+label = "arm"
+count = 20
+rows = 2
+spacing = 44
+[[unit]]
+type = "ARMLATNK"
+side = 0
+at = [12795, 3514]
+heading = 90
+label = "arm"
+count = 20
+rows = 2
+spacing = 44
+[[unit]]
+type = "ARMFLASH"
+side = 0
+at = [12832, 3984]
+heading = 92
+label = "arm"
+count = 20
+rows = 2
+spacing = 43
+[[unit]]
+type = "ARMLATNK"
+side = 0
+at = [12800, 4459]
+heading = 90
+label = "arm"
+count = 20
+rows = 2
+spacing = 43
+[[unit]]
+type = "ARMFLASH"
+side = 0
+at = [12820, 4904]
+heading = 93
+label = "arm"
+count = 20
+rows = 2
+spacing = 43
+[[unit]]
+type = "ARMLATNK"
+side = 0
+at = [12818, 5366]
+heading = 94
+label = "arm"
+count = 20
+rows = 2
+spacing = 40
+[[unit]]
+type = "ARMFLASH"
+side = 0
+at = [12833, 5793]
+heading = 87
+label = "arm"
+count = 20
+rows = 2
+spacing = 38
+[[unit]]
+type = "ARMLATNK"
+side = 0
+at = [12829, 6244]
+heading = 93
+label = "arm"
+count = 20
+rows = 2
+spacing = 43
+[[unit]]
+type = "ARMMART"
+side = 0
+at = [12640, 3702]
+heading = 94
+label = "arm"
+count = 40
+rows = 4
+spacing = 47
+[[unit]]
+type = "ARMMERL"
+side = 0
+at = [12638, 4215]
+heading = 90
+label = "arm"
+count = 40
+rows = 4
+spacing = 51
+[[unit]]
+type = "ARMMART"
+side = 0
+at = [12654, 4714]
+heading = 87
+label = "arm"
+count = 40
+rows = 4
+spacing = 42
+[[unit]]
+type = "ARMMERL"
+side = 0
+at = [12640, 6208]
+heading = 93
+label = "arm"
+count = 40
+rows = 4
+spacing = 47
+[[unit]]
+type = "ARMMERL"
+side = 0
+at = [12640, 7197]
+heading = 91
+label = "arm"
+count = 40
+rows = 4
+spacing = 49
+[[unit]]
+type = "ARMMART"
+side = 0
+at = [12641, 7742]
+heading = 91
+label = "arm"
+count = 40
+rows = 4
+spacing = 51
+[[unit]]
+type = "ARMSAM"
+side = 0
+at = [12456, 1767]
+heading = 90
+label = "arm"
+count = 20
+rows = 2
+spacing = 49
+[[unit]]
+type = "ARMSAM"
+side = 0
+at = [12459, 3884]
+heading = 86
+label = "arm"
+count = 20
+rows = 2
+spacing = 43
+[[unit]]
+type = "ARMYORK"
+side = 0
+at = [12447, 4335]
+heading = 93
+label = "arm"
+count = 20
+rows = 2
+spacing = 43
+[[unit]]
+type = "ARMSAM"
+side = 0
+at = [12444, 4819]
+heading = 92
+label = "arm"
+count = 20
+rows = 2
+spacing = 44
+[[unit]]
+type = "ARMYORK"
+side = 0
+at = [12434, 6371]
+heading = 87
+label = "arm"
+count = 20
+rows = 2
+spacing = 51
+[[unit]]
+type = "ARMSAM"
+side = 0
+at = [12463, 6892]
+heading = 87
+label = "arm"
+count = 20
+rows = 2
+spacing = 47
+[[unit]]
+type = "ARMYORK"
+side = 0
+at = [12480, 7394]
+heading = 91
+label = "arm"
+count = 20
+rows = 2
+spacing = 49
+[[unit]]
+type = "CORREAP"
+side = 1
+at = [14048, 1708]
+heading = 270
+label = "core"
+count = 30
+rows = 3
+spacing = 41
+[[unit]]
+type = "CORRAID"
+side = 1
+at = [14034, 3072]
+heading = 266
+label = "core"
+count = 30
+rows = 3
+spacing = 45
+[[unit]]
+type = "CORREAP"
+side = 1
+at = [14062, 3554]
+heading = 268
+label = "core"
+count = 30
+rows = 3
+spacing = 46
+[[unit]]
+type = "CORRAID"
+side = 1
+at = [14050, 4030]
+heading = 272
+label = "core"
+count = 30
+rows = 3
+spacing = 46
+[[unit]]
+type = "CORREAP"
+side = 1
+at = [14049, 4468]
+heading = 269
+label = "core"
+count = 30
+rows = 3
+spacing = 39
+[[unit]]
+type = "CORRAID"
+side = 1
+at = [14053, 4905]
+heading = 273
+label = "core"
+count = 30
+rows = 3
+spacing = 47
+[[unit]]
+type = "CORREAP"
+side = 1
+at = [14024, 5377]
+heading = 274
+label = "core"
+count = 30
+rows = 3
+spacing = 46
+[[unit]]
+type = "CORRAID"
+side = 1
+at = [14044, 5840]
+heading = 274
+label = "core"
+count = 30
+rows = 3
+spacing = 41
+[[unit]]
+type = "CORRAID"
+side = 1
+at = [14022, 6678]
+heading = 266
+label = "core"
+count = 30
+rows = 3
+spacing = 40
+[[unit]]
+type = "CORREAP"
+side = 1
+at = [14031, 7097]
+heading = 273
+label = "core"
+count = 30
+rows = 3
+spacing = 41
+[[unit]]
+type = "CORRAID"
+side = 1
+at = [14027, 7536]
+heading = 268
+label = "core"
+count = 30
+rows = 3
+spacing = 43
+[[unit]]
+type = "CORPYRO"
+side = 1
+at = [14212, 1665]
+heading = 271
+label = "core"
+count = 30
+rows = 3
+spacing = 31
+[[unit]]
+type = "CORTHUD"
+side = 1
+at = [14223, 2007]
+heading = 266
+label = "core"
+count = 30
+rows = 3
+spacing = 35
+[[unit]]
+type = "CORAK"
+side = 1
+at = [14205, 2385]
+heading = 273
+label = "core"
+count = 30
+rows = 3
+spacing = 34
+[[unit]]
+type = "CORPYRO"
+side = 1
+at = [14214, 2749]
+heading = 275
+label = "core"
+count = 30
+rows = 3
+spacing = 35
+[[unit]]
+type = "CORTHUD"
+side = 1
+at = [14216, 3124]
+heading = 271
+label = "core"
+count = 30
+rows = 3
+spacing = 37
+[[unit]]
+type = "CORAK"
+side = 1
+at = [14187, 3497]
+heading = 266
+label = "core"
+count = 30
+rows = 3
+spacing = 34
+[[unit]]
+type = "CORPYRO"
+side = 1
+at = [14197, 3854]
+heading = 267
+label = "core"
+count = 30
+rows = 3
+spacing = 36
+[[unit]]
+type = "CORTHUD"
+side = 1
+at = [14223, 4229]
+heading = 272
+label = "core"
+count = 30
+rows = 3
+spacing = 37
+[[unit]]
+type = "CORAK"
+side = 1
+at = [14196, 4594]
+heading = 270
+label = "core"
+count = 30
+rows = 3
+spacing = 33
+[[unit]]
+type = "CORPYRO"
+side = 1
+at = [14196, 4941]
+heading = 275
+label = "core"
+count = 30
+rows = 3
+spacing = 34
+[[unit]]
+type = "CORTHUD"
+side = 1
+at = [14196, 5327]
+heading = 275
+label = "core"
+count = 30
+rows = 3
+spacing = 35
+[[unit]]
+type = "CORAK"
+side = 1
+at = [14184, 5687]
+heading = 269
+label = "core"
+count = 30
+rows = 3
+spacing = 34
+[[unit]]
+type = "CORPYRO"
+side = 1
+at = [14194, 6051]
+heading = 270
+label = "core"
+count = 30
+rows = 3
+spacing = 35
+[[unit]]
+type = "CORTHUD"
+side = 1
+at = [14187, 6395]
+heading = 269
+label = "core"
+count = 30
+rows = 3
+spacing = 33
+[[unit]]
+type = "CORAK"
+side = 1
+at = [14195, 6724]
+heading = 267
+label = "core"
+count = 30
+rows = 3
+spacing = 31
+[[unit]]
+type = "CORPYRO"
+side = 1
+at = [14216, 7082]
+heading = 272
+label = "core"
+count = 30
+rows = 3
+spacing = 35
+[[unit]]
+type = "CORTHUD"
+side = 1
+at = [14204, 7473]
+heading = 268
+label = "core"
+count = 30
+rows = 3
+spacing = 37
+[[unit]]
+type = "CORAK"
+side = 1
+at = [14213, 7861]
+heading = 271
+label = "core"
+count = 30
+rows = 3
+spacing = 32
+[[unit]]
+type = "CORMORT"
+side = 1
+at = [14360, 1728]
+heading = 272
+label = "core"
+count = 30
+rows = 3
+spacing = 40
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [14351, 2132]
+heading = 270
+label = "core"
+count = 30
+rows = 3
+spacing = 34
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [14363, 2954]
+heading = 272
+label = "core"
+count = 30
+rows = 3
+spacing = 40
+[[unit]]
+type = "CORMORT"
+side = 1
+at = [14333, 3333]
+heading = 269
+label = "core"
+count = 30
+rows = 3
+spacing = 33
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [14357, 3704]
+heading = 271
+label = "core"
+count = 30
+rows = 3
+spacing = 39
+[[unit]]
+type = "CORMORT"
+side = 1
+at = [14353, 4119]
+heading = 265
+label = "core"
+count = 30
+rows = 3
+spacing = 38
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [14354, 4538]
+heading = 270
+label = "core"
+count = 30
+rows = 3
+spacing = 39
+[[unit]]
+type = "CORMORT"
+side = 1
+at = [14359, 4928]
+heading = 268
+label = "core"
+count = 30
+rows = 3
+spacing = 34
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [14360, 5280]
+heading = 267
+label = "core"
+count = 30
+rows = 3
+spacing = 35
+[[unit]]
+type = "CORMORT"
+side = 1
+at = [14355, 5689]
+heading = 269
+label = "core"
+count = 30
+rows = 3
+spacing = 40
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [14365, 6103]
+heading = 271
+label = "core"
+count = 30
+rows = 3
+spacing = 38
+[[unit]]
+type = "CORMORT"
+side = 1
+at = [14334, 6492]
+heading = 268
+label = "core"
+count = 30
+rows = 3
+spacing = 34
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [14354, 6870]
+heading = 265
+label = "core"
+count = 30
+rows = 3
+spacing = 35
+[[unit]]
+type = "CORMORT"
+side = 1
+at = [14358, 7230]
+heading = 272
+label = "core"
+count = 30
+rows = 3
+spacing = 35
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [14351, 7612]
+heading = 270
+label = "core"
+count = 30
+rows = 3
+spacing = 35
+[[unit]]
+type = "CORGOL"
+side = 1
+at = [14503, 1781]
+heading = 275
+label = "core"
+count = 30
+rows = 3
+spacing = 55
+[[unit]]
+type = "CORLEVLR"
+side = 1
+at = [14541, 3443]
+heading = 267
+label = "core"
+count = 30
+rows = 3
+spacing = 48
+[[unit]]
+type = "CORGOL"
+side = 1
+at = [14515, 3959]
+heading = 275
+label = "core"
+count = 30
+rows = 3
+spacing = 47
+[[unit]]
+type = "CORLEVLR"
+side = 1
+at = [14521, 4481]
+heading = 274
+label = "core"
+count = 30
+rows = 3
+spacing = 54
+[[unit]]
+type = "CORGOL"
+side = 1
+at = [14538, 5038]
+heading = 270
+label = "core"
+count = 30
+rows = 3
+spacing = 48
+[[unit]]
+type = "CORLEVLR"
+side = 1
+at = [14512, 5519]
+heading = 270
+label = "core"
+count = 30
+rows = 3
+spacing = 46
+[[unit]]
+type = "CORGOL"
+side = 1
+at = [14504, 6009]
+heading = 268
+label = "core"
+count = 30
+rows = 3
+spacing = 47
+[[unit]]
+type = "CORLEVLR"
+side = 1
+at = [14527, 6528]
+heading = 273
+label = "core"
+count = 30
+rows = 3
+spacing = 46
+[[unit]]
+type = "CORGOL"
+side = 1
+at = [14534, 7048]
+heading = 274
+label = "core"
+count = 30
+rows = 3
+spacing = 55
+[[unit]]
+type = "CORLEVLR"
+side = 1
+at = [14510, 7596]
+heading = 275
+label = "core"
+count = 30
+rows = 3
+spacing = 50
+[[unit]]
+type = "CORMART"
+side = 1
+at = [14721, 1748]
+heading = 265
+label = "core"
+count = 40
+rows = 4
+spacing = 46
+[[unit]]
+type = "CORVROC"
+side = 1
+at = [14765, 4310]
+heading = 270
+label = "core"
+count = 40
+rows = 4
+spacing = 51
+[[unit]]
+type = "CORVROC"
+side = 1
+at = [14726, 6249]
+heading = 268
+label = "core"
+count = 40
+rows = 4
+spacing = 47
+[[unit]]
+type = "CORMART"
+side = 1
+at = [14728, 6781]
+heading = 272
+label = "core"
+count = 40
+rows = 4
+spacing = 51
+[[unit]]
+type = "CORVROC"
+side = 1
+at = [14730, 7297]
+heading = 267
+label = "core"
+count = 40
+rows = 4
+spacing = 47
+[[unit]]
+type = "CORMART"
+side = 1
+at = [14753, 7770]
+heading = 270
+label = "core"
+count = 40
+rows = 4
+spacing = 44
+[[unit]]
+type = "CORSENT"
+side = 1
+at = [14908, 2750]
+heading = 268
+label = "core"
+count = 20
+rows = 2
+spacing = 43
+[[unit]]
+type = "CORMIST"
+side = 1
+at = [14939, 3253]
+heading = 269
+label = "core"
+count = 20
+rows = 2
+spacing = 50
+[[unit]]
+type = "CORMIST"
+side = 1
+at = [14910, 4241]
+heading = 275
+label = "core"
+count = 20
+rows = 2
+spacing = 43
+[[unit]]
+type = "CORSENT"
+side = 1
+at = [14933, 6684]
+heading = 274
+label = "core"
+count = 20
+rows = 2
+spacing = 43
+[[unit]]
+type = "CORMIST"
+side = 1
+at = [14897, 7166]
+heading = 269
+label = "core"
+count = 20
+rows = 2
+spacing = 48
+[[unit]]
+type = "CORSENT"
+side = 1
+at = [14945, 7705]
+heading = 275
+label = "core"
+count = 20
+rows = 2
+spacing = 50
+[[unit]]
+type = "CORKROG"
+side = 1
+at = [13760, 2000]
+heading = 270
+label = "krogoths"
+[[unit]]
+type = "CORKROG"
+side = 1
+at = [13760, 2800]
+heading = 270
+label = "krogoths"
+[[unit]]
+type = "CORKROG"
+side = 1
+at = [13760, 3600]
+heading = 270
+label = "krogoths"
+[[unit]]
+type = "CORKROG"
+side = 1
+at = [13760, 4400]
+heading = 270
+label = "krogoths"
+[[unit]]
+type = "CORKROG"
+side = 1
+at = [13760, 5200]
+heading = 270
+label = "krogoths"
+[[unit]]
+type = "CORKROG"
+side = 1
+at = [13760, 6000]
+heading = 270
+label = "krogoths"
+[[unit]]
+type = "CORKROG"
+side = 1
+at = [13760, 6800]
+heading = 270
+label = "krogoths"
+[[unit]]
+type = "CORKROG"
+side = 1
+at = [13760, 7600]
+heading = 270
+label = "krogoths"
+[[unit]]
+type = "ARMBRTHA"
+side = 0
+at = [11300, 1800]
+heading = 90
+label = "berthas"
+[[unit]]
+type = "ARMBRTHA"
+side = 0
+at = [11300, 2345]
+heading = 90
+label = "berthas"
+[[unit]]
+type = "ARMBRTHA"
+side = 0
+at = [11300, 2891]
+heading = 90
+label = "berthas"
+[[unit]]
+type = "ARMBRTHA"
+side = 0
+at = [11300, 3436]
+heading = 90
+label = "berthas"
+[[unit]]
+type = "ARMBRTHA"
+side = 0
+at = [11300, 3982]
+heading = 90
+label = "berthas"
+[[unit]]
+type = "ARMBRTHA"
+side = 0
+at = [11300, 4527]
+heading = 90
+label = "berthas"
+[[unit]]
+type = "ARMBRTHA"
+side = 0
+at = [11300, 5073]
+heading = 90
+label = "berthas"
+[[unit]]
+type = "ARMBRTHA"
+side = 0
+at = [11300, 5618]
+heading = 90
+label = "berthas"
+[[unit]]
+type = "ARMBRTHA"
+side = 0
+at = [11300, 6164]
+heading = 90
+label = "berthas"
+[[unit]]
+type = "ARMBRTHA"
+side = 0
+at = [11300, 6709]
+heading = 90
+label = "berthas"
+[[unit]]
+type = "ARMBRTHA"
+side = 0
+at = [11300, 7255]
+heading = 90
+label = "berthas"
+[[unit]]
+type = "ARMBRTHA"
+side = 0
+at = [11300, 7800]
+heading = 90
+label = "berthas"
+[[order]]
+t = 0.5
+units = "arm"
+do = "fight"
+at = [13900, 4800]
+[[order]]
+t = 0.5
+units = "core"
+do = "fight"
+at = [13800, 4800]
+[[order]]
+t = 2
+units = "krogoths"
+do = "fight"
+by = [-2200, 0]
+formation = false
+[[event]]
+t = 19.5
+do = "explosion"
+at = [15300, 4800]
+weapon = "NUCLEAR_MISSILE"
+[[camera.key]]
+t = 0
+eye = [12100, 4800]
+height = 700
+look = [13700, 4800]
+look_height = 0
+fov = 46
+[[camera.key]]
+t = 5
+eye = [12950, 2350]
+height = 230
+look = [13650, 4300]
+look_height = 10
+fov = 48
+[[camera.key]]
+t = 10
+eye = [13300, 5600]
+height = 160
+look = [13600, 8800]
+look_height = 0
+fov = 50
+[[camera.key]]
+t = 14.5
+eye = [13900, 6800]
+height = 140
+look = [12800, 9300]
+look_height = 0
+fov = 50
+[[camera.key]]
+t = 19
+eye = [12600, 4300]
+height = 700
+look = [15100, 4900]
+look_height = 0
+fov = 46
+[[camera.key]]
+t = 25
+eye = [11500, 4500]
+height = 1100
+look = [15200, 4800]
+look_height = 0
+fov = 46
+# Cinder Basin: Arm 1562 units, Core 1988

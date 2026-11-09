@@ -1,0 +1,186 @@
+# TA Reborn's benchmark: Midnight Square at midnight. Written by tools/benchmark/scenes.py (edit that, not this).
+map = "Midnight Square"
+time = [[0, 23.9], [25, 23.99]]
+reveal = true
+hud = false
+icons = false
+unlimited = true
+seed = 61
+missing = "skip"
+moon = [200, 34]
+[[unit]]
+type = "ARMZEUS"
+side = 0
+at = [4072, 3880]
+heading = 0
+label = "arm"
+count = 5
+spacing = 38
+[[unit]]
+type = "ARMHAM"
+side = 0
+at = [4072, 3930]
+heading = 0
+label = "arm"
+count = 7
+spacing = 30
+[[unit]]
+type = "ARMWAR"
+side = 0
+at = [3900, 3950]
+heading = 20
+label = "arm"
+count = 4
+spacing = 36
+[[unit]]
+type = "ARMSTUMP"
+side = 0
+at = [4250, 3960]
+heading = 340
+label = "arm"
+count = 4
+spacing = 40
+[[unit]]
+type = "ARMLLT"
+side = 0
+at = [3880, 3880]
+heading = 0
+label = "arm_towers"
+[[unit]]
+type = "ARMLLT"
+side = 0
+at = [4290, 3870]
+heading = 0
+label = "arm_towers"
+[[unit]]
+type = "ARMHLT"
+side = 0
+at = [4072, 3790]
+heading = 0
+label = "arm_towers"
+[[unit]]
+type = "CORPYRO"
+side = 1
+at = [4072, 3420]
+heading = 180
+label = "core"
+count = 8
+rows = 2
+spacing = 34
+[[unit]]
+type = "CORAK"
+side = 1
+at = [4072, 3340]
+heading = 180
+label = "core"
+count = 12
+rows = 2
+spacing = 30
+[[unit]]
+type = "CORTHUD"
+side = 1
+at = [4000, 3260]
+heading = 180
+label = "core"
+count = 6
+spacing = 38
+[[unit]]
+type = "CORSTORM"
+side = 1
+at = [4160, 3250]
+heading = 180
+label = "core"
+count = 6
+spacing = 36
+[[unit]]
+type = "CORRAID"
+side = 1
+at = [4072, 3160]
+heading = 180
+label = "core"
+count = 6
+spacing = 44
+[[order]]
+t = 0.5
+units = "core"
+do = "fight"
+at = [4072, 4100]
+formation = false
+[[order]]
+t = 6
+units = "arm"
+do = "fight"
+at = [4072, 3500]
+formation = false
+[[unit]]
+type = "ARMBRAWL"
+side = 0
+at = [4072, 4300]
+heading = 0
+label = "arm_gunships"
+count = 4
+spacing = 90
+airborne = true
+altitude = 110
+[[order]]
+t = 0.3
+units = "arm_gunships"
+do = "patrol"
+at = [4072, 3600]
+[[unit]]
+type = "CORAPE"
+side = 1
+at = [4072, 2700]
+heading = 180
+label = "core_gunships"
+count = 4
+spacing = 90
+airborne = true
+altitude = 120
+[[order]]
+t = 1.5
+units = "core_gunships"
+do = "fight"
+at = [4072, 4000]
+[[event]]
+t = 15.5
+do = "fireworks"
+at = [4072, 4072]
+size = 700
+seconds = 9.5
+[[camera.key]]
+t = 0
+eye = [4040, 4330]
+height = 10
+look = [4072, 4072]
+look_height = 70
+fov = 52
+[[camera.key]]
+t = 5
+eye = [4200, 4300]
+height = 26
+look = [4072, 3950]
+look_height = 40
+fov = 52
+[[camera.key]]
+t = 11
+eye = [4380, 4020]
+height = 70
+look = [4060, 3620]
+look_height = 10
+fov = 50
+[[camera.key]]
+t = 18
+eye = [4300, 4250]
+height = 200
+look = [4072, 3850]
+look_height = 60
+fov = 48
+[[camera.key]]
+t = 25
+eye = [4620, 4820]
+height = 480
+look = [4072, 3900]
+look_height = 120
+fov = 46
+# Midnight Square: Arm 27 units, Core 42

@@ -1,0 +1,94 @@
+[GlobalHeader]
+	{
+	missionname=Stormbreak Archipelago;
+	missiondescription=28 X 28  Islands without number under rocky peaks, reefs and channels between them: fleets, landings and the air. Up to 8 players.;
+	planet=Archipelago;
+	missionhint=;
+	brief=;
+	narration=;
+	glamour=;
+	lineofsight=1;
+	mapping=1;
+	tidalstrength=40;
+	solarstrength=160;
+	lavaworld=0;
+	killmul=50;
+	timemul=0;
+	minwindspeed=1400;
+	maxwindspeed=3600;
+	gravity=112;
+	numplayers=2, 4, 6, 8;
+	size=28 x 28;
+	memory=32 mb;
+	DestroyAllUnits=1;
+	AllUnitsKilled=1;
+	SCHEMACOUNT=1;
+	[Schema 0]
+		{
+		Type=Network 1;
+		aiprofile=DEFAULT;
+		SurfaceMetal=3;
+		MohoMetal=30;
+		HumanMetal=1000;
+		ComputerMetal=1000;
+		HumanEnergy=1000;
+		ComputerEnergy=1000;
+		MeteorWeapon=;
+		MeteorRadius=0;
+		MeteorDensity=0;
+		MeteorDuration=0;
+		MeteorInterval=0;
+		[specials]
+			{
+			[special0]
+				{
+				specialwhat=StartPos1;
+				XPos=1944;
+				ZPos=3160;
+				}
+			[special1]
+				{
+				specialwhat=StartPos2;
+				XPos=12392;
+				ZPos=11176;
+				}
+			[special2]
+				{
+				specialwhat=StartPos3;
+				XPos=5784;
+				ZPos=10520;
+				}
+			[special3]
+				{
+				specialwhat=StartPos4;
+				XPos=8552;
+				ZPos=3816;
+				}
+			[special4]
+				{
+				specialwhat=StartPos5;
+				XPos=4696;
+				ZPos=5656;
+				}
+			[special5]
+				{
+				specialwhat=StartPos6;
+				XPos=9640;
+				ZPos=8680;
+				}
+			[special6]
+				{
+				specialwhat=StartPos7;
+				XPos=6104;
+				ZPos=7960;
+				}
+			[special7]
+				{
+				specialwhat=StartPos8;
+				XPos=8232;
+				ZPos=6376;
+				}
+			}
+		}
+	}
+

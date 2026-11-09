@@ -1,0 +1,94 @@
+[GlobalHeader]
+	{
+	missionname=Greenmantle;
+	missiondescription=28 X 28  A rainforest without end: rivers and lakes, reed marshes and tarns, and the jungle closing over the trails. Up to 8 players.;
+	planet=Lush;
+	missionhint=;
+	brief=;
+	narration=;
+	glamour=;
+	lineofsight=1;
+	mapping=1;
+	tidalstrength=25;
+	solarstrength=120;
+	lavaworld=0;
+	killmul=50;
+	timemul=0;
+	minwindspeed=300;
+	maxwindspeed=1500;
+	gravity=112;
+	numplayers=2, 4, 6, 8;
+	size=28 x 28;
+	memory=32 mb;
+	DestroyAllUnits=1;
+	AllUnitsKilled=1;
+	SCHEMACOUNT=1;
+	[Schema 0]
+		{
+		Type=Network 1;
+		aiprofile=DEFAULT;
+		SurfaceMetal=3;
+		MohoMetal=30;
+		HumanMetal=1000;
+		ComputerMetal=1000;
+		HumanEnergy=1000;
+		ComputerEnergy=1000;
+		MeteorWeapon=;
+		MeteorRadius=0;
+		MeteorDensity=0;
+		MeteorDuration=0;
+		MeteorInterval=0;
+		[specials]
+			{
+			[special0]
+				{
+				specialwhat=StartPos1;
+				XPos=1432;
+				ZPos=12888;
+				}
+			[special1]
+				{
+				specialwhat=StartPos2;
+				XPos=12904;
+				ZPos=1448;
+				}
+			[special2]
+				{
+				specialwhat=StartPos3;
+				XPos=1432;
+				ZPos=1944;
+				}
+			[special3]
+				{
+				specialwhat=StartPos4;
+				XPos=12904;
+				ZPos=12392;
+				}
+			[special4]
+				{
+				specialwhat=StartPos5;
+				XPos=4120;
+				ZPos=7384;
+				}
+			[special5]
+				{
+				specialwhat=StartPos6;
+				XPos=10216;
+				ZPos=6952;
+				}
+			[special6]
+				{
+				specialwhat=StartPos7;
+				XPos=7192;
+				ZPos=12504;
+				}
+			[special7]
+				{
+				specialwhat=StartPos8;
+				XPos=7144;
+				ZPos=1832;
+				}
+			}
+		}
+	}
+

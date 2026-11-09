@@ -1,0 +1,58 @@
+# An economy race: the first to make 15,000 metal takes the planet.
+
+id = "metal-rush"
+title = "Metal Rush"
+tagline = "The first to make 15,000 metal wins. The Core plays rough."
+kind = "race"
+minutes = 15
+map = "Red Planet"
+briefing = """
+Commander, the mining rights to this planet go to whoever proves they can work it: the first \
+side to extract fifteen thousand metal wins it outright.
+
+The Core is racing you from the western plateau, and the Core has never been known to race \
+fair. Expect raids on your extractors. Build fast, protect your economy, and if you can, \
+take theirs apart.
+
+Metal makers count. Reclaimed metal counts. Whatever you make, counts.
+"""
+
+victory = [{ metal = 15000 }]
+defeat = [{ enemy_metal = 15000 }, { lose = "commander" }]
+
+[player]
+side = "ARM"
+start = "start 1"
+metal = 1000
+energy = 1000
+commander = true
+units = [
+    { unit = "ARMMEX", count = 2, at = "start 1", formation = "deposits" },
+    { unit = "ARMCK", at = "start 1 + -150 80", formation = "grid", spacing = 64 },
+    { unit = "ARMCV", at = "start 1 + -150 -80", until = "normal", formation = "grid", spacing = 64 },
+    { unit = "ARMSOLAR", count = 4, at = "start 1 + -280 0", formation = "grid", spacing = 128 },
+    { unit = "ARMLAB", at = "start 1 + 240 -160", formation = "grid" },
+]
+
+[[enemy]]
+side = "CORE"
+start = "start 2"
+ai = "chosen"
+commander = true
+metal = 1000
+energy = 1000
+units = [
+    { unit = "CORMEX", count = 2, at = "start 2", formation = "deposits" },
+    { unit = "CORCK", at = "start 2 + 150 80", formation = "grid", spacing = 64 },
+    { unit = "CORSOLAR", count = 4, at = "start 2 + -280 0", formation = "grid", spacing = 128 },
+    { unit = "CORLAB", at = "start 2 + 240 -160", formation = "grid" },
+]
+
+# Raiders sent after your extractors.
+[[wave]]
+at = 240
+every = 120
+times = 6
+grow = 1.15
+from = "start 2 toward start 1 by 900"
+units = [{ unit = "CORFAV", count = 3 }, { unit = "CORGATOR", count = 2 }]

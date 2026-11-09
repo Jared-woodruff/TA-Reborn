@@ -1,0 +1,275 @@
+# TA Reborn's benchmark: Redstone Mesas, a base rising. Written by tools/benchmark/scenes.py (edit that, not this).
+map = "Redstone Mesas"
+time = [[0, 17.55], [25, 17.9]]
+reveal = true
+hud = false
+icons = false
+unlimited = true
+seed = 41
+missing = "skip"
+[[unit]]
+type = "ARMCOM"
+side = 0
+at = [4940, 2950]
+heading = 270
+label = "com"
+built = 0
+build_seconds = 2.8
+rise_at = 0.3
+[[order]]
+t = 3.4
+units = "com"
+do = "build"
+at = [4810, 2990]
+type = "ARMVP"
+seconds = 14
+label = "plant"
+[[unit]]
+type = "ARMACK"
+side = 0
+at = [5150, 2860]
+heading = 250
+label = "ack"
+[[unit]]
+type = "ARMACK"
+side = 0
+at = [5000, 2860]
+heading = 70
+label = "ack"
+[[unit]]
+type = "ARMFUS"
+side = 0
+at = [5080, 2800]
+heading = 180
+label = "fusion"
+built = 0.05
+builder = "ack"
+build_seconds = 18
+[[unit]]
+type = "ARMCK"
+side = 0
+at = [4880, 3110]
+heading = 330
+label = "ck3"
+[[order]]
+t = 4.5
+units = "ck3"
+do = "repair"
+target = "plant"
+[[unit]]
+type = "ARMCK"
+side = 0
+at = [5150, 3020]
+heading = 200
+label = "ck1"
+[[unit]]
+type = "ARMSOLAR"
+side = 0
+at = [5110, 3100]
+heading = 180
+label = "solar"
+built = 0.2
+builder = "ck1"
+build_seconds = 6
+[[order]]
+t = 6.5
+units = "ck1"
+do = "build"
+at = [5200, 3100]
+type = "ARMSOLAR"
+seconds = 6
+label = "solar"
+[[order]]
+t = 13
+units = "ck1"
+do = "build"
+at = [5020, 3180]
+type = "ARMSOLAR"
+seconds = 6
+label = "solar"
+[[unit]]
+type = "ARMCK"
+side = 0
+at = [5190, 2940]
+heading = 90
+label = "ck2"
+[[unit]]
+type = "ARMLLT"
+side = 0
+at = [5250, 2890]
+heading = 90
+label = "towers"
+built = 0.2
+builder = "ck2"
+build_seconds = 7
+[[order]]
+t = 8
+units = "ck2"
+do = "build"
+at = [5300, 2990]
+type = "ARMGUARD"
+seconds = 10
+label = "towers"
+[[unit]]
+type = "ARMCV"
+side = 0
+at = [5220, 2790]
+heading = 30
+label = "cv1"
+[[unit]]
+type = "ARMMEX"
+side = 0
+at = [5272, 2728]
+heading = 180
+label = "mex"
+built = 0.1
+builder = "cv1"
+build_seconds = 7
+[[order]]
+t = 8
+units = "cv1"
+do = "build"
+at = [4808, 2616]
+type = "ARMMEX"
+seconds = 7
+label = "mex"
+[[unit]]
+type = "ARMCV"
+side = 0
+at = [5250, 3040]
+heading = 150
+label = "cv2"
+[[unit]]
+type = "ARMMEX"
+side = 0
+at = [5304, 3112]
+heading = 180
+label = "mex"
+built = 0.05
+builder = "cv2"
+build_seconds = 8
+[[order]]
+t = 9
+units = "cv2"
+do = "build"
+at = [5112, 3272]
+type = "ARMMEX"
+seconds = 7
+label = "mex"
+[[unit]]
+type = "ARMCA"
+side = 0
+at = [4900, 2800]
+heading = 90
+label = "ca"
+airborne = true
+altitude = 70
+[[unit]]
+type = "ARMRAD"
+side = 0
+at = [4950, 2730]
+heading = 180
+label = "radar"
+built = 0.1
+builder = "ca"
+build_seconds = 9
+[[order]]
+t = 0.5
+units = "ca"
+do = "build"
+at = [4840, 2770]
+type = "ARMSOLAR"
+label = "ca_builds"
+queue = true
+[[order]]
+t = 0.6
+units = "ca"
+do = "build"
+at = [5020, 2680]
+type = "ARMRL"
+label = "ca_builds"
+queue = true
+[[order]]
+t = 0.7
+units = "ca"
+do = "build"
+at = [4740, 2850]
+type = "ARMSOLAR"
+label = "ca_builds"
+queue = true
+[[order]]
+t = 0.8
+units = "ca"
+do = "build"
+at = [4950, 2640]
+type = "ARMLLT"
+label = "ca_builds"
+queue = true
+[[order]]
+t = 0.9
+units = "ca"
+do = "build"
+at = [4880, 2620]
+type = "ARMSOLAR"
+label = "ca_builds"
+queue = true
+[[order]]
+t = 1.1
+units = "ca"
+do = "guard"
+target = "com"
+queue = true
+[[unit]]
+type = "ARMLAB"
+side = 0
+at = [5390, 3270]
+heading = 180
+label = "lab"
+[[order]]
+t = 1
+units = "lab"
+do = "produce"
+type = "ARMPW"
+count = 6
+seconds = 2.6
+[[order]]
+t = 1
+units = "lab"
+do = "move"
+at = [5470, 3000]
+[[camera.key]]
+t = 0
+eye = [5110, 2930]
+height = 12
+look = [4940, 2950]
+look_height = 24
+fov = 50
+[[camera.key]]
+t = 3.5
+eye = [5010, 3110]
+height = 20
+look = [4870, 2985]
+look_height = 14
+fov = 50
+[[camera.key]]
+t = 9
+eye = [5200, 3240]
+height = 18
+look = [5130, 3070]
+look_height = 15
+fov = 50
+[[camera.key]]
+t = 15
+eye = [4960, 3250]
+height = 30
+look = [5080, 2830]
+look_height = 20
+fov = 48
+[[camera.key]]
+t = 25
+eye = [4640, 3460]
+height = 240
+look = [5360, 2870]
+look_height = 0
+fov = 46
+# Redstone Mesas: Arm 16 units, Core 0

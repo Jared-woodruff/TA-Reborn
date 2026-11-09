@@ -1,0 +1,63 @@
+[package]
+name = "ta_game"
+description = "TA Reborn game executable"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "ta-reborn"
+path = "src/main.rs"
+
+[dependencies]
+rustc-hash.workspace = true
+rayon.workspace = true
+ta_formats.workspace = true
+ta_vfs.workspace = true
+ta_render.workspace = true
+ta_skins.workspace = true
+ta_data.workspace = true
+ta_sim.workspace = true
+ta_config.workspace = true
+ta_ai.workspace = true
+ta_net.workspace = true
+ta_ui.workspace = true
+ta_audio.workspace = true
+ta_video = { path = "../../crates/ta_video" }
+# A replay made into a film (MP4: H.264 and AAC through Media Foundation).
+ta_mp4.workspace = true
+anyhow.workspace = true
+log.workspace = true
+env_logger.workspace = true
+clap.workspace = true
+glam.workspace = true
+winit.workspace = true
+wgpu.workspace = true
+egui.workspace = true
+ab_glyph.workspace = true
+egui-wgpu.workspace = true
+egui-winit.workspace = true
+image.workspace = true
+serde.workspace = true
+# The benchmark's report (`--benchmark`).
+serde_json.workspace = true
+# Stable legacy save identities; already used by the launcher and shared asset tools.
+sha2.workspace = true
+bincode.workspace = true
+# Conquest saves.
+toml.workspace = true
+gilrs.workspace = true
+# The map editor's file choosers (a picture to bring in, the heights to write out); as ta_ui's.
+rfd = "0.17.2"
+
+[build-dependencies]
+embed-resource.workspace = true
+
+[dev-dependencies]
+pollster.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+# The companion screen: a window that does not take the keyboard from the battle.
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
