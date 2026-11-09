@@ -3599,9 +3599,9 @@ name = \"{}\"
     #[test]
     fn every_launch_route_waits_for_pending_friendly_and_enemy_skin_assignments() {
         let dir = temp_dir("launch_pending_skin");
-        let (ctx, mut app) = launcher(&dir.join("config.toml"), &[]);
+        let (ctx, mut app) = launcher(&dir.join("config.toml"), &["--pretend-missing"]);
         app.skins.shutdown();
-        app.detection = detect::detect(Some(&fake_game(&dir)), true);
+        use_fake_game(&mut app, &dir);
         let frame = eframe::Frame::_new_kittest();
         for enemy in [false, true] {
             for route in 0..3 {
@@ -3722,7 +3722,7 @@ name = \"{}\"
     #[test]
     fn dropped_files_do_what_they_are() {
         let dir = temp_dir("drop");
-        let (ctx, mut app) = launcher(&dir.join("config.toml"), &[]);
+        let (ctx, mut app) = launcher(&dir.join("config.toml"), &["--pretend-missing"]);
         let package = dir.join("Some Units");
         std::fs::create_dir_all(package.join("units")).unwrap();
         std::fs::write(package.join("units").join("one.fbi"), "[UNITINFO]\n{\n}\n").unwrap();
@@ -3754,7 +3754,7 @@ name = \"{}\"
         // A saved game: the game is not built here.
         let save = dir.join("game.tasav");
         std::fs::write(&save, b"").unwrap();
-        app.detection = detect::detect(Some(&fake_game(&dir)), true);
+        use_fake_game(&mut app, &dir);
         frame(&ctx, &mut app, dropped(&save));
         frame(&ctx, &mut app, RawInput::default());
         assert!(matches!(&app.game, GameState::Failed(m) if m.contains(launch::GAME_EXE)), "{:?}", app.game);
@@ -3799,6 +3799,17 @@ name = \"{}\"
             std::fs::write(game.join(file), b"").unwrap();
         }
         game
+    }
+
+    /// The fixture's game as the launcher's own: in the settings, where a launch looks again
+    /// (`play` rescans before it starts the game), and detected. Set in `detection` alone, a
+    /// rescan lost it on a machine without TA installed (the release runners), and found the
+    /// computer's own copy on one with it. (The tests that launch also start the launcher with
+    /// `--pretend-missing`, so a computer's own TA is never found in the fixture's place.)
+    fn use_fake_game(app: &mut LauncherApp, dir: &Path) {
+        let game = fake_game(dir);
+        app.config.game_dir = Some(game.clone());
+        app.detection = detect::detect(Some(&game), true);
     }
 
     #[test]
@@ -3902,9 +3913,9 @@ name = \"{}\"
     fn mods_that_cannot_be_loaded_together_are_refused_at_play() {
         let dir = temp_dir("launch_mods_refused");
         std::fs::write(dir.join("config.toml"), "[mods]\nenabled = [\"gone\"]\n").unwrap();
-        let (_ctx, mut app) = launcher(&dir.join("config.toml"), &[]);
+        let (_ctx, mut app) = launcher(&dir.join("config.toml"), &["--pretend-missing"]);
         app.skins.shutdown();
-        app.detection = detect::detect(Some(&fake_game(&dir)), true);
+        use_fake_game(&mut app, &dir);
         app.play(&[]);
         assert!(matches!(&app.game, GameState::Failed(message) if message.contains("cannot be loaded together") && message.contains("gone")), "{:?}", app.game);
         // Without mods (the benchmark's runs), it goes on to start the game (not built here).
@@ -3919,7 +3930,7 @@ name = \"{}\"
     fn every_launch_route_stops_when_settings_cannot_be_saved() {
         let dir = temp_dir("launch_save_failure");
         let (ctx, mut app) = launcher(&dir.join("config.toml"), &[]);
-        app.detection = detect::detect(Some(&fake_game(&dir)), true);
+        use_fake_game(&mut app, &dir);
         let blocked = dir.join("blocked");
         std::fs::write(&blocked, "a file cannot hold config.toml").unwrap();
         app.store.path = blocked.join("config.toml");
@@ -4013,7 +4024,7 @@ name = \"{}\"
     fn pages_render_with_battles_news_and_installs() {
         let dir = temp_dir("battles");
         let (ctx, mut app) = launcher(&dir.join("config.toml"), &[]);
-        app.detection = detect::detect(Some(&fake_game(&dir)), true);
+        use_fake_game(&mut app, &dir);
         let record = |title: &str, autosave: bool, playable: bool| crate::battles::Record {
             path: dir.join("x.tasav"),
             title: title.into(),
