@@ -94,9 +94,11 @@ foreach ($file in 'ta-reborn.ico', 'installer-header.bmp', 'installer-welcome.bm
     Copy-Item -LiteralPath (Join-Path $repo "branding/$file") -Destination (Join-Path $fixture 'branding')
 }
 [IO.File]::WriteAllText((Join-Path $fixture 'Cargo.toml'), "[workspace.package]`nversion = `"0.0.0`"`n")
-foreach ($file in 'LICENSE', 'CHANGELOG.md', 'installer/files/README.txt', 'installer/files/mods/README.txt', 'assets/reborn/fixture.txt', 'lang/en.toml', 'docs/fixture.md') {
+foreach ($file in 'LICENSE', 'CHANGELOG.md', 'installer/files/README.txt', 'installer/files/mods/README.txt', 'assets/reborn/fixture.txt', 'lang/en.toml', 'docs/fixture.md', 'docs/GAME_QA.md', 'docs/RELEASE_QA_MODS.md') {
     [IO.File]::WriteAllText((Join-Path $fixture $file), 'Packaging fixture only; no original game data.')
 }
+# (The setup reads which documents stay in the repository from this list: the internal notes.)
+Copy-Item -LiteralPath (Join-Path $repo 'installer/files/internal_docs.txt') -Destination (Join-Path $fixture 'installer/files')
 & git -C $fixture init --quiet
 & git -C $fixture add Cargo.toml
 & git -C $fixture -c user.name=Fixture -c user.email=fixture@example.invalid commit --quiet -m fixture
@@ -134,6 +136,10 @@ try {
         }
         $stage = Join-Path $dist "stage-windows-$($info.Arch)/TA Reborn"
         Expect ((Get-Content -LiteralPath (Join-Path $stage 'THIRD-PARTY-NOTICES.txt') -Raw) -eq $triple) 'Notices used host architecture instead of target.'
+        Expect (Test-Path -LiteralPath (Join-Path $stage 'docs/fixture.md')) 'A guide in docs must ship.'
+        foreach ($internal in 'GAME_QA.md', 'RELEASE_QA_MODS.md') {
+            Expect (-not (Test-Path -LiteralPath (Join-Path $stage "docs/$internal"))) "The internal note $internal must stay out of the package (installer/files/internal_docs.txt)."
+        }
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $zip = [IO.Compression.ZipFile]::OpenRead((Join-Path $dist "$prefix.zip"))
         try {
