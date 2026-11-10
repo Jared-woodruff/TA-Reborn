@@ -13,6 +13,12 @@ name = ""
 "Selected {unit}. Health {health} of {maximum}." = ""
 "{count} units selected" = ""
 
+# apps/ta_game/src/app/memory_guard.rs
+"Memory is running out: TA Reborn holds {gb} GB. The battle was saved and paused: start TA Reborn again and load the autosave." = ""
+"Memory is running out: TA Reborn holds {gb} GB. Save what you can, then start TA Reborn again." = ""
+"TA Reborn is using {gb} GB of memory, far more than it should. The battle was saved (the autosave)." = ""
+"TA Reborn is using {gb} GB of memory, far more than it should." = ""
+
 # apps/ta_game/src/app.rs
 "Preparing command centre" = ""
 "Not enough graphics memory for this battlefield. Close other programs that use the graphics card, or choose a lower GRAPHICS LEVEL in Options, then try again." = ""

@@ -13,6 +13,12 @@ name = "简体中文"
 "Selected {unit}. Health {health} of {maximum}." = "已选中 {unit}。生命值 {health}，上限 {maximum}。"
 "{count} units selected" = "已选中 {count} 个单位"
 
+# apps/ta_game/src/app/memory_guard.rs
+"Memory is running out: TA Reborn holds {gb} GB. The battle was saved and paused: start TA Reborn again and load the autosave." = "内存即将耗尽：TA Reborn 占用了 {gb} GB。战斗已保存并暂停：请重新启动 TA Reborn 并读取自动存档。"
+"Memory is running out: TA Reborn holds {gb} GB. Save what you can, then start TA Reborn again." = "内存即将耗尽：TA Reborn 占用了 {gb} GB。请尽量保存，然后重新启动 TA Reborn。"
+"TA Reborn is using {gb} GB of memory, far more than it should. The battle was saved (the autosave)." = "TA Reborn 正在使用 {gb} GB 内存，远超正常水平。战斗已保存为自动存档。"
+"TA Reborn is using {gb} GB of memory, far more than it should." = "TA Reborn 正在使用 {gb} GB 内存，远超正常水平。"
+
 # apps/ta_game/src/app.rs
 "Preparing command centre" = "正在准备指挥中心"
 "Not enough graphics memory for this battlefield. Close other programs that use the graphics card, or choose a lower GRAPHICS LEVEL in Options, then try again." = "显存不足，无法载入此战场。请关闭其他占用显卡的程序，或在选项中调低画质等级，然后重试。"

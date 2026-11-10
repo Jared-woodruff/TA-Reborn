@@ -52,6 +52,10 @@ gilrs.workspace = true
 # The map editor's file choosers (a picture to bring in, the heights to write out); as ta_ui's.
 rfd = "0.17.2"
 
+[features]
+# A heap profiler for leak hunts (`src/memtrack.rs`; Windows; never in a release).
+memtrack = ["windows/Win32_System_Diagnostics_Debug", "windows/Win32_System_Threading"]
+
 [build-dependencies]
 embed-resource.workspace = true
 
@@ -60,4 +64,4 @@ pollster.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 # The companion screen: a window that does not take the keyboard from the battle.
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Console", "Win32_UI_WindowsAndMessaging"] }

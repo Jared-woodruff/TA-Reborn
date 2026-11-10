@@ -4,6 +4,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+#[cfg(all(feature = "memtrack", windows))]
+mod memtrack;
+/// `--features memtrack`: the heap profiler (`memtrack.rs`).
+#[cfg(all(feature = "memtrack", windows))]
+#[global_allocator]
+static TRACKER: memtrack::Tracker = memtrack::Tracker;
 mod accessibility;
 mod audio;
 mod backdrop;
@@ -216,17 +222,45 @@ pub struct Args {
 }
 
 /// Log lines to stderr and to our own log file.
-struct Tee(std::fs::File);
+/// The log's file, and whether what is written to it goes to the error output as well.
+struct Tee(std::fs::File, bool);
 
 impl std::io::Write for Tee {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let _ = std::io::stderr().write_all(buf);
+        if self.1 {
+            let _ = std::io::stderr().write_all(buf);
+        }
         self.0.write_all(buf)?;
         Ok(buf.len())
     }
     fn flush(&mut self) -> std::io::Result<()> {
-        let _ = std::io::stderr().flush();
+        if self.1 {
+            let _ = std::io::stderr().flush();
+        }
         self.0.flush()
+    }
+}
+
+/// Points this process's error output at `file` when it has none (a release build started
+/// without a console and not by the launcher, which gives it the log): whether it did. The
+/// runtime's last words (memory run out) are then in the log, not lost.
+fn error_output_to(file: &std::fs::File) -> bool {
+    #[cfg(all(windows, not(debug_assertions)))]
+    {
+        use std::os::windows::io::IntoRawHandle;
+        use windows::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE, SetStdHandle};
+        // SAFETY: a query of this process's standard handles.
+        let none = unsafe { GetStdHandle(STD_ERROR_HANDLE) }.map_or(true, |h| h.is_invalid() || h.0.is_null());
+        if none && let Ok(copy) = file.try_clone() {
+            // SAFETY: a file of ours, open for writing, its handle kept open for good.
+            return unsafe { SetStdHandle(STD_ERROR_HANDLE, windows::Win32::Foundation::HANDLE(copy.into_raw_handle())) }.is_ok();
+        }
+        false
+    }
+    #[cfg(not(all(windows, not(debug_assertions))))]
+    {
+        let _ = file;
+        false
     }
 }
 
@@ -346,7 +380,10 @@ fn main() {
     if std::env::var_os("TA_LOG_REDIRECTED").is_none() {
         let file = std::fs::create_dir_all(&log_dir).and_then(|_| std::fs::File::create(log_dir.join("game.log")));
         if let Ok(file) = file {
-            logger.target(env_logger::Target::Pipe(Box::new(Tee(file))));
+            // (Started with nowhere for its error output: what the runtime itself says on its way
+            // out, out of memory, goes to the log too, and the log is written once.)
+            let echo = !error_output_to(&file);
+            logger.target(env_logger::Target::Pipe(Box::new(Tee(file, echo))));
         }
     }
     logger.init();
@@ -370,8 +407,13 @@ fn main() {
         }
         let backtrace = std::backtrace::Backtrace::force_capture();
         let thread = std::thread::current();
+        // (The memory then: a crash of memory run out shows as one.)
+        let memory = ta_config::hardware::process_memory().map_or_else(String::new, |m| {
+            let (total, free) = ta_config::hardware::system_memory_mb().unwrap_or((0, 0));
+            format!("memory: the game's own {} MB (in use {} MB, the most {} MB), the computer's {free} MB free of {total} MB\n", m.private_mb, m.working_set_mb, m.peak_working_set_mb)
+        });
         let report = format!(
-            "TA Reborn {} crashed: {info}\nthread: {}\nloaded at: {:#x}\n\n{backtrace:#}",
+            "TA Reborn {} crashed: {info}\nthread: {}\nloaded at: {:#x}\n{memory}\n{backtrace:#}",
             version_label(),
             thread.name().unwrap_or("unnamed"),
             image_base()

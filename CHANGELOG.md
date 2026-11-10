@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+- A watch on the game's memory. Every minute of a battle the log records how much memory the
+  game holds. Should it climb far past what the battle needs, the game lets go of its highlight
+  copies, saves a single-player battle (the autosave) and says so. Near the computer's limit it
+  also pauses the battle, rather than let the computer run out and take the battle with it.
+- Crash reports give the game's memory at the time, and a game started without the launcher now
+  keeps the last words of a crash for want of memory in its log.
+
 ### Fixed
 - In a window smaller than 1024×600 points, a battle's first frame after its loading screen was
   laid out for a window of 10,000 points: the classic interface drew its panel and its letters
