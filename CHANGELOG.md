@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- In a window smaller than 1024×600 points, a battle's first frame after its loading screen was
+  laid out for a window of 10,000 points: the classic interface drew its panel and its letters
+  dozens of times too large for one frame, which a graphics card could refuse.
+- A row of choices (photo mode's tabs and looks, the options' selectors) no longer slides its
+  marker in from the side of the screen when the panel it is in moves or first appears.
+
 ## 1.0.0 — 2026-11-09
 
 The first public release of Total Annihilation Reborn: an unofficial, clean-room

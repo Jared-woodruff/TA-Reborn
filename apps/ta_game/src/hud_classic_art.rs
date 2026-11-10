@@ -62,7 +62,9 @@ impl Sprite {
     /// The picture as a texture `px` screen pixels across and down, as `look` has it: made the
     /// first time it is asked for and kept while it is drawn.
     pub fn texture(&self, ctx: &egui::Context, px: [usize; 2], look: Look) -> egui::TextureId {
-        let px = [px[0].max(1), px[1].max(1)];
+        // (No larger than a texture can be: a picture asked for larger is drawn stretched.)
+        let most = ctx.input(|i| i.max_texture_side).max(1);
+        let px = [px[0].clamp(1, most), px[1].clamp(1, most)];
         let frame = ctx.cumulative_frame_nr();
         let mut made = self.made.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let slot = match made.iter_mut().find(|m| m.px == px && m.look == look) {
@@ -118,6 +120,10 @@ const CELL_PAD: usize = 2;
 const PHASES: usize = 4;
 /// The widest letter atlas (screen pixels).
 const ATLAS_WIDTH: usize = 2048;
+/// The most screen pixels to one of TA's letters are made at (larger lettering is drawn from
+/// these, stretched): 12 is a window 5,760 pixels tall, and its atlas a third of the height a
+/// graphics card takes.
+const MOST_LETTER_SCALE: f32 = 12.0;
 
 /// A TA bitmap font: its letters, drawn white (tinted when drawn) at the size shown, made on
 /// another thread the first time a size is asked for (TA's own pixels meanwhile).
@@ -238,7 +244,7 @@ impl TaFont {
     /// The letters `scale` screen pixels to one of TA's, as `look` has them; asked for the
     /// first time, they are made on another thread and TA's own letters stand in.
     fn atlas(&self, scale: f32, look: Look, frame: u64) -> Arc<Atlas> {
-        let key = ((scale * 64.0).round().max(1.0) as u32, look);
+        let key = ((scale.min(MOST_LETTER_SCALE) * 64.0).round().max(1.0) as u32, look);
         let mut atlases = self.atlases.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let slot = match atlases.iter_mut().find(|a| a.key == key) {
             Some(a) => {

@@ -16,8 +16,50 @@ pub fn install_compact(ctx: &egui::Context) -> bool {
     system_font
 }
 
+/// Sets a context's zoom. `set_zoom_factor` waits for the next pass and then lays that pass out
+/// on the size of the pass before, scaled, whatever size the pass is given: right for a context
+/// that has drawn (a zoom changed in a window), wrong for one that has not, whose "size before"
+/// is egui's placeholder of 10,000 points square (its first pass was laid out for that: the
+/// classic interface made its art and letters nineteen times too large for it). A context that
+/// has run no pass yet is given its zoom at once.
+pub fn set_zoom(ctx: &egui::Context, zoom: f32) {
+    if ctx.cumulative_pass_nr() == 0 {
+        ctx.options_mut(|options| options.zoom_factor = zoom);
+    } else if (ctx.zoom_factor() - zoom).abs() > 0.001 {
+        ctx.set_zoom_factor(zoom);
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    /// The size a pass was laid out for.
+    fn laid_out(ctx: &egui::Context, size: egui::Vec2) -> egui::Vec2 {
+        let mut seen = egui::Vec2::ZERO;
+        let raw = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)), ..Default::default() };
+        ctx.run_ui(raw, |ui| seen = ui.ctx().content_rect().size()).drop_without_applying_deltas();
+        seen
+    }
+
+    #[test]
+    fn a_new_context_is_laid_out_for_its_window_at_any_zoom() {
+        let size = egui::vec2(640.0, 360.0);
+        // (egui's own way, for the record: a zoom waiting on a context that has not drawn lays
+        // its first pass out for the placeholder, scaled.)
+        let theirs = egui::Context::default();
+        theirs.set_zoom_factor(1.25);
+        assert!(laid_out(&theirs, size).x > 5000.0, "egui no longer does this: `set_zoom` may be simpler now");
+        for zoom in [0.6, 1.0, 1.25, 2.5] {
+            let ctx = egui::Context::default();
+            super::set_zoom(&ctx, zoom);
+            assert_eq!(laid_out(&ctx, size), size, "the first pass at zoom {zoom}");
+            assert_eq!(ctx.zoom_factor(), zoom);
+            // A zoom changed later keeps the window's size in pixels: its points scale with it.
+            super::set_zoom(&ctx, zoom * 2.0);
+            assert_eq!(laid_out(&ctx, size), size / 2.0, "the pass after a change from zoom {zoom}");
+            assert_eq!(laid_out(&ctx, size), size, "and the next takes the size it is given");
+        }
+    }
+
     #[test]
     fn labels_are_passive_but_text_fields_remain_editable() {
         let ctx = egui::Context::default();
