@@ -13,6 +13,12 @@ name = "Español"
 "Selected {unit}. Health {health} of {maximum}." = "Selección: {unit}. Vida {health} de {maximum}."
 "{count} units selected" = "Unidades seleccionadas: {count}"
 
+# apps/ta_game/src/app/memory_guard.rs
+"Memory is running out: TA Reborn holds {gb} GB. The battle was saved and paused: start TA Reborn again and load the autosave." = "Se está agotando la memoria: TA Reborn ocupa {gb} GB. La batalla se ha guardado y pausado: vuelve a iniciar TA Reborn y carga el guardado automático."
+"Memory is running out: TA Reborn holds {gb} GB. Save what you can, then start TA Reborn again." = "Se está agotando la memoria: TA Reborn ocupa {gb} GB. Guarda lo que puedas y vuelve a iniciar TA Reborn."
+"TA Reborn is using {gb} GB of memory, far more than it should. The battle was saved (the autosave)." = "TA Reborn está usando {gb} GB de memoria, mucho más de lo que debería. La batalla se ha guardado (en el guardado automático)."
+"TA Reborn is using {gb} GB of memory, far more than it should." = "TA Reborn está usando {gb} GB de memoria, mucho más de lo que debería."
+
 # apps/ta_game/src/app.rs
 "Preparing command centre" = "Preparando el centro de mando"
 "Not enough graphics memory for this battlefield. Close other programs that use the graphics card, or choose a lower GRAPHICS LEVEL in Options, then try again." = "No hay suficiente memoria gráfica para este campo de batalla. Cierra otros programas que usen la tarjeta gráfica o elige un NIVEL GRÁFICO más bajo en Opciones, y vuelve a intentarlo."

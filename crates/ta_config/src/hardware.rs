@@ -84,19 +84,82 @@ impl Hardware {
 
 /// The game's memory in use now and at most (its working set, MB): the benchmark's.
 pub fn process_memory_mb() -> Option<(u64, u64)> {
+    process_memory().map(|m| (m.working_set_mb, m.peak_working_set_mb))
+}
+
+/// The game's own memory, MB.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ProcessMemory {
+    /// What the system has committed to this process alone (Windows' private bytes, Linux's
+    /// anonymous resident memory): what grows when memory is kept and never given back.
+    pub private_mb: u64,
+    /// What of it is in physical memory now, and at most so far.
+    pub working_set_mb: u64,
+    pub peak_working_set_mb: u64,
+}
+
+/// [`ProcessMemory`] now (Windows and Linux; none elsewhere).
+pub fn process_memory() -> Option<ProcessMemory> {
     #[cfg(windows)]
     {
-        use windows::Win32::System::ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS};
+        use windows::Win32::System::ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS, PROCESS_MEMORY_COUNTERS_EX};
         use windows::Win32::System::Threading::GetCurrentProcess;
-        let mut counters = PROCESS_MEMORY_COUNTERS { cb: std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32, ..Default::default() };
-        // SAFETY: a query of this process, into a structure of our own of the size given.
-        unsafe { GetProcessMemoryInfo(GetCurrentProcess(), &mut counters, counters.cb) }.ok()?;
-        Some((counters.WorkingSetSize as u64 >> 20, counters.PeakWorkingSetSize as u64 >> 20))
+        let mut counters = PROCESS_MEMORY_COUNTERS_EX { cb: std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32, ..Default::default() };
+        // SAFETY: a query of this process, into a structure of our own of the size given (the
+        // extended counters begin with the plain ones, as the call reads by `cb`).
+        unsafe { GetProcessMemoryInfo(GetCurrentProcess(), (&raw mut counters).cast::<PROCESS_MEMORY_COUNTERS>(), counters.cb) }.ok()?;
+        Some(ProcessMemory {
+            private_mb: counters.PrivateUsage as u64 >> 20,
+            working_set_mb: counters.WorkingSetSize as u64 >> 20,
+            peak_working_set_mb: counters.PeakWorkingSetSize as u64 >> 20,
+        })
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
+    {
+        status_memory(&std::fs::read_to_string("/proc/self/status").ok()?)
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
         None
     }
+}
+
+/// The computer's memory, MB: all of it, and how much is free for programs now (Windows and
+/// Linux; none elsewhere). Cheap enough to ask every few seconds.
+pub fn system_memory_mb() -> Option<(u64, u64)> {
+    #[cfg(windows)]
+    {
+        use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+        let mut memory = MEMORYSTATUSEX { dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32, ..Default::default() };
+        // SAFETY: a query into a structure of our own of the size it says.
+        unsafe { GlobalMemoryStatusEx(&mut memory) }.ok()?;
+        Some((memory.ullTotalPhys >> 20, memory.ullAvailPhys >> 20))
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let text = std::fs::read_to_string("/proc/meminfo").ok()?;
+        Some((meminfo_mb(&text)?, meminfo_available_mb(&text)?))
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
+    {
+        None
+    }
+}
+
+/// The memory free for programs in MB from /proc/meminfo's text (its `MemAvailable: <n> kB`).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn meminfo_available_mb(text: &str) -> Option<u64> {
+    let line = text.lines().find(|l| l.starts_with("MemAvailable:"))?;
+    let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
+    Some(kb / 1024)
+}
+
+/// [`ProcessMemory`] from /proc/self/status's text (`VmRSS`, `VmHWM`, `RssAnon`, in kB).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn status_memory(text: &str) -> Option<ProcessMemory> {
+    let kb = |key: &str| text.lines().find_map(|l| l.strip_prefix(key)?.trim().strip_suffix("kB")?.trim().parse::<u64>().ok());
+    let rss = kb("VmRSS:")?;
+    Some(ProcessMemory { private_mb: kb("RssAnon:").unwrap_or(rss) >> 10, working_set_mb: rss >> 10, peak_working_set_mb: kb("VmHWM:").unwrap_or(rss) >> 10 })
 }
 
 /// What Linux tells of the computer (from /proc): its memory and its processor.
@@ -264,6 +327,29 @@ mod tests {
         let cpuinfo = "processor\t: 0\nvendor_id\t: AuthenticAMD\nmodel name\t: AMD Ryzen 9  5950X 16-Core Processor\nprocessor\t: 1\n";
         assert_eq!(cpuinfo_name(cpuinfo).as_deref(), Some("AMD Ryzen 9 5950X 16-Core Processor"));
         assert_eq!(cpuinfo_name("processor\t: 0\n"), None);
+    }
+
+    /// Linux's /proc tells how much memory is free for programs, and the game's own.
+    #[test]
+    fn linux_tells_the_memory_free_and_the_games_own() {
+        assert_eq!(meminfo_available_mb("MemTotal: 65839120 kB\nMemFree: 812344 kB\nMemAvailable:   20971520 kB\n"), Some(20_480));
+        assert_eq!(meminfo_available_mb("MemTotal: 65839120 kB\n"), None);
+        let status = "Name:\tta-reborn\nVmHWM:\t 3145728 kB\nVmRSS:\t 2097152 kB\nRssAnon:\t 1572864 kB\nRssFile:\t 524288 kB\n";
+        assert_eq!(status_memory(status), Some(ProcessMemory { private_mb: 1536, working_set_mb: 2048, peak_working_set_mb: 3072 }));
+        // (An older kernel without the split: the resident memory for both.)
+        assert_eq!(status_memory("VmRSS:\t 1048576 kB\n"), Some(ProcessMemory { private_mb: 1024, working_set_mb: 1024, peak_working_set_mb: 1024 }));
+        assert_eq!(status_memory("Name:\tta-reborn\n"), None);
+    }
+
+    /// The game's own memory is known on Windows and Linux, and adds up.
+    #[test]
+    fn the_games_own_memory_is_known() {
+        if cfg!(any(windows, target_os = "linux")) {
+            let m = process_memory().expect("this process's memory");
+            assert!(m.working_set_mb > 0 && m.peak_working_set_mb >= m.working_set_mb, "{m:?}");
+            let (total, free) = system_memory_mb().expect("the computer's memory");
+            assert!(total > 0 && free <= total, "{total} {free}");
+        }
     }
 
     fn pc(gpu: &str, kind: GpuKind, vram_mb: u64, screen: (u32, u32)) -> Hardware {

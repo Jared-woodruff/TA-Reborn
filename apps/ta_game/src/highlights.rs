@@ -97,11 +97,13 @@ pub struct Tally {
     pub snapshots: Vec<Snapshot>,
     /// Who destroyed what, for the battle's result (`result.rs`).
     pub chronicle: crate::chronicle::Chronicle,
+    /// Memory is short (`app/memory_guard.rs`): no more copies kept than the two newest.
+    lean: bool,
 }
 
 impl Default for Tally {
     fn default() -> Self {
-        Tally { enabled: true, losses: Vec::new(), snapshots: Vec::new(), chronicle: Default::default() }
+        Tally { enabled: true, losses: Vec::new(), snapshots: Vec::new(), chronicle: Default::default(), lean: false }
     }
 }
 
@@ -149,7 +151,7 @@ impl Tally {
         // (The copy's shared terrain costs nothing; its cells' occupants, its units.)
         let bytes = (sim.world.width * sim.world.height) as usize * 30 + sim.unit_count() * 4096 + (1 << 20);
         let least = MIN_SNAPSHOTS.min(SNAPSHOT_CEILING / bytes).max(2);
-        let cap = (SNAPSHOT_BUDGET / bytes).clamp(least, MAX_SNAPSHOTS);
+        let cap = if self.lean { 2 } else { (SNAPSHOT_BUDGET / bytes).clamp(least, MAX_SNAPSHOTS) };
         while self.snapshots.len() > cap {
             // The newest are still gathering their worth.
             let settled = self.snapshots.len() - 2;
@@ -159,6 +161,19 @@ impl Tally {
             let gone = self.snapshots.remove(worst);
             std::thread::spawn(move || drop(gone));
         }
+    }
+
+    /// Memory is short: the copies of the game let go but the two newest (they are the most the
+    /// battle keeps, and the highlights only lose their earlier moments), and no more kept from
+    /// now on; how many went. Freed on a thread of their own.
+    pub fn shed(&mut self) -> usize {
+        self.lean = true;
+        let n = self.snapshots.len().saturating_sub(2);
+        let gone: Vec<Snapshot> = self.snapshots.drain(..n).collect();
+        if !gone.is_empty() {
+            std::thread::spawn(move || drop(gone));
+        }
+        n
     }
 
     /// Losses per minute and the copies kept (for the log).

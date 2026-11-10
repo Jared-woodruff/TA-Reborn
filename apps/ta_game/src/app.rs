@@ -18,6 +18,8 @@ mod progress;
 mod lifecycle;
 mod credits_play;
 mod clip_play;
+mod spy;
+mod memory_guard;
 
 use crate::Args;
 use crate::audio::GameAudio;
@@ -345,6 +347,10 @@ struct State {
     /// (`TA_CLIP`) waiting for its replay's scan.
     clip_previews: Option<clip_play::ClipPreviews>,
     clip_capture: Option<crate::clips::ClipSpec>,
+    /// `--demo spy`'s radar planes over the enemy's base, a soak test of memory (`app/spy.rs`).
+    spy: Option<spy::Spy>,
+    /// The watch on the game's own memory (`app/memory_guard.rs`).
+    memory: memory_guard::Guard,
     /// The companion screen (`companion.rs`), and whether the player was told it can be had.
     companion: Option<crate::companion::Companion>,
     companion_hinted: bool,
@@ -601,6 +607,8 @@ enum DemoAction {
     Ignite,
     /// Two huge armies (`TA_SWARM` units per side, default 1500) clash mid-map.
     Swarm,
+    /// `--demo spy`: radar planes over the enemy's base, a soak test of memory (`app/spy.rs`).
+    Spy,
     /// Thousands of Peewees (`TA_SIEGE`, default 3000) storm a Core defence line in depth
     /// across the middle of the map (a flat one shows it best: Gasplant Plain).
     Siege,
@@ -1610,7 +1618,8 @@ impl State {
                 }
                 // Captures: `TA_RESULT_MINUTES=n` (with `--open victory|defeat`): the player's side
                 // played by a computer player too, its first n minutes before the result.
-                if std::env::var_os("TA_RESULT_MINUTES").is_some()
+                // (`--demo spy` too: both sides played, see `app/spy.rs`.)
+                if (std::env::var_os("TA_RESULT_MINUTES").is_some() || args.demo.as_deref() == Some("spy"))
                     && let Some(me) = duel.players.first_mut()
                 {
                     me.controller = crate::setup::Controller::Ai(ta_ai::Difficulty::Hard);
@@ -1953,6 +1962,9 @@ impl State {
                 (15, DemoAction::ShiftHold),
             ],
             Some("swarm") => vec![(2, DemoAction::Swarm)],
+            // A skirmish both sides of which the computer plays, fast-forwarded, then radar planes
+            // of ours over the enemy's base, the memory logged (`app/spy.rs`).
+            Some("spy") => vec![(2, DemoAction::Spy)],
             Some("war") => {
                 let mut v = vec![(2, DemoAction::War)];
                 if let Some(f) = std::env::var("TA_WAR_NUKE").ok().and_then(|v| v.parse::<u32>().ok()) {
@@ -2284,6 +2296,8 @@ impl State {
             film_capture: None,
             clip_previews: None,
             clip_capture: None,
+            spy: None,
+            memory: Default::default(),
             companion: None,
             companion_hinted: false,
             companion_capture: false,
@@ -3788,6 +3802,7 @@ impl State {
                 DemoAction::Gallery => self.gallery(),
                 DemoAction::Stage => self.stage_begin(),
                 DemoAction::Perspective => self.perspective_demo(),
+                DemoAction::Spy => self.spy_begin(),
                 DemoAction::Swarm => {
                     let per_side: usize = std::env::var("TA_SWARM").ok().and_then(|v| v.parse().ok()).unwrap_or(1500);
                     let arm = ["ARMSTUMP", "ARMFLASH", "ARMPW", "ARMHAM", "ARMROCK", "ARMJETH", "ARMSAM", "ARMBULL"];
@@ -5500,6 +5515,9 @@ impl State {
             self.progress_writes.progress(progress::Update::Tutorial(t.lesson));
         }
         self.flush_progress(false);
+        // The memory: logged each minute of a battle, and the battle kept safe when it climbs
+        // too far (`app/memory_guard.rs`).
+        self.memory_watch(now);
         // Autosave: single-player games, every five minutes of game time, one rolling file.
         let g = &self.game;
         if self.screen == Screen::Playing && self.settings.gameplay.autosave && g.net.is_none() && g.playback.is_none() && !g.spectator && g.outcome.is_none() && !g.tutorial && self.script.is_empty() {
@@ -6402,6 +6420,8 @@ impl State {
         }
         self.fog_key = Some(fog_viewer);
 
+        // `--demo spy`: its planes kept over the enemy's base, the camera on them, the memory logged.
+        self.spy_frame();
         // Captures: `TA_FOLLOW=<unit name>` keeps the camera on the first unit of that kind; a
         // weapon's name (`NUCLEAR_MISSILE`, `CRBLMSSL`) on the first of its shots in the air.
         if let Some(name) = follow_unit() {

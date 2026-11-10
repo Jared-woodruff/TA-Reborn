@@ -13,6 +13,12 @@ name = "Türkçe"
 "Selected {unit}. Health {health} of {maximum}." = "Seçili: {unit}. Sağlık: {health} / {maximum}."
 "{count} units selected" = "Seçili birim: {count}"
 
+# apps/ta_game/src/app/memory_guard.rs
+"Memory is running out: TA Reborn holds {gb} GB. The battle was saved and paused: start TA Reborn again and load the autosave." = "Bellek tükeniyor: TA Reborn {gb} GB kullanıyor. Savaş kaydedildi ve duraklatıldı: TA Reborn'u yeniden başlat ve otomatik kaydı yükle."
+"Memory is running out: TA Reborn holds {gb} GB. Save what you can, then start TA Reborn again." = "Bellek tükeniyor: TA Reborn {gb} GB kullanıyor. Kaydedebildiğini kaydet, ardından TA Reborn'u yeniden başlat."
+"TA Reborn is using {gb} GB of memory, far more than it should. The battle was saved (the autosave)." = "TA Reborn {gb} GB bellek kullanıyor, olması gerekenden çok daha fazla. Savaş kaydedildi (otomatik kayıt)."
+"TA Reborn is using {gb} GB of memory, far more than it should." = "TA Reborn {gb} GB bellek kullanıyor, olması gerekenden çok daha fazla."
+
 # apps/ta_game/src/app.rs
 "Preparing command centre" = "Komuta merkezi hazırlanıyor"
 "Not enough graphics memory for this battlefield. Close other programs that use the graphics card, or choose a lower GRAPHICS LEVEL in Options, then try again." = "Bu savaş alanı için yeterli grafik belleği yok. Ekran kartını kullanan diğer programları kapat ya da Ayarlar'dan daha düşük bir GRAFİK SEVİYESİ seç, ardından yeniden dene."

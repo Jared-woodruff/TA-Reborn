@@ -13,6 +13,12 @@ name = "Українська"
 "Selected {unit}. Health {health} of {maximum}." = "Вибрано юніт {unit}. Здоров'я: {health} з {maximum}."
 "{count} units selected" = "Вибрано юнітів: {count}"
 
+# apps/ta_game/src/app/memory_guard.rs
+"Memory is running out: TA Reborn holds {gb} GB. The battle was saved and paused: start TA Reborn again and load the autosave." = "Пам'ять закінчується: TA Reborn займає {gb} ГБ. Битву збережено й поставлено на паузу: перезапустіть TA Reborn і завантажте автозбереження."
+"Memory is running out: TA Reborn holds {gb} GB. Save what you can, then start TA Reborn again." = "Пам'ять закінчується: TA Reborn займає {gb} ГБ. Збережіть, що можете, а потім перезапустіть TA Reborn."
+"TA Reborn is using {gb} GB of memory, far more than it should. The battle was saved (the autosave)." = "TA Reborn використовує {gb} ГБ пам'яті — значно більше, ніж мала б. Битву збережено (як автозбереження)."
+"TA Reborn is using {gb} GB of memory, far more than it should." = "TA Reborn використовує {gb} ГБ пам'яті — значно більше, ніж мала б."
+
 # apps/ta_game/src/app.rs
 "Preparing command centre" = "Підготовка командного центру"
 "Not enough graphics memory for this battlefield. Close other programs that use the graphics card, or choose a lower GRAPHICS LEVEL in Options, then try again." = "Недостатньо відеопам'яті для цього поля бою. Закрийте інші програми, що використовують відеокарту, або виберіть нижчу ЯКІСТЬ ГРАФІКИ в параметрах, а потім спробуйте ще раз."
