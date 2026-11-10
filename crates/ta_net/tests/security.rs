@@ -149,7 +149,7 @@ fn a_name_without_the_secret_cannot_reclaim_an_army() {
     let mut impostor = Client::connect(addr, "gUeSt", 7).unwrap();
     until(|| { host.poll(); impostor.poll(); impostor.rejected.is_some() });
     assert!(impostor.peer.is_none());
-    let mut returning = Client::connect_with_token(addr, "guest", 7, token, "").unwrap();
+    let mut returning = Client::connect_with_token(addr, "guest", 7, token, None).unwrap();
     let mut resumed = false;
     until(|| {
         host.poll();

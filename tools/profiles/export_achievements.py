@@ -5,8 +5,8 @@ import re
 
 ROOT = Path(__file__).resolve().parents[2]
 source = (ROOT / "crates/ta_config/src/achievements.rs").read_text(encoding="utf-8")
-pattern = r'^\s*(a|secret)\(("[^"\n]+"), ("[^"\n]+"), ("[^"\n]+"), C::(\w+), T::(\w+), "[^"\n]+", '
-entries = [(kind == "secret", json.loads(i), json.loads(n), json.loads(d), c, t)
+pattern = r'^\s*(a|hidden)\(("[^"\n]+"), ("[^"\n]+"), ("[^"\n]+"), C::(\w+), T::(\w+), "[^"\n]+", '
+entries = [(kind == "hidden", json.loads(i), json.loads(n), json.loads(d), c, t)
            for kind, i, n, d, c, t in re.findall(pattern, source, re.MULTILINE)]
 assert len(entries) >= 100, "catalogue syntax changed: update this exporter"
 CATEGORIES = [("Campaign", "Campaign"), ("Skirmish", "Skirmish"), ("Multiplayer", "Multiplayer"),

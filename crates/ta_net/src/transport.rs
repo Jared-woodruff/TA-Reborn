@@ -290,15 +290,15 @@ pub struct Client {
 impl Client {
     /// Connects and introduces ourselves; the host answers with `Welcome` or `Reject`.
     pub fn connect(addr: SocketAddr, name: &str, data_hash: u64) -> io::Result<Client> {
-        Self::connect_with_token(addr, name, data_hash, None, "")
+        Self::connect_with_token(addr, name, data_hash, None, None)
     }
 
-    /// Connects with a credential to come back to a battle, and the lobby's password (empty:
-    /// none).
-    pub fn connect_with_token(addr: SocketAddr, name: &str, data_hash: u64, reconnect: Option<ReconnectToken>, password: &str) -> io::Result<Client> {
+    /// Connects with a credential to come back to a battle, and the lobby's password when it
+    /// has one (none for an open lobby, as [`Host::set_password`] takes it).
+    pub fn connect_with_token(addr: SocketAddr, name: &str, data_hash: u64, reconnect: Option<ReconnectToken>, password: Option<&str>) -> io::Result<Client> {
         let stream = TcpStream::connect_timeout(&addr, Duration::from_secs(4))?;
         let mut conn = Connection::new(stream)?;
-        conn.send_frame(&encode(&Msg::Hello { name: name.to_string(), protocol: PROTOCOL, data_hash, reconnect, password: password.to_string() }));
+        conn.send_frame(&encode(&Msg::Hello { name: name.to_string(), protocol: PROTOCOL, data_hash, reconnect, password: password.unwrap_or_default().to_string() }));
         Ok(Client { conn, peer: None, rejected: None, history: Vec::new(), pending: VecDeque::new(), reconnect: None, history_bytes: 0, in_game: false, pings: Vec::new(), removed: false, heard: None })
     }
 

@@ -89,8 +89,8 @@ fn a_locked_lobby_takes_only_its_password() {
     host.set_password(Some("  shield  "));
     assert!(host.locked());
     let addr = ta_net::resolve(&format!("127.0.0.1:{}", host.port)).unwrap();
-    let mut wrong = Client::connect_with_token(addr, "Nova", 7, None, "sword").expect("connect");
-    let mut right = Client::connect_with_token(addr, "Hex", 7, None, "shield").expect("connect");
+    let mut wrong = Client::connect_with_token(addr, "Nova", 7, None, Some("sword")).expect("connect");
+    let mut right = Client::connect_with_token(addr, "Hex", 7, None, Some("shield")).expect("connect");
     let t0 = Instant::now();
     while (wrong.rejected.is_none() || right.peer.is_none()) && t0.elapsed() < Duration::from_secs(5) {
         host.poll();
@@ -169,10 +169,10 @@ fn a_joiner_waits_for_the_hosts_answer() {
             }
         })
     };
-    let mut wrong = Client::connect_with_token(addr, "Nova", 7, None, "sword").expect("connect");
+    let mut wrong = Client::connect_with_token(addr, "Nova", 7, None, Some("sword")).expect("connect");
     wrong.wait_for_answer(Duration::from_secs(5)).expect("an answer");
     assert_eq!(wrong.rejected, Some(ta_net::Refusal::Password));
-    let mut right = Client::connect_with_token(addr, "Hex", 7, None, "shield").expect("connect");
+    let mut right = Client::connect_with_token(addr, "Hex", 7, None, Some("shield")).expect("connect");
     right.wait_for_answer(Duration::from_secs(5)).expect("an answer");
     assert_eq!(right.rejected, None);
     assert!(right.peer.is_none(), "the welcome is left for poll");

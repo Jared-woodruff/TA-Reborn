@@ -40,7 +40,7 @@ fn start(peer: u8) -> StartInfo {
 /// The guest comes back on a new connection with its credential and tells its maps (as its
 /// lobby does on the welcome); what the host answers, the host's session polled meanwhile.
 fn come_back(session: &mut Session, address: std::net::SocketAddr, token: Option<ta_net::ReconnectToken>, maps: Vec<(String, u64)>) -> Client {
-    let mut back = Client::connect_with_token(address, "Guest", 7, token, "").unwrap();
+    let mut back = Client::connect_with_token(address, "Guest", 7, token, None).unwrap();
     until(|| {
         session.poll();
         back.poll();
@@ -124,7 +124,7 @@ fn no_word_of_the_maps_is_no_map_and_a_battle_without_the_check_lets_them_in() {
             !session.departed.is_empty()
         });
         // (Says nothing of its maps.)
-        let mut back = Client::connect_with_token(address, "Guest", 7, token, "").unwrap();
+        let mut back = Client::connect_with_token(address, "Guest", 7, token, None).unwrap();
         let mut resumed = false;
         until(|| {
             session.poll();

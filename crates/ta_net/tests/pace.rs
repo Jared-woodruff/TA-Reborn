@@ -176,7 +176,7 @@ fn a_player_who_left_can_come_back() {
         std::thread::sleep(Duration::from_millis(2));
     }
     assert!(stranger.rejected.is_some(), "only players of the game get back in");
-    let mut back = Client::connect_with_token(addr, "guest", 1, reconnect, "").unwrap();
+    let mut back = Client::connect_with_token(addr, "guest", 1, reconnect, None).unwrap();
     let mut resume = None;
     let t = Instant::now();
     while resume.is_none() && t.elapsed() < Duration::from_secs(5) {
@@ -285,7 +285,7 @@ fn after_a_rematch_a_player_can_still_come_back_to_the_next_battle() {
     // first welcome.
     drop(client);
     assert!(pump_host(&mut host, |h| !h.departed.is_empty()), "the host notices the guest left");
-    let mut back = Client::connect_with_token(addr, "Guest", 1, token, "").expect("connect");
+    let mut back = Client::connect_with_token(addr, "Guest", 1, token, None).expect("connect");
     let t = Instant::now();
     while back.peer.is_none() && back.rejected.is_none() && t.elapsed() < Duration::from_secs(5) {
         host.poll();
@@ -362,7 +362,7 @@ fn a_player_back_before_their_old_connection_is_noticed_takes_its_place() {
     let mut host = Session::host(host, &start);
     // The old connection says nothing more (as a dead link); the guest comes back on a new one
     // with its credential: let in at once, the old one gone.
-    let mut back = Client::connect_with_token(addr, "Guest", 1, token, "").expect("connect");
+    let mut back = Client::connect_with_token(addr, "Guest", 1, token, None).expect("connect");
     let t = Instant::now();
     while back.peer.is_none() && back.rejected.is_none() && t.elapsed() < Duration::from_secs(5) {
         host.poll();

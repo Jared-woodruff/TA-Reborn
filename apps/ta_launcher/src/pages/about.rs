@@ -355,15 +355,15 @@ impl LauncherApp {
     fn licences(&mut self, ui: &mut Ui) {
         section_heading(ui, "LEGAL", |_| {});
         let (licence, notices) = legal_files(&launch::app_dir().unwrap_or_default());
-        let certificates = [
+        let statements = [
             (Mark::Licence, n("FREE SOFTWARE"), n("TA Reborn is free software under the GNU General Public License, version 3 or any later version: you may share and change it on its terms. It comes with no warranty. The open-source libraries it is built with keep their own licences, listed in THIRD-PARTY-NOTICES.txt.")),
             (Mark::Seal, n("TOTAL ANNIHILATION"), n("Total Annihilation is © its respective owners. TA Reborn is an unofficial, non-commercial fan project; it is not affiliated with or endorsed by the owners of Total Annihilation.")),
             (Mark::Disc, n("NO ORIGINAL ASSETS"), n("This project contains no original game assets — no units, maps, artwork, sound, music or video. It requires a legitimately owned copy of the game, such as \"Total Annihilation: Commander Pack\" from GOG.com or Steam.")),
         ];
         let across = if ui.available_width() >= 720.0 { 3 } else { 1 };
         let mut open = None;
-        even_rows(ui, "about_certificates", certificates.len(), across, |i, ui, least| {
-            let (mark, title, text) = certificates[i];
+        even_rows(ui, "about_certificates", statements.len(), across, |i, ui, least| {
+            let (mark, title, text) = statements[i];
             certificate(ui, mark, title, text, least, |ui| {
                 if i == 0 && (licence.is_file() || notices.is_file()) {
                     ui.add_space(space::S);

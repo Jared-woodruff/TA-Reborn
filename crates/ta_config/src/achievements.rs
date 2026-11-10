@@ -169,7 +169,7 @@ const fn a(id: &'static str, name: &'static str, description: &'static str, cate
     Achievement { id, name, description, category, tier, badge, target, hidden: false, metric }
 }
 #[allow(clippy::too_many_arguments)]
-const fn secret(id: &'static str, name: &'static str, description: &'static str, category: Category, tier: Tier, badge: &'static str, target: u64, metric: Metric) -> Achievement {
+const fn hidden(id: &'static str, name: &'static str, description: &'static str, category: Category, tier: Tier, badge: &'static str, target: u64, metric: Metric) -> Achievement {
     Achievement { id, name, description, category, tier, badge, target, hidden: true, metric }
 }
 
@@ -246,7 +246,7 @@ pub const ALL: &[Achievement] = &[
     a("commander_kills_1", "Decapitation Strike", "Destroy an enemy Commander.", C::Battle, T::Bronze, "target", 1, Tally("kills.commander")),
     a("commander_kills_25", "Commander Hunter", "Destroy 25 enemy Commanders.", C::Battle, T::Silver, "target", 25, Tally("kills.commander")),
     a("commander_kills_100", "Kingslayer", "Destroy 100 enemy Commanders.", C::Battle, T::Gold, "target", 100, Tally("kills.commander")),
-    secret("commander_duel", "Duel of Commanders", "Destroy an enemy Commander with your own Commander.", C::Battle, T::Gold, "duel", 1, Tally("commander.commanders")),
+    hidden("commander_duel", "Duel of Commanders", "Destroy an enemy Commander with your own Commander.", C::Battle, T::Gold, "duel", 1, Tally("commander.commanders")),
     a("army_of_one", "Army of One", "Destroy 50 enemy units with your Commander in one battle.", C::Battle, T::Gold, "helmet", 50, Feat("battle_commander_kills")),
     a("air_kills_100", "Flak Curtain", "Shoot down 100 enemy aircraft.", C::Battle, T::Silver, "plane", 100, Tally("kills.air")),
     a("air_kills_1000", "Clear Skies", "Shoot down 1,000 enemy aircraft.", C::Battle, T::Gold, "plane", 1000, Tally("kills.air")),
@@ -285,7 +285,7 @@ pub const ALL: &[Achievement] = &[
     a("air_built_100", "Air Wing", "Build 100 aircraft.", C::Industry, T::Silver, "plane", 100, Tally("built.air")),
     a("naval_built_100", "Admiralty", "Build 100 ships.", C::Industry, T::Silver, "anchor", 100, Tally("built.naval")),
     a("transported_100", "Ferryman", "Carry 100 units in transports.", C::Industry, T::Bronze, "hook", 100, Tally("transported")),
-    secret("transport_commander", "Special Delivery", "Carry your Commander in a transport.", C::Industry, T::Silver, "hook", 1, Tally("transported.commander")),
+    hidden("transport_commander", "Special Delivery", "Carry your Commander in a transport.", C::Industry, T::Silver, "hook", 1, Tally("transported.commander")),
     a("reclaimed_100", "Scavenger", "Reclaim 100 wrecks or trees.", C::Industry, T::Bronze, "recycle", 100, Tally("reclaimed")),
     a("reclaimed_1000", "Recycler", "Reclaim 1,000 wrecks or trees.", C::Industry, T::Silver, "recycle", 1000, Tally("reclaimed")),
     a("career_metal_100000", "Metalworks", "Produce 100,000 metal.", C::Industry, T::Bronze, "ingot", 100_000, Total(Metal)),

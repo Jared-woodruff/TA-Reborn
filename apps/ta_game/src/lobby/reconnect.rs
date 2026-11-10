@@ -36,7 +36,8 @@ fn load(path: &Path) -> Vec<Entry> {
 pub(super) fn connect(endpoint: SocketAddr, name: &str, data_hash: u64, password: &str) -> io::Result<(Client, Key)> {
     let key = Key::new(endpoint, data_hash, name);
     let token = load(&ta_config::player_data_dir().join("reconnect.json")).iter().find(|e| e.key == key).map(|e| e.token);
-    Client::connect_with_token(endpoint, name, data_hash, token, password).map(|client| (client, key))
+    // (An empty password field: an open lobby.)
+    Client::connect_with_token(endpoint, name, data_hash, token, Some(password).filter(|p| !p.is_empty())).map(|client| (client, key))
 }
 
 pub(super) fn remember(key: Key, token: ReconnectToken) -> io::Result<()> {

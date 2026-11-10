@@ -119,7 +119,7 @@ fn a_long_history_comes_back_whole() {
         _ => unreachable!(),
     }))
     .unwrap();
-    let mut back = Client::connect_with_token(addr, "Guest", 1, reconnect, "").unwrap();
+    let mut back = Client::connect_with_token(addr, "Guest", 1, reconnect, None).unwrap();
     let mut resume = None;
     let t = Instant::now();
     while resume.is_none() && t.elapsed() < Duration::from_secs(10) {
