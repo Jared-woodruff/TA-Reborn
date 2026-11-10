@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/media/hero.webp" alt="Total Annihilation Reborn: the emblem and title over the war itself: armour and Krogoths at sunset, a fleet under fire, a night raid across a lava river, a Krogoth walking out of the dusk" width="100%">
+  <img src="docs/media/hero.webp" alt="Total Annihilation Reborn: the emblem and title over the war itself: an assault on a base at golden hour, a fleet action under the moon, an armoured charge across the desert, New Year's Eve in Midnight Square" width="100%">
 </p>
 
 <h1 align="center">The war you remember. The way you imagined it.</h1>
@@ -28,7 +28,7 @@
 
 <a id="trailer"></a>
 
-https://github.com/user-attachments/assets/2a427597-c3cf-4de3-8f54-85b20aa2edb0
+https://github.com/user-attachments/assets/88f941a6-f726-49f5-9911-0981112d9d3e
 
 <p align="center"><sub>The 1.0 launch trailer, filmed in the game. Its music, “The War Reborn” by Hadal Static, is an original track made for TA Reborn.</sub></p>
 
@@ -83,8 +83,8 @@ every sound. Everything round them is new.
 <table>
   <tr>
     <td width="33%"><a href="#the-battlefield"><img src="docs/media/tile-battlefield.webp" alt="The battlefield: two battle lines meet in the rain" width="100%"></a></td>
-    <td width="33%"><a href="#the-battlefield"><img src="docs/media/tile-swarm.webp" alt="20,000 units: a front of fire across a whole map" width="100%"></a></td>
-    <td width="33%"><a href="#the-battlefield"><img src="docs/media/tile-nukes.webp" alt="Nuclear strikes: a fireball over the firing lines" width="100%"></a></td>
+    <td width="33%"><a href="#the-battlefield"><img src="docs/media/tile-swarm.webp" alt="20,000 units: the camera pulling back from the front to the whole map" width="100%"></a></td>
+    <td width="33%"><a href="#the-battlefield"><img src="docs/media/tile-nukes.webp" alt="Nuclear strikes: a fireball over an island base by night" width="100%"></a></td>
   </tr>
   <tr>
     <td><a href="#construction"><img src="docs/media/tile-construction.webp" alt="Construction: a metal extractor rises under the nano-lathe" width="100%"></a></td>
@@ -126,13 +126,13 @@ height, the battle keeps the art exactly as it was painted.
   </tr>
   <tr>
     <td align="center"><img src="docs/media/krogoth.webp" alt="A Krogoth walks out of the dusk on Cinder Basin, missiles falling round it" width="100%"><br><sub><b>Experimentals</b>: a Krogoth walks out of the dusk</sub></td>
-    <td align="center"><img src="docs/media/nukes.webp" alt="Nuclear strikes light up Cinder Basin by night" width="100%"><br><sub><b>Nuclear strikes</b>: the flash, the shockwave, the fireball</sub></td>
+    <td align="center"><img src="docs/media/nukes.webp" alt="A nuclear strike on an island base by night: the flash, the shockwave running out, the fireball climbing over the moonlit sea" width="100%"><br><sub><b>Nuclear strikes</b>: the flash, the shockwave, the fireball</sub></td>
   </tr>
 </table>
 
 <p align="center">
-  <img src="docs/media/swarm.webp" alt="Twenty thousand units fill Reactor Grid edge to edge and collide along one front, the camera pulling back to see them all" width="100%">
-  <br><sub><b>Twenty thousand units, one battle.</b> The camera pulls back until their front is a seam of fire across the map</sub>
+  <img src="docs/media/swarm.webp" alt="Twenty thousand units on Reactor Grid at dusk: the camera starts behind two of them at the front and pulls back until the whole map and its seam of fire are in view" width="100%">
+  <br><sub><b>Twenty thousand units, one battle.</b> The camera pulls back from two of them until their front is a seam of fire across the map</sub>
 </p>
 
 <p align="center">
