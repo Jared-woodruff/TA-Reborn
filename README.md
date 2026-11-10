@@ -28,7 +28,7 @@
 
 <a id="trailer"></a>
 
-https://github.com/user-attachments/assets/88f941a6-f726-49f5-9911-0981112d9d3e
+https://github.com/user-attachments/assets/231fbe92-a6bd-4ff5-bea5-b6174d606288
 
 <p align="center"><sub>The 1.0 launch trailer, filmed in the game. Its music, “The War Reborn” by Hadal Static, is an original track made for TA Reborn.</sub></p>
 
