@@ -29,7 +29,7 @@ fn a_credential_replaces_a_stale_connection_without_the_lobby_password() {
     let (mut host, client, start) = joined();
     host.set_password(Some("shield"));
     let address = ([127, 0, 0, 1], host.port).into();
-    let mut back = Client::connect_with_token(address, "Guest", 7, client.reconnect_token(), "").unwrap();
+    let mut back = Client::connect_with_token(address, "Guest", 7, client.reconnect_token(), None).unwrap();
     let mut host = Session::host(host, &start);
     let mut resumed = false;
     until(|| {
@@ -193,7 +193,7 @@ fn a_disconnected_players_id_is_not_reused_by_strangers_during_a_battle() {
         let mut stranger = Client::connect(address, "Stranger", 7).unwrap();
         until(|| { host.poll(); stranger.poll(); stranger.rejected.is_some() });
     }
-    let mut back = Client::connect_with_token(address, "Other", 7, token, "").unwrap();
+    let mut back = Client::connect_with_token(address, "Other", 7, token, None).unwrap();
     let mut info = None;
     until(|| {
         host.poll();

@@ -86,7 +86,7 @@ fn native_multiplayer_drains_paused_ticks_and_resumed_history() {
     leaving.leave();
     drop(leaving);
     wait(&mut || { let net = host_game.net.as_mut().unwrap(); net.poll(); !net.away.is_empty() });
-    let mut back = Client::connect_with_token(address, "Guest", assets.data_hash, token, "").unwrap();
+    let mut back = Client::connect_with_token(address, "Guest", assets.data_hash, token, None).unwrap();
     let mut resumed = None;
     wait(&mut || {
         host_game.net.as_mut().unwrap().poll();

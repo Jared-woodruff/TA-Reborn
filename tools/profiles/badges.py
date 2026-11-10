@@ -66,7 +66,7 @@ GLYPH = 0.88  # the glyph's 64 units, in cell units / 64
 # The catalogue
 # ---------------------------------------------------------------------------------------------
 
-LINE = re.compile(r'^\s*(a|secret)\("([^"]+)", "([^"]+)", "[^"]*", C::(\w+), T::(\w+), "([^"]+)", ')
+LINE = re.compile(r'^\s*(a|hidden)\("([^"]+)", "([^"]+)", "[^"]*", C::(\w+), T::(\w+), "([^"]+)", ')
 
 
 def catalogue():
@@ -77,7 +77,7 @@ def catalogue():
             m = LINE.match(line)
             if m:
                 kind, ident, name, category, tier, badge = m.groups()
-                out.append({"id": ident, "name": name, "category": category, "tier": tier, "badge": badge, "hidden": kind == "secret"})
+                out.append({"id": ident, "name": name, "category": category, "tier": tier, "badge": badge, "hidden": kind == "hidden"})
     if len(out) < 100:
         raise SystemExit(f"read {len(out)} achievements from {path}: has the catalogue's form changed?")
     return out
