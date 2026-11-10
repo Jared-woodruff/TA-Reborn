@@ -97,11 +97,32 @@ impl Egui {
 /// zero, the panels up when a battle was left (the lesson's instructions, the deck, the
 /// minimap, back since the cockpit view was left minutes in) stayed see-through in the next
 /// battle until it had run as long.
+///
+/// What the window is stays too: its size, its scale, the card's largest texture. A state made
+/// new has egui's placeholder for a size, 10,000 points square, and a zoom change waiting for
+/// the next pass lays that pass out on the state's size, scaled, not on the window's. A battle
+/// in a window under 1,024 x 600 points (its interface zoomed to fit, the menu's not) was laid
+/// out for the placeholder for its first frame: the classic interface made its panels and its
+/// letters nineteen times too large for it, seconds of work, and at 800 x 600 on a display at
+/// 150% a letter atlas 17,357 pixels tall, more than a graphics card takes.
 fn carry_clock(ctx: &egui::Context) -> f64 {
+    let options = ctx.options(|o| o.input_options);
     ctx.input_mut(|input| {
         let time = input.time;
-        *input = egui::InputState::default();
-        input.time = time;
+        let window = egui::RawInput {
+            viewport_id: input.raw.viewport_id,
+            viewports: input.raw.viewports.clone(),
+            screen_rect: Some(input.viewport_rect()),
+            safe_area_insets: Some(input.safe_area_insets()),
+            max_texture_side: Some(input.max_texture_side),
+            time: Some(time),
+            focused: input.focused,
+            ..Default::default()
+        };
+        let pixels_per_point = input.pixels_per_point;
+        let mut fresh = egui::InputState::default();
+        fresh.time = time;
+        *input = fresh.begin_pass(window, false, pixels_per_point, options);
         time
     })
 }
@@ -5589,10 +5610,7 @@ impl State {
         self.hud.classic = self.settings.gameplay.classic_interface || self.hud.force_classic;
         self.hud.set_classic_look(classic_look(&self.settings.gameplay));
         self.game.keys.sync(&self.settings.keys);
-        let scale = self.ui_zoom();
-        if (self.egui.ctx.zoom_factor() - scale).abs() > 0.001 {
-            self.egui.ctx.set_zoom_factor(scale);
-        }
+        crate::theme::set_zoom(&self.egui.ctx, self.ui_zoom());
         self.renderer.set_render_scale(self.settings.graphics.render_scale);
         self.renderer.set_art_style(art_style_reborn(&self.settings.graphics));
         crate::palette::set_colour_blind(self.settings.gameplay.colour_blind);
@@ -8811,10 +8829,7 @@ impl State {
         }
         self.audio.update(&self.camera, None, dt);
 
-        let scale = self.ui_zoom();
-        if (self.egui.ctx.zoom_factor() - scale).abs() > 0.001 {
-            self.egui.ctx.set_zoom_factor(scale);
-        }
+        crate::theme::set_zoom(&self.egui.ctx, self.ui_zoom());
         let mut raw = self.egui.take_input(&self.window);
         self.capture_time(&mut raw);
         self.feed_pad_to_egui(&mut raw);
@@ -9110,6 +9125,44 @@ mod tests {
                 assert_eq!(opacity, 0.0, "(without the clock carried on: see-through until 121 s in, as reported)");
             }
         }
+    }
+
+    /// A battle's first frame in a small window: laid out for the window, not for the 10,000
+    /// points square a state made new has for a size (which the zoom change waiting at that
+    /// frame took for the window's: the menu's zoom is not the battle's under 1,024 x 600 points).
+    #[test]
+    fn the_first_pass_after_a_loading_screen_is_laid_out_for_the_window() {
+        // 800 x 600 pixels on a display at 150%, as the window's input gives each pass.
+        let (pixels, display) = (egui::vec2(800.0, 600.0), 1.5);
+        let pass = |ctx: &egui::Context, time: f64| {
+            let mut raw = egui::RawInput {
+                time: Some(time),
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, pixels / (display * ctx.zoom_factor()))),
+                max_texture_side: Some(16384),
+                ..Default::default()
+            };
+            raw.viewports.entry(egui::ViewportId::ROOT).or_default().native_pixels_per_point = Some(display);
+            let mut seen = (egui::Vec2::ZERO, 0);
+            ctx.run_ui(raw, |ui| seen = (ui.ctx().content_rect().size() * ui.ctx().pixels_per_point(), ui.ctx().input(|i| i.max_texture_side))).drop_without_applying_deltas();
+            seen
+        };
+        let ctx = egui::Context::default();
+        // The menu, at its own zoom.
+        crate::theme::set_zoom(&ctx, 0.75);
+        for frame in 0..3 {
+            assert!((pass(&ctx, frame as f64 / 60.0).0 - pixels).length() < 1.0);
+        }
+        // The loading screen (a context of its own), then the battle at the zoom that fits it.
+        let clock = carry_clock(&ctx);
+        assert_eq!(ctx.input(|i| (i.content_rect().size(), i.max_texture_side)), (pixels / (display * 0.75), 16384), "the window's size and the card's limit are kept");
+        assert!(ctx.input(|i| i.pointer.latest_pos().is_none() && i.keys_down.is_empty() && i.events.is_empty()), "and nothing held or queued");
+        crate::theme::set_zoom(&ctx, 0.6);
+        for frame in 0..3 {
+            let (laid_out, limit) = pass(&ctx, clock + (frame + 1) as f64 / 60.0);
+            assert!((laid_out - pixels).length() < 1.0, "battle frame {frame} is laid out for {laid_out:?} pixels, the window has {pixels:?}");
+            assert_eq!(limit, 16384);
+        }
+        assert_eq!(ctx.zoom_factor(), 0.6);
     }
 
     #[test]

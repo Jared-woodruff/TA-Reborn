@@ -1179,8 +1179,15 @@ fn segments<T: PartialEq + Copy>(ui: &mut Ui, value: &mut T, options: &[(T, &str
     let chip = chosen.map(|i| {
         let target = segments[i].shrink(2.5);
         let glide = crate::motion::Pace::of(ui.ctx()).glide;
-        let left = crate::motion::glide(ui.ctx(), response.id.with("chip_left"), target.min.x, glide);
-        let right = crate::motion::glide(ui.ctx(), response.id.with("chip_right"), target.max.x, glide);
+        // (Its place along the row glides, as a share of the row's width, not its place on the
+        // screen: a row that moves takes its chip along. A panel is laid out elsewhere, and as
+        // wide as it likes, for its first frame; the chip came gliding in from there, out of the
+        // screen's edge, each time a panel with a row opened: photo mode's, for one.)
+        // (Its segment's share, the chip's margin taken off after: equal segments keep their
+        // shares at any width.)
+        let along = |x: f32| (x - rect.min.x) / rect.width().max(1.0);
+        let left = rect.min.x + rect.width() * crate::motion::glide(ui.ctx(), response.id.with("chip_left"), along(segments[i].min.x), glide) + 2.5;
+        let right = rect.min.x + rect.width() * crate::motion::glide(ui.ctx(), response.id.with("chip_right"), along(segments[i].max.x), glide) - 2.5;
         Rect::from_x_y_ranges(left..=right.max(left + 1.0), target.y_range())
     });
     if let Some(chip) = chip {
@@ -1635,6 +1642,46 @@ mod tests {
         assert_eq!(line, format!("Your Commander and a first factory. · 7{nb}steps · about{nb}7{nb}min"));
         assert_eq!(keep_facts_whole("one sentence alone", "one sentence alone"), "one sentence alone");
         assert_eq!(keep_facts_whole("a b · c d", ""), format!("a{nb}b · c{nb}d"));
+    }
+
+    /// A row of choices that moves on the screen (a panel sliding in, or laid out in the screen's
+    /// corner for its first frame) takes its chip along at once: the chip glides along its row
+    /// only.
+    #[test]
+    fn the_chosen_chip_stays_in_a_row_that_moves() {
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        let options = [(0, "ONE"), (1, "TWO"), (2, "THREE")];
+        // The chip's left edge and the row's, the row `indent` points in from the left.
+        let chip = |time: f64, indent: f32, fill: bool| {
+            let mut value = 1;
+            let mut row = 0.0;
+            let mut out = ctx.run_ui(egui::RawInput { time: Some(time), screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1600.0, 200.0))), ..Default::default() }, |ui| {
+                ui.horizontal(|ui| {
+                    ui.add_space(indent);
+                    let r = if fill { segmented_fill(ui, &mut value, &options) } else { segmented(ui, &mut value, &options) };
+                    row = r.rect.min.x;
+                });
+            });
+            out.textures_delta.clear();
+            let chip = out.shapes.iter().filter_map(|c| match &c.shape { Shape::Vec(v) if !v.is_empty() => Some(c.shape.visual_bounding_rect()), _ => None }).nth(1).map(|r| r.min.x);
+            (chip.unwrap(), row)
+        };
+        for fill in [false, true] {
+            let (at, row) = chip(0.0, 0.0, fill);
+            let within = at - row;
+            assert!(within > 20.0, "the second of three: {within}");
+            // The next frame the row stands 900 points to the right (and, filling its room, is
+            // narrower): the chip is on its second choice there, not on its way from the left.
+            let (at, row) = chip(1.0 / 60.0, 900.0, fill);
+            if fill {
+                assert!(at > row + 20.0 && at < row + 400.0, "on the second choice of the narrower row: {at} {row}");
+            } else {
+                assert!((at - row - within).abs() < 0.5, "in its place along the row: {at} {row} {within}");
+            }
+            let (later, _) = chip(1.0, 900.0, fill);
+            assert!((later - at).abs() < 0.5, "and it was not gliding: {at} {later}");
+        }
     }
 
     /// A row of choices' chosen chip glides to a new choice, and is there at once with reduced

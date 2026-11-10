@@ -134,9 +134,7 @@ impl Companion {
         // Laid out on 600 points high (or 1,024 wide), as the battle's interface is.
         let native = (self.window.scale_factor() as f32).max(0.5);
         let zoom = (size.width as f32 / native / 1024.0).min(size.height as f32 / native / 600.0).clamp(0.6, 4.0);
-        if (self.ctx.zoom_factor() - zoom).abs() > 0.001 {
-            self.ctx.set_zoom_factor(zoom);
-        }
+        crate::theme::set_zoom(&self.ctx, zoom);
         let raw = self.input.take_egui_input(&self.window);
         let (hud, minimap) = (&mut self.hud, &mut self.minimap);
         let output = self.ctx.run_ui(raw, |ui| page(ui, hud, minimap));

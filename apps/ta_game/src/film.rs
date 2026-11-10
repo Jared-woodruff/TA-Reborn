@@ -345,7 +345,8 @@ pub enum Next {
 pub fn picture_context(window: &egui::Context) -> egui::Context {
     let ctx = egui::Context::default();
     crate::theme::install_compact(&ctx);
-    ctx.set_zoom_factor(window.zoom_factor());
+    // (At once, not at its first pass: `theme::set_zoom`.)
+    crate::theme::set_zoom(&ctx, window.zoom_factor());
     ta_ui::motion::set_reduced(&ctx, ta_ui::motion::reduced(window));
     ta_ui::motion::set_reduced_flashes(&ctx, ta_ui::motion::reduced_flashes(window));
     ctx
