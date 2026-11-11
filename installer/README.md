@@ -43,7 +43,8 @@ The script
    tree has uncommitted changes: the programs show the commit they were built from);
 2. stages everything to install in `dist\stage-windows-<arch>\TA Reborn\`:
    `ta-reborn.exe`, `ta-launcher.exe`, their required app-local Microsoft runtime DLLs,
-   `MICROSOFT-RUNTIME-NOTICE.txt`, `README.txt`, `LICENSE.txt` (the repository's `LICENSE`),
+   `MICROSOFT-RUNTIME-NOTICE.txt`, Microsoft's DirectX Shader Compiler (`dxcompiler.dll`, with
+   `DXC-NOTICE.txt`; see below), `README.txt`, `LICENSE.txt` (the repository's `LICENSE`),
    `THIRD-PARTY-NOTICES.txt` (written by `ta-tools notices` from Cargo's metadata: every library
    compiled into the two programs, with its licence texts), `assets\`, `lang\`, `mods\README.txt`
    and `docs\` (with `CHANGELOG.md`; not `docs\media`, the README's pictures);
@@ -137,6 +138,24 @@ Windows 10/11 already supply the UCRT and Windows system DLLs, which are not bun
 The signing hook signs Reborn's executables and setup, preserving Microsoft's signatures
 on the runtime DLLs. Uninstall removes only runtime filenames bundled by that installer;
 other DLLs in the installation folder are retained.
+
+### DirectX Shader Compiler
+
+On Direct3D 12 the game compiles its shaders with Microsoft's DirectX Shader Compiler (DXC),
+whose `dxcompiler.dll` both Windows packages carry beside the programs
+(`crates/ta_render/src/gpu.rs` loads it from there by its full path). Without it, Direct3D 12
+falls back on FXC (`d3dcompiler_47.dll`, part of Windows), which is several times slower over
+the game's shaders. The release is pinned in `windows_package.ps1`: its tag, its archive's name and
+the archive's SHA-256, which is the digest GitHub lists for the asset. The first build downloads
+the archive into `<TargetDir>\dxc\`; every build checks the SHA-256 before staging anything, then
+takes `bin\<arch>\dxcompiler.dll` (its architecture checked) and the release's `LICENSE-LLVM.txt`.
+`DXC-NOTICE.txt` names the release and the file's version and hash, and reproduces that licence
+(University of Illinois/NCSA Open Source License). The release's `dxil.dll` is not shipped: from
+version 1.8.2505 DXC signs shaders with the validator hash itself, and never loads it.
+`-DxcArchive <zip> -DxcSha256 <hash>` takes another archive, for the packaging tests or for trying a
+new release. To update the pin, change the three values, run
+`installer\tests\windows_package.ps1`, and play a battle with `WGPU_BACKEND=dx12`: the log says
+which compiler Direct3D 12 uses. Uninstall removes `dxcompiler.dll` and its notice.
 
 The script runs on Windows PowerShell 5.1 and PowerShell 7. To compile by hand after staging:
 `makensis /DAPP_VERSION=0.1.0 installer\ta_reborn.nsi` (other defines: `STAGE_DIR`,

@@ -415,7 +415,7 @@ mod tests {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::from_env().unwrap_or_else(crate::gpu::native_backends),
             flags: wgpu::InstanceFlags::from_build_config().with_env(),
-            backend_options: wgpu::BackendOptions::from_env_or_default(),
+            backend_options: crate::gpu::backend_options(),
             memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
             display: None,
         });

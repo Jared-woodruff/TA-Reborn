@@ -1307,6 +1307,9 @@ Section "Uninstall"
   Delete "$INSTDIR\LICENSE-APACHE"
   Delete "$INSTDIR\THIRD-PARTY-NOTICES.txt"
   Delete "$INSTDIR\MICROSOFT-RUNTIME-NOTICE.txt"
+  Delete "$INSTDIR\DXC-NOTICE.txt"
+  ; Microsoft's DirectX Shader Compiler (windows_package.ps1's pinned release).
+  !insertmacro DeleteBundledRuntime dxcompiler.dll
   !insertmacro DeleteBundledRuntime vcruntime140.dll
   !insertmacro DeleteBundledRuntime vcruntime140_1.dll
   !insertmacro DeleteBundledRuntime vcruntime140_threads.dll

@@ -4,6 +4,70 @@ $script:MsvcRuntimeNames = @('vcruntime140.dll', 'vcruntime140_1.dll', 'vcruntim
     'msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll', 'msvcp140_atomic_wait.dll',
     'msvcp140_codecvt_ids.dll', 'concrt140.dll', 'vccorlib140.dll')
 
+# Microsoft's DirectX Shader Compiler (DXC). Its dxcompiler.dll ships beside the programs, and
+# Direct3D 12 compiles the game's shaders with it (crates/ta_render/src/gpu.rs), several times
+# faster than with FXC, the compiler every Windows has. The release is pinned by its archive's
+# SHA-256 (the digest GitHub lists for the asset). From 1.8.2505 DXC signs shaders itself, so the
+# release's dxil.dll, which has a licence of its own, is not shipped. To update: change these
+# values, run installer/tests/windows_package.ps1, and play a battle with WGPU_BACKEND=dx12.
+$script:DxcRelease = 'v1.9.2609'
+$script:DxcArchiveName = 'dxc_2026_09_29.zip'
+$script:DxcArchiveSha256 = 'ad31b1fc8443175d204f77a611fdb3ef2ec42759bdc2f1167368de24a4a7e7f1'
+$script:DxcSelfSigning = [version]'1.8.2505'
+
+function Get-DxcArchiveUrl {
+    return "https://github.com/microsoft/DirectXShaderCompiler/releases/download/$($script:DxcRelease)/$($script:DxcArchiveName)"
+}
+
+function Assert-FileSha256([string]$Path, [string]$Sha256) {
+    $actual = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actual -ne $Sha256.ToLowerInvariant()) { throw "$Path has SHA-256 $actual, expected $($Sha256.ToLowerInvariant()): refusing it." }
+}
+
+# The pinned DXC release archive, kept in $CacheDir: downloaded there the first time, checked
+# before it is kept.
+function Get-DxcArchive([string]$CacheDir) {
+    [void][IO.Directory]::CreateDirectory($CacheDir)
+    $archive = Join-Path $CacheDir $script:DxcArchiveName
+    if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) {
+        $partial = "$archive.part"
+        $url = Get-DxcArchiveUrl
+        Write-Host "    downloading $url"
+        # (Windows PowerShell 5.1 offers TLS 1.2 only when asked, and its progress bar slows the
+        # download down.)
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+        $progress = $ProgressPreference
+        try {
+            $ProgressPreference = 'SilentlyContinue'
+            Invoke-WebRequest -Uri $url -OutFile $partial -UseBasicParsing
+        } finally { $ProgressPreference = $progress }
+        try { Assert-FileSha256 $partial $script:DxcArchiveSha256 }
+        catch { Remove-Item -LiteralPath $partial -Force -ErrorAction SilentlyContinue; throw }
+        Move-Item -LiteralPath $partial -Destination $archive -Force
+    }
+    return $archive
+}
+
+# Extracts $Target's dxcompiler.dll and the release's LLVM licence (LICENSE-LLVM.txt) from a DXC
+# release archive, which must have SHA-256 $Sha256, into $Destination; returns the DLL's path.
+function Expand-DxcCompiler([string]$Archive, [string]$Sha256, [string]$Target, [string]$Destination) {
+    Assert-FileSha256 $Archive $Sha256
+    $arch = (Get-WindowsTarget $Target).Arch
+    Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+    $zip = [IO.Compression.ZipFile]::OpenRead($Archive)
+    try {
+        # (Microsoft's archives name their files with '\'.)
+        foreach ($wanted in @(@("bin/$arch/dxcompiler.dll", 'dxcompiler.dll'), @('LICENSE-LLVM.txt', 'LICENSE-LLVM.txt'))) {
+            $entry = $zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -eq $wanted[0] } | Select-Object -First 1
+            if (-not $entry) { throw "The DXC archive $Archive has no $($wanted[0])." }
+            [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, (Join-Path $Destination $wanted[1]), $true)
+        }
+    } finally { $zip.Dispose() }
+    $dll = Join-Path $Destination 'dxcompiler.dll'
+    Assert-PeTarget $dll $Target
+    return $dll
+}
+
 # Chocolatey can install NSIS without updating the current process's PATH. Keep
 # packaging, its fixtures and CI preflight on the same standard-folder/registry lookup.
 function Find-Makensis([string[]]$InstallFolders = @(${env:ProgramFiles(x86)}, $env:ProgramFiles)) {

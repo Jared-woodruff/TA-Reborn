@@ -640,11 +640,14 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   they take. Keep it so: a call inside a function used in many places multiplies. The
   `inlined_sizes` test (ta_render, ignored) lists what each function adds to each entry point
   once inlined (`TA_INLINE_WHO=<function>`: who calls it how often); `dump_hlsl` writes the HLSL
-  wgpu hands the compiler, and `tools/shaders/hlsl_times.ps1` times FXC and DXC on it. With FXC
-  (`util::set_fxc`, as wgpu's `Dx12Compiler::Auto` chooses) the terrain's and the water's
-  pipelines are built on threads of their own, side by side (`util::side_by_side`; FXC is a
-  function keeping nothing between calls, while DXC is one compiler object wgpu shares, so
-  never with DXC; `TA_PIPELINES_ONE_BY_ONE=1` turns it off).
+  wgpu hands the compiler, and `tools/shaders/hlsl_times.ps1` times FXC and DXC on it. The
+  Windows packages carry Microsoft's DXC (`dxcompiler.dll`, a pinned release: installer/README.md),
+  and `gpu::backend_options` has Direct3D 12 compile with it by its full path beside the
+  program, else with FXC (never a dxcompiler.dll along the PATH; `WGPU_DX12_COMPILER` still
+  overrides). With FXC (`util::set_fxc`) the terrain's and the water's pipelines are built on
+  threads of their own, side by side (`util::side_by_side`; FXC is a function keeping nothing
+  between calls, while DXC is one compiler object wgpu shares, so never with DXC;
+  `TA_PIPELINES_ONE_BY_ONE=1` turns it off).
 * **Terrain**: chunked heightmap mesh; fragment shader resolves the virtual map image
   through a tile-index texture and a deduplicated tile atlas with per-tile box mips
   (exact for 32 px tiles) plus a per-tile-average texture for far LODs. Dynamic relighting
