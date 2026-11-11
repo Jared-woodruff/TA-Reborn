@@ -15,12 +15,12 @@
   shaders, and which it is still on when one takes long.
 
 ### Fixed
-- On DirectX 12 the game no longer stays on its first loading screen. Without the optional DXC
-  compiler, Direct3D's own shader compiler took many minutes over the ground's and the water's
-  shaders; they are now written so that it compiles them several times faster, the ground and the
-  water side by side, and the battle opens in a minute and a half on the computer it was measured
-  on (with DXC, in about 20 seconds). The picture is the same as before, and Vulkan draws it in
-  the same time.
+- On DirectX 12 the game no longer stays on its first loading screen. Windows' own shader
+  compiler took many minutes over the ground's and the water's shaders. The game now ships
+  Microsoft's DirectX Shader Compiler (DXC), and the shaders are written to compile several times
+  faster with either compiler. On the computer it was measured on, the first battle opens in about
+  20 seconds on DirectX 12 (a minute and a half without DXC). The picture is the same as before,
+  and Vulkan draws it in the same time.
 - In a window smaller than 1024×600 points, a battle's first frame after its loading screen was
   laid out for a window of 10,000 points: the classic interface drew its panel and its letters
   dozens of times too large for one frame, which a graphics card could refuse.

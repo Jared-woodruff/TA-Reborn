@@ -112,6 +112,28 @@ $stub = Join-Path $case 'host-tools.exe'
 if ($LASTEXITCODE -ne 0) { throw 'Could not build the tiny native notices fixture.' }
 Assert-PeTarget $stub $hostTriple
 
+# A fixture DirectX Shader Compiler release archive, its names written with '\' as Microsoft's
+# are, holding a dxcompiler.dll for each architecture: the builder takes it, by its SHA-256, in
+# place of the pinned download.
+Expect ([version]$script:DxcRelease.TrimStart('v') -ge $script:DxcSelfSigning) 'The pinned DXC release predates its own shader signing: it would need dxil.dll.'
+function New-FixtureDxcArchive([string]$Zip, [int]$X64Machine = 0x8664, [int]$Arm64Machine = 0xAA64) {
+    $files = Join-Path $case ([IO.Path]::GetFileNameWithoutExtension($Zip))
+    Write-FixturePe (Join-Path $files 'bin/x64/dxcompiler.dll') $X64Machine @('kernel32.dll')
+    Write-FixturePe (Join-Path $files 'bin/arm64/dxcompiler.dll') $Arm64Machine @('kernel32.dll')
+    [IO.File]::WriteAllText((Join-Path $files 'LICENSE-LLVM.txt'), 'University of Illinois/NCSA Open Source License (fixture)')
+    Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+    $archive = [IO.Compression.ZipFile]::Open($Zip, [IO.Compression.ZipArchiveMode]::Create)
+    try {
+        foreach ($file in Get-ChildItem -LiteralPath $files -Recurse -File) {
+            [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $file.FullName, $file.FullName.Substring($files.Length + 1).Replace('/', '\'))
+        }
+    } finally { $archive.Dispose() }
+    return $files
+}
+$dxcZip = Join-Path $case 'dxc_fixture.zip'
+$dxcFiles = New-FixtureDxcArchive $dxcZip
+$dxcArgs = @('-DxcArchive', $dxcZip, '-DxcSha256', (Get-FileHash -LiteralPath $dxcZip -Algorithm SHA256).Hash.ToLowerInvariant())
+
 $oldPath = $env:PATH
 $env:PATH = (Split-Path -Parent $Makensis) + ';' + $oldPath
 try {
@@ -123,7 +145,7 @@ try {
         Write-FixturePe (Join-Path $crt 'vcruntime140.dll') $info.Machine @('kernel32.dll')
         foreach ($pdb in 'ta_reborn.pdb', 'ta_launcher.pdb') { [IO.File]::WriteAllText((Join-Path $release $pdb), 'fixture symbols') }
         $log = Join-Path $case "$($info.Arch)-package.log"
-        & $powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $fixture 'installer/build_installer.ps1') -SkipBuild -Target $triple -TargetDir $target -DistDir $dist -HostTools $stub -VCRedistDir $redist *> $log
+        & $powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $fixture 'installer/build_installer.ps1') -SkipBuild -Target $triple -TargetDir $target -DistDir $dist -HostTools $stub -VCRedistDir $redist @dxcArgs *> $log
         Expect ($LASTEXITCODE -eq 0) "Packaging $triple failed; see $log"
         $prefix = "TA-Reborn-0.0.0-windows-$($info.Arch)"
         $sums = @(Get-Content -LiteralPath (Join-Path $dist "$prefix-SHA256SUMS.txt"))
@@ -140,12 +162,18 @@ try {
         foreach ($internal in 'GAME_QA.md', 'RELEASE_QA_MODS.md') {
             Expect (-not (Test-Path -LiteralPath (Join-Path $stage "docs/$internal"))) "The internal note $internal must stay out of the package (installer/files/internal_docs.txt)."
         }
+        $fixtureDxc = Join-Path $dxcFiles "bin/$($info.Arch)/dxcompiler.dll"
+        Expect ((Get-FileHash -LiteralPath (Join-Path $stage 'dxcompiler.dll')).Hash -eq (Get-FileHash -LiteralPath $fixtureDxc).Hash) "The DirectX Shader Compiler is missing, changed or not the $($info.Arch) one."
+        Expect ((Get-Content -LiteralPath (Join-Path $stage 'DXC-NOTICE.txt') -Raw) -match 'NCSA Open Source License \(fixture\)') 'The DXC notice lacks its licence.'
+        Expect (-not (Test-Path -LiteralPath (Join-Path $dist "dxc-windows-$($info.Arch)"))) 'The DXC work folder was left behind.'
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $zip = [IO.Compression.ZipFile]::OpenRead((Join-Path $dist "$prefix.zip"))
         try {
             Expect ($null -ne $zip.GetEntry('TA Reborn/ta-launcher.exe')) 'Portable root folder or path separators are wrong.'
             Expect ($null -ne $zip.GetEntry('TA Reborn/vcruntime140.dll')) 'Required app-local Microsoft runtime is missing.'
             Expect ($null -ne $zip.GetEntry('TA Reborn/MICROSOFT-RUNTIME-NOTICE.txt')) 'Microsoft runtime notice is missing.'
+            Expect ($null -ne $zip.GetEntry('TA Reborn/dxcompiler.dll')) 'The DirectX Shader Compiler is missing from the portable package.'
+            Expect ($null -ne $zip.GetEntry('TA Reborn/DXC-NOTICE.txt')) 'The DXC notice is missing from the portable package.'
             Expect ((Get-FileHash -LiteralPath (Join-Path $stage 'vcruntime140.dll')).Hash -eq (Get-FileHash -LiteralPath (Join-Path $crt 'vcruntime140.dll')).Hash) 'Runtime DLL was modified.'
             Expect (@($zip.Entries | Where-Object { $_.FullName.Contains('\') }).Count -eq 0) 'ZIP contains Windows path separators.'
         } finally { $zip.Dispose() }
@@ -153,6 +181,8 @@ try {
         Expect ($LASTEXITCODE -eq 0) 'Could not inspect compiled uninstall commands.'
         Expect ($preprocessed -match 'Delete "\$INSTDIR\\vcruntime140\.dll"') 'Uninstaller does not remove its bundled runtime.'
         Expect ($preprocessed -notmatch 'Delete "\$INSTDIR\\msvcp140\.dll"') 'Uninstaller removes a runtime it did not install.'
+        Expect ($preprocessed -match 'Delete "\$INSTDIR\\dxcompiler\.dll"') 'Uninstaller does not remove the DirectX Shader Compiler.'
+        Expect ($preprocessed -match 'Delete "\$INSTDIR\\DXC-NOTICE\.txt"') 'Uninstaller does not remove the DXC notice.'
     }
 
     # Delay-import discovery includes transitive runtime dependencies. Never accept
@@ -178,7 +208,7 @@ try {
     $armStage = Join-Path $dist 'stage-windows-arm64/TA Reborn/ta-launcher.exe'
     $before = (Get-FileHash -LiteralPath $armStage).Hash
     $log = Join-Path $case 'wrong-runtime-architecture.log'
-    $rejected = Invoke-RejectedBuild @('-SkipBuild', '-Target', 'aarch64-pc-windows-msvc', '-TargetDir', $target, '-DistDir', $dist, '-HostTools', $stub, '-VCRedistDir', $redist) $log
+    $rejected = Invoke-RejectedBuild (@('-SkipBuild', '-Target', 'aarch64-pc-windows-msvc', '-TargetDir', $target, '-DistDir', $dist, '-HostTools', $stub, '-VCRedistDir', $redist) + $dxcArgs) $log
     Expect ($rejected -ne 0) 'Wrong architecture Microsoft runtime was packaged.'
     Expect ((Get-Content -LiteralPath $log -Raw) -match 'Wrong PE architecture') 'Wrong runtime failed for an unrelated reason.'
     Expect ((Get-FileHash -LiteralPath $armStage).Hash -eq $before) 'Invalid runtime replaced the previous stage.'
@@ -189,16 +219,33 @@ try {
     $before = (Get-FileHash -LiteralPath $armStage).Hash
     Write-FixturePe (Join-Path $target 'aarch64-pc-windows-msvc/release/ta-launcher.exe') 0x8664
     $log = Join-Path $case 'wrong-architecture.log'
-    $rejected = Invoke-RejectedBuild @('-SkipBuild', '-Target', 'aarch64-pc-windows-msvc', '-TargetDir', $target, '-DistDir', $dist, '-HostTools', $stub, '-VCRedistDir', $redist) $log
+    $rejected = Invoke-RejectedBuild (@('-SkipBuild', '-Target', 'aarch64-pc-windows-msvc', '-TargetDir', $target, '-DistDir', $dist, '-HostTools', $stub, '-VCRedistDir', $redist) + $dxcArgs) $log
     Expect ($rejected -ne 0) 'Mismatched payload architecture was accepted.'
     Expect ((Get-Content -LiteralPath $log -Raw) -match 'Wrong PE architecture') 'Wrong payload failed for an unrelated reason.'
     Expect ((Get-FileHash -LiteralPath $armStage).Hash -eq $before) 'Invalid payload replaced the previous stage.'
+
+    # A DXC archive other than the one pinned (by SHA-256), or one whose DLL is the other
+    # architecture's, is refused before the previous stage is replaced.
+    $x64Stage = Join-Path $dist 'stage-windows-x64/TA Reborn/ta-launcher.exe'
+    $before = (Get-FileHash -LiteralPath $x64Stage).Hash
+    $log = Join-Path $case 'dxc-other-archive.log'
+    $rejected = Invoke-RejectedBuild @('-SkipBuild', '-StageOnly', '-Target', 'x86_64-pc-windows-msvc', '-TargetDir', $target, '-DistDir', $dist, '-HostTools', $stub, '-VCRedistDir', $redist, '-DxcArchive', $dxcZip, '-DxcSha256', ('0' * 64)) $log
+    Expect ($rejected -ne 0) 'A DXC archive with another SHA-256 was packaged.'
+    Expect ((Get-Content -LiteralPath $log -Raw) -match 'refusing it') 'The DXC archive refusal failed for an unrelated reason.'
+    Expect ((Get-FileHash -LiteralPath $x64Stage).Hash -eq $before) 'A refused DXC archive replaced the previous stage.'
+    $wrongDxc = Join-Path $case 'dxc_wrong_machine.zip'
+    $null = New-FixtureDxcArchive $wrongDxc -X64Machine 0xAA64
+    $log = Join-Path $case 'dxc-wrong-machine.log'
+    $rejected = Invoke-RejectedBuild @('-SkipBuild', '-StageOnly', '-Target', 'x86_64-pc-windows-msvc', '-TargetDir', $target, '-DistDir', $dist, '-HostTools', $stub, '-VCRedistDir', $redist, '-DxcArchive', $wrongDxc, '-DxcSha256', (Get-FileHash -LiteralPath $wrongDxc -Algorithm SHA256).Hash.ToLowerInvariant()) $log
+    Expect ($rejected -ne 0) 'The other architecture''s DirectX Shader Compiler was packaged.'
+    Expect ((Get-Content -LiteralPath $log -Raw) -match 'Wrong PE architecture') 'The wrong DXC architecture failed for an unrelated reason.'
+    Expect ((Get-FileHash -LiteralPath $x64Stage).Hash -eq $before) 'A wrong DXC replaced the previous stage.'
 
     # Original TA archives are refused even if accidentally added to the input tree.
     $forbidden = Join-Path $fixture 'assets/forbidden.HPI'
     [IO.File]::WriteAllText($forbidden, 'fixture, not original content')
     $log = Join-Path $case 'original-archive-rejected.log'
-    $rejected = Invoke-RejectedBuild @('-SkipBuild', '-StageOnly', '-Target', 'x86_64-pc-windows-msvc', '-TargetDir', $target, '-DistDir', $dist, '-HostTools', $stub, '-VCRedistDir', $redist) $log
+    $rejected = Invoke-RejectedBuild (@('-SkipBuild', '-StageOnly', '-Target', 'x86_64-pc-windows-msvc', '-TargetDir', $target, '-DistDir', $dist, '-HostTools', $stub, '-VCRedistDir', $redist) + $dxcArgs) $log
     Expect ($rejected -ne 0) 'Forbidden original-game archive extension was packaged.'
     Expect ((Get-Content -LiteralPath $log -Raw) -match 'Refusing to package Total Annihilation archives') 'Archive refusal failed for an unrelated reason.'
     Remove-Item -LiteralPath $forbidden
@@ -232,7 +279,7 @@ try {
     Expect-Failure { Reset-PackageDirectory $cleanupRoot $case } 'linked'
     Expect (Test-Path -LiteralPath (Join-Path $protected 'keep.txt')) 'Linked cleanup deleted outside content.'
 } finally { [IO.Directory]::Delete($link) }
-Write-Output "PASS: x64/ARM64 packaging, app-local runtime dependency closure/notices/architecture/version/uninstall checks, target notices, three-file checksums, ZIP paths, PE rejection, original-archive rejection, NSIS host rejection and safe cleanup. Fixtures: $case"
+Write-Output "PASS: x64/ARM64 packaging, app-local runtime dependency closure/notices/architecture/version/uninstall checks, the DirectX Shader Compiler (pinned SHA-256, architecture, notice, uninstall), target notices, three-file checksums, ZIP paths, PE rejection, original-archive rejection, NSIS host rejection and safe cleanup. Fixtures: $case"
 # The expected-failure cases deliberately leave a nonzero native LASTEXITCODE.
 # Report the suite's asserted outcome explicitly, including when ARM64 skips the
 # final x64-only host-rejection check and GitHub's pwsh wrapper reads that variable.

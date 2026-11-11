@@ -5,7 +5,9 @@
 .DESCRIPTION
     1. Builds the release binaries:  cargo build --release -p ta_game -p ta_launcher -p ta_tools
     2. Stages the files in dist\stage-windows-<arch>\TA Reborn\ (with licences and the
-       third-party notices, which ta-tools writes from Cargo's metadata)
+       third-party notices, which ta-tools writes from Cargo's metadata), with Microsoft's
+       DirectX Shader Compiler (dxcompiler.dll, for Direct3D 12) from its pinned release
+       (windows_package.ps1), downloaded once into <TargetDir>\dxc\ and checked by SHA-256
     3. Packs the staged folder as a portable archive, and the programs with their symbols
        (for reading crash reports): TA-Reborn-<version>-windows-<arch>.zip and
        TA-Reborn-<version>-windows-<arch>-symbols.zip
@@ -41,6 +43,15 @@
 .PARAMETER DistDir
     Output folder for the staged files and the installer. Defaults to <repo>\dist.
 
+.PARAMETER DxcArchive
+    A DirectX Shader Compiler release archive (dxc_<date>.zip) to take dxcompiler.dll from,
+    instead of the pinned release (downloaded into <TargetDir>\dxc\ the first time). It
+    must still have the SHA-256 -DxcSha256 gives. For the packaging tests, and for trying
+    another release before pinning it.
+
+.PARAMETER DxcSha256
+    The SHA-256 the DXC archive must have. Defaults to the pinned release's.
+
 .PARAMETER SignScript
     A .cmd, .bat or .exe that signs the file named by its first argument (for example with
     signtool and your code-signing certificate). It signs both programs, the uninstaller and
@@ -62,6 +73,8 @@ param(
     [string]$HostTools,
     [string]$VCRedistDir,
     [string]$DistDir,
+    [string]$DxcArchive,
+    [string]$DxcSha256,
     [string]$SignScript
 )
 
@@ -112,6 +125,8 @@ foreach ($sourceName in 'assets', 'lang', 'docs') {
 }
 if ($HostTools) { $HostTools = Resolve-RepoPath $HostTools }
 if ($VCRedistDir) { $VCRedistDir = Resolve-RepoPath $VCRedistDir }
+if ($DxcArchive) { $DxcArchive = Resolve-RepoPath $DxcArchive }
+if (-not $DxcSha256) { $DxcSha256 = $script:DxcArchiveSha256 }
 
 # The installer version follows [workspace.package] version in Cargo.toml.
 $Version = $null
@@ -198,6 +213,13 @@ Write-Step "Staging files in $StageDir"
 # Validate the payload before replacing a previous staging tree.
 foreach ($exe in 'ta-reborn.exe', 'ta-launcher.exe') { Assert-PeTarget (Join-Path $ReleaseDir $exe) $Target }
 $runtimeFiles = @(Get-MsvcRuntimeFiles @((Join-Path $ReleaseDir 'ta-reborn.exe'), (Join-Path $ReleaseDir 'ta-launcher.exe')) $Target $VCRedistDir)
+# Microsoft's DirectX Shader Compiler, which Direct3D 12 compiles the game's shaders with: the
+# pinned release's dxcompiler.dll for this architecture (windows_package.ps1), checked too before
+# the previous stage is replaced.
+$dxcWork = Join-Path $DistDir "dxc-windows-$($targetInfo.Arch)"
+Reset-PackageDirectory $dxcWork $DistDir
+$dxcSource = if ($DxcArchive) { $DxcArchive } else { Get-DxcArchive (Join-Path $TargetDir 'dxc') }
+$dxcDll = Expand-DxcCompiler $dxcSource $DxcSha256 $Target $dxcWork
 Reset-PackageDirectory $StageDir $DistDir
 
 foreach ($exe in 'ta-reborn.exe', 'ta-launcher.exe') {
@@ -236,6 +258,28 @@ foreach ($runtime in $runtimeFiles) {
     $runtimeNotice += "$name | $([Diagnostics.FileVersionInfo]::GetVersionInfo($runtime).FileVersion) | $($hash.ToLowerInvariant())"
 }
 Set-Content -LiteralPath (Join-Path $StageDir 'MICROSOFT-RUNTIME-NOTICE.txt') -Value $runtimeNotice -Encoding utf8
+
+# The DirectX Shader Compiler, unmodified (Microsoft signs it), with its licence's notice.
+$dxcHash = (Get-FileHash -LiteralPath $dxcDll -Algorithm SHA256).Hash.ToLowerInvariant()
+Copy-Item -LiteralPath $dxcDll -Destination $StageDir
+if ((Get-FileHash -LiteralPath (Join-Path $StageDir 'dxcompiler.dll') -Algorithm SHA256).Hash.ToLowerInvariant() -ne $dxcHash) { throw 'dxcompiler.dll changed while copying.' }
+$dxcNotice = @(
+    'Microsoft DirectX Shader Compiler (DXC)',
+    '',
+    "dxcompiler.dll is Microsoft's DirectX Shader Compiler, redistributed unmodified from its",
+    "release $($script:DxcRelease) ($(Get-DxcArchiveUrl)).",
+    'On Direct3D 12, TA Reborn compiles its shaders with it.',
+    "It is distributed under the University of Illinois/NCSA Open Source License (the release's",
+    "LICENSE-LLVM.txt), reproduced below. TA Reborn does not ship the release's dxil.dll: from",
+    'version 1.8.2505, DXC signs shaders without it.',
+    '',
+    "Target: $Target",
+    'Bundled file (name, file version, SHA-256):',
+    "dxcompiler.dll | $([Diagnostics.FileVersionInfo]::GetVersionInfo($dxcDll).FileVersion) | $dxcHash",
+    ''
+) + @(Get-Content -LiteralPath (Join-Path $dxcWork 'LICENSE-LLVM.txt'))
+Set-Content -LiteralPath (Join-Path $StageDir 'DXC-NOTICE.txt') -Value $dxcNotice -Encoding utf8
+Remove-PackageDirectory $dxcWork $DistDir
 
 # Engine resources (never original game data).
 $assetsSource = Join-Path $RepoRoot 'assets'

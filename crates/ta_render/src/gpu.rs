@@ -166,9 +166,43 @@ pub(crate) fn native_backends() -> wgpu::Backends {
     wgpu::Backends::DX12 | wgpu::Backends::VULKAN | wgpu::Backends::METAL
 }
 
-/// Whether wgpu's Direct3D 12 backend compiles shaders with FXC (d3dcompiler_47.dll, which every
-/// Windows has) given `compiler`: as `Dx12Compiler::Auto` decides, DXC where a dxcompiler.dll
-/// loads (none is shipped), else FXC.
+/// The options wgpu's backends open with: the `WGPU_*` environment's, and on Direct3D 12 without
+/// `WGPU_DX12_COMPILER`, the shader compiler [`dx12_compiler`] picks.
+pub(crate) fn backend_options() -> wgpu::BackendOptions {
+    let mut options = wgpu::BackendOptions::from_env_or_default();
+    if std::env::var_os("WGPU_DX12_COMPILER").is_none() {
+        options.dx12.shader_compiler = dx12_compiler(shipped_dxc());
+    }
+    options
+}
+
+/// Direct3D 12's shader compiler: DXC from `shipped`, the dxcompiler.dll the Windows packages put
+/// beside the game's programs (Microsoft's, `installer/windows_package.ps1`), else FXC
+/// (d3dcompiler_47.dll, which every Windows has: several times slower over the game's shaders).
+/// Never a dxcompiler.dll found along the PATH, as wgpu's own `Auto` would take: one older than
+/// 1.8.2502 signs no shaders without a dxil.dll, and Direct3D refuses unsigned ones.
+fn dx12_compiler(shipped: Option<std::path::PathBuf>) -> wgpu::Dx12Compiler {
+    match shipped {
+        Some(path) => wgpu::Dx12Compiler::DynamicDxc { dxc_path: path.to_string_lossy().into_owned() },
+        None => wgpu::Dx12Compiler::Fxc,
+    }
+}
+
+/// The dxcompiler.dll beside the running program, when it is there and loads.
+#[cfg(windows)]
+fn shipped_dxc() -> Option<std::path::PathBuf> {
+    let path = std::env::current_exe().ok()?.parent()?.join("dxcompiler.dll");
+    // SAFETY: loading the library runs its initialisation only, as wgpu's own loading of it does.
+    (path.is_file() && unsafe { libloading::Library::new(&path) }.is_ok()).then_some(path)
+}
+
+#[cfg(not(windows))]
+fn shipped_dxc() -> Option<std::path::PathBuf> {
+    None
+}
+
+/// Whether wgpu's Direct3D 12 backend compiles shaders with FXC given `compiler` (with `Auto`,
+/// from `WGPU_DX12_COMPILER=auto`, as wgpu decides: DXC where a dxcompiler.dll loads).
 fn dx12_compiles_with_fxc(compiler: &wgpu::Dx12Compiler) -> bool {
     match compiler {
         wgpu::Dx12Compiler::Fxc => true,
@@ -214,7 +248,7 @@ impl Gpu {
         // the memory the system gives it, as a full card does; for trying the game short of memory.
         // Without it the system lends the card ordinary memory when its own runs out, slowly.)
         let budget = std::env::var("TA_GPU_BUDGET").ok().and_then(|v| v.parse::<u8>().ok());
-        let backend_options = wgpu::BackendOptions::from_env_or_default();
+        let backend_options = backend_options();
         let dx12_fxc = dx12_compiles_with_fxc(&backend_options.dx12.shader_compiler);
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::from_env().unwrap_or_else(native_backends),
@@ -235,7 +269,7 @@ impl Gpu {
         log::info!("GPU: {} ({:?}, driver {})", info.name, info.backend, info.driver_info);
         let fxc = info.backend == wgpu::Backend::Dx12 && dx12_fxc;
         if info.backend == wgpu::Backend::Dx12 {
-            log::info!("Direct3D 12 compiles shaders with {}", if fxc { "FXC (d3dcompiler_47.dll)" } else { "DXC" });
+            log::info!("Direct3D 12 compiles shaders with {}", if fxc { "FXC (d3dcompiler_47.dll)" } else { "DXC (dxcompiler.dll)" });
         }
         crate::util::set_fxc(fxc);
 
@@ -389,6 +423,20 @@ impl Gpu {
 mod tests {
     use super::*;
 
+    /// Direct3D 12 compiles with the dxcompiler.dll shipped beside the game, by its own path (never
+    /// one found along the PATH), and with FXC without it; side-by-side pipeline builds follow FXC.
+    #[test]
+    fn direct3d_12_compiles_with_the_shipped_dxc_else_fxc() {
+        let shipped = std::path::PathBuf::from(r"C:\Games\TA Reborn\dxcompiler.dll");
+        match dx12_compiler(Some(shipped.clone())) {
+            wgpu::Dx12Compiler::DynamicDxc { dxc_path } => assert_eq!(std::path::Path::new(&dxc_path), shipped),
+            other => panic!("expected the shipped DXC, got {other:?}"),
+        }
+        assert!(matches!(dx12_compiler(None), wgpu::Dx12Compiler::Fxc));
+        assert!(!dx12_compiles_with_fxc(&dx12_compiler(Some(shipped))));
+        assert!(dx12_compiles_with_fxc(&dx12_compiler(None)));
+    }
+
     /// The card's refusals of memory reported outside an error scope are counted (a battlefield's
     /// loading fails cleanly on them), its other errors not.
     #[test]
@@ -410,7 +458,7 @@ mod tests {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::from_env().unwrap_or_else(native_backends),
             flags: wgpu::InstanceFlags::from_build_config().with_env(),
-            backend_options: wgpu::BackendOptions::from_env_or_default(),
+            backend_options: crate::gpu::backend_options(),
             memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
             display: None,
         });
@@ -442,7 +490,7 @@ mod tests {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::from_env().unwrap_or_else(native_backends),
             flags: wgpu::InstanceFlags::from_build_config().with_env(),
-            backend_options: wgpu::BackendOptions::from_env_or_default(),
+            backend_options: crate::gpu::backend_options(),
             memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
             display: None,
         });
