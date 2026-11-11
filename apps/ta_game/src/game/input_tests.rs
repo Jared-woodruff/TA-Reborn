@@ -423,3 +423,120 @@ fn an_order_of_the_officers_that_is_refused_is_no_news_to_the_player() {
     assert!(!told(&game), "the officer's refused order is no news: {:?}", game.messages.iter().map(|m| &m.text).collect::<Vec<_>>());
     assert!(!game.events_out.iter().any(|e| matches!(e, SimEvent::OrderFailed { .. })), "and the unit does not say it cannot");
 }
+
+/// A building put down again on the selection's own plan undoes it; another put down over it
+/// takes its place (with Shift, the rest of the queue kept); and Shift with the right button
+/// while placing ends the placing and queues the order there, as it does without one.
+/// Run with `cargo test --release -p ta_game native_placing -- --ignored --nocapture`.
+#[test]
+#[ignore = "needs installed Total Annihilation data and a Windows graphics adapter"]
+#[allow(deprecated)]
+fn native_placing_again_undoes_a_plan_and_another_building_takes_its_place() {
+    let install = ta_vfs::install::discover(None).expect("Total Annihilation install");
+    let mut vfs = ta_vfs::Vfs::new();
+    vfs.mount_game_dir(&install.root, "base").unwrap();
+    let event_loop = winit::event_loop::EventLoop::builder().with_any_thread(true).build().unwrap();
+    let window = Arc::new(event_loop.create_window(winit::window::Window::default_attributes()
+        .with_visible(false).with_inner_size(winit::dpi::PhysicalSize::new(1024, 768))).unwrap());
+    let mut renderer = Renderer::new(window, 1024, 768).unwrap();
+    let assets = Assets::load(Arc::new(vfs), Default::default(), &mut renderer, None, None, &Default::default()).unwrap();
+    let mut game = Game::new(&assets, &mut renderer, &GameSetup::duel("Coast To Coast")).unwrap();
+    game.order_button = ta_config::OrderButton::Right;
+    let commander = game.local_commander().unwrap();
+    let (solar, wind) = (game.sim.types.id("ARMSOLAR").expect("a solar collector"), game.sim.types.id("ARMWIN").expect("a wind generator"));
+    let origin = game.sim.unit(commander).unwrap().pos;
+    // A site out of the Commander's reach (it walks there first: the plan is not started), where
+    // both can stand.
+    let site = (10..30)
+        .flat_map(|r: i64| [(r * 32, 0), (0, r * 32), (-r * 32, 0), (0, -r * 32)])
+        .map(|(dx, dz)| game.sim.snap_to_grid(solar, origin + FxVec3::from_ints(dx, 0, dz)))
+        .find(|&p| game.sim.can_place(solar, p) && game.sim.can_place(wind, game.sim.snap_to_grid(wind, p)))
+        .expect("a site for both");
+    let mut camera = Camera::new(Vec2::new(1024.0, 768.0));
+    camera.focus = Vec3::from_array(origin.to_f32());
+    let mut input = Input::default();
+    input.mouse = Vec2::new(500.0, 400.0);
+    game.selection = vec![commander];
+    game.cursor_override = Some(Vec3::from_array(site.to_f32()));
+    // One placing of `kind` at the site, clicked with the left button, Shift held or not; the
+    // orders then reach the simulation.
+    let place = |game: &mut Game, input: &mut Input, kind: usize, shift: bool| {
+        game.begin_placement(kind);
+        modifiers(input, if shift { ModifiersState::SHIFT } else { ModifiersState::empty() });
+        game.handle_input(input, &camera, &renderer, false);
+        input.end_frame();
+        button(input, ElementState::Pressed);
+        game.handle_input(input, &camera, &renderer, false);
+        input.end_frame();
+        button(input, ElementState::Released);
+        game.handle_input(input, &camera, &renderer, false);
+        input.end_frame();
+        let shifted = game.placement.is_some();
+        modifiers(input, ModifiersState::empty());
+        game.handle_input(input, &camera, &renderer, false);
+        input.end_frame();
+        let commands = std::mem::take(&mut game.commands);
+        game.run_tick(commands);
+        shifted
+    };
+    let plans = |game: &Game| -> Vec<usize> {
+        game.sim.unit(commander).unwrap().orders.iter().filter_map(|o| if let Order::Build { type_id, .. } = o { Some(*type_id) } else { None }).collect()
+    };
+
+    // With Shift: put down, then put down again on it: undone.
+    assert!(place(&mut game, &mut input, solar, true), "Shift keeps the placing");
+    assert_eq!(plans(&game), [solar]);
+    place(&mut game, &mut input, solar, true);
+    assert_eq!(plans(&game), [] as [usize; 0], "the same building on its own plan undoes it");
+    // Another building over it takes its place.
+    place(&mut game, &mut input, solar, true);
+    place(&mut game, &mut input, wind, true);
+    assert_eq!(plans(&game), [wind], "a wind generator in the solar collector's place");
+    // Without Shift as well: undone, and the placing over.
+    assert!(!place(&mut game, &mut input, wind, false));
+    assert_eq!(plans(&game), [] as [usize; 0]);
+    place(&mut game, &mut input, solar, false);
+    place(&mut game, &mut input, wind, false);
+    assert_eq!(plans(&game), [wind]);
+    assert!(game.sim.unit(commander).unwrap().build.is_none(), "(not started: still on its way)");
+
+    // Shift and the right button while placing: the placing ends, and the Commander is sent
+    // there after its plans, as a Shift right-click does without a placing.
+    let there = Vec3::from_array(origin.to_f32()) + Vec3::new(-96.0, 0.0, 64.0);
+    game.cursor_override = Some(there);
+    game.begin_placement(solar);
+    modifiers(&mut input, ModifiersState::SHIFT);
+    game.handle_input(&input, &camera, &renderer, false);
+    input.end_frame();
+    let right = |input: &mut Input, state| input.on_event(&WindowEvent::MouseInput { device_id: DeviceId::dummy(), state, button: MouseButton::Right }, false, false);
+    right(&mut input, ElementState::Pressed);
+    game.handle_input(&input, &camera, &renderer, false);
+    input.end_frame();
+    right(&mut input, ElementState::Released);
+    game.handle_input(&input, &camera, &renderer, false);
+    input.end_frame();
+    assert!(game.placement.is_none(), "the right button ends the placing");
+    assert!(
+        matches!(game.commands.last(), Some(Command::Order { units, order: Order::Move(_), queue: true, .. }) if units == &[commander]),
+        "and Shift queues the order there: {:?}",
+        game.commands.last()
+    );
+    let commands = std::mem::take(&mut game.commands);
+    game.run_tick(commands);
+    let orders = &game.sim.unit(commander).unwrap().orders;
+    assert!(matches!(orders.front(), Some(Order::Build { type_id, .. }) if *type_id == wind) && matches!(orders.back(), Some(Order::Move(_))), "{orders:?}");
+    // Without Shift it only ends the placing.
+    modifiers(&mut input, ModifiersState::empty());
+    game.begin_placement(solar);
+    game.handle_input(&input, &camera, &renderer, false);
+    input.end_frame();
+    let count = game.commands.len();
+    right(&mut input, ElementState::Pressed);
+    game.handle_input(&input, &camera, &renderer, false);
+    input.end_frame();
+    right(&mut input, ElementState::Released);
+    game.handle_input(&input, &camera, &renderer, false);
+    assert!(game.placement.is_none());
+    assert_eq!(game.commands.len(), count, "no order");
+    println!("native placing: undo, replace, and Shift with the right button passed");
+}

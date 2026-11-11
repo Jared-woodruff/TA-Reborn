@@ -2273,8 +2273,9 @@ build menu by `Purpose` on tabs (`Hud::build_tab`).
 * **Cursors** (`cursor.rs`): TA's animated cursors from `anims/cursors.gaf`, chosen by
   `Game::cursor_kind` (the pending order's, else what a right-click would do there, from
   `game/clicks.rs`: the wrench over what the selected constructors would repair, help build
-  or assist, a factory's production included; the shield for standing guard); the
-  system cursor is hidden in battle.
+  or assist, a factory's production included; the shield for standing guard; TA's air-strike
+  sight in place of the attack sight when the units that would attack are all bombers,
+  `clicks::bombers_only`); the system cursor is hidden in battle.
 * **Classic interface** (`hud_classic.rs`, its data in `hud_classic_art.rs`; setting
   `gameplay.classic_interface`, hidden `--classic-ui` for captures): TA's own panels in
   place of ours, built from its interface data and scaled from its 640×480 layout to the
@@ -2402,9 +2403,12 @@ build menu by `Purpose` on tabs (`Hud::build_tab`).
 * **Audio transitions** (`audio.rs`, `ta_audio`): scene changes clear old effects, voices and
   combat intensity while keeping music running; loading frames service track sequencing and
   output recovery. Replaying the intro fades out both music decks before the movies. New
-  effects use the current frame's listener before distance culling. Briefing narration has
-  priority over unit responses and lowers the music to 28% of its chosen level, with a quick
-  attack and gentle release; muted narration does not lower music. The mixer uses 10 ms gain
+  effects use the current frame's listener before distance culling. Narration has priority over
+  unit responses. A briefing's (`GameAudio::play_briefing`: the campaign's briefing, the pause
+  menu's HEAR IT AGAIN) silences the music, and the menu's film behind the page
+  (`GameAudio::briefing_speaking`); the tutorial's lines (`play_narration`) lower the music to
+  28% of its chosen level. Both with a quick attack and gentle release; muted narration does not
+  lower music. The mixer uses 10 ms gain
   ramps independent of output-buffer size and retries queued volume changes. Startup mute
   applies before the device starts; unavailable outputs are retried every two seconds.
   Crossfades wait for the incoming decoder to buffer, and a song shared by two looping
@@ -2562,9 +2566,14 @@ build menu by `Purpose` on tabs (`Hud::build_tab`).
   captures such as `TA_SWARM=300 --demo swarm --camera 4624,4672,0.16,0,63`.
 * **Area orders**: in attack, capture, resurrect or reclaim mode a drag draws a ring;
   everything inside is queued as a nearest-first tour (`Game::area_order`).
-* **Placing buildings**: a site must be free on the map and clear of the buildings our
-  constructors have queued but not started (`Game::planned_footprints`; without Shift the
-  selection's own plans are about to be replaced, so only others' count). While placing,
+* **Placing buildings**: a site must be free on the map and clear of the buildings other
+  constructors have queued but not started (`Game::planned_footprints`). The selection's own
+  plans never stand in the way of one building put down (`Game::own_plans_under`): put down
+  again on one of them (the same building, the same footprint) it undoes it, with
+  `Command::EditQueue`; another over them takes their place (with Shift they are taken out of
+  the queue, the rest kept; without, the new order replaces the queue anyway). A row dragged out
+  with Shift keeps clear of them. A right-click ends the placing; with Shift it also gives the
+  right-click's order, queued (a Commander told to build a plant, then sent on). While placing,
   every constructor's queued buildings show as faint ghosts. Buildings stand on the highest
   ground under their footprint (`World::footprint_top`): TA drew them over a flat picture,
   so on the 3D ground a bump would poke through a pad; the drawn ground is levelled up to

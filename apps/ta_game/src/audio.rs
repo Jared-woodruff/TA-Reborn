@@ -22,6 +22,9 @@ pub struct GameAudio {
     screen_mood: Option<Mood>,
     movie: ta_audio::SoundHandle,
     narration: ta_audio::SoundHandle,
+    /// The narration is a briefing's: the music falls silent under it (a tutorial's lines only
+    /// dip it).
+    briefing: bool,
     /// The user's music level, independent of the temporary narration mix.
     music_volume: f32,
     music_duck: f32,
@@ -190,6 +193,7 @@ impl GameAudio {
             screen_mood: None,
             movie: ta_audio::SoundHandle::NONE,
             narration: ta_audio::SoundHandle::NONE,
+            briefing: false,
             music_volume,
             music_duck: 1.0,
             effects_volume: None,
@@ -269,7 +273,7 @@ impl GameAudio {
             R::Track(track) => {
                 self.engine.music_mut().play_track(&track);
             }
-            R::Narration(path) => self.play_narration(&path),
+            R::Narration(path) => self.play_briefing(&path),
             R::Previous => {
                 self.engine.music_mut().previous();
             }
@@ -444,10 +448,18 @@ impl GameAudio {
             }
             self.engine.set_volume(ta_audio::Bus::Master, self.master_volume * self.background_duck);
         }
-        let speaking = self.engine.is_playing(self.narration) && self.engine.volume(ta_audio::Bus::Voice) > 0.0;
-        let target = if speaking { 0.28 } else { 1.0 };
+        // The music under a voice: silent under a briefing's, lower under the tutorial's lines.
+        let speaking = self.speaking();
+        let target = match (speaking, self.briefing) {
+            (false, _) => 1.0,
+            (true, true) => 0.0,
+            (true, false) => 0.28,
+        };
         let seconds = if speaking { 0.12 } else { 0.8 };
         self.music_duck += (target - self.music_duck) * (1.0 - (-dt / seconds).exp());
+        if (self.music_duck - target).abs() < 0.002 {
+            self.music_duck = target;
+        }
         self.engine.set_volume(ta_audio::Bus::Music, self.music_volume * self.music_duck);
         // The battle's sounds stepped back (or forward again) over a moment.
         if self.effects_volume.is_some() {
@@ -561,10 +573,32 @@ impl GameAudio {
         }
     }
 
-    /// Plays a briefing narration (VFS path) on the voice bus, replacing any playing one.
+    /// Plays a briefing's narration (VFS path) on the voice bus, replacing any playing one: the
+    /// music falls silent under it, and so does the menu's film (`briefing_speaking`).
+    pub fn play_briefing(&mut self, path: &str) {
+        self.play_voice(path, true);
+    }
+
+    /// Plays a spoken line (VFS path: the tutorial's) on the voice bus, replacing any playing
+    /// one: the music only dips under it.
     pub fn play_narration(&mut self, path: &str) {
+        self.play_voice(path, false);
+    }
+
+    fn play_voice(&mut self, path: &str, briefing: bool) {
         self.stop_narration();
         self.narration = self.engine.play(path, PlayParams::voice(1.0).priority(ta_audio::Priority::Critical).kind(SoundKind::Narration));
+        self.briefing = briefing;
+    }
+
+    /// Whether a voice is heard now (playing, the voice level not off).
+    fn speaking(&self) -> bool {
+        self.engine.is_playing(self.narration) && self.engine.volume(ta_audio::Bus::Voice) > 0.0
+    }
+
+    /// Whether a briefing's voice is heard now: everything else steps aside for it.
+    pub fn briefing_speaking(&self) -> bool {
+        self.briefing && self.speaking()
     }
 
     pub fn stop_narration(&mut self) {
@@ -779,6 +813,41 @@ mod tests {
         audio.stop_narration();
         audio.update_idle(4.0);
         assert_eq!(audio.engine.volume(ta_audio::Bus::Music), 0.0);
+    }
+
+    #[test]
+    fn a_briefing_silences_the_music_and_a_tutorial_line_only_lowers_it() {
+        let mut audio = offline_audio();
+        audio.apply_config(&ta_config::Audio { music: 0.5, ..Default::default() });
+        audio.play_briefing("test-tone");
+        assert!(audio.briefing_speaking());
+        audio.update_idle(0.5);
+        audio.update_idle(0.5);
+        assert_eq!(audio.engine.volume(ta_audio::Bus::Music), 0.0, "silent under the briefing");
+        // Back to the slider's level once it has been said.
+        audio.stop_narration();
+        assert!(!audio.briefing_speaking());
+        audio.update_idle(6.0);
+        assert!((audio.engine.volume(ta_audio::Bus::Music) - 0.5).abs() < 0.003);
+        // The tutorial's lines: the music lower, not gone, and nothing else steps aside.
+        audio.play_narration("test-tone");
+        assert!(!audio.briefing_speaking());
+        audio.update_idle(1.0);
+        let level = audio.engine.volume(ta_audio::Bus::Music);
+        assert!(level > 0.1 && level < 0.2, "{level}");
+        // (A briefing after a tutorial line, and the other way about: each its own way.)
+        audio.play_briefing("test-tone");
+        audio.update_idle(1.0);
+        assert_eq!(audio.engine.volume(ta_audio::Bus::Music), 0.0);
+        audio.play_narration("test-tone");
+        audio.update_idle(2.0);
+        assert!(audio.engine.volume(ta_audio::Bus::Music) > 0.1);
+        // With the voice off, a briefing does not silence anything.
+        audio.apply_config(&ta_config::Audio { music: 0.5, voice: 0.0, ..Default::default() });
+        audio.play_briefing("test-tone");
+        assert!(!audio.briefing_speaking());
+        audio.update_idle(6.0);
+        assert!((audio.engine.volume(ta_audio::Bus::Music) - 0.5).abs() < 0.003);
     }
 
     #[test]

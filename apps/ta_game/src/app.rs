@@ -5613,9 +5613,14 @@ impl State {
             self.audio.set_wind(self.game.sim.wind.to_f32(), &self.camera, dt);
         }
         // (The film's battle under the menu's music, quieter behind a page, fading out and in with
-        // each cut.)
+        // each cut; silent while a briefing is read out, as the music is.)
         let on_title = self.menu.page == crate::menu::Page::Title && !self.options_open;
-        let film_level = self.menu_film.as_ref().filter(|_| self.screen == Screen::Menu && self.showroom.is_none()).map(|f| f.sound_level(&self.game, on_title));
+        let briefing = self.audio.briefing_speaking();
+        let film_level = self
+            .menu_film
+            .as_ref()
+            .filter(|_| self.screen == Screen::Menu && self.showroom.is_none())
+            .map(|f| if briefing { 0.0 } else { f.sound_level(&self.game, on_title) });
         // (Quiet while the EXPORT CLIP dialog's pictures are taken: the battle jumps about behind it.)
         let previews = self.clip_previews.is_some() && self.screen == Screen::Playing;
         self.audio.scene_level = if let Some(level) = self.credits_sound_level().filter(|_| self.screen == Screen::Menu) {
@@ -5813,7 +5818,7 @@ impl State {
                     MenuAction::Start(setup) => transition = Some(Transition::StartGame(setup)),
                     MenuAction::PlayIntro => transition = Some(Transition::PlayIntro),
                     MenuAction::Quit => transition = Some(Transition::Quit),
-                    MenuAction::Narrate(Some(path)) => audio.play_narration(&path),
+                    MenuAction::Narrate(Some(path)) => audio.play_briefing(&path),
                     MenuAction::Narrate(None) => audio.stop_narration(),
                     MenuAction::StartNet(setup, session) => transition = Some(Transition::StartNet(setup, session)),
                     MenuAction::Play(record) => transition = Some(Transition::Play(record)),

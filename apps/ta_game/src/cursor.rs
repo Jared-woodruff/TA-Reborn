@@ -17,6 +17,8 @@ pub enum CursorKind {
     Select,
     Move,
     Attack,
+    /// TA's air-strike sight: bombers sent at something (`game::clicks::bombers_only`).
+    AirStrike,
     Patrol,
     Defend,
     Repair,
@@ -28,11 +30,12 @@ pub enum CursorKind {
 }
 
 impl CursorKind {
-    const ALL: [CursorKind; 12] = [
+    const ALL: [CursorKind; 13] = [
         CursorKind::Normal,
         CursorKind::Select,
         CursorKind::Move,
         CursorKind::Attack,
+        CursorKind::AirStrike,
         CursorKind::Patrol,
         CursorKind::Defend,
         CursorKind::Repair,
@@ -49,6 +52,7 @@ impl CursorKind {
             CursorKind::Select => "cursorselect",
             CursorKind::Move => "cursormove",
             CursorKind::Attack => "cursorattack",
+            CursorKind::AirStrike => "cursorairstrike",
             CursorKind::Patrol => "cursorpatrol",
             CursorKind::Defend => "cursordefend",
             CursorKind::Repair => "cursorrepair",
