@@ -730,6 +730,36 @@ fn the_officer_orders_only_the_constructors_on_duty_and_runs_no_factory() {
     assert_eq!(officer.units().collect::<Vec<_>>(), [(on_duty, Duty::Economy)], "and it stays on duty");
 }
 
+/// A constructor that comes to the economy duty helping at a factory (the player's order, or the
+/// repair or defence duty's help) leaves it when the duty has nothing of its own for it, for the
+/// economy duty never helps at the factories, and is told of as idle only once it is.
+#[test]
+fn the_economy_duty_takes_a_helper_off_the_factory_when_it_has_nothing_to_do() {
+    let mut sim = fixture();
+    let (builder, factory, tank) = (sim.types.id("BUILDER").unwrap(), sim.types.id("FACTORY").unwrap(), sim.types.id("TANK").unwrap());
+    let helper = sim.spawn_unit(builder, 0, FxVec3::from_ints(300, 0, 300), 0, true).unwrap();
+    let plant = sim.spawn_unit(factory, 0, FxVec3::from_ints(420, 0, 300), 0, true).unwrap();
+    // (The fixture's builder can build only the factory: the economy duty has nothing for it.)
+    sim.step(&[
+        Command::Produce { player: 0, factory: plant, type_id: tank, count: 20 },
+        Command::Order { player: 0, units: vec![helper], order: Order::Guard(plant), queue: false },
+    ]);
+    let guarding = |sim: &Sim| sim.unit(helper).unwrap().orders.iter().any(|o| matches!(o, Order::Guard(_)));
+    assert!(guarding(&sim), "it helps the factory");
+    let mut officer = DutyOfficer::new(0, &sim);
+    officer.set(helper, Some(Duty::Economy));
+    let mut ordered = Vec::new();
+    for _ in 0..30 * 5 {
+        let commands = officer.think(&sim);
+        ordered.extend(commands.iter().cloned());
+        sim.step(&commands);
+    }
+    assert!(!guarding(&sim), "it left the factory: {:?}", sim.unit(helper).unwrap().orders);
+    assert!(matches!(officer.status(helper), Some(DutyStatus::Idle(_))), "and has nothing to do: {:?}", officer.status(helper));
+    assert!(ordered.len() <= 2, "once, not every beat: {ordered:?}");
+    assert!(ordered.iter().all(|c| matches!(c, Command::Order { units, .. } if units == &[helper])));
+}
+
 #[test]
 fn units_that_are_lost_given_away_or_cannot_serve_leave_their_duty() {
     let mut sim = fixture();

@@ -630,6 +630,13 @@ impl SkirmishAi {
         if let Some(t) = self.maker_task(sim, s, b, &opts, plan, metal_starved && power_spare) {
             return Some(t);
         }
+        // Nothing of its own to do. A constructor that came to the duty helping at a factory, or
+        // guarding something (the player's order, another duty's help), leaves it: the economy
+        // duty never helps at the factories. Home, or where it stands when that is home.
+        if b.orders.iter().any(|o| matches!(o, Order::Guard(_))) {
+            let away = !b.pos.within_xz(self.base, fx(400)) && !self.homeless.iter().any(|&(id, until)| id == b.id && s.now < until) && self.unit_reaches(sim, b, self.base);
+            return Some(Task::Move(if away { self.base } else { b.pos }));
+        }
         self.go_home(sim, s, b)
     }
 
