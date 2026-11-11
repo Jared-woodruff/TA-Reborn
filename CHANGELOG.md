@@ -41,6 +41,12 @@
   left unfinished near them. They no longer build storage or geothermal plants, replace
   extractors with better ones, reclaim, or help at the factories.
 
+### Fixed
+- A constructor building a block of buildings that touch (Alt+drag while placing) could be
+  walled in by them, unable to move again. Units now step off a new building's site clear of
+  the builder's next sites, a unit left standing in a building is put on the nearest free
+  ground, and a filled rectangle is built from its far side towards the builders.
+
 ## 1.0.2 — 2026-11-11
 
 Faster on Macs and other integrated graphics, which now draw the battlefield at about 1080p's

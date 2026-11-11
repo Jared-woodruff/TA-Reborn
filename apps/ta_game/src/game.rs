@@ -2278,7 +2278,7 @@ impl Game {
             } else if let Some(pl) = self.placement.as_mut().filter(|pl| pl.row.len() >= 2) {
                 // A dragged row: every buildable site, in order along the drag.
                 let type_id = pl.type_id;
-                let sites: Vec<Vec3> = pl.row.iter().filter(|(_, ok)| *ok).map(|(p, _)| *p).collect();
+                let mut sites: Vec<Vec3> = pl.row.iter().filter(|(_, ok)| *ok).map(|(p, _)| *p).collect();
                 pl.line_start = None;
                 pl.row.clear();
                 let builders: Vec<UnitId> = self
@@ -2287,6 +2287,13 @@ impl Game {
                     .copied()
                     .filter(|&id| self.sim.unit(id).is_some_and(|u| self.sim.unit_type(u).build_options.contains(&type_id)))
                     .collect();
+                // A filled rectangle (Alt): its far side first, from where the builders will be,
+                // so that they work their way out of it rather than wall themselves in.
+                if placement_modifiers.alt_key()
+                    && let Some(at) = self.builders_start(&builders, shift)
+                {
+                    far_side_first(&mut sites, at);
+                }
                 for (i, site) in sites.iter().enumerate() {
                     self.issue(Command::Order { player: self.local_player, units: builders.clone(), order: Order::Build { type_id, pos: fx_vec(*site) }, queue: shift || i > 0 });
                 }
@@ -3649,6 +3656,27 @@ impl Game {
         }
     }
 
+    /// Where `builders` will start new work from: with Shift (`queued`), where the last of their
+    /// orders with a place sends them; else where they stand; the middle of them all.
+    fn builders_start(&self, builders: &[UnitId], queued: bool) -> Option<Vec3> {
+        let places: Vec<Vec3> = builders
+            .iter()
+            .filter_map(|&id| self.sim.unit(id))
+            .map(|u| {
+                let last = queued
+                    .then(|| {
+                        u.orders.iter().rev().find_map(|o| match o {
+                            Order::Move(p) | Order::Fight(p) | Order::Patrol(p) | Order::Unload(p) | Order::Build { pos: p, .. } => Some(*p),
+                            _ => None,
+                        })
+                    })
+                    .flatten();
+                Vec3::from_array(last.unwrap_or(u.pos).to_f32())
+            })
+            .collect();
+        (!places.is_empty()).then(|| places.iter().copied().sum::<Vec3>() / places.len() as f32)
+    }
+
     /// The selected builders' plans (build orders queued and not yet started) whose ground a
     /// building of `type_id` put down at `pos` would cover: each builder, the order's place in
     /// its queue, and what and where the plan is.
@@ -4106,6 +4134,14 @@ fn grid_points(a: Vec3, b: Vec3, footprint: Vec2) -> Vec<Vec3> {
         }
     }
     out
+}
+
+/// A filled rectangle's sites in the order to build them from `at`: the farthest first (on the
+/// ground: across), so that builders working from `at` stand in what is still open and finish
+/// at its edge nearest them.
+fn far_side_first(sites: &mut [Vec3], at: Vec3) {
+    let across = |p: &Vec3| (p.x - at.x).powi(2) + (p.z - at.z).powi(2);
+    sites.sort_by(|a, b| across(b).total_cmp(&across(a)));
 }
 
 fn row_points(a: Vec3, b: Vec3, footprint: Vec2) -> Vec<Vec3> {
@@ -4656,6 +4692,24 @@ mod tests {
         assert!(grid_points(Vec3::ZERO, Vec3::new(10.0, 0.0, 10.0), fp).is_empty(), "no drag, no grid");
         let big = grid_points(Vec3::ZERO, Vec3::new(5000.0, 0.0, 5000.0), fp);
         assert!(big.len() <= ROW_MAX);
+    }
+
+    /// A filled rectangle is built from its far side to its near one, as the builders see it,
+    /// so that they stand in what is still open and never wall themselves in.
+    #[test]
+    fn a_filled_rectangle_is_built_far_side_first() {
+        let fp = Vec2::new(80.0, 80.0);
+        let mut sites = grid_points(Vec3::ZERO, Vec3::new(160.0, 0.0, 160.0), fp);
+        assert_eq!(sites.len(), 9);
+        // Builders to the west of the block: the eastern column first, the western last.
+        far_side_first(&mut sites, Vec3::new(-200.0, 0.0, 80.0));
+        assert!(sites[..3].iter().all(|p| p.x == 160.0), "{sites:?}");
+        assert!(sites[6..].iter().all(|p| p.x == 0.0), "{sites:?}");
+        assert_eq!(sites.last(), Some(&Vec3::new(0.0, 0.0, 80.0)), "the nearest last");
+        // (Height plays no part: on the ground, across.)
+        let mut high = sites.clone();
+        far_side_first(&mut high, Vec3::new(-200.0, 900.0, 80.0));
+        assert_eq!(high, sites);
     }
 
     #[test]
