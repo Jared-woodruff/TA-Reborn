@@ -946,6 +946,13 @@ impl SkirmishAi {
         if let Some(t) = self.geo_task(sim, s, b, opts, plan) {
             return Some(t);
         }
+        self.plant_task(sim, s, b, opts, plan)
+    }
+
+    /// The power plant that pays best here ([`SkirmishAi::best_generator`]: solar, wind where the
+    /// wind is worth it, tidal at sea; a big plant once one can be paid for), on a site near the
+    /// builder: never a geothermal plant (see [`SkirmishAi::geo_task`]).
+    pub(crate) fn plant_task(&mut self, sim: &Sim, s: &Survey, b: &Unit, opts: &[usize], plan: &Plan) -> Option<Task> {
         let g = self.best_generator(sim, s, opts)?;
         let big = self.info[g].energy >= fx(300);
         let first = self.place(sim, b, g, Zone::Back, if big { 260 } else { 150 }, plan);
@@ -1492,10 +1499,15 @@ impl SkirmishAi {
 
     /// Our most valuable unfinished building near a builder, to finish.
     pub(crate) fn finish_task(&self, sim: &Sim, s: &Survey, b: &Unit, max_dist: i64) -> Option<Task> {
+        self.finish_task_of(sim, s, b, max_dist, &|_| true)
+    }
+
+    /// [`SkirmishAi::finish_task`] for the unfinished buildings whose role `wanted` takes.
+    pub(crate) fn finish_task_of(&self, sim: &Sim, s: &Survey, b: &Unit, max_dist: i64, wanted: &dyn Fn(Role) -> bool) -> Option<Task> {
         let mut best: Option<(i64, UnitId)> = None;
         for n in &s.nanoframes {
             let d = dist(b.pos, n.pos);
-            if d > max_dist || self.unreachable_units.iter().any(|&(u, _)| u == n.id) {
+            if d > max_dist || self.unreachable_units.iter().any(|&(u, _)| u == n.id) || !wanted(self.info[n.type_id].role) {
                 continue;
             }
             let i = &self.info[n.type_id];

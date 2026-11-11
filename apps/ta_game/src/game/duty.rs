@@ -60,7 +60,7 @@ pub fn label(duty: Duty) -> &'static str {
 /// What a duty does, in a line.
 pub fn blurb(duty: Duty) -> &'static str {
     match duty {
-        Duty::Economy => n("Builds metal extractors and power plants, then metal makers and storage; reclaims wrecks when metal is short."),
+        Duty::Economy => n("Builds metal extractors on free metal, power plants when power runs short (wind where it pays), and metal makers when there is power to spare."),
         Duty::Repair => n("Mends the most damaged buildings and units near the base, and finishes unfinished buildings."),
         Duty::Reclaim => n("Reclaims wrecks, then rocks and trees near the base, for their metal and energy."),
         Duty::Defence => n("Builds towers where the base faces the enemy, and anti-aircraft when planes show up."),

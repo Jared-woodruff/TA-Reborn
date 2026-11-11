@@ -2604,7 +2604,9 @@ build menu by `Purpose` on tabs (`Hud::build_tab`).
 * **Duties** (`game/duty.rs`, key `duty` Alt+D, the stance column's DUTY button and its menu, the
   radial menu's DUTY choice and ring: both read `game::duty::CHOICES` and `Game::duty_control`, so
   they never differ; `ta_ai::DutyOfficer`; off in replays, as a spectator and in lessons): the selected constructors
-  (the Commander too) go on one of four duties or back under the player's command. In single
+  (the Commander too) go on one of four duties or back under the player's command (what each
+  does: `ta_ai::Duty`; the economy duty keeps to extractors, power plants and metal makers, and
+  finishing those, `SkirmishAi::economy_duty`). In single
   player the officer's orders join the tick's commands (`Game::duty_orders`, before
   `tick_orders`), in multiplayer they go through `Session::submit` like any command of the
   player's (not while a client is catching up), so they are recorded and replayed with the
