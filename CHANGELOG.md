@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Changed
+- Faster on integrated graphics and high-resolution screens. On integrated graphics (Intel,
+  AMD and Apple chips) the graphics levels now draw the battlefield at no more than about
+  1080p's pixels, and 1440p's at Ultra; Apple's Pro, Max and Ultra chips draw more. The
+  interface keeps the screen's full sharpness. A Mac's Retina screen has 2.7 to 3.7 times
+  1080p's pixels, and before this an M5 MacBook Air ran well only on Low. The level is fitted
+  when it is picked in the options, and once as the game starts: on its first start, or its
+  first after this update, where the render scale is still the level's own (a scale set by
+  hand is kept). A render scale below the level's own no longer makes the level Custom.
+- A render scale below 100% now scales the battlefield up through a sharper filter (a cubic,
+  kept from ringing round bright lights), so it loses less detail than it did.
+- Units, trees and the painted features are now drawn before the ground, so the ground hidden
+  behind them is no longer shaded. On a forest map this saves about a fifth of the frame.
+  The picture is the same.
+- The ground reads the map's tile table once per tile rather than once per texel (most of all
+  for its HD surfaces), and looks up the art's softened colours once where two effects used
+  them. The picture is the same.
+- On Apple's own chips, the multisampled picture and its depth are stored only for a pass that
+  reads them, as Apple advises for its tiled graphics.
+- On a Mac, the launcher and the first start now know the computer's chip (an "Apple M5"), its
+  memory and processor, and pick its graphics level from them: Medium on the base and Pro
+  chips, High on the Max and Ultra.
+
 ### Fixed
 - On AMD's newest graphics cards (a Radeon RX 9070 XT), the game could crash on Vulkan while
   preparing its graphics, the crash report naming the sprites' pipelines. One value in its Vulkan

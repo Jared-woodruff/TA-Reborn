@@ -1535,9 +1535,26 @@ impl State {
         // rays, for the options).
         let mut settings = config.clone();
         let traces = gpu.adapter.features().contains(wgpu::Features::EXPERIMENTAL_RAY_QUERY);
-        let noted = settings.graphics.gpu_ray_tracing != traces;
+        let mut noted = settings.graphics.gpu_ray_tracing != traces;
         settings.graphics.gpu_ray_tracing = traces;
-        if (auto_graphics(&mut settings.graphics, &gpu.adapter.get_info()) || noted) && args.screenshot.is_none() && let Err(e) = settings.save() {
+        let info = gpu.adapter.get_info();
+        // (The screen's own pixels in full screen: a Mac's window takes the screen's size only
+        // once its move into full screen has played, after this.)
+        let native = window.current_monitor().or_else(|| window.primary_monitor()).map(|m| (m.size().width, m.size().height));
+        let pixels = settings.graphics.picture_pixels(native.or(Some((size.width, size.height))));
+        // Once: the level's render scale for this screen and graphics (a Mac's Retina screen has
+        // more pixels than its graphics draw the battlefield at in time; the launcher picked the
+        // level before the game had a window, and on a Mac without knowing the screen).
+        if args.screenshot.is_none() {
+            let before = settings.graphics.render_scale;
+            if settings.graphics.fit_render_scale_once(gpu_kind(info.device_type), &info.name, pixels) {
+                noted = true;
+                if settings.graphics.render_scale != before {
+                    log::info!("render scale {:.0}% for {pixels} pixels on {}", settings.graphics.render_scale * 100.0, info.name);
+                }
+            }
+        }
+        if (auto_graphics(&mut settings.graphics, &info, pixels) || noted) && args.screenshot.is_none() && let Err(e) = settings.save() {
             log::warn!("could not save settings: {e}");
         }
         Ok((window, gpu, settings))
@@ -5664,6 +5681,7 @@ impl State {
         let msaa_started = self.msaa_started;
         let ray_tracing_running = self.renderer.ray_tracing_available();
         let native = self.window.current_monitor().map(|m| (m.size().width, m.size().height));
+        let gpu_kind = gpu_kind(self.renderer.gpu.adapter.get_info().device_type);
         // (A wallpaper the size of the screen the game is on.)
         self.menu.encyclopaedia.screen = native;
         let before = self.settings.clone();
@@ -5774,7 +5792,7 @@ impl State {
                     }
                 }
                 Screen::Menu if *options_open => {
-                    if options_panel(ui.ctx(), settings_view, settings, msaa_started, ray_tracing_running, native, &mut changes) {
+                    if options_panel(ui.ctx(), settings_view, settings, msaa_started, ray_tracing_running, native, gpu_kind, &mut changes) {
                         *options_open = false;
                         options_closed = true;
                     }
@@ -5904,7 +5922,7 @@ impl State {
                         }
                     }
                     if *options_open {
-                        if options_panel(ui.ctx(), settings_view, settings, msaa_started, ray_tracing_running, native, &mut changes) {
+                        if options_panel(ui.ctx(), settings_view, settings, msaa_started, ray_tracing_running, native, gpu_kind, &mut changes) {
                             *options_open = false;
                             options_closed = true;
                         }
@@ -8366,24 +8384,32 @@ impl State {
 
 /// First start (level Auto): picks the graphics level for the card and applies it. Notes the
 /// card either way; true when the settings changed.
-fn auto_graphics(g: &mut ta_config::Graphics, info: &wgpu::AdapterInfo) -> bool {
-    use ta_config::{GpuKind, Preset};
+fn auto_graphics(g: &mut ta_config::Graphics, info: &wgpu::AdapterInfo, pixels: u64) -> bool {
+    use ta_config::Preset;
     let mut changed = g.gpu != info.name;
     g.gpu = info.name.clone();
     if g.preset == Preset::Auto {
-        let kind = match info.device_type {
-            wgpu::DeviceType::Cpu => GpuKind::Software,
-            wgpu::DeviceType::IntegratedGpu => GpuKind::Integrated,
-            wgpu::DeviceType::DiscreteGpu => GpuKind::Discrete,
-            _ => GpuKind::Other,
-        };
+        let kind = gpu_kind(info.device_type);
         let level = Preset::for_gpu(kind, &info.name);
-        log::info!("graphics: {} level for {} ({:?})", level.label(), info.name, info.device_type);
         level.apply(g);
         g.preset = level;
+        g.fit_render_scale(kind, &info.name, pixels);
+        g.scale_fitted = true;
+        log::info!("graphics: {} level for {} ({:?}), render scale {:.0}%", level.label(), info.name, info.device_type, g.render_scale * 100.0);
         changed = true;
     }
     changed
+}
+
+/// The kind of graphics a device is, as the settings know them.
+fn gpu_kind(device: wgpu::DeviceType) -> ta_config::GpuKind {
+    use ta_config::GpuKind;
+    match device {
+        wgpu::DeviceType::Cpu => GpuKind::Software,
+        wgpu::DeviceType::IntegratedGpu => GpuKind::Integrated,
+        wgpu::DeviceType::DiscreteGpu => GpuKind::Discrete,
+        _ => GpuKind::Other,
+    }
 }
 
 /// Shadows, bloom, ambient occlusion, cloud shadows, heat haze, water reflections and HD
@@ -8699,6 +8725,7 @@ fn languages() -> &'static Languages {
 /// The options: the settings screen the launcher shows too, each change applied at once
 /// (`changes` gathers what to apply) and everything saved to config.toml when it closes.
 /// Returns true when it closes.
+#[allow(clippy::too_many_arguments)]
 fn options_panel(
     ctx: &egui::Context,
     view: &mut ta_ui::settings::SettingsView,
@@ -8706,6 +8733,7 @@ fn options_panel(
     msaa_started: u32,
     ray_tracing_running: bool,
     native: Option<(u32, u32)>,
+    gpu_kind: ta_config::GpuKind,
     changes: &mut ta_ui::settings::Changes,
 ) -> bool {
     use crate::theme::*;
@@ -8714,7 +8742,7 @@ fn options_panel(
     let (dirs, languages) = languages();
     let width = panel::fit_width(ctx, 1100.0);
     let compact = ta_ui::settings::compact(width) || ctx.content_rect().height() < 540.0;
-    let host = ta_ui::settings::Host { in_game: true, msaa_running: msaa_started, ray_tracing_running, native, languages, language_dirs: dirs, height: (!compact).then(|| panel::fit_height(ctx, 260.0, 260.0, 640.0)) };
+    let host = ta_ui::settings::Host { in_game: true, msaa_running: msaa_started, ray_tracing_running, native, gpu_kind: Some(gpu_kind), languages, language_dirs: dirs, height: (!compact).then(|| panel::fit_height(ctx, 260.0, 260.0, 640.0)) };
     // (A dialog: its close cross, Escape or a click outside closes it, the settings saved.)
     let mut page = Panel::new("OPTIONS").subtitle("CHANGES TAKE EFFECT AT ONCE").width(width).exit(Exit::Close);
     if compact {

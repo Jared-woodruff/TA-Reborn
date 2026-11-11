@@ -664,7 +664,7 @@ fn path_tail(ui: &Ui, path: &str, room: f32) -> String {
 
 /// This computer, looked at once (on a thread of its own: it asks Windows) the first time the
 /// page wants it; nothing until it is known.
-fn computer(ctx: &egui::Context) -> Option<&'static ta_config::hardware::Hardware> {
+pub(crate) fn computer(ctx: &egui::Context) -> Option<&'static ta_config::hardware::Hardware> {
     static FOUND: OnceLock<ta_config::hardware::Hardware> = OnceLock::new();
     static ASKED: std::sync::Once = std::sync::Once::new();
     if let Some(found) = FOUND.get() {

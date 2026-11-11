@@ -233,6 +233,9 @@ pub struct Gpu {
     pub view_format: wgpu::TextureFormat,
     /// The device traces rays (hardware ray tracing, asked for and supported; see raytrace.rs).
     pub ray_tracing: bool,
+    /// The graphics draw in tiles kept on the chip (Metal: Apple's own chips), where a target a
+    /// pass leaves unkept never goes out to memory (see `Renderer::render`).
+    pub tiled: bool,
     /// A real swapchain frame has been queued for presentation (not an offscreen photo).
     presented: bool,
     /// A suboptimal frame remains valid until presentation. Reconfigure only before
@@ -342,7 +345,8 @@ impl Gpu {
         config.usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC;
         surface.configure(&device, &config);
 
-        Ok(Gpu { instance, adapter, device, queue, surface: Arc::new(surface), config, view_format, ray_tracing: traced, presented: false, needs_reconfigure: false })
+        let tiled = adapter.get_info().backend == wgpu::Backend::Metal;
+        Ok(Gpu { instance, adapter, device, queue, surface: Arc::new(surface), config, view_format, ray_tracing: traced, tiled, presented: false, needs_reconfigure: false })
     }
 
     /// A lightweight presenter for the same window while the renderer is constructed
@@ -361,6 +365,7 @@ impl Gpu {
             config: self.config.clone(),
             view_format: self.view_format,
             ray_tracing: self.ray_tracing,
+            tiled: self.tiled,
             presented: false,
             needs_reconfigure: false,
         }

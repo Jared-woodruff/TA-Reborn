@@ -12,7 +12,7 @@ struct PostParams {
     // z = the intro room's tone curve's toe (0: not the room), w = its shoulder
     heat: vec4<f32>,
     // x = 1 for space's look, y = its dither (8-bit steps, peak to peak), z = its fade (the
-    // picture's sRGB values times it)
+    // picture's sRGB values times it), w = 1 when the scene is drawn smaller than the picture
     look: vec4<f32>,
     // Photo mode's look: x = contrast, y = warmth, z = grain, w = colour fringe
     photo: vec4<f32>,
@@ -77,6 +77,43 @@ fn heat_haze(uv: vec2<f32>, base: vec4<f32>) -> vec3<f32> {
     let offset = n * (heat * post.heat.x) * post.info.xy;
     let s = textureSampleLevel(hdr, lin, uv + offset, 0.0);
     return mix(base.rgb, s.rgb, saturate(s.a));
+}
+
+// The scene at `uv` when it is drawn smaller than the picture (a render scale under 1): through a
+// Catmull-Rom cubic, which keeps the edges and the fine detail a bilinear lookup smears over the
+// two or so pixels each texel covers, in five bilinear lookups (its sixteen texels with the
+// corners, which weigh least, left out), then kept within the four texels around it: the
+// cubic's overshoot would ring dark round the brightest light (a lamp, a muzzle flash, the sun
+// on the water). The alpha (the heat over geometry, the sky's marker) as a bilinear lookup's.
+fn upscaled(uv: vec2<f32>) -> vec4<f32> {
+    let texel = post.info.xy;
+    let p = uv / texel;
+    let centre = floor(p - 0.5) + 0.5;
+    let f = p - centre;
+    let w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
+    let w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
+    let w2 = f * (0.5 + f * (2.0 - 1.5 * f));
+    let w3 = f * f * (-0.5 + 0.5 * f);
+    let w12 = w1 + w2;
+    let at0 = (centre - 1.0) * texel;
+    let at12 = (centre + w2 / w12) * texel;
+    let at3 = (centre + 2.0) * texel;
+    let c = textureSampleLevel(hdr, lin, vec2<f32>(at12.x, at0.y), 0.0).rgb * (w12.x * w0.y)
+        + textureSampleLevel(hdr, lin, vec2<f32>(at0.x, at12.y), 0.0).rgb * (w0.x * w12.y)
+        + textureSampleLevel(hdr, lin, at12, 0.0).rgb * (w12.x * w12.y)
+        + textureSampleLevel(hdr, lin, vec2<f32>(at3.x, at12.y), 0.0).rgb * (w3.x * w12.y)
+        + textureSampleLevel(hdr, lin, vec2<f32>(at12.x, at3.y), 0.0).rgb * (w12.x * w3.y);
+    let sum = w12.x * w0.y + w0.x * w12.y + w12.x * w12.y + w3.x * w12.y + w12.x * w3.y;
+    let last = vec2<i32>(textureDimensions(hdr)) - 1;
+    let i = vec2<i32>(centre - 0.5);
+    let a = textureLoad(hdr, clamp(i, vec2<i32>(0), last), 0);
+    let b = textureLoad(hdr, clamp(i + vec2<i32>(1, 0), vec2<i32>(0), last), 0);
+    let d = textureLoad(hdr, clamp(i + vec2<i32>(0, 1), vec2<i32>(0), last), 0);
+    let e = textureLoad(hdr, clamp(i + vec2<i32>(1, 1), vec2<i32>(0), last), 0);
+    let lo = min(min(a.rgb, b.rgb), min(d.rgb, e.rgb));
+    let hi = max(max(a.rgb, b.rgb), max(d.rgb, e.rgb));
+    let alpha = mix(mix(a.a, b.a, f.x), mix(d.a, e.a, f.x), f.y);
+    return vec4<f32>(clamp(c / sum, lo, hi), alpha);
 }
 
 fn luma(c: vec3<f32>) -> f32 {
@@ -275,7 +312,10 @@ fn photo_look(c: vec3<f32>, frag: vec2<f32>, marker: f32) -> vec3<f32> {
 
 @fragment
 fn fs_composite(in: VsOut) -> @location(0) vec4<f32> {
-    let scene = textureSampleLevel(hdr, lin, in.uv, 0.0);
+    var scene = textureSampleLevel(hdr, lin, in.uv, 0.0);
+    if (post.look.w > 0.5) {
+        scene = upscaled(in.uv);
+    }
     if (post.heat.z > 0.5) {
         return vec4<f32>(room_look(in.uv, scene.rgb), 1.0);
     }

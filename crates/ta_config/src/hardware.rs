@@ -26,22 +26,26 @@ pub struct Hardware {
 }
 
 impl Hardware {
-    /// Looks at this computer (on Windows; on Linux its memory and processor; elsewhere only the
+    /// Looks at this computer (on Windows; on Linux its memory and processor; on a Mac its
+    /// memory and processor, and on Apple's own chips their graphics; elsewhere only the
     /// threads are known).
     pub fn detect() -> Hardware {
-        #[cfg_attr(not(any(windows, target_os = "linux")), allow(unused_mut))]
+        #[cfg_attr(not(any(windows, target_os = "linux", target_os = "macos")), allow(unused_mut))]
         let mut hw = Hardware { threads: std::thread::available_parallelism().map_or(0, |n| n.get()), ..Default::default() };
         #[cfg(windows)]
         win::detect(&mut hw);
         #[cfg(target_os = "linux")]
         linux::detect(&mut hw);
+        #[cfg(target_os = "macos")]
+        mac::detect(&mut hw);
         hw
     }
 
     /// The graphics level for this computer: the card's kind and name (see
     /// [`Preset::for_gpu`]), on a dedicated card its memory (Ultra from 10 GB, High from
-    /// 6 GB, Medium from 3 GB), one level less on a 4K screen without 12 GB, and no more
-    /// than Medium with fewer than four threads or 8 GB.
+    /// 6 GB, Medium from 3 GB), one level less on a 4K screen without 12 GB (but on integrated
+    /// graphics, whose render scale is fitted to the screen instead), and no more than Medium
+    /// with fewer than four threads or 8 GB.
     pub fn preset(&self) -> Preset {
         let kind = self.gpu_kind.unwrap_or(GpuKind::Other);
         let by_name = Preset::for_gpu(kind, &self.gpu);
@@ -55,8 +59,10 @@ impl Hardware {
             },
             _ => by_name,
         };
+        // (Integrated graphics draw the battlefield at fewer pixels than such a screen's instead:
+        // see `Preset::pixel_budget`.)
         let big_screen = self.screen.is_some_and(|(w, h)| w as u64 * h as u64 >= 3840 * 2160);
-        if big_screen && self.vram_mb < 11_500 {
+        if big_screen && self.vram_mb < 11_500 && kind != GpuKind::Integrated {
             level = lower(level);
         }
         if (self.threads > 0 && self.threads < 4) || (self.ram_mb > 0 && self.ram_mb < 7_500) {
@@ -179,6 +185,40 @@ mod linux {
     }
 }
 
+/// What a Mac tells of itself (`sysctl`): its memory and processor; Apple's own chips (M1 and
+/// after) carry their graphics, integrated, named as the chip is ("Apple M5", as Metal names
+/// it too).
+#[cfg(target_os = "macos")]
+mod mac {
+    pub fn detect(hw: &mut super::Hardware) {
+        let ask = |key: &str| {
+            let out = std::process::Command::new("/usr/sbin/sysctl").args(["-n", key]).output().ok()?;
+            let text = String::from_utf8(out.stdout).ok()?;
+            let text = text.trim();
+            (out.status.success() && !text.is_empty()).then(|| text.to_string())
+        };
+        if let Some(bytes) = ask("hw.memsize").and_then(|v| v.parse::<u64>().ok()) {
+            hw.ram_mb = bytes >> 20;
+        }
+        if let Some(name) = ask("machdep.cpu.brand_string") {
+            if let Some(gpu) = super::apple_chip_gpu(&name) {
+                hw.gpu = gpu;
+                hw.gpu_kind = Some(crate::GpuKind::Integrated);
+            }
+            hw.cpu = name;
+        }
+    }
+}
+
+/// The graphics of one of Apple's own chips, from the processor's name ("Apple M5 Pro"): the
+/// chip's name, as Metal gives it; None for other processors (an Intel Mac's graphics are not
+/// its processor's).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn apple_chip_gpu(cpu: &str) -> Option<String> {
+    let name = cpu.split_whitespace().collect::<Vec<_>>().join(" ");
+    name.starts_with("Apple M").then_some(name)
+}
+
 /// The memory in MB from /proc/meminfo's text (its `MemTotal: <n> kB`).
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn meminfo_mb(text: &str) -> Option<u64> {
@@ -245,6 +285,11 @@ impl Graphics {
         self.window_mode = WindowMode::Fullscreen;
         if !hw.gpu.is_empty() {
             self.gpu = hw.gpu.clone();
+        }
+        // (The render scale for the screen, where both are known; the game fits it to its window
+        // too when it first starts.)
+        if let (Some(kind), Some((w, h))) = (hw.gpu_kind, hw.screen) {
+            self.fit_render_scale(kind, &hw.gpu, w as u64 * h as u64);
         }
     }
 }
@@ -373,6 +418,34 @@ mod tests {
         let mut old = pc("NVIDIA GeForce RTX 3080", GpuKind::Discrete, 10_000, hd);
         old.threads = 2;
         assert_eq!(old.preset(), Preset::Medium);
+    }
+
+    /// Apple's chips: Medium on the base and Pro chips, High on the Max and Ultra; a Retina
+    /// screen draws the battlefield at fewer pixels than its own (the interface keeps them).
+    #[test]
+    fn apple_chips_are_known_and_fitted_to_their_screens() {
+        assert_eq!(apple_chip_gpu("Apple M5").as_deref(), Some("Apple M5"));
+        assert_eq!(apple_chip_gpu("Apple  M4 Pro").as_deref(), Some("Apple M4 Pro"));
+        assert_eq!(apple_chip_gpu("Intel(R) Core(TM) i9-9980HK CPU @ 2.40GHz"), None);
+        let mac = |gpu: &str, screen| Hardware { gpu: gpu.into(), gpu_kind: Some(GpuKind::Integrated), threads: 10, ram_mb: 24_576, screen, ..Default::default() };
+        assert_eq!(mac("Apple M5", None).preset(), Preset::Medium);
+        assert_eq!(mac("Apple M4 Pro", None).preset(), Preset::Medium);
+        assert_eq!(mac("Apple M4 Max", None).preset(), Preset::High);
+        assert_eq!(mac("Apple M3 Ultra", None).preset(), Preset::High);
+        // A 15-inch MacBook Air's screen (its default "looks like 1710 x 1112"), known: half.
+        let mut g = Graphics::default();
+        g.set_up_for(&mac("Apple M5", Some((3420, 2224))));
+        assert_eq!((g.preset, g.render_scale), (Preset::Medium, 0.5));
+        // Unknown (a Mac does not say): the level's own, until the game fits it to its window.
+        let mut g = Graphics::default();
+        g.set_up_for(&mac("Apple M5", None));
+        assert_eq!((g.preset, g.render_scale), (Preset::Medium, 1.0));
+        // A 4K screen on integrated graphics keeps the level: the render scale is fitted instead.
+        let laptop = pc("AMD Radeon 780M Graphics", GpuKind::Integrated, 512, (3840, 2160));
+        assert_eq!(laptop.preset(), Preset::Medium);
+        let mut g = Graphics::default();
+        g.set_up_for(&laptop);
+        assert_eq!(g.render_scale, 0.5);
     }
 
     #[test]

@@ -178,14 +178,58 @@ fn smooth_gradient(xz: vec2<f32>) -> vec2<f32> {
     return vec2<f32>(gx, gz) / (2.0 * e);
 }
 
-// One texel of the virtual map image at mip `lod` (0..4).
-fn art_texel(p: vec2<i32>, lod: u32) -> vec3<f32> {
+// The virtual map image is the map's tiles (32 texels square at mip 0, `tile_map` naming each
+// cell's) laid out in an atlas (`tile_atlas`, its mips each tile's own). A filter reads a block
+// of its texels at mip `lod`, `span` + 1 texels square from `first` (its top left texel): the
+// tiles they lie in are looked up once each for the block (looking up each texel's tile on its
+// own took two reads a texel where one does, and mostly one in all: most blocks lie in a single
+// tile). A block lies across two tiles at most each way (4 x 4 blocks up to mip 3, tiles 4
+// texels across; 2 x 2 up to mip 4): the tile of its first texel and the one after it, across
+// and down.
+struct ArtBlock {
+    first: vec2<u32>,
+    // The atlas slots of the block's tiles: its first texel's, the one across, the one down,
+    // and the one across and down (the same where the block lies in fewer).
+    s00: vec2<u32>,
+    s10: vec2<u32>,
+    s01: vec2<u32>,
+    s11: vec2<u32>,
+    lod: u32,
+};
+
+fn art_block(first: vec2<i32>, span: i32, lod: u32) -> ArtBlock {
     let tile_size = 32u >> lod;
+    let last = vec2<i32>(params.tiles * tile_size) - 1;
+    let t0 = vec2<u32>(clamp(first, vec2<i32>(0), last)) / tile_size;
+    let t1 = vec2<u32>(clamp(first + span, vec2<i32>(0), last)) / tile_size;
+    var b: ArtBlock;
+    b.first = t0;
+    b.lod = lod;
+    b.s00 = atlas_slot(textureLoad(tile_map, t0, 0).r);
+    b.s10 = b.s00;
+    b.s01 = b.s00;
+    b.s11 = b.s00;
+    if (any(t1 != t0)) {
+        b.s10 = atlas_slot(textureLoad(tile_map, vec2<u32>(t1.x, t0.y), 0).r);
+        b.s01 = atlas_slot(textureLoad(tile_map, vec2<u32>(t0.x, t1.y), 0).r);
+        b.s11 = atlas_slot(textureLoad(tile_map, t1, 0).r);
+    }
+    return b;
+}
+
+// Where tile `tile` lies in the atlas (its column and row).
+fn atlas_slot(tile: u32) -> vec2<u32> {
+    return vec2<u32>(tile % params.atlas_cols, tile / params.atlas_cols);
+}
+
+// Texel `p` of the map image, one of block `b`'s (at its mip; clamped to the image).
+fn art_block_texel(b: ArtBlock, p: vec2<i32>) -> vec3<f32> {
+    let tile_size = 32u >> b.lod;
     let size = vec2<i32>(params.tiles * tile_size);
     let t = vec2<u32>(clamp(p, vec2<i32>(0), size - 1));
-    let tile = textureLoad(tile_map, t / tile_size, 0).r;
-    let slot = vec2<u32>(tile % params.atlas_cols, tile / params.atlas_cols);
-    return textureLoad(tile_atlas, slot * tile_size + t % tile_size, i32(lod)).rgb;
+    let across = t / tile_size != b.first;
+    let slot = select(select(b.s00, b.s10, across.x), select(b.s01, b.s11, across.x), across.y);
+    return textureLoad(tile_atlas, slot * tile_size + t % tile_size, i32(b.lod)).rgb;
 }
 
 // Atlas tile at `slot` (its tile coordinates in the atlas) repeated with a 32 px period,
@@ -221,14 +265,15 @@ fn art_bilinear(px: vec2<f32>, lod: u32, sharp: f32) -> vec3<f32> {
     let i = vec2<i32>(floor(p));
     let fl = p - floor(p);
     let f = mix(fl, smoothstep(vec2<f32>(0.0), vec2<f32>(1.0), fl), sharp);
-    // (The four texels in a loop, `art_texel` written once: the art is read in a great many
-    // places, each call inlined, see `beyond_ground_from`.)
+    // (The four texels in a loop, `art_block_texel` written once: the art is read in a great
+    // many places, each call inlined, see `beyond_ground_from`.)
     var a = vec3<f32>(0.0);
     var b = vec3<f32>(0.0);
     var c = vec3<f32>(0.0);
     var d = vec3<f32>(0.0);
+    let block = art_block(i, 1, lod);
     for (var k = 0u; k < 4u; k++) {
-        let texel = art_texel(i + vec2<i32>(i32(k & 1u), i32(k >> 1u)), lod);
+        let texel = art_block_texel(block, i + vec2<i32>(i32(k & 1u), i32(k >> 1u)));
         if (k == 0u) {
             a = texel;
         } else if (k == 1u) {
