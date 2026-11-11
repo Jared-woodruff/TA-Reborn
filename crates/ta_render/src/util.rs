@@ -23,6 +23,40 @@ pub(crate) fn ray_traced() -> bool {
     RAY_TRACED.load(std::sync::atomic::Ordering::Relaxed)
 }
 
+/// Whether the device's shaders are compiled by FXC, the HLSL compiler every Windows has
+/// (d3dcompiler_47.dll), which Direct3D 12 falls back on without DXC (see `Gpu::new`): set once,
+/// before the renderer makes its pipelines.
+static FXC: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub(crate) fn set_fxc(on: bool) {
+    FXC.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Whether pipelines are built side by side (see [`side_by_side`]).
+pub(crate) fn builds_side_by_side() -> bool {
+    FXC.load(std::sync::atomic::Ordering::Relaxed) && std::env::var_os("TA_PIPELINES_ONE_BY_ONE").is_none()
+}
+
+/// Runs `builds`, each building pipelines, on threads of their own, side by side, when the
+/// shaders are compiled by FXC: it takes seconds over each of the terrain's and the water's
+/// shaders, and, a function keeping nothing between calls, compiles several at once; otherwise
+/// one after another, in order (DXC's compiler is one object, not to be used by two threads at
+/// once; Vulkan's drivers take a fraction of a second). `TA_PIPELINES_ONE_BY_ONE=1`: always one
+/// after another.
+pub(crate) fn side_by_side<T: Send, const N: usize>(builds: [&(dyn Fn() -> T + Sync); N]) -> [T; N] {
+    if !builds_side_by_side() {
+        return builds.map(|build| build());
+    }
+    std::thread::scope(|scope| {
+        let threads = builds.map(|build| (build, std::thread::Builder::new().name("pipeline builder".into()).spawn_scoped(scope, build).ok()));
+        // (Where no thread could be had, built here.)
+        threads.map(|(build, thread)| match thread {
+            Some(thread) => thread.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic)),
+            None => build(),
+        })
+    })
+}
+
 /// `source` with the shared frame declarations (`common.wgsl`) prepended.
 pub fn with_common(source: &str) -> String {
     with_common_for(source, ray_traced())

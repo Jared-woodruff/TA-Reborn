@@ -150,8 +150,17 @@ fn wall_surface(world: vec3<f32>, n: vec3<f32>, base: vec3<f32>, m: u32, art: Ar
         let sum = max(wa + wb, 1e-4);
         wa /= sum;
         wb /= sum;
-        let da = material_detail(m, world.xy, art.dwx.xy, art.dwy.xy);
-        let db = material_detail(m, world.zy, art.dwx.zy, art.dwy.zy);
+        // (Its two faces' detail in a loop, `material_detail` written once: see `noise_sum`.)
+        var da = vec4<f32>(0.0);
+        var db = vec4<f32>(0.0);
+        for (var j = 0u; j < 2u; j++) {
+            let face = material_detail(m, select(world.xy, world.zy, j == 1u), select(art.dwx.xy, art.dwx.zy, j == 1u), select(art.dwy.xy, art.dwy.zy, j == 1u));
+            if (j == 0u) {
+                da = face;
+            } else {
+                db = face;
+            }
+        }
         let d = da * wa + db * wb;
         color *= (1.0 + d.x * MATERIAL_GRAIN[m] * mix(0.16, 0.76, reborn) * hd) * (1.0 - max(d.w, 0.0) * 0.15 * reborn * hd);
         let lit = clamp(frame.sun_color.a / 0.35, 0.0, 2.0);
@@ -711,14 +720,20 @@ fn material_detail(m: u32, xz: vec2<f32>, dx: vec2<f32>, dy: vec2<f32>) -> vec4<
     // (Stored as the height's change per texel times six; a texel is tile / 512 world units.)
     var slope = ((t.gb * 255.0 - 128.0) / 127.0) * (512.0 / (6.0 * tile)) * MATERIAL_RELIEF[m];
     var height = t.a;
+    // (The sand's noise, or the turf's, in one loop: see `noise_sum`.)
+    var points = array<vec2<f32>, 4>(xz / 26.0, vec2<f32>(0.0), vec2<f32>(0.0), vec2<f32>(0.0));
+    if (sand) {
+        points = array<vec2<f32>, 4>(xz / 47.0, xz / 19.0 + vec2<f32>(3.1, 7.3), xz / 130.0 + vec2<f32>(5.3, 1.7), xz / 53.0 + vec2<f32>(7.7, 1.9));
+    }
+    let wild = noise_at(points, select(select(0u, 1u, m == 2u), 4u, sand));
     if (sand) {
         // Wind ripples: the copy takes over in patches, relief and all, so the crests fork
         // where the two meet and the tiling does not show; in sheltered patches the ripples lie
         // low; and they fade out before a ripple is too narrow on the screen to draw (into
         // corduroy, or a shimmer).
-        let swap = smoothstep(-0.12, 0.12, noise(xz / 47.0) + 0.5 * noise(xz / 19.0 + vec2<f32>(3.1, 7.3)));
+        let swap = smoothstep(-0.12, 0.12, wild.x + 0.5 * wild.y);
         let slope2 = ((t2.gb * 255.0 - 128.0) / 127.0) * (512.0 / (6.0 * big)) * MATERIAL_RELIEF[m];
-        let lie = mix(0.4, 1.0, smoothstep(-0.2, 0.15, noise(xz / 130.0 + vec2<f32>(5.3, 1.7)) + 0.5 * noise(xz / 53.0 + vec2<f32>(7.7, 1.9))));
+        let lie = mix(0.4, 1.0, smoothstep(-0.2, 0.15, wild.z + 0.5 * wild.w));
         let fine = 1.0 - smoothstep(0.15, 0.4, min(length(dx), length(dy)));
         bright = (mix(t.r, t2.r, swap) * 2.0 - 1.0) * mix(0.6, 1.0, lie) * mix(0.5, 1.0, fine);
         slope = mix(slope, slope2, swap) * lie * fine;
@@ -729,7 +744,7 @@ fn material_detail(m: u32, xz: vec2<f32>, dx: vec2<f32>, dy: vec2<f32>) -> vec4<
         // larger sample for clump variation; finer blades contribute quieter normals.
         // This remains inside the HD material path, with no additional texture reads.
         let turf = saturate(frame.ao.w);
-        let growth = mix(0.45, 0.9, smoothstep(-0.35, 0.4, noise(xz / 26.0)));
+        let growth = mix(0.45, 0.9, smoothstep(-0.35, 0.4, wild.x));
         bright = mix(bright, (mix(t.r, t2.r, 0.45) * 2.0 - 1.0) * 0.85, turf);
         let broad_slope = transpose(rot) * ((t2.gb * 255.0 - 128.0) / 127.0)
             * (512.0 / (6.0 * big)) * MATERIAL_RELIEF[m];
@@ -781,11 +796,12 @@ fn macro_ground(c: vec3<f32>, xz: vec2<f32>, footprint: f32, beyond: f32) -> vec
     let fine_h = textureSampleLevel(heightmap, linear_clamp, uv, 1.0);
     let hollow = clamp((textureSampleLevel(heightmap, linear_clamp, uv, 4.0).r - fine_h.r) * 255.0 / 10.0, -1.0, 1.0) * fade;
     let shore = smoothstep(0.02, 0.35, textureSampleLevel(heightmap, linear_clamp, uv, 3.5).g) * (1.0 - fine_h.g) * fade;
-    let region = noise(xz / g.w) + 0.5 * noise(xz / (0.45 * g.w) + vec2<f32>(3.7, 1.3));
-    let warp = vec2<f32>(noise(xz / (1.6 * g.z) + vec2<f32>(5.1, 2.2)), noise(xz / (1.6 * g.z) + vec2<f32>(-3.3, 8.4))) * 0.6 * g.z;
+    // (Its noise in loops, written once each: see `noise_sum`.)
+    let region = noise_sum(array<vec2<f32>, 4>(xz / g.w, xz / (0.45 * g.w) + vec2<f32>(3.7, 1.3), vec2<f32>(0.0), vec2<f32>(0.0)), vec4<f32>(1.0, 0.5, 0.0, 0.0), 2u, 0.0);
+    let warp = noise_at(array<vec2<f32>, 4>(xz / (1.6 * g.z) + vec2<f32>(5.1, 2.2), xz / (1.6 * g.z) + vec2<f32>(-3.3, 8.4), vec2<f32>(0.0), vec2<f32>(0.0)), 2u).xy * 0.6 * g.z;
     // (Its finer octave only where it is wide enough on the screen not to shimmer.)
     let fine = 1.0 - smoothstep(0.03 * g.z, 0.1 * g.z, footprint);
-    let patches = noise((xz + warp) / g.z) + 0.45 * fine * noise((xz + warp) / (0.35 * g.z) + vec2<f32>(1.9, -4.6));
+    let patches = noise_sum(array<vec2<f32>, 4>((xz + warp) / g.z, (xz + warp) / (0.35 * g.z) + vec2<f32>(1.9, -4.6), vec2<f32>(0.0), vec2<f32>(0.0)), vec4<f32>(1.0, 0.45 * fine, 0.0, 0.0), 2u, 0.0);
     // (Soft-edged: patches fade in over most of their width.)
     var dry = smoothstep(-0.05, 0.4, patches + 0.6 * region - 0.4 * hollow);
     var dark = smoothstep(-0.02, 0.4, -patches - 0.4 * region + 0.7 * hollow);
@@ -1044,11 +1060,11 @@ fn strand_field(at: vec2<f32>, d: vec2<f32>, width: f32, length: f32, seed: vec2
 fn strands(xz: vec2<f32>, h: Heading, width: f32, length: f32, carry: f32, seed: vec2<f32>) -> f32 {
     let at = xz - frame.drift.xy * carry;
     var s = 0.0;
-    if (h.turned < 1.0) {
-        s += (1.0 - h.turned) * strand_field(at, h.a, width, length, seed);
-    }
-    if (h.turned > 0.0) {
-        s += h.turned * strand_field(at, h.b, width, length, seed);
+    // (The two headings in a loop, `strand_field` written once: see `noise_sum`.)
+    for (var j = 0u; j < 2u; j++) {
+        if (select((h.turned < 1.0), (h.turned > 0.0), j == 1u)) {
+            s += select(1.0 - h.turned, h.turned, j == 1u) * strand_field(at, select(h.a, h.b, j == 1u), width, length, seed);
+        }
     }
     return s;
 }
@@ -1095,8 +1111,14 @@ fn sand_life(xz: vec2<f32>, h: Heading, f: LifeFields, footprint: f32, wind: f32
     let dry = 1.0 - frame.rain.x;
     // Fade fine streaks earlier, before they turn into flickering pixels as the view pulls out.
     let thin = 1.0 - smoothstep(0.2, 0.65, footprint / 5.0);
-    let long_strands = strands(xz, h, 5.0, 130.0, 0.85 * GUST_CARRY, vec2<f32>(2.7, 8.1));
-    let short_strands = strands(xz, h, 9.0, 60.0, 1.3 * GUST_CARRY, vec2<f32>(6.3, 1.9));
+    // (The long strands and the short in a loop, `strands` written once: see `noise_sum`.)
+    var both = vec2<f32>(0.0);
+    for (var j = 0u; j < 2u; j++) {
+        let s = strands(xz, h, select(5.0, 9.0, j == 1u), select(130.0, 60.0, j == 1u), select(0.85 * GUST_CARRY, 1.3 * GUST_CARRY, j == 1u), select(vec2<f32>(2.7, 8.1), vec2<f32>(6.3, 1.9), j == 1u));
+        both = select(both, vec2<f32>(s), vec2<u32>(0u, 1u) == vec2<u32>(j));
+    }
+    let long_strands = both.x;
+    let short_strands = both.y;
     let strand = max(long_strands, 0.6 * short_strands) * gust * thin * (0.6 + 0.4 * wind);
     let veil = smoothstep(0.45, 0.85, f.b.y) * gust * (1.0 - smoothstep(30.0, 60.0, footprint)) * wind;
     l.tone = vec3<f32>(1.6, 1.48, 1.2);
@@ -1114,8 +1136,14 @@ fn snow_life(xz: vec2<f32>, h: Heading, f: LifeFields, footprint: f32, wind: f32
     }
     let dry = 1.0 - frame.rain.x;
     let thin = 1.0 - smoothstep(0.4, 1.1, footprint / 7.0);
-    let long_strands = strands(xz, h, 7.0, 240.0, 0.7 * GUST_CARRY, vec2<f32>(8.3, 1.1));
-    let short_strands = strands(xz, h, 12.0, 110.0, 1.1 * GUST_CARRY, vec2<f32>(1.7, 5.9));
+    // (The long strands and the short in a loop, `strands` written once: see `noise_sum`.)
+    var both = vec2<f32>(0.0);
+    for (var j = 0u; j < 2u; j++) {
+        let s = strands(xz, h, select(7.0, 12.0, j == 1u), select(240.0, 110.0, j == 1u), select(0.7 * GUST_CARRY, 1.1 * GUST_CARRY, j == 1u), select(vec2<f32>(8.3, 1.1), vec2<f32>(1.7, 5.9), j == 1u));
+        both = select(both, vec2<f32>(s), vec2<u32>(0u, 1u) == vec2<u32>(j));
+    }
+    let long_strands = both.x;
+    let short_strands = both.y;
     let strand = max(long_strands, 0.6 * short_strands) * gust * thin * (0.6 + 0.4 * wind);
     let veil = smoothstep(0.4, 0.85, f.b.w) * gust * (1.0 - smoothstep(30.0, 60.0, footprint)) * wind;
     l.shade = 1.0 - 0.06 * gust * min(wind, 1.0) * dry;
@@ -1184,10 +1212,23 @@ fn ground_color(in: VsOut, art: ArtFilter, mirror: bool) -> vec4<f32> {
     // on the land side, which the water does not cover: a dotted line of bare ground ran along
     // the waterline between the ground's surf and the water's.)
     let seam = min(max(abs(art.dwx.y), abs(art.dwy.y)), 2.0);
-    if (water_on && frame.water.y > 0.0 && depth <= seam && depth > -13.0 && in_beyond < 64.0 && !mirror) {
+    // (Where the swash, the low banks and the wet beaches below are drawn, and the distance from
+    // the waterline and the slope of the ground they read, each worked out once, for whichever of
+    // them asks: see `beyond_ground_from` in terrain_common.wgsl.)
+    let above = in.world.y - frame.world.y;
+    let swash_here = water_on && frame.water.y > 0.0 && depth <= seam && depth > -13.0 && in_beyond < 64.0 && !mirror;
+    let bank_here = water_on && frame.water_extra.y < 0.5 && frame.shore_land.a > 0.0 && in_beyond < 64.0 && above > 0.0 && above < 8.0;
+    let beach_here = beyond_on() && water_on && frame.water_extra.y < 0.5 && in_beyond < 64.0 && above > -0.5 && above < 3.0;
+    var waterline = 0.0;
+    if (swash_here || bank_here || beach_here) {
         // (The distance from the waterline, as on the water.)
-        let waterline = shore_distance(in.world.xz);
-        let slope = ground_gradient(in.world.xz);
+        waterline = shore_distance(in.world.xz);
+    }
+    var slope = vec2<f32>(0.0);
+    if (swash_here || beach_here) {
+        slope = ground_gradient(in.world.xz);
+    }
+    if (swash_here) {
         let rise = max(length(slope), 0.03);
         let above = foam_from_above(view_dir(in.world).y);
         let strip = foam_strip(above);
@@ -1249,7 +1290,7 @@ fn ground_color(in: VsOut, art: ArtFilter, mirror: bool) -> vec4<f32> {
         // slope, was a pale sheet lying on it.)
         let flat = 1.0 - smoothstep(0.005, 0.025, 1.0 - n0.y);
         let low = 1.0 - terrain_occlusion(in.world.xz, in_beyond);
-        let blotch = noise(in.world.xz / 70.0) * 0.55 + noise(in.world.xz / 23.0 + vec2<f32>(3.1, 7.3)) * 0.45;
+        let blotch = noise_sum(array<vec2<f32>, 4>(in.world.xz / 70.0, in.world.xz / 23.0 + vec2<f32>(3.1, 7.3), vec2<f32>(0.0), vec2<f32>(0.0)), vec4<f32>(0.55, 0.45, 0.0, 0.0), 2u, 0.0);
         // (Grass drinks the rain: few puddles stand in it. Judged by the art's colour over a few
         // of its pixels: by each one's, every greener pixel of the painting holed the puddle, a
         // pepper of dark specks.)
@@ -1332,12 +1373,13 @@ fn ground_color(in: VsOut, art: ArtFilter, mirror: bool) -> vec4<f32> {
         }
         mat_k *= gm.sure;
         if (mat_k > 0.0) {
-            mat_d = material_detail(gm.a, in.world.xz, art.dwx.xz, art.dwy.xz);
+            // (The second material's mixed in, `material_detail` written once: see `noise_sum`.)
+            for (var j = 0u; j < select(1u, 2u, gm.mix_b > 0.02); j++) {
+                let d = material_detail(select(gm.a, gm.b, j == 1u), in.world.xz, art.dwx.xz, art.dwy.xz);
+                mat_d = select(d, mix(mat_d, d, gm.mix_b), j == 1u);
+            }
             let tile_a = MATERIAL_TILE[gm.a];
             mat_detail_kept = 1.0 - smoothstep(tile_a / 48.0, tile_a / 10.0, max(length(art.dwx.xz), length(art.dwy.xz)));
-            if (gm.mix_b > 0.02) {
-                mat_d = mix(mat_d, material_detail(gm.b, in.world.xz, art.dwx.xz, art.dwy.xz), gm.mix_b);
-            }
             mat_grain = mix(MATERIAL_GRAIN[gm.a], MATERIAL_GRAIN[gm.b], gm.mix_b);
             mat_smooth = mix(MATERIAL_SMOOTH[gm.a], MATERIAL_SMOOTH[gm.b], gm.mix_b);
             mat_tint = mix(MATERIAL_TINT[gm.a], MATERIAL_TINT[gm.b], gm.mix_b);
@@ -1468,15 +1510,14 @@ fn ground_color(in: VsOut, art: ArtFilter, mirror: bool) -> vec4<f32> {
     // beach plains lie a unit or two above the sea far from it, and were darkened to a straight
     // line 64 units past the edge, the mirrored plain beyond it as painted.)
     var shore_wet = 0.0;
-    let above = in.world.y - frame.world.y;
-    if (water_on && frame.water_extra.y < 0.5 && frame.shore_land.a > 0.0 && in_beyond < 64.0 && above > 0.0 && above < 8.0) {
+    if (bank_here) {
         let bank = low_view(in.world) * (1.0 - smoothstep(5.0, 8.0, above)) * (1.0 - smoothstep(16.0, 64.0, in_beyond));
         if (bank > 0.0) {
             let soft = art_soft(shown.px, 1u);
             let grain = clamp(luminance(albedo) / max(luminance(soft), 1e-3), 0.75, 1.25);
             let sand = frame.shore_land.rgb * frame.shore_land.rgb;
             albedo = mix(albedo, sand * grain, painted_sea_likeness(soft) * bank);
-            let by_water = 1.0 - smoothstep(8.0, 24.0, -shore_distance(in.world.xz));
+            let by_water = 1.0 - smoothstep(8.0, 24.0, -waterline);
             shore_wet = (1.0 - smoothstep(0.0, 2.5, above)) * by_water * bank;
             albedo *= mix(1.0, 0.6, shore_wet);
         }
@@ -1484,11 +1525,11 @@ fn ground_color(in: VsOut, art: ArtFilter, mirror: bool) -> vec4<f32> {
     // The swash wets a beach a few units up from the water (perspective camera; TA's own camera
     // keeps the art as painted): darker sand, glossier, its upper edge wandering along the coast.
     // Only on gentle beaches low over the sea, and not where the art paints sea (the water's).
-    if (beyond_on() && water_on && frame.water_extra.y < 0.5 && in_beyond < 64.0 && above > -0.5 && above < 3.0) {
-        let inland = -shore_distance(in.world.xz);
+    if (beach_here) {
+        let inland = -waterline;
         // (Further up than the swash's foam runs, which covers its first few units.)
         let reach = 8.0 + 5.0 * noise(in.world.xz / 23.0 + vec2<f32>(4.3, 1.1));
-        let beach = foam_beach(length(ground_gradient(in.world.xz)));
+        let beach = foam_beach(length(slope));
         let sea = select(0.0, painted_sea_likeness(painted_albedo), frame.shore_land.a > 0.0);
         let soaked = (1.0 - smoothstep(reach * 0.4, reach, inland)) * (1.0 - smoothstep(1.5, 3.0, above)) * beach * (1.0 - sea);
         albedo *= mix(1.0, 0.64, soaked);
@@ -1598,7 +1639,7 @@ fn ground_color(in: VsOut, art: ArtFilter, mirror: bool) -> vec4<f32> {
                 dome += textureSampleLevel(ground_map, los_sampler, (in.world.xz + o) * frame.terrain_shadow.yz, 0.0).b * 0.25;
             }
             let shape = mix(dome, cover, 0.4);
-            let ragged = (noise(in.world.xz / 13.0) * 0.65 + noise(in.world.xz / 5.0 + vec2<f32>(17.3)) * 0.35) * 0.9;
+            let ragged = noise_sum(array<vec2<f32>, 4>(in.world.xz / 13.0, in.world.xz / 5.0 + vec2<f32>(17.3), vec2<f32>(0.0), vec2<f32>(0.0)), vec4<f32>(0.65, 0.35, 0.0, 0.0), 2u, 0.0) * 0.9;
             let st = ore_stones(in.world.xz / ORE_STONE);
             let seen = 1.0 - smoothstep(0.3, 0.7, footprint / ORE_STONE);
             let lump = mix(0.4, st.x, seen);
@@ -1615,7 +1656,8 @@ fn ground_color(in: VsOut, art: ArtFilter, mirror: bool) -> vec4<f32> {
             // (Its stones' lumps catch the sun.)
             relief_n = normalize(relief_n + vec3<f32>(st.y, 0.0, st.z) * 0.6 * ore_k * seen);
             let q = mat2x2<f32>(0.8, 0.6, -0.6, 0.8) * in.world.xz;
-            let vein = smoothstep(0.9, 0.97, 1.0 - abs(noise(q / vec2<f32>(4.0, 12.0)))) * smoothstep(0.05, 0.3, noise(q / 19.0 + vec2<f32>(5.1))) * smoothstep(0.7, 0.95, shape);
+            let veins = noise_at(array<vec2<f32>, 4>(q / vec2<f32>(4.0, 12.0), q / 19.0 + vec2<f32>(5.1), vec2<f32>(0.0), vec2<f32>(0.0)), 2u);
+            let vein = smoothstep(0.9, 0.97, 1.0 - abs(veins.x)) * smoothstep(0.05, 0.3, veins.y) * smoothstep(0.7, 0.95, shape);
             bed = mix(bed, vec3<f32>(0.85, 0.92, 1.0) * bed_l * 1.6, vein * lump);
             albedo *= 1.0 - 0.2 * smoothstep(0.2, 0.36, shape + ragged) * (1.0 - ore_k);
             albedo = mix(albedo, bed, ore_k);

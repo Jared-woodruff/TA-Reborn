@@ -35,6 +35,9 @@ egui-wgpu = { version = "0.36.2", features = ["winit"] }
 egui-winit = { version = "0.36.2", features = ["accesskit"] }
 glam = { version = "0.33", features = ["bytemuck"] }
 pollster = "1"
+# Whether a dxcompiler.dll loads (the renderer: which shader compiler Direct3D 12 has; wgpu loads
+# it with the same crate).
+libloading = "0.8.9"
 
 # Core utilities
 anyhow = "1"

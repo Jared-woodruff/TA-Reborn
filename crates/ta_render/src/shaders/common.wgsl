@@ -427,8 +427,15 @@ fn gust_noise(p: vec2<f32>) -> f32 {
     let i = vec2<i32>(floor(p));
     let f = fract(p);
     let u = f * f * (3.0 - 2.0 * f);
-    let h = array<f32, 4>(gust_hash(i), gust_hash(i + vec2<i32>(1, 0)), gust_hash(i + vec2<i32>(0, 1)), gust_hash(i + vec2<i32>(1, 1)));
-    return mix(mix(h[0], h[1], u.x), mix(h[2], h[3], u.x), u.y);
+    // (The four corners' `gust_hash`es in one pass, lane by lane: the same bits in a quarter of
+    // the code, which every call inlines; see noise.wgsl's `noise_d`.)
+    let x = bitcast<vec4<u32>>(vec4<i32>(i.x, i.x + 1, i.x, i.x + 1));
+    let y = bitcast<vec4<u32>>(vec4<i32>(i.y, i.y, i.y + 1, i.y + 1));
+    var h = (x * 73856093u) ^ (y * 19349663u);
+    h = (h ^ (h >> vec4<u32>(16u))) * 0x45d9f3bu;
+    h = h ^ (h >> vec4<u32>(16u));
+    let v = vec4<f32>(h & vec4<u32>(0xffffu)) / 65535.0;
+    return mix(mix(v.x, v.y, u.x), mix(v.z, v.w, u.x), u.y);
 }
 
 fn gust_hash(c: vec2<i32>) -> f32 {

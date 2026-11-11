@@ -166,6 +166,28 @@ pub(crate) fn native_backends() -> wgpu::Backends {
     wgpu::Backends::DX12 | wgpu::Backends::VULKAN | wgpu::Backends::METAL
 }
 
+/// Whether wgpu's Direct3D 12 backend compiles shaders with FXC (d3dcompiler_47.dll, which every
+/// Windows has) given `compiler`: as `Dx12Compiler::Auto` decides, DXC where a dxcompiler.dll
+/// loads (none is shipped), else FXC.
+fn dx12_compiles_with_fxc(compiler: &wgpu::Dx12Compiler) -> bool {
+    match compiler {
+        wgpu::Dx12Compiler::Fxc => true,
+        wgpu::Dx12Compiler::Auto => !dxcompiler_loads(),
+        _ => false,
+    }
+}
+
+#[cfg(windows)]
+fn dxcompiler_loads() -> bool {
+    // SAFETY: loading the library runs its initialisation only, as wgpu's own check does.
+    unsafe { libloading::Library::new("dxcompiler.dll") }.is_ok()
+}
+
+#[cfg(not(windows))]
+fn dxcompiler_loads() -> bool {
+    false
+}
+
 pub struct Gpu {
     pub instance: wgpu::Instance,
     pub adapter: wgpu::Adapter,
@@ -192,10 +214,12 @@ impl Gpu {
         // the memory the system gives it, as a full card does; for trying the game short of memory.
         // Without it the system lends the card ordinary memory when its own runs out, slowly.)
         let budget = std::env::var("TA_GPU_BUDGET").ok().and_then(|v| v.parse::<u8>().ok());
+        let backend_options = wgpu::BackendOptions::from_env_or_default();
+        let dx12_fxc = dx12_compiles_with_fxc(&backend_options.dx12.shader_compiler);
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::from_env().unwrap_or_else(native_backends),
             flags: wgpu::InstanceFlags::from_build_config().with_env(),
-            backend_options: wgpu::BackendOptions::from_env_or_default(),
+            backend_options,
             memory_budget_thresholds: wgpu::MemoryBudgetThresholds { for_resource_creation: budget, for_device_loss: None },
             display: None,
         });
@@ -209,6 +233,11 @@ impl Gpu {
         .context("no suitable GPU adapter found")?;
         let info = adapter.get_info();
         log::info!("GPU: {} ({:?}, driver {})", info.name, info.backend, info.driver_info);
+        let fxc = info.backend == wgpu::Backend::Dx12 && dx12_fxc;
+        if info.backend == wgpu::Backend::Dx12 {
+            log::info!("Direct3D 12 compiles shaders with {}", if fxc { "FXC (d3dcompiler_47.dll)" } else { "DXC" });
+        }
+        crate::util::set_fxc(fxc);
 
         let supported = adapter.limits();
         let required_limits = wgpu::Limits {
