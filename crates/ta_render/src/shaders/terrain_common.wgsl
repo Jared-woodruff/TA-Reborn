@@ -75,21 +75,25 @@ fn terrain_occlusion(xz: vec2<f32>, beyond: f32) -> f32 {
 // drawn from, see `mirror_point`; further out from how much of the far land lies under the sea
 // there, whose coasts are drawn per pixel, see `beyond_wet`).
 fn shore_distance(world_xz: vec2<f32>) -> f32 {
+    // (Each lookup written once: see `beyond_ground_from`.)
+    var at = world_xz;
+    var k = 0.0;
+    var far = 0.0;
     if (FAR_LAND && beyond_on()) {
         let d = beyond_distance(world_xz);
         if (d > 0.0) {
-            let k = far_mix(world_xz, d);
-            if (k <= 0.0) {
-                return shore_distance_at(mirror_point(world_xz, d).at);
+            k = far_mix(world_xz, d);
+            if (k > 0.0) {
+                far = clamp((beyond_wet_from(far_ground(world_xz, d, false).y, world_xz, d) - 0.5) * 128.0, -32.0, 32.0);
+                if (k >= 1.0) {
+                    return far;
+                }
             }
-            let far = clamp((beyond_wet_from(far_ground(world_xz, d, false).y, world_xz, d) - 0.5) * 128.0, -32.0, 32.0);
-            if (k >= 1.0) {
-                return far;
-            }
-            return mix(shore_distance_at(mirror_point(world_xz, d).at), far, k);
+            at = mirror_point(world_xz, d).at;
         }
     }
-    return shore_distance_at(world_xz);
+    let near = shore_distance_at(at);
+    return select(near, mix(near, far, k), k > 0.0);
 }
 
 // `shore_distance` at map position `xz`. Between the vertices a cubic B-spline (four bilinear
@@ -217,10 +221,24 @@ fn art_bilinear(px: vec2<f32>, lod: u32, sharp: f32) -> vec3<f32> {
     let i = vec2<i32>(floor(p));
     let fl = p - floor(p);
     let f = mix(fl, smoothstep(vec2<f32>(0.0), vec2<f32>(1.0), fl), sharp);
-    let a = art_texel(i, lod);
-    let b = art_texel(i + vec2<i32>(1, 0), lod);
-    let c = art_texel(i + vec2<i32>(0, 1), lod);
-    let d = art_texel(i + vec2<i32>(1, 1), lod);
+    // (The four texels in a loop, `art_texel` written once: the art is read in a great many
+    // places, each call inlined, see `beyond_ground_from`.)
+    var a = vec3<f32>(0.0);
+    var b = vec3<f32>(0.0);
+    var c = vec3<f32>(0.0);
+    var d = vec3<f32>(0.0);
+    for (var k = 0u; k < 4u; k++) {
+        let texel = art_texel(i + vec2<i32>(i32(k & 1u), i32(k >> 1u)), lod);
+        if (k == 0u) {
+            a = texel;
+        } else if (k == 1u) {
+            b = texel;
+        } else if (k == 2u) {
+            c = texel;
+        } else {
+            d = texel;
+        }
+    }
     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
 
@@ -231,16 +249,26 @@ fn art_sample(px: vec2<f32>, lod: f32, sharp: f32) -> vec3<f32> {
     }
     let l0 = u32(floor(lod));
     let t = fract(lod);
-    let c0 = art_bilinear(px, l0, select(0.0, sharp, l0 == 0u));
+    // (The two mips in a loop, `art_bilinear` written once; the second only between them.)
+    var c0 = vec3<f32>(0.0);
+    var c1 = vec3<f32>(0.0);
+    for (var k = 0u; k < select(2u, 1u, t < 0.01); k++) {
+        let l = l0 + k;
+        var c: vec3<f32>;
+        if (l >= 5u) {
+            let uv = px / vec2<f32>(params.tiles * 32u);
+            c = textureSampleLevel(tile_avg, linear_clamp, uv, 0.0).rgb;
+        } else {
+            c = art_bilinear(px, l, select(0.0, sharp, l == 0u));
+        }
+        if (k == 0u) {
+            c0 = c;
+        } else {
+            c1 = c;
+        }
+    }
     if (t < 0.01) {
         return c0;
-    }
-    var c1: vec3<f32>;
-    if (l0 + 1u >= 5u) {
-        let uv = px / vec2<f32>(params.tiles * 32u);
-        c1 = textureSampleLevel(tile_avg, linear_clamp, uv, 0.0).rgb;
-    } else {
-        c1 = art_bilinear(px, l0 + 1u, 0.0);
     }
     return mix(c0, c1, t);
 }
@@ -309,9 +337,10 @@ fn beyond_fog(world: vec3<f32>, beyond: f32) -> f32 {
 fn mirror_warp(xz: vec2<f32>, d: f32) -> vec2<f32> {
     let size = map_size_px();
     let q = xz / 1100.0;
-    let wiggle = vec2<f32>(noise(q + vec2<f32>(3.1, 7.7)), noise(q + vec2<f32>(-5.3, 1.9))) * min(d * d / (d + 600.0) * 0.2, 192.0);
     let s = xz / 4800.0;
-    let sway = vec2<f32>(noise(s + vec2<f32>(-1.7, 4.3)), noise(s + vec2<f32>(6.2, -2.8))) * min(d * d / (d + 1200.0) * 0.12, min(size.x, size.y) / 6.0);
+    let n = noise_at(array<vec2<f32>, 4>(q + vec2<f32>(3.1, 7.7), q + vec2<f32>(-5.3, 1.9), s + vec2<f32>(-1.7, 4.3), s + vec2<f32>(6.2, -2.8)), 4u);
+    let wiggle = n.xy * min(d * d / (d + 600.0) * 0.2, 192.0);
+    let sway = n.zw * min(d * d / (d + 1200.0) * 0.12, min(size.x, size.y) / 6.0);
     return wiggle + sway;
 }
 
@@ -360,7 +389,7 @@ fn far_mix(xz: vec2<f32>, d: f32) -> f32 {
     if (d * 0.45 >= FAR_FULL) {
         return 1.0;
     }
-    let wobble = 1.0 + 0.5 * noise(xz / 1300.0 + vec2<f32>(2.3, 5.9)) + 0.25 * noise(xz / 420.0 + vec2<f32>(-7.1, 1.4));
+    let wobble = noise_sum(array<vec2<f32>, 4>(xz / 1300.0 + vec2<f32>(2.3, 5.9), xz / 420.0 + vec2<f32>(-7.1, 1.4), vec2<f32>(0.0), vec2<f32>(0.0)), vec4<f32>(0.5, 0.25, 0.0, 0.0), 2u, 1.0);
     return smoothstep(FAR_FROM, FAR_FULL, d * wobble);
 }
 
@@ -447,30 +476,37 @@ fn around_tones(s: f32, width: f32) -> array<vec3<f32>, 2> {
 fn far_ground(xz: vec2<f32>, d: f32, relief: bool) -> vec2<f32> {
     let a = around_at(0, round_the_edge(xz), max(d, 800.0) * 1.5);
     let sea = frame.world.y;
+    let mixed = smoothstep(0.0, 0.1, a.x) * smoothstep(0.0, 0.1, 1.0 - a.x);
+    // Its noise in one loop (`noise_d` written once, see `noise_sum`): its hills' octaves with
+    // `relief`, then, where there is sea round a coast to wander, its coasts' (their value, and
+    // their gradient per world unit).
+    let at = array<vec2<f32>, 5>(xz / 1800.0 + vec2<f32>(4.2, -1.3), xz / 760.0 - vec2<f32>(2.7, 6.1), xz / 5200.0 + vec2<f32>(1.3, -4.1), xz / 2300.0 + vec2<f32>(-6.2, 2.9), xz / 1000.0 + vec2<f32>(3.7, 8.1));
+    let scale = vec4<f32>(5200.0, 2300.0, 1000.0, 1.0);
+    let weight = array<f32, 5>(1.0, 0.5, 1.0, 0.5, 0.25);
+    var hills = 0.0;
+    var coast = vec3<f32>(0.0);
+    for (var k = select(2u, 0u, relief); k < select(2u, 5u, sea > 0.0 && mixed > 0.0); k++) {
+        let n = noise_d(at[k]);
+        if (k < 2u) {
+            hills += weight[k] * n.x;
+        } else {
+            coast += vec3<f32>(weight[k] * n.x, weight[k] * n.yz / scale[k - 2u]);
+        }
+    }
     var land = a.y;
     if (relief) {
-        let hills = noise(xz / 1800.0 + vec2<f32>(4.2, -1.3)) + 0.5 * noise(xz / 760.0 - vec2<f32>(2.7, 6.1));
         // (Never below the lowest ground TA has.)
         land = max(a.y + hills * max(clamp(a.w * 1.5, 6.0, 80.0), 50.0 * smoothstep(1500.0, 8000.0, d)), 0.0);
     }
     if (sea <= 0.0) {
         return vec2<f32>(land, 0.0);
     }
-    let mixed = smoothstep(0.0, 0.1, a.x) * smoothstep(0.0, 0.1, 1.0 - a.x);
     var raw = a.x;
     // (How fast `raw` changes, per world unit.)
     var slope = 0.0;
     if (mixed > 0.0) {
-        if (relief) {
-            let n1 = noise_d(xz / 5200.0 + vec2<f32>(1.3, -4.1));
-            let n2 = noise_d(xz / 2300.0 + vec2<f32>(-6.2, 2.9));
-            let n3 = noise_d(xz / 1000.0 + vec2<f32>(3.7, 8.1));
-            raw += (n1.x + 0.5 * n2.x + 0.25 * n3.x) * 1.6 * mixed;
-            slope = length(n1.yz / 5200.0 + 0.5 * n2.yz / 2300.0 + 0.25 * n3.yz / 1000.0) * 1.6 * mixed;
-        } else {
-            let n = noise(xz / 5200.0 + vec2<f32>(1.3, -4.1)) + 0.5 * noise(xz / 2300.0 + vec2<f32>(-6.2, 2.9)) + 0.25 * noise(xz / 1000.0 + vec2<f32>(3.7, 8.1));
-            raw += n * 1.6 * mixed;
-        }
+        raw += coast.x * 1.6 * mixed;
+        slope = length(coast.yz) * 1.6 * mixed;
     }
     // (Its shores sharp where the shore is drawn, per pixel: the land soon above the water,
     // the bed soon deep, no shallows for miles. For the extended ground's vertices (`relief`),
@@ -564,14 +600,18 @@ fn beyond_ground_with(at: vec2<f32>, xz: vec2<f32>, d: f32) -> vec2<f32> {
 // `beyond_ground_with`, the far land's share there (`far_mix`) known; the far land's hills with
 // `relief` (see `far_ground`).
 fn beyond_ground_from(at: vec2<f32>, xz: vec2<f32>, d: f32, k: f32, relief: bool) -> vec2<f32> {
-    if (k >= 1.0) {
-        return far_ground(xz, d, relief);
+    // (The far land written once. Direct3D's shader compilers inline every call, the far land's
+    // lookups and their noise in each place they are written, and took minutes over the copies:
+    // functions used often here write each lookup once.)
+    var g = vec2<f32>(0.0);
+    if (k < 1.0) {
+        g = height_mip(at, mix(beyond_lod(d), 5.0, k));
+        if (k <= 0.0) {
+            return g;
+        }
     }
-    let g = height_mip(at, mix(beyond_lod(d), 5.0, k));
-    if (k <= 0.0) {
-        return g;
-    }
-    return mix(g, far_ground(xz, d, relief), k);
+    let far = far_ground(xz, d, relief);
+    return select(mix(g, far, k), far, k >= 1.0);
 }
 
 // `beyond_ground_with`, the mirror image's point found here.
@@ -582,10 +622,12 @@ fn beyond_ground(xz: vec2<f32>, d: f32) -> vec2<f32> {
 // `beyond_ground`, the far land's hills with `relief`.
 fn beyond_ground_relief(xz: vec2<f32>, d: f32, relief: bool) -> vec2<f32> {
     let k = far_mix(xz, d);
-    if (k >= 1.0) {
-        return far_ground(xz, d, relief);
+    // (The mirror image's point only where it is seen.)
+    var at = vec2<f32>(0.0);
+    if (k < 1.0) {
+        at = mirror_point(xz, d).at;
     }
-    return beyond_ground_from(mirror_point(xz, d).at, xz, d, k, relief);
+    return beyond_ground_from(at, xz, d, k, relief);
 }
 
 // Mip level at which the ground `d` beyond the map reads the heightmap: texels as far apart
@@ -644,7 +686,7 @@ fn beyond_wet(xz: vec2<f32>, d: f32) -> f32 {
 
 // `beyond_wet` from the ground's own wet fraction there `w` (`beyond_ground`'s y).
 fn beyond_wet_from(w: f32, xz: vec2<f32>, d: f32) -> f32 {
-    let n = noise(xz / 190.0) + 0.5 * noise(xz / 73.0 + vec2<f32>(5.3, 1.7));
+    let n = noise_sum(array<vec2<f32>, 4>(xz / 190.0, xz / 73.0 + vec2<f32>(5.3, 1.7), vec2<f32>(0.0), vec2<f32>(0.0)), vec4<f32>(1.0, 0.5, 0.0, 0.0), 2u, 0.0);
     return w + n * 0.12 * beyond_coast_mix(d);
 }
 
@@ -709,10 +751,16 @@ fn ground_gradient(xz: vec2<f32>) -> vec2<f32> {
     if (!(FAR_LAND && beyond_on())) {
         return smooth_gradient(xz);
     }
+    // (The four heights in a loop, `ground_smooth` written once: see `beyond_ground_from`. East
+    // less west, south less north.)
     let e = 8.0;
-    let gx = ground_smooth(xz + vec2<f32>(e, 0.0)) - ground_smooth(xz - vec2<f32>(e, 0.0));
-    let gz = ground_smooth(xz + vec2<f32>(0.0, e)) - ground_smooth(xz - vec2<f32>(0.0, e));
-    return vec2<f32>(gx, gz) / (2.0 * e);
+    var g = vec2<f32>(0.0);
+    for (var i = 0u; i < 4u; i++) {
+        let axis = select(vec2<f32>(1.0, 0.0), vec2<f32>(0.0, 1.0), i >= 2u);
+        let side = select(1.0, -1.0, (i & 1u) == 1u);
+        g += axis * (ground_smooth(xz + axis * (e * side)) * side);
+    }
+    return g / (2.0 * e);
 }
 
 // Height of heightmap vertex `c`, the map continued as its mirror image when the ground beyond
@@ -751,15 +799,24 @@ fn skirt_vertex(xz: vec2<f32>) -> SkirtVertex {
         v.normal = vertex_normal(cell);
         return v;
     }
-    v.height = skirt_height(xz, d);
     // Central differences over about a sixteenth of the distance (the local vertex spacing
-    // is about a sixth of it), never finer than a heightmap cell.
+    // is about a sixth of it), never finer than a heightmap cell. (The five heights in a loop,
+    // `skirt_height` written once, see `beyond_ground_from`: here, then east, west, south and
+    // north of it.)
     let e = max(16.0, d * 0.06);
-    let hx = skirt_height(xz + vec2<f32>(e, 0.0), beyond_distance(xz + vec2<f32>(e, 0.0)))
-        - skirt_height(xz - vec2<f32>(e, 0.0), beyond_distance(xz - vec2<f32>(e, 0.0)));
-    let hz = skirt_height(xz + vec2<f32>(0.0, e), beyond_distance(xz + vec2<f32>(0.0, e)))
-        - skirt_height(xz - vec2<f32>(0.0, e), beyond_distance(xz - vec2<f32>(0.0, e)));
-    v.normal = normalize(vec3<f32>(-hx, 2.0 * e, -hz));
+    var g = vec2<f32>(0.0);
+    for (var i = 0u; i < 5u; i++) {
+        let axis = select(vec2<f32>(1.0, 0.0), vec2<f32>(0.0, 1.0), i >= 3u);
+        let side = select(select(-1.0, 1.0, (i & 1u) == 1u), 0.0, i == 0u);
+        let p = xz + axis * (e * side);
+        let h = skirt_height(p, beyond_distance(p));
+        if (i == 0u) {
+            v.height = h;
+        } else {
+            g += axis * (h * side);
+        }
+    }
+    v.normal = normalize(vec3<f32>(-g.x, 2.0 * e, -g.y));
     return v;
 }
 

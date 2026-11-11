@@ -626,6 +626,25 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   occlusion (trees, water, effects). The frame gains texture bindings
   per stage, so the device asks for up to 32 sampled textures per stage (the water's
   pipeline, which reads the scene behind it too, then has 18).
+* **Shader size and Direct3D 12**: HLSL compilers inline every function call, so a function
+  called in five places is compiled five times over, and everything it calls with it. FXC (the
+  compiler every Windows has, d3dcompiler_47.dll, which wgpu's Direct3D 12 backend falls back on
+  without a dxcompiler.dll; Vulkan is the default) takes time far worse than in proportion to a
+  shader's size: the terrain's and the water's fragment shaders, written out call by call, ran
+  to some 225,000 expressions and took FXC minutes each. They are written so each heavy lookup
+  appears once: `noise_d` hashes its four lattice corners in one vector pass; octaves of noise
+  go through `noise_sum`/`noise_at` (the points computed where the call is, so the values are
+  as before); repeated lookups (the far land's heights and coasts, the art's texels and mips,
+  a material's detail, the swells, the foam's octaves) run in loops, which FXC keeps as loops;
+  and `beyond_ground_from`, `shore_distance` and the like take each lookup once whatever path
+  they take. Keep it so: a call inside a function used in many places multiplies. The
+  `inlined_sizes` test (ta_render, ignored) lists what each function adds to each entry point
+  once inlined (`TA_INLINE_WHO=<function>`: who calls it how often); `dump_hlsl` writes the HLSL
+  wgpu hands the compiler, and `tools/shaders/hlsl_times.ps1` times FXC and DXC on it. With FXC
+  (`util::set_fxc`, as wgpu's `Dx12Compiler::Auto` chooses) the terrain's and the water's
+  pipelines are built on threads of their own, side by side (`util::side_by_side`; FXC is a
+  function keeping nothing between calls, while DXC is one compiler object wgpu shares, so
+  never with DXC; `TA_PIPELINES_ONE_BY_ONE=1` turns it off).
 * **Terrain**: chunked heightmap mesh; fragment shader resolves the virtual map image
   through a tile-index texture and a deduplicated tile atlas with per-tile box mips
   (exact for 32 px tiles) plus a per-tile-average texture for far LODs. Dynamic relighting

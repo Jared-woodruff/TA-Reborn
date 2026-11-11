@@ -529,7 +529,12 @@ fn water_fragment(p: vec3<f32>, depth: f32, far: f32, frag: vec3<f32>) -> vec4<f
     let low = 1.0 - smoothstep(0.12, 0.3, v.y);
     if (beyond_on() && frame.water.y > 0.0 && far < 1.0 && low > 0.0 && waterline > 0.0 && waterline < 30.0) {
         // (The distance's gradient: seawards, about a unit long within its reach.)
-        let g = vec2<f32>(shore_distance(p.xz + vec2<f32>(2.0, 0.0)), shore_distance(p.xz + vec2<f32>(0.0, 2.0))) * 0.5 - waterline * 0.5;
+        // (The two in a loop, `shore_distance` written once: see `noise_sum`.)
+        var ahead = vec2<f32>(0.0);
+        for (var j = 0u; j < 2u; j++) {
+            ahead = select(ahead, vec2<f32>(shore_distance(p.xz + select(vec2<f32>(2.0, 0.0), vec2<f32>(0.0, 2.0), j == 1u))), vec2<u32>(0u, 1u) == vec2<u32>(j));
+        }
+        let g = ahead * 0.5 - waterline * 0.5;
         let toward = v.xz / max(length(v.xz), 1e-4);
         // (How the shore faces the eye: a wall seen edge-on, at an island's ends, thins away.)
         let facing = dot(g, toward) / max(length(g), 1e-3) * smoothstep(0.3, 0.6, length(g));

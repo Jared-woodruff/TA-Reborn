@@ -23,6 +23,9 @@ serde_json.workspace = true
 # The ground's detail materials ship as PNGs.
 image.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+libloading.workspace = true
+
 [dev-dependencies]
 ta_vfs.workspace = true
 winit.workspace = true

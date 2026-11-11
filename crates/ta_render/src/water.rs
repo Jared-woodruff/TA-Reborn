@@ -33,7 +33,7 @@ use glam::{UVec2, Vec2, Vec3};
 use ta_formats::image::Palette;
 use ta_formats::tnt::{TILE_SIZE, TntMap};
 
-use crate::terrain::{CHUNK_CELLS, HeightField, TerrainGpu, TerrainPipeline};
+use crate::terrain::{CHUNK_CELLS, HeightField, TerrainGpu};
 use crate::util::{Target, srgb_to_linear_lut};
 
 /// What fills a map below its sea level.
@@ -349,10 +349,12 @@ fn sqrt3(v: Vec3) -> Vec3 {
 }
 
 impl WaterPipeline {
+    /// The water's pipelines; `terrain_layout`: the terrain's bind group's (see
+    /// [`crate::terrain::TerrainPipeline::bind_group_layout`]), which they share.
     pub fn new(
         device: &wgpu::Device,
         frame_layout: &wgpu::BindGroupLayout,
-        terrain: &TerrainPipeline,
+        terrain_layout: &wgpu::BindGroupLayout,
         reflection_layout: &wgpu::BindGroupLayout,
         scene_layout: &wgpu::BindGroupLayout,
         hdr_format: wgpu::TextureFormat,
@@ -362,7 +364,7 @@ impl WaterPipeline {
         let outer_shader = crate::util::shader(device, "water beyond the map", &scene_source(&shader_source_for(true), samples));
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("water"),
-            bind_group_layouts: &[Some(frame_layout), Some(&terrain.layout), Some(reflection_layout), Some(scene_layout)],
+            bind_group_layouts: &[Some(frame_layout), Some(terrain_layout), Some(reflection_layout), Some(scene_layout)],
             immediate_size: 0,
         });
         let chunk_instances = wgpu::VertexBufferLayout {
@@ -394,12 +396,15 @@ impl WaterPipeline {
         let (heat, alpha) = (crate::heat::HEAT_BLEND, wgpu::ColorWrites::ALPHA);
         let chunks = [Some(chunk_instances)];
         let skirt = [Some(crate::sky::SKIRT_VERTEX_LAYOUT)];
-        WaterPipeline {
-            pipeline: make("water", &shader, "vs_water", "fs_water", &chunks, over, all),
-            outer: make("water beyond the map", &outer_shader, "vs_water_outer", "fs_water_outer", &skirt, over, all),
-            heat: make("lava heat", &shader, "vs_water", "fs_heat_water", &chunks, heat, alpha),
-            heat_outer: make("lava heat beyond the map", &outer_shader, "vs_water_outer", "fs_heat_outer", &skirt, heat, alpha),
-        }
+        // (Side by side where their shaders take long to compile: see `util::side_by_side`.)
+        let builds: [&(dyn Fn() -> wgpu::RenderPipeline + Sync); 4] = [
+            &|| make("water", &shader, "vs_water", "fs_water", &chunks, over, all),
+            &|| make("water beyond the map", &outer_shader, "vs_water_outer", "fs_water_outer", &skirt, over, all),
+            &|| make("lava heat", &shader, "vs_water", "fs_heat_water", &chunks, heat, alpha),
+            &|| make("lava heat beyond the map", &outer_shader, "vs_water_outer", "fs_heat_outer", &skirt, heat, alpha),
+        ];
+        let [pipeline, outer, heat, heat_outer] = crate::util::side_by_side(builds);
+        WaterPipeline { pipeline, outer, heat, heat_outer }
     }
 }
 

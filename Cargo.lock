@@ -4013,6 +4013,7 @@ dependencies = [
  "env_logger",
  "glam",
  "image",
+ "libloading",
  "log",
  "pollster 1.0.1",
  "rayon",

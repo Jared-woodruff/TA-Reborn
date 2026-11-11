@@ -99,7 +99,7 @@ fn add_chop(w: ptr<function, Waves>, xz: vec2<f32>, t: f32, footprint: f32, wave
 // patches a few hundred units across and smaller ones within them, so the sea has calm streaks
 // and choppy patches rather than one ripple everywhere.
 fn wind_gust(xz: vec2<f32>, t: f32) -> f32 {
-    let n = noise(xz / 460.0 + vec2<f32>(t * 0.011, t * 0.004)) + 0.5 * noise(xz / 170.0 + vec2<f32>(3.3 - t * 0.02, t * 0.013));
+    let n = noise_sum(array<vec2<f32>, 4>(xz / 460.0 + vec2<f32>(t * 0.011, t * 0.004), xz / 170.0 + vec2<f32>(3.3 - t * 0.02, t * 0.013), vec2<f32>(0.0), vec2<f32>(0.0)), vec4<f32>(1.0, 0.5, 0.0, 0.0), 2u, 0.0);
     return 0.45 + saturate(n * 1.5 + 0.5);
 }
 
@@ -107,6 +107,40 @@ fn wind_gust(xz: vec2<f32>, t: f32) -> f32 {
 // add once band-limited away: the sea's base roughness counts it in (see `water_fragment`).
 const CAPILLARY: f32 = 0.035;
 const CAPILLARY_VAR: f32 = 0.52 * CAPILLARY * CAPILLARY;
+
+// The swells (see `water_waves`): direction, wavelength, steepness; and the phase offset, as a
+// constant plus shares of the broad warp and the finer bend.
+const SWELLS = array<vec4<f32>, 6>(
+    vec4<f32>(0.800, 0.600, 173.0, 0.055),
+    vec4<f32>(0.423, 0.906, 117.0, 0.050),
+    vec4<f32>(0.978, -0.208, 79.0, 0.045),
+    vec4<f32>(0.139, 0.990, 53.0, 0.036),
+    vec4<f32>(0.906, 0.423, 35.0, 0.032),
+    vec4<f32>(0.629, -0.777, 23.0, 0.028),
+);
+const SWELL_PHASES = array<vec3<f32>, 6>(
+    vec3<f32>(0.0, 1.0, 0.0),
+    vec3<f32>(1.7, -0.8, 0.0),
+    vec3<f32>(4.1, 0.6, 0.3),
+    vec3<f32>(2.3, -0.5, -0.6),
+    vec3<f32>(5.9, 0.4, 1.0),
+    vec3<f32>(0.9, -0.3, -0.8),
+);
+// The chop's octaves: wavelength, steepness, turn (cos, sin); then drift and seed.
+const CHOPS = array<vec4<f32>, 5>(
+    vec4<f32>(19.0, 0.085, 0.966, 0.259),
+    vec4<f32>(10.0, 0.060, 0.500, 0.866),
+    vec4<f32>(5.2, 0.045, -0.259, 0.966),
+    vec4<f32>(2.6, 0.04, 0.848, -0.530),
+    vec4<f32>(1.15, CAPILLARY, -0.669, 0.743),
+);
+const CHOP_DRIFTS = array<vec4<f32>, 5>(
+    vec4<f32>(0.21, 0.09, 0.0, 0.0),
+    vec4<f32>(-0.17, 0.26, 17.3, 0.0),
+    vec4<f32>(0.33, -0.15, 41.7, 0.0),
+    vec4<f32>(-0.4, -0.3, 73.1, 0.0),
+    vec4<f32>(0.55, 0.42, 101.9, 0.0),
+);
 
 // Surface slopes of the sea at world position `xz`, time `t` (s), for a pixel footprint in
 // world units. Unscaled: multiply the slope by the wave strength (and lost_var by its square).
@@ -118,24 +152,24 @@ fn water_waves(xz: vec2<f32>, t: f32, footprint: f32) -> Waves {
     // Low-frequency phase warps shared by the swells (their own slope is neglected: they vary
     // over hundreds of units): a broad one, and for the shorter swells a finer one too, which
     // bends their crests so that no two of them cross in a regular lattice of glints.
-    let warp = noise(xz / 260.0 + vec2<f32>(3.7, t * 0.006)) * 7.0;
-    let bend = noise(xz / 85.0 + vec2<f32>(-2.1, 5.3 - t * 0.01)) * 9.0;
-    // Swell travelling roughly south-east, spread over about ±70°.
-    add_swell(&w, xz, t, footprint, vec2<f32>(0.800, 0.600), 173.0, 0.055, warp);
-    add_swell(&w, xz, t, footprint, vec2<f32>(0.423, 0.906), 117.0, 0.050, 1.7 - warp * 0.8);
-    add_swell(&w, xz, t, footprint, vec2<f32>(0.978, -0.208), 79.0, 0.045, 4.1 + warp * 0.6 + bend * 0.3);
-    add_swell(&w, xz, t, footprint, vec2<f32>(0.139, 0.990), 53.0, 0.036, 2.3 - warp * 0.5 - bend * 0.6);
-    add_swell(&w, xz, t, footprint, vec2<f32>(0.906, 0.423), 35.0, 0.032, 5.9 + warp * 0.4 + bend);
-    add_swell(&w, xz, t, footprint, vec2<f32>(0.629, -0.777), 23.0, 0.028, 0.9 - warp * 0.3 - bend * 0.8);
-    // Chop: drifting noise at four scales.
-    add_chop(&w, xz, t, footprint, 19.0, 0.085, vec2<f32>(0.966, 0.259), vec2<f32>(0.21, 0.09), 0.0);
-    add_chop(&w, xz, t, footprint, 10.0, 0.060, vec2<f32>(0.500, 0.866), vec2<f32>(-0.17, 0.26), 17.3);
-    add_chop(&w, xz, t, footprint, 5.2, 0.045, vec2<f32>(-0.259, 0.966), vec2<f32>(0.33, -0.15), 41.7);
-    // Ripples only resolved when zoomed in; they break close-up highlights into sparkles. The
-    // finest, capillary ripples, give the surface crisp detail close up (further off they are
-    // part of the base roughness: see `CAPILLARY_VAR`).
-    add_chop(&w, xz, t, footprint, 2.6, 0.04, vec2<f32>(0.848, -0.530), vec2<f32>(-0.4, -0.3), 73.1);
-    add_chop(&w, xz, t, footprint, 1.15, CAPILLARY, vec2<f32>(-0.669, 0.743), vec2<f32>(0.55, 0.42), 101.9);
+    let warps = noise_at(array<vec2<f32>, 4>(xz / 260.0 + vec2<f32>(3.7, t * 0.006), xz / 85.0 + vec2<f32>(-2.1, 5.3 - t * 0.01), vec2<f32>(0.0), vec2<f32>(0.0)), 2u);
+    let warp = warps.x * 7.0;
+    let bend = warps.y * 9.0;
+    // Swell travelling roughly south-east, spread over about ±70° (`SWELLS`), then chop:
+    // drifting noise at four scales, and ripples only resolved when zoomed in, which break
+    // close-up highlights into sparkles; the finest, capillary ripples, give the surface crisp
+    // detail close up (further off they are part of the base roughness: see `CAPILLARY_VAR`).
+    // (Each in a loop, written once: see `noise_sum`.)
+    for (var k = 0u; k < 6u; k++) {
+        let s = SWELLS[k];
+        let phase = SWELL_PHASES[k];
+        add_swell(&w, xz, t, footprint, s.xy, s.z, s.w, phase.x + phase.y * warp + phase.z * bend);
+    }
+    for (var k = 0u; k < 5u; k++) {
+        let c = CHOPS[k];
+        let d = CHOP_DRIFTS[k];
+        add_chop(&w, xz, t, footprint, c.x, c.y, c.zw, d.xy, d.z);
+    }
     let gust = wind_gust(xz, t);
     w.slope *= gust;
     w.lost_var *= gust * gust;
@@ -220,7 +254,8 @@ fn whitecaps(xz: vec2<f32>, t: f32, px: FoamPixel, wind: vec2<f32>, crest: f32, 
     // they never run in straight rows. `s` = 0 on a crest, rising downwind to 1 at the next.
     let k = TAU / 38.0;
     let omega = sqrt(23.0 * k);
-    let warp = noise(vec2<f32>(c / 70.0, a / 140.0 + 2.0)) * 3.0 + noise(vec2<f32>(c / 23.0 + 5.0, a / 40.0)) * 0.8;
+    // (Its noise in loops, `noise` written once each: see `noise_sum`.)
+    let warp = noise_sum(array<vec2<f32>, 4>(vec2<f32>(c / 70.0, a / 140.0 + 2.0), vec2<f32>(c / 23.0 + 5.0, a / 40.0), vec2<f32>(0.0), vec2<f32>(0.0)), vec4<f32>(3.0, 0.8, 0.0, 0.0), 2u, 0.0);
     let u = (a * k - omega * t + warp) / TAU - 0.25;
     let s = fract(u);
     // Which crest this is (each breaks along its own stretches; the count changes in the
@@ -231,8 +266,9 @@ fn whitecaps(xz: vec2<f32>, t: f32, px: FoamPixel, wind: vec2<f32>, crest: f32, 
     // The stretches of crest that break now: a few units to a few tens long, different on
     // every wave, more where the swell's crests pile up and in the gusts; their ends fray, and
     // the further the foam has fallen behind the crest, the less of the stretch it holds.
-    let seg = noise(vec2<f32>(c / 16.0 + 9.0, wave * 3.7 + t * 0.12)) * 0.65 + noise(vec2<f32>(c / 6.5, wave * 1.9 - t * 0.2)) * 0.35;
-    let fray = noise(vec2<f32>(c / 3.7 + 1.3, a / 4.1 - 2.2)) * 0.3;
+    let along = noise_at(array<vec2<f32>, 4>(vec2<f32>(c / 16.0 + 9.0, wave * 3.7 + t * 0.12), vec2<f32>(c / 6.5, wave * 1.9 - t * 0.2), vec2<f32>(c / 3.7 + 1.3, a / 4.1 - 2.2), vec2<f32>(0.0)), 3u);
+    let seg = along.x * 0.65 + along.y * 0.35;
+    let fray = along.z * 0.3;
     let th = 0.3 - 0.12 * blow + 0.25 * behind;
     let pick = smoothstep(th, th + 0.15, crest * gust * gust * 1.1 + seg * 0.4 + fray);
     if (pick <= 0.0) {
@@ -240,8 +276,9 @@ fn whitecaps(xz: vec2<f32>, t: f32, px: FoamPixel, wind: vec2<f32>, crest: f32, 
     }
     // The crest's line of foam, ragged (never thinner than about a pixel and a half), and the
     // patch it leaves behind it, thinning out.
-    let w = max(0.05, 1.5 * footprint / 38.0) * (0.75 + 0.5 * noise(vec2<f32>(c / 3.1 + 4.0, wave * 2.3)));
-    let sf = fract(s + noise(vec2<f32>(c / 2.3, wave * 1.7 + 6.0)) * 0.05 + noise(vec2<f32>(c / 7.0 + 2.0, wave * 2.9)) * 0.06);
+    let edge = noise_at(array<vec2<f32>, 4>(vec2<f32>(c / 3.1 + 4.0, wave * 2.3), vec2<f32>(c / 2.3, wave * 1.7 + 6.0), vec2<f32>(c / 7.0 + 2.0, wave * 2.9), vec2<f32>(0.0)), 3u);
+    let w = max(0.05, 1.5 * footprint / 38.0) * (0.75 + 0.5 * edge.x);
+    let sf = fract(s + edge.y * 0.05 + edge.z * 0.06);
     let front = max(1.0 - smoothstep(0.0, w, sf), smoothstep(1.0 - 0.5 * w, 1.0, sf));
     let trail = exp(-behind * 7.0) * smoothstep(0.5, 0.65, s);
     // The foam's texture, drawn out a little along the wind: on the crest a ragged white line,
@@ -273,13 +310,12 @@ fn turning_whitecaps(xz: vec2<f32>, t: f32, px: FoamPixel, wind: vec2<f32>, cres
     // between them at most, 7.5 degrees, the crests are square to that heading's.)
     let w = smoothstep(0.25, 0.75, f - i);
     var caps = 0.0;
-    if (w < 1.0) {
-        let a = i * TAU / WHITECAP_HEADINGS;
-        caps += whitecaps(xz, t, px, vec2<f32>(cos(a), sin(a)) * speed, crest, gust) * (1.0 - w);
-    }
-    if (w > 0.0) {
-        let a = (i + 1.0) * TAU / WHITECAP_HEADINGS;
-        caps += whitecaps(xz, t, px, vec2<f32>(cos(a), sin(a)) * speed, crest, gust) * w;
+    // (The two headings in a loop, `whitecaps` written once: see `noise_sum`.)
+    for (var j = 0u; j < 2u; j++) {
+        if ((j == 0u && w < 1.0) || (j == 1u && w > 0.0)) {
+            let a = (i + f32(j)) * TAU / WHITECAP_HEADINGS;
+            caps += whitecaps(xz, t, px, vec2<f32>(cos(a), sin(a)) * speed, crest, gust) * select(1.0 - w, w, j == 1u);
+        }
     }
     return caps;
 }
@@ -423,6 +459,21 @@ struct FoamNoise {
 // Variance of `noise_d`'s value (its standard deviation is about 0.18).
 const NOISE_VAR: f32 = 0.0324;
 
+// The foam's octaves (see `foam_noise`): wavelength, amplitude, turn (cos, sin); then drift and
+// seed.
+const FOAM_OCTAVES = array<vec4<f32>, 4>(
+    vec4<f32>(12.0, 1.0, 0.966, 0.259),
+    vec4<f32>(5.7, 0.62, 0.500, 0.866),
+    vec4<f32>(2.7, 0.40, -0.259, 0.966),
+    vec4<f32>(1.3, 0.26, 0.848, -0.530),
+);
+const FOAM_DRIFTS = array<vec4<f32>, 4>(
+    vec4<f32>(0.050, -0.030, 0.0, 0.0),
+    vec4<f32>(-0.040, 0.060, 7.1, 0.0),
+    vec4<f32>(0.070, 0.020, 13.7, 0.0),
+    vec4<f32>(-0.050, -0.070, 29.3, 0.0),
+);
+
 fn foam_octave(n: ptr<function, FoamNoise>, q: vec2<f32>, t: f32, footprint: f32, wavelength: f32, amp: f32, rot: vec2<f32>, drift: vec2<f32>, seed: f32) {
     let b = wave_band(wavelength, footprint);
     (*n).lost += amp * amp * NOISE_VAR * (1.0 - b * b);
@@ -441,12 +492,14 @@ fn foam_noise(xz: vec2<f32>, t: f32, footprint: f32) -> FoamNoise {
     n.g = vec2<f32>(0.0);
     n.lost = 0.0;
     // (The warp's own slope is neglected: it changes over tens of units.)
-    let warp = vec2<f32>(noise(xz / 37.0 + vec2<f32>(t * 0.010 + 5.3, -t * 0.013)), noise(xz / 37.0 + vec2<f32>(11.9 - t * 0.012, t * 0.009)));
+    let warp = noise_at(array<vec2<f32>, 4>(xz / 37.0 + vec2<f32>(t * 0.010 + 5.3, -t * 0.013), xz / 37.0 + vec2<f32>(11.9 - t * 0.012, t * 0.009), vec2<f32>(0.0), vec2<f32>(0.0)), 2u).xy;
     let q = xz + warp * 6.0;
-    foam_octave(&n, q, t, footprint, 12.0, 1.0, vec2<f32>(0.966, 0.259), vec2<f32>(0.050, -0.030), 0.0);
-    foam_octave(&n, q, t, footprint, 5.7, 0.62, vec2<f32>(0.500, 0.866), vec2<f32>(-0.040, 0.060), 7.1);
-    foam_octave(&n, q, t, footprint, 2.7, 0.40, vec2<f32>(-0.259, 0.966), vec2<f32>(0.070, 0.020), 13.7);
-    foam_octave(&n, q, t, footprint, 1.3, 0.26, vec2<f32>(0.848, -0.530), vec2<f32>(-0.050, -0.070), 29.3);
+    // (The octaves in a loop, `noise_d` written once: see `noise_sum`.)
+    for (var k = 0u; k < 4u; k++) {
+        let a = FOAM_OCTAVES[k];
+        let b = FOAM_DRIFTS[k];
+        foam_octave(&n, q, t, footprint, a.x, a.y, a.zw, b.xy, b.z);
+    }
     // Unit total variance: NOISE_VAR * (1 + 0.62² + 0.4² + 0.26²).
     let k = inverseSqrt(NOISE_VAR * 1.6120);
     n.v *= k;
@@ -660,9 +713,11 @@ fn lava_surface(xz: vec2<f32>, t: f32, footprint: f32, shore: f32) -> LavaSample
     let flow = vec2<f32>(0.92, 0.38);
     // Heat: drifting noise at three scales gives hot channels and cooler, crusted patches; the
     // melt cools against the banks.
-    let n1 = noise(xz / 110.0 + flow * (t * 0.008));
-    let n2 = noise(xz / 37.0 - flow.yx * (t * 0.015) + 5.1);
-    let n3 = noise(xz / 13.0 + flow * (t * 0.03) + 9.7) * wave_band(13.0, footprint);
+    // (In a loop, `noise` written once: see `noise_sum`.)
+    let n = noise_at(array<vec2<f32>, 4>(xz / 110.0 + flow * (t * 0.008), xz / 37.0 - flow.yx * (t * 0.015) + 5.1, xz / 13.0 + flow * (t * 0.03) + 9.7, vec2<f32>(0.0)), 3u);
+    let n1 = n.x;
+    let n2 = n.y;
+    let n3 = n.z * wave_band(13.0, footprint);
     let banks = smoothstep(2.0, 16.0, shore);
     let heat = saturate(0.5 + n1 * 1.9 + n2 * 0.7 + n3 * 0.4) * mix(0.35, 1.0, banks);
     let pulse = 0.9 + 0.1 * sin(t * 1.3 + n2 * 9.0);

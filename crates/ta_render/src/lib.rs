@@ -1044,9 +1044,20 @@ impl Renderer {
         let reflections = building.step("the reflections' pipelines", || Reflections::new(device, &frame_layout));
         let post = building.step("the post-processing pipelines", || Post::new(device, gpu.view_format, width, height, samples));
         let terrain_detail = building.step("the ground's detail materials", || terrain_detail::TerrainDetail::new(device, &gpu.queue));
-        let terrain_pipeline = building.step("the terrain's pipelines", || TerrainPipeline::new(device, &frame_layout, &terrain_detail, util::HDR_FORMAT, samples));
+        let terrain_layout = TerrainPipeline::bind_group_layout(device);
         let water_scene = WaterScene::new(device, samples);
-        let water_pipeline = building.step("the water's pipelines", || WaterPipeline::new(device, &frame_layout, &terrain_pipeline, &reflections.layout, &water_scene.layout, util::HDR_FORMAT, samples));
+        // (Where their shaders take long to compile, the water's pipelines are built while the
+        // terrain's are: see `util::side_by_side`.)
+        let (terrain_pipeline, water_pipeline) = std::thread::scope(|scope| {
+            let water = || WaterPipeline::new(device, &frame_layout, &terrain_layout, &reflections.layout, &water_scene.layout, util::HDR_FORMAT, samples);
+            let early = util::builds_side_by_side().then(|| std::thread::Builder::new().name("pipeline builder".into()).spawn_scoped(scope, water).ok()).flatten();
+            let terrain = building.step("the terrain's pipelines", || TerrainPipeline::new(device, &frame_layout, terrain_layout.clone(), &terrain_detail, util::HDR_FORMAT, samples));
+            let water = building.step("the water's pipelines", || match early {
+                Some(thread) => thread.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic)),
+                None => water(),
+            });
+            (terrain, water)
+        });
         let sky_pipeline = building.step("the sky's pipelines", || SkyPipeline::new(device, &frame_layout, util::HDR_FORMAT, samples));
         let sprites = building.step("the sprites' pipelines", || SpriteRenderer::new(device, &frame_layout, util::HDR_FORMAT, samples));
         let foliage = building.step("the trees' and rocks' pipelines", || foliage::FoliageRenderer::new(device, &gpu.queue, &frame_layout, util::HDR_FORMAT, samples).map_err(|e| log::error!("foliage: {e:#}")).ok());
@@ -2916,6 +2927,164 @@ mod tests {
             .validate(&module)
             .unwrap_or_else(|e| panic!("{label}: {e:?}"));
         module
+    }
+
+    /// The terrain's and the water's shaders as wgpu's DirectX 12 backend hands them to its shader
+    /// compiler (HLSL, an entry point a file, its constants settled), with wgpu's loop bounding
+    /// and without, into `TA_HLSL_OUT`: `tools/shaders/hlsl_times.ps1` times fxc and dxc on them.
+    #[test]
+    #[ignore]
+    fn dump_hlsl() {
+        let out = std::path::PathBuf::from(std::env::var("TA_HLSL_OUT").expect("TA_HLSL_OUT=<folder>"));
+        std::fs::create_dir_all(&out).unwrap();
+        // (`TA_WGSL_IN=<file.wgsl>`: that shader, whole as written, in place of the four; each of
+        // the four is otherwise also written whole as WGSL, to be changed and given back so.)
+        let shaders: Vec<(String, String)> = match std::env::var("TA_WGSL_IN") {
+            Ok(file) => vec![(std::path::Path::new(&file).file_stem().unwrap().to_string_lossy().into_owned(), std::fs::read_to_string(&file).unwrap())],
+            Err(_) => [
+                ("terrain", terrain::shader_source_for(false)),
+                ("terrain_far", terrain::shader_source_for(true)),
+                ("water", water::shader_source_for(false)),
+                ("water_far", water::shader_source_for(true)),
+            ]
+            .into_iter()
+            .map(|(name, source)| {
+                let full = util::with_common_for(&source, false);
+                std::fs::write(out.join(format!("{name}.wgsl")), &full).unwrap();
+                (name.to_string(), full)
+            })
+            .collect(),
+        };
+        for (name, full) in shaders {
+            let name = name.as_str();
+            let module = naga::front::wgsl::parse_str(&full).unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(&full)));
+            let info = naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::all()).validate(&module).unwrap();
+            for ep in &module.entry_points {
+                let stage = match ep.stage {
+                    naga::ShaderStage::Vertex => "vs",
+                    naga::ShaderStage::Fragment => "ps",
+                    _ => "cs",
+                };
+                let (settled, settled_info) = naga::back::pipeline_constants::process_overrides(&module, &info, Some((ep.stage, ep.name.as_str())), &Default::default()).unwrap();
+                for bounded in [true, false] {
+                    let options = naga::back::hlsl::Options {
+                        shader_model: naga::back::hlsl::ShaderModel::V5_1,
+                        fake_missing_bindings: true,
+                        zero_initialize_workgroup_memory: true,
+                        restrict_indexing: true,
+                        force_loop_bounding: bounded,
+                        ..Default::default()
+                    };
+                    let pipeline = naga::back::hlsl::PipelineOptions { entry_point: Some((ep.stage, ep.name.clone())) };
+                    let mut text = String::new();
+                    naga::back::hlsl::Writer::new(&mut text, &options, &pipeline).write(&settled, &settled_info, None).unwrap_or_else(|e| panic!("{name} {}: {e}", ep.name));
+                    std::fs::write(out.join(format!("{name}.{}.{stage}.{}.hlsl", ep.name, if bounded { "bounded" } else { "plain" })), text).unwrap();
+                }
+            }
+        }
+    }
+
+    /// How much code each function of the terrain's and the water's shaders makes in each entry
+    /// point once every call is inlined, as HLSL's compilers inline them: its own expressions
+    /// times the copies of it the entry point's calls make, the largest first (`TA_INLINE_TOP`,
+    /// 25; `TA_WGSL_IN=<file.wgsl>` that shader instead).
+    #[test]
+    #[ignore]
+    fn inlined_sizes() {
+        use std::collections::HashMap;
+        fn calls(block: &naga::Block, out: &mut Vec<naga::Handle<naga::Function>>) {
+            for s in block.iter() {
+                match s {
+                    naga::Statement::Call { function, .. } => out.push(*function),
+                    naga::Statement::Block(b) => calls(b, out),
+                    naga::Statement::If { accept, reject, .. } => {
+                        calls(accept, out);
+                        calls(reject, out);
+                    }
+                    naga::Statement::Switch { cases, .. } => cases.iter().for_each(|c| calls(&c.body, out)),
+                    naga::Statement::Loop { body, continuing, .. } => {
+                        calls(body, out);
+                        calls(continuing, out);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        // The copies of every function one copy of `f` makes, itself among them.
+        fn copies(module: &naga::Module, f: naga::Handle<naga::Function>, memo: &mut HashMap<naga::Handle<naga::Function>, HashMap<naga::Handle<naga::Function>, u64>>) -> HashMap<naga::Handle<naga::Function>, u64> {
+            if let Some(m) = memo.get(&f) {
+                return m.clone();
+            }
+            let mut out = HashMap::from([(f, 1u64)]);
+            let mut callees = Vec::new();
+            calls(&module.functions[f].body, &mut callees);
+            for c in callees {
+                for (g, n) in copies(module, c, memo) {
+                    *out.entry(g).or_default() += n;
+                }
+            }
+            memo.insert(f, out.clone());
+            out
+        }
+        let top: usize = std::env::var("TA_INLINE_TOP").ok().and_then(|v| v.parse().ok()).unwrap_or(25);
+        let shaders: Vec<(String, String)> = match std::env::var("TA_WGSL_IN") {
+            Ok(file) => vec![(std::path::Path::new(&file).file_stem().unwrap().to_string_lossy().into_owned(), std::fs::read_to_string(&file).unwrap())],
+            Err(_) => [
+                ("terrain", terrain::shader_source_for(false)),
+                ("terrain_far", terrain::shader_source_for(true)),
+                ("water", water::shader_source_for(false)),
+                ("water_far", water::shader_source_for(true)),
+            ]
+            .into_iter()
+            .map(|(name, source)| (name.to_string(), util::with_common_for(&source, false)))
+            .collect(),
+        };
+        for (name, full) in shaders {
+            let module = naga::front::wgsl::parse_str(&full).unwrap_or_else(|e| panic!("{name}: {}", e.emit_to_string(&full)));
+            let mut memo = HashMap::new();
+            for ep in &module.entry_points {
+                let mut total: HashMap<naga::Handle<naga::Function>, u64> = HashMap::new();
+                let mut callees = Vec::new();
+                calls(&ep.function.body, &mut callees);
+                for c in callees {
+                    for (g, n) in copies(&module, c, &mut memo) {
+                        *total.entry(g).or_default() += n;
+                    }
+                }
+                let own = |f: naga::Handle<naga::Function>| module.functions[f].expressions.len() as u64;
+                let mut rows: Vec<_> = total.iter().map(|(&f, &n)| (n * own(f), n, own(f), module.functions[f].name.clone().unwrap_or_default())).collect();
+                rows.sort_by(|a, b| b.0.cmp(&a.0).then(a.3.cmp(&b.3)));
+                let sum: u64 = rows.iter().map(|r| r.0).sum::<u64>() + ep.function.expressions.len() as u64;
+                println!("{name} {}: {sum} expressions inlined ({} own)", ep.name, ep.function.expressions.len());
+                for (size, n, own, f) in rows.iter().take(top) {
+                    println!("  {size:>7} {n:>5} x {own:>5}  {f}");
+                }
+                // (`TA_INLINE_WHO=<function>`: where its copies come from, by the functions
+                // calling it: their copies times their calls to it.)
+                if let Ok(who) = std::env::var("TA_INLINE_WHO") {
+                    let mut by: Vec<(u64, String)> = total
+                        .iter()
+                        .filter_map(|(&g, &n)| {
+                            let mut direct = Vec::new();
+                            calls(&module.functions[g].body, &mut direct);
+                            let k = direct.iter().filter(|&&c| module.functions[c].name.as_deref() == Some(who.as_str())).count() as u64;
+                            (k > 0).then(|| (n * k, format!("{} ({n} x {k})", module.functions[g].name.clone().unwrap_or_default())))
+                        })
+                        .collect();
+                    let mut direct = Vec::new();
+                    calls(&ep.function.body, &mut direct);
+                    let k = direct.iter().filter(|&&c| module.functions[c].name.as_deref() == Some(who.as_str())).count() as u64;
+                    if k > 0 {
+                        by.push((k, format!("{} (entry)", ep.name)));
+                    }
+                    by.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+                    println!("  {who}'s copies:");
+                    for (n, f) in by {
+                        println!("    {n:>6}  {f}");
+                    }
+                }
+            }
+        }
     }
 
     /// The unit shader through what a pipeline does to it before it is built (its constants

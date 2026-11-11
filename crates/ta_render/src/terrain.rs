@@ -518,7 +518,8 @@ fn write_float_region(queue: &wgpu::Queue, texture: &wgpu::Texture, level: u32, 
 }
 
 impl TerrainPipeline {
-    pub fn new(device: &wgpu::Device, frame_layout: &wgpu::BindGroupLayout, detail: &crate::terrain_detail::TerrainDetail, hdr_format: wgpu::TextureFormat, samples: u32) -> Self {
+    /// The layout of the terrain's own bind group (group 1 of its pipelines and the water's).
+    pub fn bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
         use wgpu::{BindingType as B, ShaderStages as S, TextureSampleType as T};
         let tex = |binding, sample_type| wgpu::BindGroupLayoutEntry {
             binding,
@@ -526,7 +527,7 @@ impl TerrainPipeline {
             ty: B::Texture { sample_type, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false },
             count: None,
         };
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("terrain layout"),
             entries: &[
                 wgpu::BindGroupLayoutEntry {
@@ -566,7 +567,11 @@ impl TerrainPipeline {
                 // Map overlays (metal, movement, sight): a colour per heightmap cell.
                 tex(12, T::Float { filterable: true }),
             ],
-        });
+        })
+    }
+
+    /// The terrain's pipelines, its bind group's layout `layout` (see [`TerrainPipeline::bind_group_layout`]).
+    pub fn new(device: &wgpu::Device, frame_layout: &wgpu::BindGroupLayout, layout: wgpu::BindGroupLayout, detail: &crate::terrain_detail::TerrainDetail, hdr_format: wgpu::TextureFormat, samples: u32) -> Self {
         let shader = crate::util::shader(device, "terrain", &shader_source_for(false));
         let skirt_shader = crate::util::shader(device, "terrain skirt", &shader_source_for(true));
         // (The detail materials in a group of their own: the water's pipeline shares the
@@ -625,12 +630,20 @@ impl TerrainPipeline {
                 cache: None,
             })
         });
+        // (Side by side where their shaders take long to compile: see `util::side_by_side`.)
+        let builds: [&(dyn Fn() -> wgpu::RenderPipeline + Sync); 4] = [
+            &|| make("terrain", &shader, "vs_main", &chunks, false),
+            &|| make("terrain skirt", &skirt_shader, "vs_skirt", &skirt_vertices, false),
+            &|| make("terrain reflection", &shader, "vs_main", &chunks, true),
+            &|| make("terrain skirt reflection", &skirt_shader, "vs_skirt", &skirt_vertices, true),
+        ];
+        let [pipeline, skirt, reflection, skirt_reflection] = crate::util::side_by_side(builds);
         TerrainPipeline {
             layout,
-            pipeline: make("terrain", &shader, "vs_main", &chunks, false),
-            skirt: make("terrain skirt", &skirt_shader, "vs_skirt", &skirt_vertices, false),
-            reflection: make("terrain reflection", &shader, "vs_main", &chunks, true),
-            skirt_reflection: make("terrain skirt reflection", &skirt_shader, "vs_skirt", &skirt_vertices, true),
+            pipeline,
+            skirt,
+            reflection,
+            skirt_reflection,
             prepass,
             detail: detail.bind_group.clone(),
         }
