@@ -27,6 +27,12 @@
 - Shift with the right button while placing a building now ends the placing and queues the
   order there as well, so a Commander told to build a plant can be sent on after it.
 - Bombers sent at something show TA's air-strike sight instead of the attack sight.
+- Bombers on patrol or attack-move with fire at will now bomb what they come upon near their
+  way, then fly on. Before, their bombs dropped only on an attack order, so patrolling bombers
+  flew over the enemy and landed at the end of their route. A bomber on its own sees a building
+  too late for its first pass and comes round for it; with radar or an ally's sight it lines up
+  on targets further ahead. TA's bombers start on hold fire, so set them to fire at will. A
+  plain move still bombs nothing.
 - The music, and the battle behind the menu, now fall silent while a campaign briefing is read
   out, and come back once it is over. The tutorial's spoken lines still only lower the music.
 - Constructors on the ECONOMY duty now keep to a few plain jobs: metal extractors on free metal,

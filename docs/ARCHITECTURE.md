@@ -300,7 +300,13 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   when they are the first weapon (bombers; the Phoenix and Hurricane carry an anti-air
   laser beside their bombs, and used to fire only that) or nothing else the unit carries
   can hit the target; the Commanders' D-gun is their third weapon and waits for manual
-  fire. An attack order closes to the reach of the weapons it fires. Shells pick targets
+  fire. A plane's bombs also find their own targets on patrol and attack-move with fire at will
+  (TA's bombers stand on hold fire, `StandingFireOrder=0`): what its side sees or has on radar
+  within its bombs' lead plus 160 px (`Sim::bomber_lookout`; the lead is 460 to 565 px for
+  TA's bombers, beyond their 350 px sight), the nearest first. It keeps the target for its runs
+  (not cleared after a drop; a building through the turn out of its sight as well,
+  `Sim::held_building`) and flies on along its way once the target is gone; a plain move
+  bombs nothing. An attack order closes to the reach of the weapons it fires. Shells pick targets
   they carry to (v² / g on level ground, with the height between: `Sim::weapon_reach`).
   Direct-fire shots pass through friendly units; shells, bombs, blasts and the D-gun
   still cause friendly fire. Flames harm neither the unit that throws them nor its side:
@@ -3395,8 +3401,9 @@ menu's briefing replays the narration through `MusicRequest::Narration`.
   units then hunt (`hunt`, every 2 s): idle ones attack-move to the player's nearest
   forces; ones that have hardly moved for 6 s with somewhere to go (wedged in a crowd)
   each get a point of their own near it. A unit whose every weapon fires on order only (a
-  bomber: TA's bombs are `commandfire`, never aimed of their own accord, so an attack-move
-  only flew it over the player's base) is given an attack order on the nearest of the
+  bomber: TA's bombs are `commandfire`, aimed of their own accord only on patrol or
+  attack-move with fire at will, and TA's bombers stand on hold fire, so an attack-move only
+  flew it over the player's base) is given an attack order on the nearest of the
   player's side its own side sees (in sight or on radar: `Sim::seen_by`, never through the
   fog) that its weapons can hit (`Sim::engages`: not an aircraft in flight, nor a bad
   target), then an attack-move to where that stood; it keeps on it while it stands and is

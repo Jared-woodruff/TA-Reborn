@@ -31,6 +31,10 @@ const FIRE_FUNCS: [&str; 3] = ["FirePrimary", "FireSecondary", "FireTertiary"];
 pub(crate) const FAN_SPACING: Fx = Fx::from_int(48);
 /// Ticks between target searches for an idle weapon.
 const RETARGET_TICKS: u64 = 8;
+/// How far past its bombs' lead (where they must be let go to land on a target: 460 to 565 px for
+/// TA's bombers) a bomber on patrol or attack-move looks for targets its side sees (px): far enough
+/// to line up on one ahead, near its way.
+const BOMBER_LOOKOUT_PAST_LEAD: i64 = 160;
 /// How long automatic targeting passes over a target the ground hides (ticks).
 const BLOCKED_TICKS: u64 = 60;
 /// Ticks a look for friends in the way of a shot at a target holds for.
@@ -469,6 +473,9 @@ impl Sim {
             Some(Order::ManualFire(tg)) => (Some(*tg), true),
             _ => (None, false),
         };
+        // A plane on patrol or attack-move: its bombs (command-fire in TA's data, otherwise
+        // dropped only on an attack order) go on what it comes upon near its way.
+        let roving = t.is_plane() && matches!(u.orders.front(), Some(Order::Patrol(_) | Order::Fight(_)));
         let fire_state = u.fire_state;
         let owner = u.owner;
         // Cloaking can happen after this unit's order phase but before its weapon phase.
@@ -528,13 +535,20 @@ impl Sim {
                 }
                 continue;
             }
+            // A roving bomber's bombs, with fire at will: they find their own targets near its way
+            // (`Sim::bomber_lookout`) and keep them for its runs (not cleared after a drop; a
+            // building through the turn out of its sight as well, `Sim::held_building`).
+            let roving_bombs = roving && w.command_fire && w.trajectory == Trajectory::Dropped && !w.def.stockpile && fire_state >= 2;
             // Choose a target: forced (attack order) or automatic when allowed.
             let current = self.unit(id).and_then(|u| u.weapons[slot].target);
             // Hold fire: only what an attack order names (a target kept from before is dropped).
             let mut target = if !available[slot] {
                 None
             } else if w.command_fire {
-                forced.filter(|_| manual || (slot == 0 || !has_normal) && can_hit(w)).filter(|&tg| !w.torpedo || self.target_in_water(tg))
+                forced
+                    .filter(|_| manual || (slot == 0 || !has_normal) && can_hit(w))
+                    .filter(|&tg| !w.torpedo || self.target_in_water(tg))
+                    .or(current.filter(|&tg| roving_bombs && (self.target_valid(id, w, tg) || self.held_building(tg, owner) && self.within_reach(id, w, tg))))
             } else {
                 forced.filter(|&tg| !w.torpedo || self.target_in_water(tg)).or(current.filter(|&tg| fire_state >= 1 && self.target_valid(id, w, tg)))
             };
@@ -544,10 +558,11 @@ impl Sim {
                 Some(Target::Unit(tid)) if forced != target => self.unit(tid).is_some_and(|tu| self.bad_target(t.id, slot, tu)) && !self.players.get(owner as usize).is_some_and(|p| p.shoot_all),
                 _ => false,
             };
-            if available[slot] && (target.is_none() || on_bad) && !w.command_fire && fire_state >= 2 && (self.tick + id.slot as u64).is_multiple_of(RETARGET_TICKS) {
+            if available[slot] && (target.is_none() || on_bad) && (!w.command_fire || roving_bombs) && fire_state >= 2 && (self.tick + id.slot as u64).is_multiple_of(RETARGET_TICKS) {
                 let tick = self.tick;
                 let skip = self.unit(id).and_then(|u| u.weapons[slot].blocked).filter(|&(_, until)| tick < until).map(|(t, _)| t);
-                let found = self.find_target(id, slot, w, owner, skip);
+                let reach = if roving_bombs { self.bomber_lookout(t).min(w.range) } else { w.range };
+                let found = self.find_target(id, slot, w, owner, skip, reach);
                 if target.is_none() || matches!(found, Some(Target::Unit(tid)) if self.unit(tid).is_some_and(|tu| !self.bad_target(t.id, slot, tu))) {
                     target = found;
                 }
@@ -620,7 +635,7 @@ impl Sim {
                 // order waits for a clear shot. What the player fires deliberately goes as
                 // ordered: the D-gun and other manual-fire weapons (they take what they touch,
                 // as in TA), shots at the ground, at one's own units, at missiles.
-                let deliberate = w.command_fire
+                let deliberate = w.command_fire && !(roving_bombs && forced != Some(target))
                     || matches!(target, Target::Ground(_) | Target::Projectile(_))
                     || matches!(target, Target::Unit(tid) if self.unit(tid).is_some_and(|tu| self.allied(tu.owner, owner)));
                 if !deliberate && !self.clear_of_friends(id, slot, owner, from, tp, w, pitch, target) {
@@ -641,7 +656,8 @@ impl Sim {
                     u.weapons[slot].aim_asked = false;
                     // Manual fire and a stockpiled launch each spend one shot.
                     // A silo's Attack must not keep launching at the same place.
-                    if w.command_fire || w.def.stockpile {
+                    // (A roving bomber keeps the target it found for the rest of its run.)
+                    if (w.command_fire || w.def.stockpile) && !(roving_bombs && forced != Some(target)) {
                         if matches!(u.orders.front(), Some(Order::ManualFire(_)))
                             || w.def.stockpile && matches!(u.orders.front(), Some(Order::Attack(_)))
                         {
@@ -819,6 +835,31 @@ impl Sim {
         self.can_engage(w, target) && !self.bad_target(shooter_type, slot, target)
     }
 
+    /// How far a bomber on patrol or attack-move looks for targets its side sees: past where its
+    /// bombs must be let go to land on one (their fall from its cruising height at its top
+    /// speed), so that it can line up on one ahead; at least as far as it sees.
+    fn bomber_lookout(&self, t: &crate::defs::UnitType) -> Fx {
+        let lead = t.max_speed * (t.cruise_alt * 2 / self.gravity).sqrt();
+        t.sight.max(lead + Fx::from_int(BOMBER_LOOKOUT_PAST_LEAD))
+    }
+
+    /// An enemy building, not cloaked: a bomber that found it keeps it as its target when it
+    /// goes out of sight in the turn for the next run (it cannot have moved), as it does what is
+    /// in sight or on radar ([`Sim::target_known`]).
+    pub(crate) fn held_building(&self, target: Target, owner: u8) -> bool {
+        matches!(target, Target::Unit(id) if self.unit(id).is_some_and(|tu| {
+            !tu.dead && tu.carried_by.is_none() && !tu.cloaked && self.is_enemy(owner, tu.owner) && self.types.get(tu.type_id).locomotion == Locomotion::Static
+        }))
+    }
+
+    /// Whether `target` is something the weapon hits and within its reach of the unit (as
+    /// [`Sim::target_valid`] measures it), seen or not.
+    fn within_reach(&self, id: UnitId, w: &WeaponType, target: Target) -> bool {
+        let Target::Unit(tid) = target else { return false };
+        let (Some(u), Some(tu)) = (self.unit(id), self.unit(tid)) else { return false };
+        self.can_engage(w, tu) && u.pos.within_xz(tu.pos, w.range + Fx::from_int(48))
+    }
+
     /// Whether an automatic target is still worth shooting by the weapon in `slot`. Ground is
     /// never one: only an attack order names ground, and once the order is gone (Stop, another
     /// order) so is it. (A bad target is, until a better one comes into reach: see
@@ -842,8 +883,9 @@ impl Sim {
     /// aircraft about, its other armed units VTOL and an aircraft only with nothing on the ground
     /// in reach; with the owner's `+shootall` they count as any other), for a computer player's
     /// unit a mission's priority targets first, and among those the one that has just hit the
-    /// unit. Computer players' units never pick what a mission tells them to ignore.
-    fn find_target(&mut self, id: UnitId, weapon_slot: usize, w: &WeaponType, owner: u8, skip: Option<UnitId>) -> Option<Target> {
+    /// unit. Computer players' units never pick what a mission tells them to ignore. `reach`:
+    /// how far it looks (the weapon's range, a roving bomber's sight).
+    fn find_target(&mut self, id: UnitId, weapon_slot: usize, w: &WeaponType, owner: u8, skip: Option<UnitId>, reach: Fx) -> Option<Target> {
         let u = self.unit(id)?;
         let pos = u.pos;
         let bad_mask = self.types.get(u.type_id).weapon_bad_masks[weapon_slot];
@@ -853,7 +895,7 @@ impl Sim {
         // The units in the cells within reach holding an enemy (a crowd of friends is passed
         // over unlooked at).
         let mut candidates = std::mem::take(&mut self.scratch);
-        self.grid.query_owned(pos, w.range + self.types.target_reach, self.enemy_mask(owner), &mut candidates);
+        self.grid.query_owned(pos, reach + self.types.target_reach, self.enemy_mask(owner), &mut candidates);
         if candidates.is_empty() {
             self.scratch = candidates;
             return None;
@@ -867,7 +909,7 @@ impl Sim {
             // the cells round it are out of range).
             let ot = self.types.get(o.type_id);
             let d = (o.pos - pos).xz().length_sq_raw();
-            let r = (w.range + ot.radius).0 as i128;
+            let r = (reach + ot.radius).0 as i128;
             if d > r * r || o.dead || o.carried_by.is_some() || !self.is_enemy(owner, o.owner) || self.no_auto_target.contains(&o.type_id) || skip == Some(o.id) || ai && self.ai_ignores(o.id) {
                 continue;
             }
@@ -1724,7 +1766,13 @@ impl Sim {
     pub(crate) fn advance_engaging(&mut self, id: UnitId, t: &crate::defs::UnitType, dest: FxVec3, near: Option<Fx>) -> bool {
         let Some(u) = self.unit(id) else { return false };
         if t.is_plane() {
-            let engaged = u.weapons.iter().zip(t.weapons.iter()).find_map(|(ws, w)| w.and(ws.target)).filter(|&tg| self.target_known(tg, u.owner)).and_then(|tg| self.target_point(tg));
+            let engaged = u
+                .weapons
+                .iter()
+                .zip(t.weapons.iter())
+                .find_map(|(ws, w)| w.and(ws.target))
+                .filter(|&tg| self.target_known(tg, u.owner) || self.held_building(tg, u.owner))
+                .and_then(|tg| self.target_point(tg));
             if let Some(tp) = engaged {
                 self.air_attack_pass(id, tp);
                 return false;
