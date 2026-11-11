@@ -9,6 +9,10 @@
   also pauses the battle, rather than let the computer run out and take the battle with it.
 - Crash reports give the game's memory at the time, and a game started without the launcher now
   keeps the last words of a crash for want of memory in its log.
+- A crash outside the game's own code (a graphics driver failing as it compiles a shader) now
+  writes a crash report too, naming the driver and what the game was preparing, and the
+  launcher shows it. The log says how long the graphics card took over each of the game's
+  shaders, and which it is still on when one takes long.
 
 ### Fixed
 - In a window smaller than 1024×600 points, a battle's first frame after its loading screen was

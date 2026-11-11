@@ -348,6 +348,86 @@ fn image_base() -> usize {
     0
 }
 
+/// The memory as a crash report gives it (empty where it is not known).
+fn memory_line() -> String {
+    ta_config::hardware::process_memory().map_or_else(String::new, |m| {
+        let (total, free) = ta_config::hardware::system_memory_mb().unwrap_or((0, 0));
+        format!("memory: the game's own {} MB (in use {} MB, the most {} MB), the computer's {free} MB free of {total} MB\n", m.private_mb, m.working_set_mb, m.peak_working_set_mb)
+    })
+}
+
+/// Whether a module (its file's name, lower case) is part of a graphics driver or the graphics
+/// system: what a crash in it most likely means for the player.
+fn graphics_module(name: &str) -> bool {
+    ["amdvlk", "amdxc", "amdxx", "atiumd", "atidxx", "atig6", "nvoglv", "nvwgf2", "nvd3dum", "nvldumd", "nvgpucomp", "igvk", "igd1", "igd12", "igdumd", "igc64", "intelocl", "vulkan-1", "d3d12", "dxgi", "dxcompiler", "d3dcompiler"]
+        .iter()
+        .any(|k| name.starts_with(k))
+}
+
+/// A crash the panic hook never sees (Windows: an access violation in a graphics driver as it
+/// compiles a shader, say): `crash.txt` and the log name the module that failed and what the
+/// renderer was building then (`ta_render::startup_step`), with the memory and the stack, the
+/// launcher shows its first line, and the player is told; then Windows ends the game as it
+/// would have.
+#[cfg(windows)]
+fn report_native_crashes(path: std::path::PathBuf) {
+    use windows::Win32::System::Diagnostics::Debug::{EXCEPTION_POINTERS, SetUnhandledExceptionFilter};
+    static PATH: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    let _ = PATH.set(path);
+
+    /// The module holding `address` (its file's name) and how far into it the address is.
+    fn module_of(address: usize) -> (String, usize) {
+        use windows::Win32::Foundation::HMODULE;
+        use windows::Win32::System::LibraryLoader::{GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, GetModuleFileNameW, GetModuleHandleExW};
+        let mut module = HMODULE::default();
+        // SAFETY: a query of the module an address lies in, its count of users left alone.
+        let found = unsafe {
+            GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, windows::core::PCWSTR(address as *const u16), &mut module)
+        };
+        if found.is_err() || module.is_invalid() {
+            return ("an unknown module".into(), address);
+        }
+        let mut name = [0u16; 260];
+        // SAFETY: the module's file name into a buffer of our own.
+        let len = unsafe { GetModuleFileNameW(Some(module), &mut name) } as usize;
+        let file = String::from_utf16_lossy(&name[..len.min(name.len())]);
+        (file.rsplit(['\\', '/']).next().unwrap_or(&file).to_string(), address.wrapping_sub(module.0 as usize))
+    }
+
+    unsafe extern "system" fn filter(info: *const EXCEPTION_POINTERS) -> i32 {
+        // SAFETY: the system's own record of the exception, valid while this runs.
+        let record = unsafe { info.as_ref().and_then(|i| i.ExceptionRecord.as_ref()) };
+        let (code, address) = record.map_or((0, 0), |r| (r.ExceptionCode.0 as u32, r.ExceptionAddress as usize));
+        let (module, offset) = module_of(address);
+        let step = ta_render::startup_step();
+        let during = if step.is_empty() { String::new() } else { format!(" while building {step}") };
+        let what = if graphics_module(&module.to_ascii_lowercase()) {
+            format!("the graphics driver ({module}) failed{during}")
+        } else {
+            format!("exception {code:#010x} in {module}{during}")
+        };
+        let thread = std::thread::current();
+        let report = format!(
+            "TA Reborn {} crashed: {what}\nthread: {}\nloaded at: {:#x}\n{}exception {code:#010x} at {module}+{offset:#x}\n\n{:#}",
+            version_label(),
+            thread.name().unwrap_or("unnamed"),
+            image_base(),
+            memory_line(),
+            std::backtrace::Backtrace::force_capture()
+        );
+        log::error!("{report}");
+        if let Some(path) = PATH.get() {
+            let _ = std::fs::write(path, &report);
+        }
+        let advice = if graphics_module(&module.to_ascii_lowercase()) { "\n\nUpdating the graphics driver may help." } else { "" };
+        message_box("TA Reborn crashed", &format!("{what}.{advice}\n\nThe details were saved to {}.", PATH.get().map_or_else(String::new, |p| p.display().to_string())));
+        // EXCEPTION_CONTINUE_SEARCH: Windows goes on as it would have (and ends the game).
+        0
+    }
+    // SAFETY: a filter of our own, set once as the game starts.
+    unsafe { SetUnhandledExceptionFilter(Some(filter)) };
+}
+
 /// A native error box (Windows); elsewhere, or in scripted runs, the message goes to
 /// stderr only.
 fn message_box(title: &str, text: &str) {
@@ -408,10 +488,7 @@ fn main() {
         let backtrace = std::backtrace::Backtrace::force_capture();
         let thread = std::thread::current();
         // (The memory then: a crash of memory run out shows as one.)
-        let memory = ta_config::hardware::process_memory().map_or_else(String::new, |m| {
-            let (total, free) = ta_config::hardware::system_memory_mb().unwrap_or((0, 0));
-            format!("memory: the game's own {} MB (in use {} MB, the most {} MB), the computer's {free} MB free of {total} MB\n", m.private_mb, m.working_set_mb, m.peak_working_set_mb)
-        });
+        let memory = memory_line();
         let report = format!(
             "TA Reborn {} crashed: {info}\nthread: {}\nloaded at: {:#x}\n{memory}\n{backtrace:#}",
             version_label(),
@@ -422,6 +499,9 @@ fn main() {
         let _ = std::fs::write(&crash_path, &report);
         message_box("TA Reborn crashed", &format!("{info}\n\nThe details were saved to {}.", crash_path.display()));
     }));
+    // (And the crashes the panic hook never sees: a graphics driver failing as it compiles a shader.)
+    #[cfg(windows)]
+    report_native_crashes(log_dir.join("crash.txt"));
     if let Err(e) = run() {
         log::error!("{e:#}");
         message_box("TA Reborn", &format!("{e:#}"));
@@ -515,6 +595,18 @@ mod startup_tests {
             assert!(args.unattended());
         }
         assert!(!Args::try_parse_from(["ta-reborn"]).unwrap().unattended());
+    }
+
+    /// A crash in a graphics driver is told as one (the players' AMD, NVIDIA and Intel drivers,
+    /// the Vulkan loader, Direct3D and its shader compilers); anything else by its module.
+    #[test]
+    fn crashes_in_graphics_drivers_are_told_as_such() {
+        for driver in ["amdvlk64.dll", "amdxc64.dll", "atiumd64.dll", "nvoglv64.dll", "nvwgf2umx.dll", "igvk64.dll", "igd12umd64.dll", "vulkan-1.dll", "d3d12core.dll", "dxgi.dll", "dxcompiler.dll", "d3dcompiler_47.dll"] {
+            assert!(graphics_module(driver), "{driver}");
+        }
+        for other in ["ta-reborn.exe", "ntdll.dll", "kernelbase.dll", "ucrtbase.dll", "xaudio2_9.dll"] {
+            assert!(!graphics_module(other), "{other}");
+        }
     }
 
     #[test]
