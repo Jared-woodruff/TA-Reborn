@@ -72,10 +72,11 @@ pub use transport::{Client, Host, HostEvent};
 /// as one for coming back without the battle's map does (`Refusal::Map`);
 /// 84: a weapon's bad targets are lifted when they are every unit a player can field it could hit;
 /// 85: bad targets taken on last, `Command::SetShootAll` (`+shootall`), abandoned construction
-/// un-builds, reclaim by metal, planes circle over the sea and fan out on attack runs.)
+/// un-builds, reclaim by metal, planes circle over the sea and fan out on attack runs; 86: bombers
+/// on patrol or attack-move bomb what they come upon.)
 /// [`Msg::Hello`] and [`Refusal::Version`] keep their layout, so builds of other protocols are
 /// still told why they cannot meet.
-pub const PROTOCOL: u32 = 85;
+pub const PROTOCOL: u32 = 86;
 pub const DEFAULT_PORT: u16 = 7890;
 /// Ticks between state hash reports (which double as progress reports).
 pub const HASH_INTERVAL: u64 = 15;

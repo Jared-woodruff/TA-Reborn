@@ -111,3 +111,74 @@ fn a_waves_bombers_bomb_what_they_see() {
     let hurt = base.iter().filter(|&&b| sim.unit(b).is_none_or(|u| u.dead || u.health < sim.unit_type(u).max_health)).count();
     assert!(hurt > 0, "the bombs should land on the base ({bombs} dropped)");
 }
+
+/// What a Thunder on its way past an enemy building bombs by itself: `order` from (900, 1500)
+/// to (3600, 1500) and back, over a solar collector at (2400, 1500), with fire state `fire`, a
+/// minute; and whether a second collector 1,400 px off its way was touched.
+fn bombs_on_the_way(order: fn(FxVec3) -> Order, fire: u8) -> (usize, bool, bool, ta_sim::Unit) {
+    let mut sim = sim_on("Painted Desert").expect("the install");
+    let (bomber, solar) = (sim.types.id("ARMTHUND").unwrap(), sim.types.id("CORSOLAR").unwrap());
+    let on_way = sim.spawn_unit(solar, 1, FxVec3::from_ints(2400, 0, 1500), 0, true).unwrap();
+    let off_way = sim.spawn_unit(solar, 1, FxVec3::from_ints(2400, 0, 2900), 0, true).unwrap();
+    let plane = sim.spawn_unit(bomber, 0, FxVec3::from_ints(900, 0, 1500), 16384, true).unwrap();
+    sim.step(&[
+        Command::SetStates { player: 0, units: vec![plane], fire: Some(fire), movement: None },
+        Command::Order { player: 0, units: vec![plane], order: order(FxVec3::from_ints(3600, 0, 1500)), queue: false },
+    ]);
+    let bombs = blasts(&mut sim, "ARMBOMB", 30 * 60);
+    let hurt = |sim: &Sim, id| sim.unit(id).is_none_or(|u| u.dead || u.health < sim.unit_type(u).max_health);
+    let (near, far) = (hurt(&sim, on_way), hurt(&sim, off_way));
+    (bombs, near, far, sim.unit(plane).expect("the bomber").clone())
+}
+
+/// Bombers on patrol or attack-move bomb what they come upon near their way by themselves (TA's
+/// bombs are `commandfire=1`: before, only an attack order dropped them, and a patrol flew over
+/// the enemy and landed at its end), then fly on along it. A lone bomber sees a building too late
+/// to let go on its first pass (its bombs' lead is beyond its sight) and comes round for it. A
+/// plain move flies on; Hold fire and Return fire bomb nothing unordered; nothing far off its way
+/// draws it away.
+#[test]
+fn bombers_on_patrol_or_attack_move_bomb_what_they_come_upon() {
+    if sim_on("Painted Desert").is_none() {
+        eprintln!("TA install not found; skipping");
+        return;
+    }
+    let (bombs, near, far, plane) = bombs_on_the_way(Order::Patrol, 2);
+    println!("patrol: {bombs} bombs, on the way hurt {near}, off it hurt {far}, orders {:?}", plane.orders);
+    assert!(bombs > 0 && near, "a patrolling Thunder bombs the collector on its way ({bombs} bombs)");
+    assert!(!far, "and leaves the one far off its way alone");
+    assert!(matches!(plane.orders.front(), Some(Order::Patrol(_))), "and patrols on: {:?}", plane.orders);
+    let (bombs, near, far, _) = bombs_on_the_way(Order::Fight, 2);
+    println!("attack-move: {bombs} bombs, on the way hurt {near}, off it hurt {far}");
+    assert!(bombs > 0 && near && !far, "an attack-move bombs what it comes upon ({bombs} bombs)");
+    for (what, order, fire) in [("move", Order::Move as fn(FxVec3) -> Order, 2), ("patrol, hold fire", Order::Patrol, 0), ("patrol, return fire", Order::Patrol, 1)] {
+        let (bombs, near, _, _) = bombs_on_the_way(order, fire);
+        println!("{what}: {bombs} bombs");
+        assert!(bombs == 0 && !near, "{what}: no bombs unordered ({bombs})");
+    }
+}
+
+/// A group of bombers on patrol over a base keeps bombing it, building after building, as it
+/// passes, and none of them is hurt by their own bombs.
+#[test]
+fn patrolling_bombers_keep_bombing_a_base_on_their_way_without_hurting_themselves() {
+    let Some(mut sim) = sim_on("Painted Desert") else {
+        eprintln!("TA install not found; skipping");
+        return;
+    };
+    let (bomber, solar) = (sim.types.id("CORSHAD").unwrap(), sim.types.id("ARMSOLAR").unwrap());
+    let base: Vec<_> = (0..4).map(|k| sim.spawn_unit(solar, 0, FxVec3::from_ints(2000 + k * 120, 0, 1500), 0, true).unwrap()).collect();
+    let planes: Vec<_> = (0..4).map(|k| sim.spawn_unit(bomber, 1, FxVec3::from_ints(3600, 0, 1400 + k * 50), 49152, true).unwrap()).collect();
+    // (TA's bombers stand on Hold fire, `StandingFireOrder=0`: the player sets Fire at will.)
+    sim.step(&[
+        Command::SetStates { player: 1, units: planes.clone(), fire: Some(2), movement: None },
+        Command::Order { player: 1, units: planes.clone(), order: Order::Patrol(FxVec3::from_ints(1400, 0, 1500)), queue: false },
+    ]);
+    let bombs = blasts(&mut sim, "CORBOMB", 30 * 90);
+    let hurt = base.iter().filter(|&&b| sim.unit(b).is_none_or(|u| u.dead || u.health < sim.unit_type(u).max_health)).count();
+    let dead = base.iter().filter(|&&b| sim.unit(b).is_none_or(|u| u.dead)).count();
+    println!("{bombs} bombs: {hurt} of the base's 4 collectors hurt, {dead} destroyed");
+    assert!(hurt >= 3, "the patrol bombs the base building after building ({hurt} hurt)");
+    let own = planes.iter().filter(|&&p| sim.unit(p).is_none_or(|u| u.dead || u.health < sim.unit_type(u).max_health)).count();
+    assert_eq!(own, 0, "no bomber hurt by the bombs");
+}
