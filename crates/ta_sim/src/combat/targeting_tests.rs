@@ -135,30 +135,39 @@ fn spawn(sim: &mut Sim, name: &str, owner: u8, x: i64, z: i64) -> UnitId {
     sim.spawn_unit(sim.types.id(name).unwrap(), owner, FxVec3::from_ints(x, 0, z), 0, true).unwrap()
 }
 
-/// TA's units never lock on to a bad target of their own accord: not when it is the only enemy
-/// in reach (an AA K-bot beside a tank), not when it shoots at them; only an attack order sends
-/// them at one.
+/// TA's units take a bad target on last: when it is the only enemy in reach (a missile tower
+/// with no aircraft about fires on a tank), and they turn to a better one as soon as one comes
+/// into reach. With the player's `+shootall` a bad target counts as any other: the nearest first.
 #[test]
-fn a_bad_target_is_shot_at_only_by_order() {
+fn a_bad_target_is_taken_on_last() {
     let mut sim = game_of(&[
         ("GUN", "Weapon1=LASER; BadTargetCategory=DECOY; Category=GUN;"),
-        ("DECOY", "Weapon1=LASER; CanMove=1; MaxVelocity=1; Category=DECOY;"),
+        ("TARGET", "CanMove=1; MaxVelocity=1; Category=TARGET;"),
+        ("DECOY", "CanMove=1; MaxVelocity=1; Category=DECOY;"),
     ]);
     sim.vision.set_all(0, crate::vision::LOS);
     sim.vision.set_all(1, crate::vision::LOS);
     let gun = spawn(&mut sim, "GUN", 0, 300, 300);
-    let decoy = spawn(&mut sim, "DECOY", 1, 360, 300);
+    let decoy = spawn(&mut sim, "DECOY", 1, 340, 300);
     for _ in 0..60 {
         sim.step(&[]);
     }
-    assert!(sim.unit(decoy).unwrap().weapons[0].target == Some(Target::Unit(gun)), "the decoy takes the gun on");
-    assert!(sim.unit(gun).unwrap().health < sim.types.get(sim.unit(gun).unwrap().type_id).max_health, "and hits it");
-    assert_eq!(sim.unit(gun).unwrap().weapons[0].target, None, "the only enemy near, and shooting at it: a bad target all the same");
-    sim.step(&[crate::Command::Order { player: 0, units: vec![gun], order: Order::Attack(Target::Unit(decoy)), queue: false }]);
-    for _ in 0..10 {
+    assert_eq!(sim.unit(gun).unwrap().weapons[0].target, Some(Target::Unit(decoy)), "the only enemy near: taken on, bad target as it is");
+    let target = spawn(&mut sim, "TARGET", 1, 400, 300);
+    for _ in 0..60 {
         sim.step(&[]);
     }
-    assert_eq!(sim.unit(gun).unwrap().weapons[0].target, Some(Target::Unit(decoy)), "ordered, it fires at it");
+    assert_eq!(sim.unit(gun).unwrap().weapons[0].target, Some(Target::Unit(target)), "a better one in reach, further off: it turns to that");
+    // `+shootall`: the nearest, bad target or not.
+    sim.step(&[crate::Command::SetShootAll { player: 0, on: true }]);
+    assert!(sim.players[0].shoot_all);
+    sim.grid.rebuild(sim.units.iter().flatten());
+    let weapons = sim.weapon_types.clone();
+    let w = sim.unit_type(sim.unit(gun).unwrap()).weapons[0].unwrap();
+    assert_eq!(sim.find_target(gun, 0, weapons.get(w), 0, None), Some(Target::Unit(decoy)), "with +shootall the nearest");
+    sim.step(&[crate::Command::SetShootAll { player: 0, on: false }]);
+    sim.grid.rebuild(sim.units.iter().flatten());
+    assert_eq!(sim.find_target(gun, 0, weapons.get(w), 0, None), Some(Target::Unit(target)), "and without it the better one again");
 }
 
 /// Each weapon keeps its own (TA's `wpri_`, `wsec_badTargetCategory`): a cruiser's guns never
@@ -211,7 +220,7 @@ fn a_weapon_whose_bad_targets_are_all_it_could_hit_takes_on_what_it_can() {
     let w = |sim: &Sim, id: UnitId| sim.unit_type(sim.unit(id).unwrap()).weapons[0].unwrap();
     let (flak, aa) = (w(&sim, flakker), w(&sim, picky));
     assert_eq!(sim.find_target(flakker, 0, weapons.get(flak), 0, None), Some(Target::Unit(jet)), "the flak takes the jet on");
-    assert_eq!(sim.find_target(picky, 0, weapons.get(aa), 0, None), None, "the jet is FAST: a bad target still");
+    assert_eq!(sim.find_target(picky, 0, weapons.get(aa), 0, None), Some(Target::Unit(jet)), "the jet is FAST: a bad target, but the only one near");
 }
 
 /// Only the units a player can field count: a weapon whose bad targets are every unit the sides
@@ -256,12 +265,13 @@ fn only_the_units_a_player_can_field_count_for_lifting_bad_targets() {
     assert!(!compile(true), "the oddity built: an aircraft left to the flak, so it keeps to its bad targets");
 }
 
-/// TA's own units, every one: what each of its weapons takes on of its own accord, of an aircraft
-/// in flight, a tank, a building, a boat and a submarine (`--nocapture` lists them). Held to TA:
-/// its anti-air units (the AA K-bots, missile trucks and towers, flak, fighters) never pick what
-/// is on the ground or the water, its other armed units never an aircraft, submarines' torpedoes
-/// only what is in the water, the cruisers' depth charges only submarines. (The anti-air
-/// hovercraft as anti-air, past the slip in their files: see `defs::target_tags`.)
+/// TA's own units, every one: what each of its weapons takes on first, of an aircraft in flight,
+/// a tank, a building, a boat and a submarine (`--nocapture` lists them; the rest, its bad
+/// targets, only when nothing of those is in reach). Held to TA: its anti-air units (the AA
+/// K-bots, missile trucks and towers, flak, fighters) take aircraft first, its other armed units
+/// what is on the ground or the water, submarines' torpedoes only what is in the water, the
+/// cruisers' depth charges submarines. (The anti-air hovercraft as anti-air, past the slip in
+/// their files: see `defs::target_tags`.)
 #[test]
 fn every_units_weapons_pick_what_tas_rules_let_them() {
     let Ok(install) = ta_vfs::install::discover(None) else {
@@ -360,4 +370,105 @@ fn every_units_weapons_pick_what_tas_rules_let_them() {
         expect(unit, 1, &["sub"]);
     }
     assert!(wrong.is_empty(), "{} units against TA's rules:\n{}", wrong.len(), wrong.join("\n"));
+}
+
+/// Fire at will, as a player found it in TA's own units: a missile tower with no aircraft about
+/// fires on a tank, and on an aircraft first when one comes; a destroyer's depth charges take on
+/// an amphibious tank under the water; a scout ship's missiles a boat; a destroyer at sea shells
+/// a tower on the shore.
+#[test]
+fn tas_units_fire_at_will_on_their_bad_targets_last() {
+    let Ok(install) = ta_vfs::install::discover(None) else {
+        eprintln!("TA install not found; skipping");
+        return;
+    };
+    let mut vfs = ta_vfs::Vfs::new();
+    vfs.mount_game_dir(&install.root, "base").unwrap();
+    let data = Arc::new(ta_data::GameData::load(&vfs));
+    let types = Arc::new(crate::UnitTypes::compile(&data, &|p| vfs.read_opt(p)));
+    let map = ta_formats::tnt::TntMap::parse(&vfs.read("maps/Coast To Coast.tnt").unwrap()).unwrap();
+    let info = ta_data::MapInfo::from_ota(&ta_formats::tdf::parse_bytes(&vfs.read("maps/Coast To Coast.ota").unwrap()));
+    let new_game = || {
+        let players: Vec<_> = (0..2)
+            .map(|i| crate::PlayerSetup { side: ["ARM", "CORE"][i].into(), color: i as u8, start: FxVec3::ZERO, metal: Fx::from_int(1000), energy: Fx::from_int(1000), ai: false })
+            .collect();
+        let mut sim = Sim::new(types.clone(), data.clone(), &map, &info, 0, &players, 3);
+        sim.los_enabled = false;
+        sim
+    };
+    let put = |sim: &mut Sim, name: &str, owner: u8, at: FxVec3| sim.spawn_unit(types.id(name).unwrap(), owner, at, 0, true).unwrap();
+    let hold = |sim: &mut Sim, id: UnitId| {
+        let u = sim.unit_mut(id).unwrap();
+        u.fire_state = 0;
+        u.move_state = 0;
+    };
+    // Where the land meets the sea along z = 1000 (Coast To Coast: land in the west).
+    let shore = (400..1600).step_by(8).find(|&x| {
+        let sim = new_game();
+        sim.world.depth_at(Fx::from_int(x), Fx::from_int(1000)) > Fx::ZERO
+    }).unwrap();
+    let land = FxVec3::from_ints(shore - 160, 0, 1000);
+    let sea = FxVec3::from_ints(shore + 320, 0, 1000);
+    // The weapon in `slot` of `shooter`, after `ticks`, firing at will.
+    let aim = |sim: &mut Sim, shooter: UnitId, slot: usize, ticks: u32| {
+        for _ in 0..ticks {
+            sim.step(&[]);
+        }
+        sim.unit(shooter).unwrap().weapons[slot].target
+    };
+
+    // The Defender, with only a tank in reach: the tank.
+    let mut sim = new_game();
+    let tower = put(&mut sim, "ARMRL", 0, land);
+    let tank = put(&mut sim, "CORRAID", 1, land + FxVec3::from_ints(-120, 0, 60));
+    hold(&mut sim, tank);
+    assert_eq!(aim(&mut sim, tower, 0, 90), Some(Target::Unit(tank)), "a missile tower with no aircraft about fires on a tank");
+    // ... and an aircraft first, once one flies into reach.
+    let plane = put(&mut sim, "CORVENG", 1, land + FxVec3::from_ints(-60, 0, -120));
+    {
+        let u = sim.unit_mut(plane).unwrap();
+        u.landed = false;
+        u.pos.y += Fx::from_int(120);
+        u.fire_state = 0;
+        u.move_state = 0;
+    }
+    let mut turned = false;
+    for _ in 0..60 {
+        sim.step(&[]);
+        if sim.unit(plane).is_some_and(|p| sim.airborne(p)) && sim.unit(tower).unwrap().weapons[0].target == Some(Target::Unit(plane)) {
+            turned = true;
+            break;
+        }
+    }
+    assert!(turned, "and turns to the aircraft: {:?}", sim.unit(tower).unwrap().weapons[0].target);
+
+    // The Enforcer's depth charges, an amphibious tank under the water beside it.
+    let mut sim = new_game();
+    let destroyer = put(&mut sim, "CORROY", 1, sea);
+    let phib = put(&mut sim, "ARMCROC", 0, sea + FxVec3::from_ints(140, 0, 0));
+    hold(&mut sim, phib);
+    for _ in 0..30 { sim.step(&[]); }
+    assert!(sim.submerged(sim.unit(phib).unwrap()), "the Triton is under the water");
+    assert_eq!(aim(&mut sim, destroyer, 1, 90), Some(Target::Unit(phib)), "the destroyer's depth charges take on the amphibious tank");
+
+    // The Skeeter's missiles, a boat beside it.
+    let mut sim = new_game();
+    let skeeter = put(&mut sim, "ARMPT", 0, sea);
+    let boat = put(&mut sim, "CORPT", 1, sea + FxVec3::from_ints(200, 0, 0));
+    hold(&mut sim, boat);
+    assert_eq!(aim(&mut sim, skeeter, 1, 90), Some(Target::Unit(boat)), "a scout ship's missiles take on a boat");
+
+    // The Enforcer at sea, a tower on the shore.
+    let mut sim = new_game();
+    let destroyer = put(&mut sim, "CORROY", 1, sea);
+    let llt = put(&mut sim, "ARMLLT", 0, land + FxVec3::from_ints(80, 0, 0));
+    hold(&mut sim, llt);
+    let start = sim.unit(llt).unwrap().health;
+    let mut fired = false;
+    for _ in 0..600 {
+        sim.step(&[]);
+        fired |= sim.take_events().iter().any(|e| matches!(e, SimEvent::WeaponFired { unit, .. } if *unit == destroyer));
+        if fired && sim.unit(llt).is_none_or(|u| u.health < start) { break; }
+    }
+    assert!(fired, "the destroyer shells the tower on the shore: target {:?}, blocked {:?}", sim.unit(destroyer).unwrap().weapons[0].target, sim.unit(destroyer).unwrap().weapons[0].blocked);
 }

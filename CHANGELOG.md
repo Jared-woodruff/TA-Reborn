@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- Fire at will: units now fire at their "bad targets" when nothing better is in range, rather
+  than never. Missile towers fire on tanks when no aircraft are about, a destroyer's depth
+  charges take on an amphibious tank under the water, and a scout ship's missiles a boat. A
+  unit firing at a bad target turns to a better one as soon as one comes into range, and units
+  still chase only what they are meant for. An attack order works as before.
+- `+shootall` in the chat now does what it did in TA: every weapon of your units fires at every
+  enemy in range alike, nearest first. Type it again to turn it off.
+- Construction left with nobody working on it now un-builds after ten seconds, giving back the
+  metal put into it (not the energy), and disappears when nothing is left. A frame placed and
+  left before any work went into it goes at once. A factory's unit inside its yard, and
+  unfinished buildings a mission or scene places, are left alone.
+- Taking one of your own units apart now takes as long as its metal says, as reclaiming a wreck
+  does. A Metal Maker, which costs no metal, is reclaimed at once.
+- Planes with nothing to do over the sea, where they cannot land, now circle the spot instead
+  of hovering in place. New planes sent to a rally point over the water circle there.
+- A group of planes ordered onto one target now spread across a front as they come in, instead
+  of following each other in single file.
+
 ## 1.0.2 — 2026-11-11
 
 Faster on Macs and other integrated graphics, which now draw the battlefield at about 1080p's

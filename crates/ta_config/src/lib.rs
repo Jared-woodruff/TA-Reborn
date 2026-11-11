@@ -113,8 +113,14 @@ pub const RECORD_VERSION: u32 = 46;
 /// mends it (the reclaim goes on, as in TA), one left part taken apart is built back up without
 /// being finished again, and the skirmish AI sends nobody to finish an extractor it is upgrading;
 /// 80, a weapon's bad targets are lifted when they are every unit a player can field that it could
-/// hit (units nobody builds don't count: Escalation's Raptor fires its Starburst Missiles again).
-pub const SIMULATION_VERSION: u32 = 80;
+/// hit (units nobody builds don't count: Escalation's Raptor fires its Starburst Missiles again);
+/// 81, a weapon takes its bad targets on last, when nothing better is in reach (missile towers on
+/// tanks with no aircraft about), and turns to a better one coming into reach; a player's
+/// `+shootall` makes every target alike; construction left with nobody at it un-builds after ten
+/// seconds, its metal coming back; a unit is taken apart in time by its metal (a metal maker at
+/// once); a plane idle over the sea circles round its spot; planes sent at one target together
+/// come in on it across a front.
+pub const SIMULATION_VERSION: u32 = 81;
 /// Records shorter than one year of simulated time are supported. Shared with the
 /// launcher's metadata reader so impossible durations cannot start endless save catch-up.
 pub const MAX_RECORD_TICKS: u64 = 30 * 3600 * 24 * 365;

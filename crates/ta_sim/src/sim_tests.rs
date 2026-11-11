@@ -1552,7 +1552,8 @@ fn reclaiming_a_factory_releases_its_unfinished_product_for_repair() {
     sim.step(&[]);
     let frame = sim.unit(f).unwrap().build.unwrap().target;
     sim.step(&[Command::Order { player: 0, units: vec![b], order: Order::ReclaimUnit(f), queue: false }]);
-    for _ in 0..1100 {
+    // (By its metal: 100, twenty times that in worker time at 30 a second.)
+    for _ in 0..2200 {
         if sim.unit(f).is_none() { break; }
         sim.step(&[]);
     }

@@ -26,6 +26,9 @@ const AIM_FROM_FUNCS: [&str; 3] = ["AimFromPrimary", "AimFromSecondary", "AimFro
 const QUERY_FUNCS: [&str; 3] = ["QueryPrimary", "QuerySecondary", "QueryTertiary"];
 const FIRE_FUNCS: [&str; 3] = ["FirePrimary", "FireSecondary", "FireTertiary"];
 
+/// How far apart the planes of a group sent at one target come in on it, across their front
+/// (see `Sim::air_attack_pass`).
+pub(crate) const FAN_SPACING: Fx = Fx::from_int(48);
 /// Ticks between target searches for an idle weapon.
 const RETARGET_TICKS: u64 = 8;
 /// How long automatic targeting passes over a target the ground hides (ticks).
@@ -533,12 +536,21 @@ impl Sim {
             } else if w.command_fire {
                 forced.filter(|_| manual || (slot == 0 || !has_normal) && can_hit(w)).filter(|&tg| !w.torpedo || self.target_in_water(tg))
             } else {
-                forced.filter(|&tg| !w.torpedo || self.target_in_water(tg)).or(current.filter(|&tg| fire_state >= 1 && self.target_valid(id, slot, w, tg)))
+                forced.filter(|&tg| !w.torpedo || self.target_in_water(tg)).or(current.filter(|&tg| fire_state >= 1 && self.target_valid(id, w, tg)))
             };
-            if available[slot] && target.is_none() && !w.command_fire && fire_state >= 2 && (self.tick + id.slot as u64).is_multiple_of(RETARGET_TICKS) {
+            // Nothing to shoot, or only a bad target (taken on last): a look round on the weapon's
+            // tick for a better one, which it turns to.
+            let on_bad = match target {
+                Some(Target::Unit(tid)) if forced != target => self.unit(tid).is_some_and(|tu| self.bad_target(t.id, slot, tu)) && !self.players.get(owner as usize).is_some_and(|p| p.shoot_all),
+                _ => false,
+            };
+            if available[slot] && (target.is_none() || on_bad) && !w.command_fire && fire_state >= 2 && (self.tick + id.slot as u64).is_multiple_of(RETARGET_TICKS) {
                 let tick = self.tick;
                 let skip = self.unit(id).and_then(|u| u.weapons[slot].blocked).filter(|&(_, until)| tick < until).map(|(t, _)| t);
-                target = self.find_target(id, slot, w, owner, skip);
+                let found = self.find_target(id, slot, w, owner, skip);
+                if target.is_none() || matches!(found, Some(Target::Unit(tid)) if self.unit(tid).is_some_and(|tu| !self.bad_target(t.id, slot, tu))) {
+                    target = found;
+                }
             }
             if target != current && let Some(u) = self.unit_mut(id) {
                 u.retarget(slot, target);
@@ -711,10 +723,28 @@ impl Sim {
     }
 
     /// Plane attack runs. Approach: steer straight at the target (bombs and forward guns
-    /// fire on the way in). Once over it, run out straight for the overshoot distance,
-    /// then turn back for the next approach.
+    /// fire on the way in), a plane of a group from its place across the group's front, coming
+    /// in on the target from there ([`Unit::fan`]: [`FAN_SPACING`] apart, drawn in over the
+    /// last stretch). Once over it, run out straight for the overshoot distance, then turn back
+    /// for the next approach.
     pub(crate) fn air_attack_pass(&mut self, id: UnitId, tp: FxVec3) {
         let Some(u) = self.unit(id) else { return };
+        // (Its place across the front, from where it is now: wide far off, none over the target.)
+        let aim = if u.fan == 0 {
+            tp
+        } else {
+            let to = (tp - u.pos).xz();
+            let dist = to.length_xz();
+            if dist <= Fx::ONE {
+                tp
+            } else {
+                let side = FxVec3::new(-to.z / dist.to_int().max(1), Fx::ZERO, to.x / dist.to_int().max(1));
+                let drawn_in = ((dist - Fx::from_int(160)) / Fx::from_int(640)).clamp(Fx::ZERO, Fx::ONE);
+                let (w, h) = self.world.size_px();
+                let p = tp + side.scale(FAN_SPACING * u.fan as i64 * drawn_in);
+                FxVec3::new(p.x.clamp(Fx::ZERO, w), tp.y, p.z.clamp(Fx::ZERO, h))
+            }
+        };
         let overshoot = self.pass_overshoot(self.types.get(u.type_id));
         let (w, h) = self.world.size_px();
         let forward = heading_vector(u.heading);
@@ -730,7 +760,7 @@ impl Sim {
                 let end = pos + forward.scale(overshoot);
                 (FxVec3::new(end.x.clamp(Fx::ZERO, w), tp.y, end.z.clamp(Fx::ZERO, h)), true)
             } else {
-                (tp, false)
+                (aim, false)
             }
         };
         if let Some(u) = self.unit_mut(id) {
@@ -752,36 +782,48 @@ impl Sim {
     pub(crate) fn idle_plane_response(&mut self, id: UnitId, t: &crate::defs::UnitType) {
         let Some(u) = self.unit(id) else { return };
         if !u.orders.is_empty() || u.move_state == 0 || u.fire_state == 0 { return; }
+        // (Not after a bad target, which it takes on only when nothing else is near: as units do
+        // not chase one.)
         let engaged = u.weapons.iter().zip(t.weapons).enumerate().any(|(slot, (state, weapon))| {
-            weapon.is_some_and(|w| state.target.is_some_and(|target| self.target_valid(id, slot, self.weapon_types.get(w), target)))
+            weapon.is_some_and(|w| {
+                let w = self.weapon_types.get(w);
+                state.target.is_some_and(|target| self.target_valid(id, w, target) && matches!(target, Target::Unit(tid) if self.unit(tid).is_some_and(|tu| !self.bad_target(t.id, slot, tu))))
+            })
         });
         if engaged && let Some(u) = self.unit_mut(id) { u.orders.push_back(Order::Fight(u.pos)); }
     }
 
     /// Whether `target` is one of the bad targets of `u`'s weapon in `slot`: of a category it
-    /// never picks on its own (`wpri_`/`wsec_`/`wspe_badTargetCategory`, else the unit's
-    /// `BadTargetCategory`). TA's units never lock on to one but by order: an AA K-bot or a
-    /// fighter never on a tank, a tank never on an aircraft.
+    /// takes on last (`wpri_`/`wsec_`/`wspe_badTargetCategory`, else the unit's
+    /// `BadTargetCategory`): only when no other enemy is in reach, as TA's missile towers fire
+    /// on tanks with no aircraft about, and its destroyers' depth charges on an amphibious tank
+    /// under the water.
     pub(crate) fn bad_target(&self, shooter_type: usize, slot: usize, target: &Unit) -> bool {
         self.types.get(target.type_id).category_mask.intersects(&self.types.get(shooter_type).weapon_bad_masks[slot])
     }
 
-    /// Whether the weapon in `slot` of a unit of `shooter_type` takes `target` on of its own
+    /// Whether the weapon in `slot` of a unit of `shooter_type` can take `target` on of its own
     /// accord, wherever they stand: it hits that kind (an aircraft in flight; what is on the
-    /// ground or the water), reaches it (only `waterweapon`s under the water, torpedoes only what
-    /// is in it), and it is not one of the weapon's bad targets. (Range, sight, the ground between
-    /// and the shooter's own state apart: what automatic targeting, kept targets and return fire
-    /// all ask.)
-    pub(crate) fn engages(&self, shooter_type: usize, slot: usize, w: &WeaponType, target: &Unit) -> bool {
+    /// ground or the water), and reaches it (only `waterweapon`s under the water, torpedoes only
+    /// what is in it). Its bad targets too, last ([`Sim::bad_target`]). (Range, sight, the ground
+    /// between and the shooter's own state apart: what automatic targeting, kept targets and
+    /// return fire ask.)
+    pub(crate) fn can_engage(&self, w: &WeaponType, target: &Unit) -> bool {
         (if self.airborne(target) { w.hits_air } else { w.hits_ground })
             && !(!w.water && self.submerged(target) || w.torpedo && !self.in_water(target))
-            && !self.bad_target(shooter_type, slot, target)
+    }
+
+    /// Whether the weapon in `slot` takes `target` on first ([`Sim::can_engage`], and not one of
+    /// its bad targets): what a unit chases and a computer player's hunters go after.
+    pub(crate) fn engages(&self, shooter_type: usize, slot: usize, w: &WeaponType, target: &Unit) -> bool {
+        self.can_engage(w, target) && !self.bad_target(shooter_type, slot, target)
     }
 
     /// Whether an automatic target is still worth shooting by the weapon in `slot`. Ground is
     /// never one: only an attack order names ground, and once the order is gone (Stop, another
-    /// order) so is it; nor is one of the weapon's bad targets ([`Sim::bad_target`]).
-    fn target_valid(&self, id: UnitId, slot: usize, w: &WeaponType, t: Target) -> bool {
+    /// order) so is it. (A bad target is, until a better one comes into reach: see
+    /// `update_weapons`.)
+    fn target_valid(&self, id: UnitId, w: &WeaponType, t: Target) -> bool {
         match t {
             Target::Ground(_) => false,
             Target::Projectile(_) => false,
@@ -790,21 +832,20 @@ impl Sim {
                 if tu.dead || tu.carried_by.is_some() || !self.is_enemy(u.owner, tu.owner) || self.seen_by(tu, u.owner) == crate::vision::Seen::Hidden {
                     return false;
                 }
-                self.engages(u.type_id, slot, w, tu) && u.pos.within_xz(tu.pos, w.range + Fx::from_int(48))
+                self.can_engage(w, tu) && u.pos.within_xz(tu.pos, w.range + Fx::from_int(48))
             }
         }
     }
 
-    /// The nearest enemy the weapon in `weapon_slot` can engage, never one of its bad targets
-    /// ([`Sim::bad_target`]: TA's anti-air units list NOTAIR and never pick a tank, its other
-    /// armed units VTOL and never pick an aircraft; an attack order still names them), for a
-    /// computer player's unit a mission's priority targets first, and among those the one that
-    /// has just hit the unit. Computer players' units never pick what a mission tells them to
-    /// ignore.
+    /// The nearest enemy the weapon in `weapon_slot` can engage, its bad targets last
+    /// ([`Sim::bad_target`]: TA's anti-air units list NOTAIR and pick a tank only with no
+    /// aircraft about, its other armed units VTOL and an aircraft only with nothing on the ground
+    /// in reach; with the owner's `+shootall` they count as any other), for a computer player's
+    /// unit a mission's priority targets first, and among those the one that has just hit the
+    /// unit. Computer players' units never pick what a mission tells them to ignore.
     fn find_target(&mut self, id: UnitId, weapon_slot: usize, w: &WeaponType, owner: u8, skip: Option<UnitId>) -> Option<Target> {
         let u = self.unit(id)?;
         let pos = u.pos;
-        let shooter_type = u.type_id;
         let bad_mask = self.types.get(u.type_id).weapon_bad_masks[weapon_slot];
         let attacker = u.last_attacker.filter(|_| self.tick <= u.last_hit_tick + 2 * TICKS_PER_SECOND as u64);
         // (Shells: from about where the gun stands, to the target's middle.)
@@ -818,7 +859,8 @@ impl Sim {
             return None;
         }
         let ai = self.mission.is_some() && self.players.get(owner as usize).is_some_and(|p| p.ai);
-        let mut best: Option<(bool, bool, i128, UnitId)> = None;
+        let shoot_all = self.players.get(owner as usize).is_some_and(|p| p.shoot_all);
+        let mut best: Option<(bool, bool, bool, i128, UnitId)> = None;
         for &slot in &candidates {
             let Some(o) = self.units.get(slot as usize).and_then(|u| u.as_ref()) else { continue };
             // TA measures range horizontally to the target's edge (first: most of those in
@@ -826,16 +868,17 @@ impl Sim {
             let ot = self.types.get(o.type_id);
             let d = (o.pos - pos).xz().length_sq_raw();
             let r = (w.range + ot.radius).0 as i128;
-            if d > r * r || o.dead || o.carried_by.is_some() || !self.is_enemy(owner, o.owner) || self.no_auto_target.contains(&o.type_id) || skip == Some(o.id) || ai && self.ai_ignores(o.id) || ot.category_mask.intersects(&bad_mask) {
+            if d > r * r || o.dead || o.carried_by.is_some() || !self.is_enemy(owner, o.owner) || self.no_auto_target.contains(&o.type_id) || skip == Some(o.id) || ai && self.ai_ignores(o.id) {
                 continue;
             }
-            let key = (!(ai && self.is_priority_target(o.id)), attacker != Some(o.id), d, o.id);
+            let bad = !shoot_all && ot.category_mask.intersects(&bad_mask);
+            let key = (bad, !(ai && self.is_priority_target(o.id)), attacker != Some(o.id), d, o.id);
             // Eligibility is read-only: a candidate that cannot beat the current winner
             // needs no visibility, submersion or ballistic checks.
             if best.is_some_and(|b| key >= b) { continue; }
             if self.seen_by(o, owner) == crate::vision::Seen::Hidden { continue; }
             // (What it hits, only torpedoes and depth charges under the water.)
-            if !self.engages(shooter_type, weapon_slot, w, o) {
+            if !self.can_engage(w, o) {
                 continue;
             }
             // A shell must also carry that far (to the target's middle).
@@ -1339,7 +1382,7 @@ impl Sim {
             .filter(|&s| {
                 t.weapons[s].is_some_and(|w| {
                     let w = self.weapon_types.get(w);
-                    !w.command_fire && !w.def.stockpile && self.weapon_can_fire_from(u, w) && self.engages(u.type_id, s, w, attacker) && u.weapons[s].target.is_none_or(|tg| harmless(tg) && u.pos.within_xz(apos, w.range + at.radius))
+                    !w.command_fire && !w.def.stockpile && self.weapon_can_fire_from(u, w) && self.can_engage(w, attacker) && u.weapons[s].target.is_none_or(|tg| harmless(tg) && u.pos.within_xz(apos, w.range + at.radius))
                 })
             })
             .collect();

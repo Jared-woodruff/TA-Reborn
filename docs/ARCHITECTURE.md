@@ -311,13 +311,17 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   touching the aircraft flying round it. Only `waterweapon`s reach what is under the water
   (`Sim::submerged`: submarines, units on the sea bed covered by it), by shot or blast.
   `toairweapon` weapons engage only aircraft, other direct-fire and guided weapons both,
-  shells and bombs only the ground. A weapon never takes on one of its bad targets of its
-  own accord (`Sim::bad_target`, `Sim::engages`): the categories its unit's `BadTargetCategory`
-  names, or the weapon's own `wpri_`/`wsec_`/`wspe_badTargetCategory` (category tokens are
-  sets, `CategorySet`: a bit for each of up to 256 tokens; `UnitType::weapon_bad_masks`). TA's
-  anti-air units name NOTAIR (the AA K-bots, missile trucks and towers, flak, fighters never pick
-  a tank), its other armed units VTOL (never an aircraft), the cruisers' depth charges NOTSUB;
-  an attack order still sends a unit at a bad target. (The anti-air hovercraft carry the ground
+  shells and bombs only the ground. A weapon takes its bad targets on last, only when no other
+  enemy is in reach, and turns to a better one coming into reach (`Sim::bad_target`,
+  `Sim::can_engage`, `Sim::find_target`'s first key): the categories its unit's
+  `BadTargetCategory` names, or the weapon's own `wpri_`/`wsec_`/`wspe_badTargetCategory`
+  (category tokens are sets, `CategorySet`: a bit for each of up to 256 tokens;
+  `UnitType::weapon_bad_masks`). TA's anti-air units name NOTAIR (the AA K-bots, missile trucks
+  and towers, flak, fighters take aircraft first, and a tank only with no aircraft about), its
+  other armed units VTOL (an aircraft last), the cruisers' and destroyers' depth charges NOTSUB;
+  units chase only what they take on first (`Sim::engages`), and an attack order still sends a
+  unit at a bad target. A player's `+shootall` (`Player::shoot_all`, `Command::SetShootAll`)
+  makes every target alike, the nearest first. (The anti-air hovercraft carry the ground
   hovercraft's tags in TA's files and are read as anti-air: `defs::target_tags`. A weapon whose
   bad targets are every unit a player can field that it could hit would never fire of its own
   accord; TA's own have none, mods' tags of their own make some, Total Mayhem's flak listing
@@ -327,8 +331,8 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   Among the
   rest the unit that hit it in the last two seconds first. Return fire answers only an enemy
   (a friend's shell or blast splashing it is not: in a big battle most of the shots had soon
-  turned on friends), only with weapons that can hit the attacker and for which it is no bad
-  target, and only once the unit is finished; a weapon takes it on when it has no target, or
+  turned on friends), only with weapons that can hit the attacker (a bad target too), and only
+  once the unit is finished; a weapon takes it on when it has no target, or
   from one of its own choosing that can't fight back (no weapons) with the attacker in reach.
   An idle unit that roams or manoeuvres goes after an attacker out of its reach only if one of
   its weapons would take it on and its `NoChaseCategory` does not name it. Hold fire drops
@@ -429,6 +433,13 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   (what the stores can pay of the demand); the last sliver of a build always gets at least
   one unit of work, so a starved economy still finishes what it builds instead of leaving it
   at 99.99% (and its builder stuck on it).
+* **Abandoned construction** (`Sim::decay_abandoned_frames`): a frame nobody has worked on for
+  ten seconds (`Unit::worked_at`, set by a builder setting it down or putting work into it, paid
+  for or stalled; `FRAME_GRACE`) un-builds, the whole of it in a hundred seconds
+  (`FRAME_DECAY`), its metal coming back as the work goes (not its energy), and is gone without
+  a wreck when nothing is left; one set down and left at nothing goes at once. A factory's unit
+  in its yard does not (the factory's to finish or give up; released when the factory is gone,
+  it has its ten seconds from then), nor one a scene or a mission placed unfinished.
 * **Unit figures** (`flows.rs`): what a unit makes and uses a second now (`Sim::unit_flows`: its
   production, the wind's and the tide's share, the metal under an extractor, upkeep while it
   is on, cloaking, and what its build job draws at full pace; `Sim::type_flows` for a type put
@@ -449,7 +460,9 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
 * **Veterancy**: kills earn experience (victim value / killer value); veterans reload up to
   30% faster, scatter up to 60% less and take up to 30% less damage.
 * **Reclaim and resurrection**: features give their metal and energy; own units are taken
-  apart like construction in reverse, refunding metal, and vanish without a wreck. A unit is
+  apart like construction in reverse, refunding metal, and vanish without a wreck, in time by
+  their metal as a feature is (twenty times it in worker time: a metal maker, which costs none,
+  at once). A unit is
   finished once (`Unit::finished`: its `UnitCompleted`, its count in the stats, switched on and
   set to hold fire as it is finished): while its side takes it apart (`Sim::being_taken_apart`,
   a builder took work off it in the last second), other builders' work on it only mends what is
@@ -508,7 +521,9 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   or bomber out on a long errand no longer holds up the next unit). Planes attack in passes
   (steer at the target, run out past it by turn radius + bomb lead, come round); bombs
   release when the predicted impact point is on the target; fixed guns fire inside
-  `tolerance`. Gunships (`HoverAttack`) hover at range like ground units. Landed, they take
+  `tolerance`. Planes sent at one target together (one attack order) come in on it across a
+  front, each from its place in the group (`Unit::fan`: 0, 1, -1, 2, -2..., `FAN_SPACING`
+  apart, drawn in over the last stretch to the target), not one behind the other. Gunships (`HoverAttack`) hover at range like ground units. Landed, they take
   part in the crowd's separation (on dry ground off obstacles), so planes sent to one place
   spread out.
   **Where they land** (`World::air_landing_height`, `UnitType::landing`): an aircraft sits
@@ -526,8 +541,11 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   place within 16 cells, ring by ring (the nearest middle to it; of equals the northernmost,
   then the westernmost), clear of the places the others have taken (`Sim::parking_spot`:
   landed, flying to one, or over one past its idle delay; of two over one place, the lower
-  keeps it, then the first). Finding none it stays in the air, hovering as over the sea, and
-  looks again every second. Flying to its place (or a repair deck) it keeps over the highest
+  keeps it, then the first). Finding none it stays in the air, hovering, and looks again
+  every second. A plane (armed, without `HoverAttack`) idle over the sea, where it cannot set
+  down, does not look: it circles round where it came to rest (`Unit::orbit`, kept a radius
+  inside the map), as TA's do, unless it is over a friendly carrier's deck, which it waits over
+  to set down on. Flying to its place (or a repair deck) it keeps over the highest
   ground on the straight way there, climbing first where it stands, and planes move as they
   hover when idle (sliding round to face it: a place nearer than their turning circle they
   circled for ever); it comes straight down at the place. `landing_ground_survey` (ignored,

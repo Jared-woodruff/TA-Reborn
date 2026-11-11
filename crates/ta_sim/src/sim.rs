@@ -201,8 +201,11 @@ pub enum Command {
     /// player clicked: a unit or a building finished); none left, nothing. (`QueueFront` moved
     /// whatever had come to the index; a constructor's orders were sent again from the player's
     /// copy, bringing back what had been built since.)
-    /// (Last: replays keep the earlier variants' numbers.)
     EditQueue { player: u8, unit: UnitId, index: u32, type_id: usize, pos: Option<FxVec3>, to_front: bool },
+    /// TA's `+shootall`, on or off: the player's units' weapons take on every enemy in reach
+    /// alike, their bad targets too (see [`crate::unit::Player::shoot_all`]).
+    /// (Last: replays keep the earlier variants' numbers.)
+    SetShootAll { player: u8, on: bool },
 }
 
 /// The index nearest `index` (the lower first, of two as near) of those below `len` that `is`
@@ -219,6 +222,11 @@ pub(crate) const PARALLEL_MOVERS: usize = 1_500;
 /// Units from which their scripts run on all cores.
 const PARALLEL_SCRIPTS: usize = 1_500;
 
+/// How long construction may stand with nobody at it before it un-builds (see
+/// `Sim::decay_abandoned_frames`): ten seconds, for a builder called away a moment.
+const FRAME_GRACE: u64 = 10 * TICKS_PER_SECOND as u64;
+/// How long a whole frame takes to un-build, in ticks (a hundred seconds; one half built, fifty).
+const FRAME_DECAY: u64 = 100 * TICKS_PER_SECOND as u64;
 /// Self-destruct countdown (five seconds, as in TA).
 pub const SELF_DESTRUCT_TICKS: u64 = 5 * TICKS_PER_SECOND as u64;
 /// How far a maneuvering unit will stray from its spot to answer fire.
@@ -642,6 +650,7 @@ impl Sim {
                 endless: false,
                 sharing: Default::default(),
                 perks: Default::default(),
+                shoot_all: false,
             })
             .collect();
         let pathfinder = Pathfinder::new(world.width, world.height);
@@ -1596,11 +1605,32 @@ impl Sim {
     // ---- Commands ---------------------------------------------------------------------
 
     /// `player`'s order to one of its units (`queue`: after its others).
+    /// The planes of a group sent at one target together take their places across a front (in
+    /// the order the player's selection gives them: 0, 1, -1, 2, -2...; see [`Unit::fan`]), each
+    /// other unit, and a plane sent alone, none.
+    fn fan_out(&mut self, player: u8, units: &[UnitId]) {
+        let types = self.types.clone();
+        let mut rank = 0i32;
+        for &id in units {
+            let Some(u) = self.unit_mut(id).filter(|u| u.owner == player && !u.dead) else { continue };
+            if !types.get(u.type_id).is_plane() {
+                u.fan = 0;
+                continue;
+            }
+            let place = if rank % 2 == 1 { (rank + 1) / 2 } else { -(rank / 2) };
+            u.fan = place.clamp(i8::MIN as i32, i8::MAX as i32) as i8;
+            rank += 1;
+        }
+    }
+
     pub(crate) fn order_unit(&mut self, player: u8, id: UnitId, order: &Order, queue: bool) {
         if !valid_order_position(order) {
             return;
         }
         let Some(type_id) = self.unit(id).filter(|u| u.owner == player && u.is_complete() && !u.dead).map(|u| u.type_id) else { return };
+        if !queue && let Some(u) = self.unit_mut(id) {
+            u.fan = 0;
+        }
         if let Order::Build { type_id: product, pos } = order {
             let t = self.types.get(type_id);
             if !t.is_builder || !self.is_allowed(*product) || !t.build_options.contains(product) {
@@ -1715,6 +1745,9 @@ impl Sim {
                 }
                 for &id in units {
                     self.order_unit(*player, id, order, *queue);
+                }
+                if matches!(order, Order::Attack(_)) {
+                    self.fan_out(*player, units);
                 }
             }
             Command::Formation { player, units, order, queue, shape } => {
@@ -1933,6 +1966,11 @@ impl Sim {
                     p.sharing = *sharing;
                 }
             }
+            Command::SetShootAll { player, on } => {
+                if let Some(p) = self.players.get_mut(*player as usize) {
+                    p.shoot_all = *on;
+                }
+            }
             Command::Signal { player, kind, at } => {
                 if self.players.get(*player as usize).is_none_or(|p| p.defeated) {
                     return;
@@ -2020,6 +2058,7 @@ impl Sim {
         self.update_fires();
         self.acid_seas();
         let t3 = std::time::Instant::now();
+        self.decay_abandoned_frames();
         self.process_deaths();
         self.check_defeat();
         self.check_mission();
@@ -3630,7 +3669,13 @@ impl Sim {
                     return;
                 }
                 match self.spawn_unit(type_id, owner, site, 0, false) {
-                    Some(n) => n,
+                    Some(n) => {
+                        let tick = self.tick;
+                        if let Some(frame) = self.unit_mut(n) {
+                            frame.worked_at = Some(tick);
+                        }
+                        n
+                    }
                     None => return,
                 }
             }
@@ -3876,9 +3921,13 @@ impl Sim {
         if !self.unit(id).is_some_and(|u| u.in_build_stance) {
             return;
         }
-        // Construction in reverse: what the work undone was worth comes back.
+        // Construction in reverse: what the work undone was worth comes back. At TA's pace, by
+        // the unit's metal as a feature's (twenty times it in worker time): a metal maker, which
+        // costs none, is gone at once.
         let total = tt.build_work;
-        let left = work.saturating_sub(t.work_rate.max(1));
+        let reclaim_total = ((tt.cost_metal * 20).0.max(0) as u64).saturating_mul(TICKS_PER_SECOND as u64).max(1);
+        let step = ((t.work_rate.max(1) as u128 * total as u128) / reclaim_total as u128).clamp(1, u64::MAX as u128) as u64;
+        let left = work.saturating_sub(step);
         let refund = tt.cost_metal.share(work, total) - tt.cost_metal.share(left, total);
         let e = &mut self.players[owner as usize].economy;
         e.metal = (e.metal + refund).min(e.metal_capacity.max(e.metal));
@@ -3910,6 +3959,48 @@ impl Sim {
     /// construction is (paid for), whole again without being finished a second time.
     pub fn being_taken_apart(&self, u: &Unit) -> bool {
         u.finished && !u.is_complete() && u.taken_apart_at.is_some_and(|at| self.tick < at + TICKS_PER_SECOND as u64)
+    }
+
+    /// Construction left with nobody at it ([`Unit::worked_at`] [`FRAME_GRACE`] ago or more; not
+    /// a factory's, in its yard) un-builds: the whole of a frame in [`FRAME_DECAY`], its metal
+    /// coming back as the work goes (not its energy), and gone (no wreck, no blast) when nothing
+    /// of it is left; one set down and never worked on goes at once. Not one a scene or a
+    /// mission placed unfinished, nobody having worked on it.
+    fn decay_abandoned_frames(&mut self) {
+        let tick = self.tick;
+        let mut decaying = Vec::new();
+        for u in self.units.iter().flatten() {
+            if u.dead || u.finished || u.is_complete() || u.carried_by.is_some() || u.worked_at.is_none_or(|at| tick < at + FRAME_GRACE) {
+                continue;
+            }
+            // (A factory's, in its yard: the factory's to finish or give up.)
+            if u.factory.and_then(|f| self.unit(f)).is_some_and(|f| !f.dead) {
+                continue;
+            }
+            decaying.push(u.id);
+        }
+        for id in decaying {
+            let Some(u) = self.unit(id) else { continue };
+            let tt = self.types.get(u.type_id);
+            let (total, work, owner, cost, max_health) = (tt.build_work, u.build_work, u.owner, tt.cost_metal, tt.max_health);
+            let left = work.saturating_sub((total / FRAME_DECAY).max(1));
+            let refund = cost.share(work, total) - cost.share(left, total);
+            if let Some(p) = self.players.get_mut(owner as usize) {
+                let e = &mut p.economy;
+                e.metal = (e.metal + refund).min(e.metal_capacity.max(e.metal));
+                e.tick_metal_in += refund;
+            }
+            if let Some(u) = self.unit_mut(id) {
+                u.set_build_work(left, total);
+                u.health = u.health.min(max_health * u.build_progress).max(Fx::ONE);
+                if left == 0 {
+                    // Gone without a Killed script, wreck or blast; given up, so no battle loss.
+                    u.dead = true;
+                    u.death_processed = true;
+                    u.removed = true;
+                }
+            }
+        }
     }
 
     /// Whether a builder has anything to do for `u` (of type `t`): finish it, or mend it (one
@@ -4224,6 +4315,10 @@ impl Sim {
             // costs nothing (TA behaviour).
             self.repair_health(target, rate);
             return;
+        }
+        let tick = self.tick;
+        if let Some(tu) = self.unit_mut(target) {
+            tu.worked_at = Some(tick);
         }
         let full = rate.min(total.saturating_sub(done));
         if full == 0 {
@@ -5004,6 +5099,7 @@ impl Sim {
 
     fn remove_dead(&mut self) {
         let types = self.types.clone();
+        let tick = self.tick;
         for slot in 0..self.units.len() {
             let dead = self.units[slot].as_ref().is_some_and(|u| u.dead && u.death_processed);
             if !dead {
@@ -5015,9 +5111,14 @@ impl Sim {
             // Reclaim and scenario removal bypass death explosions and their cleanup.
             // Release every product here too, including unfinished frames that another
             // constructor can finish once the factory is gone.
+            // (An unfinished one has the while from now before it un-builds: a builder may yet be
+            // sent to finish it.)
             for product in u.yard {
                 if let Some(product) = self.unit_mut(product) && product.factory == Some(u.id) {
                     product.factory = None;
+                    if !product.is_complete() {
+                        product.worked_at = Some(tick);
+                    }
                 }
             }
             if let Some(carrier) = u.carried_by.and_then(|id| self.unit_mut(id)) {
@@ -5290,6 +5391,8 @@ impl Sim {
             mix(u.landed as i64);
             mix(u.air_pass as i64);
             mix(u.pass_runout as i64);
+            mix(u.fan as i64);
+            mix(u.orbit.map_or(-1, |o| o.x.0 ^ o.z.0.rotate_left(17)));
             mix(u.pass_ticks as i64);
             mix(u.idle_ticks as i64);
             mix(u.move_rate as i64);
@@ -5316,6 +5419,7 @@ impl Sim {
             mix(u.repair_work as i64);
             mix(u.finished as i64);
             mix(u.taken_apart_at.map_or(-1, |t| t as i64));
+            mix(u.worked_at.map_or(-1, |t| t as i64));
             mix(u.capture_work as i64);
             mix(u.in_build_stance as i64);
             mix(u.yard_open as i64);
@@ -5369,6 +5473,7 @@ impl Sim {
             mix(p.sharing.metal as i64 | (p.sharing.energy as i64) << 1);
             mix(p.sharing.keep_metal.map_or(-1, |k| k.0));
             mix(p.sharing.keep_energy.map_or(-1, |k| k.0));
+            mix(p.shoot_all as i64);
         }
         mix(self.mission.is_some() as i64);
         if let Some(mission) = &self.mission {

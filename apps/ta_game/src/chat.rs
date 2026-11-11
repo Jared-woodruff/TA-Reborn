@@ -233,7 +233,8 @@ impl Game {
 
     /// TA's chat commands that are not cheats (the text after the `+`): sharing resources with
     /// allies (`+sharemetal`, `+shareenergy`, `+setsharemetal N`, `+setshareenergy N`);
-    /// `+sharemapping`, `+shootall`, `+switchalt`, `+contour` and `+clock`, which TA Reborn
+    /// `+shootall` (every weapon of the player's units takes on every enemy in reach alike, its
+    /// bad targets too); `+sharemapping`, `+switchalt`, `+contour` and `+clock`, which TA Reborn
     /// always does or does on a key; and what only changes this computer (`+noshake`, the
     /// music's `+cd...`, `+sing`). None when `code` is none of them.
     pub fn ta_command(&mut self, code: &str) -> Option<String> {
@@ -282,7 +283,18 @@ impl Game {
                 answer
             }
             "sharemapping" => t("Allies always share what they see and have explored").to_string(),
-            "shootall" => t("Your units already shoot at whatever enemy they see, buildings included (F sets their fire orders)").to_string(),
+            "shootall" => {
+                if self.spectator || self.playback.is_some() {
+                    return Some(t("Spectators have no units to fire").to_string());
+                }
+                let on = !self.sim.players.get(self.local_player as usize).is_some_and(|p| p.shoot_all);
+                self.issue(Command::SetShootAll { player: self.local_player, on });
+                if on {
+                    t("Every weapon of your units now fires at every enemy in range (+shootall again to undo)").to_string()
+                } else {
+                    t("Your units' weapons take on what they are best against first again").to_string()
+                }
+            }
             "switchalt" => t("Control groups answer to 0-9 and to Alt+0-9 alike").to_string(),
             "contour" => {
                 let on = self.overlay != Some(crate::overlay::Overlay::Height);
