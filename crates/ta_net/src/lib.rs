@@ -70,10 +70,12 @@ pub use transport::{Client, Host, HostEvent};
 /// 83: the data hash leaves the maps out, the lobby checks the battle's map (`Msg::Maps`,
 /// `Lobby::map_status`), and a refusal for other data carries the host's mods (`Refusal::Data`),
 /// as one for coming back without the battle's map does (`Refusal::Map`);
-/// 84: a weapon's bad targets are lifted when they are every unit a player can field it could hit.)
+/// 84: a weapon's bad targets are lifted when they are every unit a player can field it could hit;
+/// 85: bad targets taken on last, `Command::SetShootAll` (`+shootall`), abandoned construction
+/// un-builds, reclaim by metal, planes circle over the sea and fan out on attack runs.)
 /// [`Msg::Hello`] and [`Refusal::Version`] keep their layout, so builds of other protocols are
 /// still told why they cannot meet.
-pub const PROTOCOL: u32 = 84;
+pub const PROTOCOL: u32 = 85;
 pub const DEFAULT_PORT: u16 = 7890;
 /// Ticks between state hash reports (which double as progress reports).
 pub const HASH_INTERVAL: u64 = 15;
@@ -1382,6 +1384,7 @@ pub fn command_player(c: &Command) -> u8 {
         | Command::EditQueue { player, .. }
         | Command::Cheat { player, .. }
         | Command::SetSharing { player, .. }
+        | Command::SetShootAll { player, .. }
         | Command::Formation { player, .. }
         | Command::Signal { player, .. }
         | Command::Abandon { player }

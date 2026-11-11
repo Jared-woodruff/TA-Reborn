@@ -254,7 +254,8 @@ fn work_beams_stop_while_approaching_after_a_target_leaves_range() {
         let mut sim = yard("0.3");
         let builder = put(&mut sim, "BUILDER", 0, 200, true);
         let wreck = sim.place_feature("FRAME_DEAD", FxVec3::from_ints(280, 60, 300), 0).unwrap();
-        let target = put(&mut sim, "BUILDER", if action == 2 { 1 } else { 0 }, 280, true);
+        // (Taking one of its own apart: a unit with metal to it, else it is gone at once.)
+        let target = put(&mut sim, if action == 3 { "FRAME" } else { "BUILDER" }, if action == 2 { 1 } else { 0 }, 280, true);
         let order = match action { 0 => Order::Reclaim(wreck), 1 => Order::Resurrect(wreck), 2 => Order::Capture(target), _ => Order::ReclaimUnit(target) };
         sim.step(&[Command::Order { player: 0, units: vec![builder], order, queue: false }]);
         sim.step(&[]);
@@ -495,4 +496,107 @@ fn patrolling_builders_leave_a_building_being_taken_apart_alone() {
         sim.step(&[]);
     }
     assert_eq!(sim.patrol_work(helper, &t), Some(Order::Repair(target)), "built back up once left");
+}
+
+/// Construction left with nobody at it un-builds after a while (ten seconds), its metal coming
+/// back as the work goes (its energy does not), and is gone when nothing of it is left: a whole
+/// frame in a hundred seconds, one half built in fifty.
+#[test]
+fn abandoned_construction_un_builds_and_gives_its_metal_back() {
+    let mut sim = yard("300");
+    sim.set_starting_resources(0, Fx::from_int(10000), Fx::from_int(100000));
+    let builder = put(&mut sim, "BUILDER", 0, 200, true);
+    let pos = FxVec3::from_ints(280, 60, 300);
+    sim.step(&[Command::Order { player: 0, units: vec![builder], order: Order::Build { type_id: sim.types.id("FRAME").unwrap(), pos }, queue: false }]);
+    // Half built (BuildTime 30, WorkerTime 300: the whole of it in three ticks of work, so a few
+    // ticks for the builder to get going and one of work), then left.
+    let frame = (0..120).find_map(|_| {
+        sim.step(&[]);
+        sim.units.iter().flatten().find(|u| u.type_id == sim.types.id("FRAME").unwrap() && u.build_work > 0).map(|u| u.id)
+    }).expect("the builder gets to work");
+    sim.step(&[Command::Order { player: 0, units: vec![builder], order: Order::Stop, queue: false }]);
+    let (work, total) = { let u = sim.unit(frame).unwrap(); (u.build_work, sim.unit_type(u).build_work) };
+    assert!(work > 0 && work < total, "part built: {work} of {total}");
+    let metal_left = sim.players[0].economy.metal;
+    let spent = sim.unit_type(sim.unit(frame).unwrap()).cost_metal.share(work, total);
+    let energy = sim.players[0].economy.energy;
+    for _ in 0..(super::FRAME_GRACE - 2) { sim.step(&[]); }
+    assert_eq!(sim.unit(frame).unwrap().build_work, work, "it stands as it was for a while");
+    let mut gone_at = None;
+    for t in 0..(super::FRAME_DECAY + 60) {
+        sim.step(&[]);
+        if sim.unit(frame).is_none() {
+            gone_at = Some(t);
+            break;
+        }
+    }
+    let gone_at = gone_at.expect("and then it un-builds and is gone");
+    let expected = super::FRAME_DECAY * work / total;
+    assert!(gone_at.abs_diff(expected) <= 8, "in the time its share of a whole frame's takes: {gone_at} ticks, {expected} expected");
+    let back = sim.players[0].economy.metal - metal_left;
+    assert!((back - spent).abs() <= Fx::from_ratio(1, 100), "the metal it took comes back: {back:?} of {spent:?}");
+    assert!(sim.players[0].economy.energy >= energy, "its energy does not");
+    assert!(sim.features.iter().all(|f| !f.alive), "no wreck");
+}
+
+/// A frame set down and left before any work went into it goes once the while is up; one a scene
+/// or a mission placed unfinished, which nobody worked on, stays; one a builder comes back to
+/// stops un-building.
+#[test]
+fn frames_set_down_and_left_go_while_placed_ones_and_tended_ones_stay() {
+    let mut sim = yard("300");
+    let builder = put(&mut sim, "BUILDER", 0, 200, true);
+    let placed = put(&mut sim, "FRAME", 0, 600, false);
+    let pos = FxVec3::from_ints(280, 60, 300);
+    let frame_type = sim.types.id("FRAME").unwrap();
+    // No metal: the builder sets the frame down but cannot put work into it.
+    sim.players[0].economy.metal = Fx::ZERO;
+    sim.players[0].economy.metal_capacity = Fx::ZERO;
+    sim.step(&[Command::Order { player: 0, units: vec![builder], order: Order::Build { type_id: frame_type, pos }, queue: false }]);
+    let frame = (0..120).find_map(|_| {
+        sim.step(&[]);
+        sim.units.iter().flatten().find(|u| u.type_id == frame_type && u.id != placed).map(|u| u.id)
+    }).expect("the builder sets it down");
+    for _ in 0..120 { sim.step(&[]); }
+    assert!(sim.unit(frame).is_some() && sim.unit(frame).unwrap().build_work == 0, "tended while the builder waits for metal, at nothing");
+    sim.step(&[Command::Order { player: 0, units: vec![builder], order: Order::Stop, queue: false }]);
+    for _ in 0..(super::FRAME_GRACE + 2) { sim.step(&[]); }
+    assert!(sim.unit(frame).is_none(), "left at nothing: gone once the while is up");
+    for _ in 0..(super::FRAME_DECAY + 60) { sim.step(&[]); }
+    assert!(sim.unit(placed).is_some(), "placed unfinished and never worked on: it stays");
+}
+
+/// Taking one of its own units apart goes at TA's pace, by the unit's metal as a wreck's: a metal
+/// maker, which costs no metal, at once; a unit of 100 metal in twenty times that in worker time
+/// (a 300-worker builder: about seven seconds).
+#[test]
+fn reclaiming_a_unit_takes_as_long_as_its_metal_says() {
+    let data = data_of(&[
+        unit("BUILDER", "Builder=1; WorkerTime=300; CanMove=1; MaxVelocity=1; BuildDistance=128; CanReclamate=1; FootprintX=1; FootprintZ=1;"),
+        unit("MAKER", "BuildTime=2605; BuildCostMetal=0; BuildCostEnergy=687; FootprintX=2; FootprintZ=2;"),
+        unit("SOLAR", "BuildTime=2495; BuildCostMetal=100; BuildCostEnergy=760; FootprintX=2; FootprintZ=2;"),
+    ]);
+    let mut sim = sim_of(with_menu(data, "BUILDER", &["MAKER", "SOLAR"]), 2);
+    for player in &mut sim.players { player.endless = true; }
+    let builder = put(&mut sim, "BUILDER", 0, 200, true);
+    let maker = put(&mut sim, "MAKER", 0, 280, true);
+    let solar = sim.spawn_unit(sim.types.id("SOLAR").unwrap(), 0, FxVec3::from_ints(200, 60, 390), 0, true).unwrap();
+    let ticks = |sim: &mut Sim, target: UnitId| {
+        sim.step(&[Command::Order { player: 0, units: vec![builder], order: Order::ReclaimUnit(target), queue: false }]);
+        let mut working = None;
+        for t in 0..900u64 {
+            sim.step(&[]);
+            if working.is_none() && sim.unit(target).is_some_and(|u| !u.is_complete()) {
+                working = Some(t);
+            }
+            if sim.unit(target).is_none() {
+                return t - working.unwrap_or(t);
+            }
+        }
+        panic!("never taken apart");
+    };
+    assert!(ticks(&mut sim, maker) <= 1, "a metal maker costs no metal: gone at once");
+    let solar_ticks = ticks(&mut sim, solar);
+    let expected = 100 * 20 * TICKS_PER_SECOND as u64 / 300;
+    assert!(solar_ticks.abs_diff(expected) <= 4, "100 metal: twenty times that in worker time: {solar_ticks} ticks, {expected} expected");
 }

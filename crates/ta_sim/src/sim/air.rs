@@ -188,12 +188,15 @@ impl Sim {
                 // coming down over it already (the lower first: the one coming down goes on, the
                 // one that has just come is the one to go elsewhere; of two as low, the first).
                 let first = |o: &Unit| (o.pos.y, o.id.slot) < (pos.y, id.slot);
+                // (Over the sea a plane circles where it is, as TA's do, rather than fly off to
+                // the nearest land: see `update_air`'s circling.)
+                let circles_here = t.is_plane() && ground_landing.is_none() && self.world.depth_at(pos.x, pos.z) > Fx::ZERO;
                 if ground_landing.is_some() && Self::spot_taken(&self.parked_near(id, pos, t.radius + self.types.target_reach + Fx::from_int(CELL), first), t, pos) {
                     ground_landing = None;
                 }
                 // Else the nearest place it may set down; none near, it stays up and looks
                 // again a second later.
-                if ground_landing.is_none() && (idle - IDLE_BEFORE_LANDING).is_multiple_of(LANDING_SEARCH_EVERY)
+                if ground_landing.is_none() && !circles_here && (idle - IDLE_BEFORE_LANDING).is_multiple_of(LANDING_SEARCH_EVERY)
                     && let Some(spot) = self.nearby_air_landing(id, t) && let Some(u) = self.unit_mut(id) {
                     u.path_goal = Some(spot);
                     u.move_request = Some(spot);
@@ -202,6 +205,16 @@ impl Sim {
         }
         let Some(current) = self.unit(id) else { return };
         let pad = current.air_pad.and_then(|pad| self.air_pad_point(current.owner, pad));
+        // (A plane idle over a friendly carrier's deck waits there to set down on it, as one over
+        // land waits for its place: it does not circle away from it.)
+        let over_airbase = t.is_plane() && current.air_pad.is_none() && !external && self.types.airbase_reach > Fx::ZERO && {
+            let mut near = Vec::new();
+            self.grid.query(current.pos, self.types.airbase_reach, &mut near);
+            near.into_iter().filter_map(|slot| self.units.get(slot as usize)?.as_ref()).any(|p| {
+                p.id != id && !p.dead && p.is_complete() && self.allied(current.owner, p.owner) && self.unit_type(p).def.is_airbase
+                    && p.pos.within_xz(current.pos, self.unit_type(p).radius + Fx::from_int(24))
+            })
+        };
         // Flying to a place of its own to land on (or a deck): over the highest ground on its way
         // there, so that neither the flight nor the way down meets a hill (it climbs first,
         // standing).
@@ -300,6 +313,39 @@ impl Sim {
                     }
                 }
             }
+            // A plane with nothing to do over the sea, where it cannot set down, circles round
+            // where it came to rest, as TA's do, rather than hang there. (Over land it waits for
+            // a place to land, as below.)
+            _ if t.is_plane() && !u.landed && !busy && !can_land && !over_airbase && airborne && world.depth_at(u.pos.x, u.pos.z) > Fx::ZERO => {
+                let speed = t.max_speed * 3 / 4;
+                // (A little wider than it can turn at that speed: radius = speed / turn rate.)
+                let radius = (speed * 10430 / t.turn_rate.max(1) as i64 * 5 / 4).max(Fx::from_int(64));
+                // (Its circle on the map: the map's edge would hold it there.)
+                let (w, h) = world.size_px();
+                let inside = |v: Fx, size: Fx| if size > radius * 2 { v.clamp(radius, size - radius) } else { size / 2 };
+                let center = *u.orbit.get_or_insert(FxVec3::new(inside(u.pos.x, w), u.pos.y, inside(u.pos.z, h)));
+                let to = (center - u.pos).xz();
+                let dist = to.length_xz();
+                let desired = if dist < Fx::ONE {
+                    wrap_angle(u.heading + 16384)
+                } else {
+                    // Along the circle (anticlockwise seen from above), drawn back onto it.
+                    let n = dist.to_int().max(1);
+                    let (inward, along) = (FxVec3::new(to.x / n, Fx::ZERO, to.z / n), FxVec3::new(-to.z / n, Fx::ZERO, to.x / n));
+                    let pull = ((dist - radius) / radius).clamp(-Fx::ONE, Fx::ONE);
+                    heading_of(along + inward.scale(pull))
+                };
+                let diff = wrap_angle(desired - u.heading);
+                u.heading = wrap_angle(u.heading + diff.clamp(-t.turn_rate, t.turn_rate));
+                u.speed = u.speed.approach(speed, t.acceleration);
+                u.roll = (diff.clamp(-8192, 8192) * 3) / 4;
+                if !u.moving {
+                    u.moving = true;
+                    if let Some(c) = &mut u.cob {
+                        c.start("StartMoving", &[], ThreadTag::None);
+                    }
+                }
+            }
             _ => {
                 u.speed = u.speed.approach(Fx::ZERO, t.brake);
                 u.roll = u.roll * 7 / 8;
@@ -314,6 +360,10 @@ impl Sim {
                     }
                 }
             }
+        }
+        // (Circling only while it has nothing to do and nowhere to set down.)
+        if busy || u.landed || can_land {
+            u.orbit = None;
         }
         // Planes fly where they point; VTOLs (transports, builders, gunships) slide
         // straight towards their goal while turning to face it (planes too, to their place to

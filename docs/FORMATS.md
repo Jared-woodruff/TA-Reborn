@@ -588,9 +588,9 @@ Escalation also replaces `fx.gaf`'s Explode2-Explode4 and Nuke1 with shield bubb
   units say `VTOL`, and most also `NoChaseCategory=VTOL`. Per weapon `wpri_`, `wsec_`,
   `wspe_badTargetCategory` (TA3D documents `wthi_` for the third): the cruisers' depth
   charges say `wsec_badTargetCategory=NOTSUB`, the Doomsday Machine's light laser `NOTAIR`, a
-  Panther's and a PT boat's anti-air missile (their second weapon) `NOTAIR`. A unit never
-  locks on to a bad target of its own accord, only by order (as the community describes TA:
-  anti-air units never lock on to a ground unit). Slips in the files: the Battle Tactics
+  Panther's and a PT boat's anti-air missile (their second weapon) `NOTAIR`. A unit takes a
+  bad target on last: with nothing else in reach (the missile towers fire on tanks when no
+  aircraft are about, as players remember TA), and `+shootall` makes every target alike. Slips in the files: the Battle Tactics
   anti-air hovercraft (Swatter `ARMAH`, Slinger `CORAH`, "Anti-Air Hovercraft") carry the
   ground hovercraft's `VTOL` (read as `NOTAIR`); the A.K. (`CORAK`), the seaplane fighters
   (`ARMSFIG`, `CORSFIG`), the Core's naval missile tower (`CORFRT`) and the Krogoth, among

@@ -146,6 +146,11 @@ pub struct Unit {
     /// The last tick one of its own side's builders took work off it, reclaiming it: for a
     /// second after that it is being taken apart (`Sim::being_taken_apart`).
     pub taken_apart_at: Option<u64>,
+    /// The last tick a builder worked on it unfinished (or set it down to build): construction
+    /// left with nobody at it un-builds after a while, its metal coming back
+    /// (`Sim::decay_abandoned_frames`). None for one nobody has worked on (a scene's or a
+    /// mission's, placed unfinished).
+    pub worked_at: Option<u64>,
     pub activated: bool,
     /// The last economy tick charged its upkeep (or it has none): its conditional output (an
     /// extractor's, a metal maker's) came too. Without the energy, neither (`Sim::economy_end`).
@@ -180,6 +185,13 @@ pub struct Unit {
     pub pass_ticks: u32,
     /// Aircraft: past the target, flying the straight run-out before turning back.
     pub pass_runout: bool,
+    /// A plane's place in a group sent at one target together: 0 for the first (or one sent
+    /// alone), then 1, -1, 2, -2... to either side, where it comes in on its attack runs (the
+    /// group fanned out across a front, not in single file: see `Sim::air_attack_pass`).
+    pub fan: i8,
+    /// Where an idle plane that cannot set down here (over the sea) circles round, as TA's do:
+    /// where it came to rest in the air.
+    pub orbit: Option<FxVec3>,
     /// Capture progress 0..=1 accumulated by enemy capturers, and the work behind it (out of
     /// the cost a capture takes, see `Sim::update_capture_order`).
     pub capture_progress: Fx,
@@ -326,6 +338,7 @@ impl Unit {
             repair_work: 0,
             finished: false,
             taken_apart_at: None,
+            worked_at: None,
             activated: false,
             upkeep_paid: true,
             in_build_stance: false,
@@ -346,6 +359,8 @@ impl Unit {
             idle_ticks: 0,
             pass_ticks: 0,
             pass_runout: false,
+            fan: 0,
+            orbit: None,
             capture_progress: Fx::ZERO,
             capture_work: 0,
             cloak_on: false,
@@ -612,6 +627,9 @@ pub struct Player {
     pub sharing: Sharing,
     /// Its Conquest Commander's perks (none outside Conquest).
     pub perks: crate::perks::Perks,
+    /// TA's `+shootall`: its units' weapons take on every enemy in reach alike, their bad targets
+    /// included (see `Sim::find_target`), nearest first.
+    pub shoot_all: bool,
 }
 
 /// What a player passes to its allies on its own, each tick (TA's `+sharemetal`,

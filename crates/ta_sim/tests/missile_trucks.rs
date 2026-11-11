@@ -71,9 +71,10 @@ fn duel(sim: &mut Sim, at: FxVec3, launcher: &str, range: i64, order: bool, seco
 }
 
 /// The missile trucks (the Arm's Samson, the Core's Slasher) launch at enemies they see across
-/// their range when told to. A tank they leave alone on their own: like TA's other anti-air
-/// units they list NOTAIR among their bad targets (`BadTargetCategory`). (Out of their own short
-/// sight they need a friend's, or radar, as in TA: everything is seen here.)
+/// their range when told to. On their own they take a tank on too with no aircraft about: like
+/// TA's other anti-air units they list NOTAIR among their bad targets (`BadTargetCategory`),
+/// which they take on last. (Out of their own short sight they need a friend's, or radar, as in
+/// TA: everything is seen here.)
 #[test]
 fn missile_trucks_launch_and_hit() {
     let Some(mut sim) = sim_on("Coast To Coast") else {
@@ -84,7 +85,7 @@ fn missile_trucks_launch_and_hit() {
     sim.los_enabled = false;
     for truck in ["ARMSAM", "CORMIST"] {
         let (shots, damage) = duel(&mut sim, a, truck, 300, false, 10);
-        assert!(shots == 0 && damage == 0.0, "{truck} on its own at a tank 300 px off: {shots} shots, {damage} damage");
+        assert!(shots >= 3 && damage > 0.0, "{truck} on its own at a tank 300 px off, nothing better near: {shots} shots, {damage} damage");
         for range in [200, 400, 560] {
             let (shots, damage) = duel(&mut sim, a, truck, range, true, 10);
             assert!(shots >= 3 && damage > 0.0, "{truck} told to, at {range} px: {shots} shots, {damage} damage");

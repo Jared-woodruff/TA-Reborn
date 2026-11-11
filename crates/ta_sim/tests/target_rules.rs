@@ -1,5 +1,6 @@
-//! TA's targeting rules on its own units, played out: an anti-air K-bot beside a tank never
-//! shoots it, even shot at, until it is told to; an aircraft overhead it takes on at once.
+//! TA's targeting rules on its own units, played out: an anti-air K-bot beside a tank takes it
+//! on when nothing better is near (a bad target, last); an aircraft it takes on first, as a
+//! ground unit does the tank before the aircraft.
 
 use std::sync::Arc;
 
@@ -28,12 +29,13 @@ fn put(sim: &mut Sim, name: &str, owner: u8, x: i64, z: i64) -> UnitId {
 }
 
 #[test]
-fn anti_air_kbots_leave_tanks_alone_until_told() {
+fn anti_air_kbots_take_tanks_on_last() {
     let Some(mut sim) = sim_on("Painted Desert") else {
         eprintln!("TA install not found; skipping");
         return;
     };
-    // A Jethro (anti-air: `BadTargetCategory=NOTAIR`) and a Raider (`VTOL`) 150 px apart.
+    // A Jethro (anti-air: `BadTargetCategory=NOTAIR`) and a Raider (`VTOL`) 150 px apart, no
+    // aircraft about.
     let (x, z) = (1500, 1500);
     let jethro = put(&mut sim, "ARMJETH", 0, x, z);
     let raider = put(&mut sim, "CORRAID", 1, x + 150, z);
@@ -44,42 +46,39 @@ fn anti_air_kbots_leave_tanks_alone_until_told() {
     let j = sim.unit(jethro).unwrap();
     assert_eq!(sim.unit(raider).unwrap().weapons[0].target, Some(Target::Unit(jethro)), "the tank takes the K-bot on");
     assert!(j.health < full, "and hits it");
-    assert_eq!(j.weapons[0].target, None, "the anti-air K-bot neither picks the tank nor answers it");
-    assert!(sim.unit(raider).unwrap().health == sim.types.get(sim.unit(raider).unwrap().type_id).max_health, "nor hurts it");
-    // Told to, it fires at the tank.
-    sim.step(&[Command::Order { player: 0, units: vec![jethro], order: Order::Attack(Target::Unit(raider)), queue: false }]);
-    for _ in 0..30 * 4 {
-        sim.step(&[]);
-    }
+    assert_eq!(j.weapons[0].target, Some(Target::Unit(raider)), "the anti-air K-bot, nothing better near, takes the tank on");
     let r = sim.unit(raider).unwrap();
-    assert!(r.health < sim.types.get(r.type_id).max_health, "ordered, it hits the tank");
+    assert!(r.health < sim.types.get(r.type_id).max_health, "and hurts it");
 }
 
 #[test]
-fn anti_air_kbots_take_on_aircraft_and_ground_units_do_not() {
+fn anti_air_kbots_take_aircraft_first_and_ground_units_tanks_first() {
     let Some(mut sim) = sim_on("Painted Desert") else {
         eprintln!("TA install not found; skipping");
         return;
     };
     // (Everyone seeing everything, ours unhurt: the gunship fights from beyond a K-bot's sight.)
     sim.los_enabled = false;
-    // A Jethro and a Peewee (`VTOL`: its gun could hit an aircraft, its rules say not to), and a
-    // Core gunship sent to fight its way to them.
+    // A Jethro and a Peewee (`VTOL`: its gun could hit an aircraft, its rules put it last), a
+    // Core tank holding fire beside them, and a Core gunship sent to fight its way to them.
     let (x, z) = (1500, 1500);
     let jethro = put(&mut sim, "ARMJETH", 0, x, z);
     let peewee = put(&mut sim, "ARMPW", 0, x, z + 60);
+    let raider = put(&mut sim, "CORRAID", 1, x + 120, z + 30);
     let rapier = put(&mut sim, "CORAPE", 1, x + 500, z);
     let there = sim.unit(peewee).unwrap().pos;
     sim.step(&[
         Command::Cheat { player: 0, cheat: Cheat::Invulnerable(true) },
+        Command::SetStates { player: 1, units: vec![raider], fire: Some(0), movement: Some(0) },
         Command::Order { player: 1, units: vec![rapier], order: Order::Fight(there), queue: false },
     ]);
     let (mut jethro_on_it, mut peewee_on_it) = (false, false);
     for _ in 0..30 * 8 {
         sim.step(&[]);
         let alive = |id| sim.unit(id).filter(|u| !u.dead);
-        if let Some(u) = alive(peewee) {
-            peewee_on_it |= u.weapons[0].target.is_some();
+        let flying = alive(rapier).is_some_and(|r| r.pos.y > sim.world.height_at(r.pos.x, r.pos.z) + Fx::from_int(20));
+        if flying && alive(peewee).is_some_and(|u| u.weapons[0].target == Some(Target::Unit(rapier))) {
+            peewee_on_it = true;
         }
         if alive(jethro).is_some_and(|u| u.weapons[0].target == Some(Target::Unit(rapier))) {
             jethro_on_it = true;
@@ -90,8 +89,9 @@ fn anti_air_kbots_take_on_aircraft_and_ground_units_do_not() {
             break;
         }
     }
-    assert!(jethro_on_it, "the anti-air K-bot takes the gunship on");
-    assert!(!peewee_on_it, "the Peewee neither picks the gunship nor answers it");
+    assert!(jethro_on_it, "the anti-air K-bot takes the gunship on, the tank beside it as it is");
+    assert!(!peewee_on_it, "the Peewee takes the tank on before the gunship");
+    assert_eq!(sim.unit(peewee).unwrap().weapons[0].target, Some(Target::Unit(raider)), "the tank, first");
 }
 
 /// TA set its `NoAutoFire=1` units to hold fire on construction (the Big Bertha, the

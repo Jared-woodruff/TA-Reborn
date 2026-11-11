@@ -504,3 +504,71 @@ fn aircraft_keep_their_wings_off_the_foot_of_a_cliff() {
     let u = sim.unit(fighter).unwrap();
     assert!(rests_level(&sim, fighter) && u.pos.x.to_int() <= 432, "its wings would cut into the cliff at {:?}", u.pos);
 }
+
+/// A plane with nothing to do over the sea, where it cannot set down, circles round where it came
+/// to rest (as TA's do), neither hanging still there nor flying off to land on the nearest shore.
+#[test]
+fn planes_with_nowhere_to_set_down_circle_where_they_came_to_rest() {
+    let mut map = flat_map();
+    map.sea_level = 150;
+    let mut sim = airfield_on_map(&map);
+    let fighter = put(&mut sim, "FIGHTER", 0, 300);
+    {
+        let u = sim.unit_mut(fighter).unwrap();
+        u.landed = false;
+        u.pos.y = Fx::from_int(150 + 80);
+    }
+    let spot = FxVec3::from_ints(700, 0, 700);
+    sim.give_orders(fighter, [Order::Move(spot)]);
+    for _ in 0..600 { sim.step(&[]); }
+    let (mut moved, mut farthest, mut last) = (Fx::ZERO, Fx::ZERO, sim.unit(fighter).unwrap().pos);
+    for _ in 0..600 {
+        sim.step(&[]);
+        let u = sim.unit(fighter).unwrap();
+        assert!(u.orders.is_empty() && !u.landed, "idle and in the air");
+        moved += (u.pos - last).length_xz();
+        farthest = farthest.max((u.pos - spot).length_xz());
+        last = u.pos;
+    }
+    let u = sim.unit(fighter).unwrap();
+    assert!(moved > Fx::from_int(1000), "it keeps flying: {moved:?} in twenty seconds");
+    assert!(farthest < Fx::from_int(300), "round the spot it was sent to: as far as {farthest:?} from it");
+    assert!(u.orbit.is_some(), "circling");
+    // Told to go somewhere, it goes.
+    let there = FxVec3::from_ints(200, 0, 200);
+    sim.give_orders(fighter, [Order::Move(there)]);
+    for _ in 0..300 { sim.step(&[]); }
+    assert!(sim.unit(fighter).unwrap().pos.within_xz(there, Fx::from_int(200)), "and goes where it is sent");
+}
+
+/// Planes sent at one target together come in on it across a front, each from its place in the
+/// group (0, 1, -1, 2, -2...: `Unit::fan`), not one behind the other; one sent alone, and a group
+/// given another order, straight at it.
+#[test]
+fn a_group_of_planes_sent_at_one_target_fans_out() {
+    let mut sim = airfield();
+    let target = sim.spawn_unit(sim.types.id("TANK").unwrap(), 1, FxVec3::from_ints(950, 60, 500), 0, true).unwrap();
+    let planes: Vec<UnitId> = (0..5).map(|i| {
+        let id = sim.spawn_unit(sim.types.id("FIGHTER").unwrap(), 0, FxVec3::from_ints(60, 60, 480 + i * 8), 0, true).unwrap();
+        let u = sim.unit_mut(id).unwrap();
+        u.landed = false;
+        u.pos.y = Fx::from_int(60 + 80);
+        id
+    }).collect();
+    sim.step(&[Command::Order { player: 0, units: planes.clone(), order: Order::Attack(Target::Unit(target)), queue: false }]);
+    let fans: Vec<i8> = planes.iter().map(|&p| sim.unit(p).unwrap().fan).collect();
+    assert_eq!(fans, [0, 1, -1, 2, -2], "their places across the front");
+    sim.step(&[]);
+    // Far off, each heads for its own place beside the target, the spacing apart.
+    let tp = sim.unit(target).unwrap().pos;
+
+    let off = |p: UnitId| sim.unit(p).unwrap().path_goal.map(|g| (g - tp).length_xz());
+    assert!(off(planes[0]).is_some_and(|d| d < Fx::from_int(8)), "the first straight at it: {:?}", off(planes[0]));
+    for (k, &p) in planes.iter().enumerate().skip(1) {
+        let want = crate::combat::FAN_SPACING * fans[k].unsigned_abs() as i64;
+        assert!(off(p).is_some_and(|d| (d - want).abs() < Fx::from_int(16)), "plane {k} comes in {want:?} to its side: {:?}", off(p));
+    }
+    // One sent alone: straight at it.
+    sim.step(&[Command::Order { player: 0, units: vec![planes[3]], order: Order::Attack(Target::Unit(target)), queue: false }]);
+    assert_eq!(sim.unit(planes[3]).unwrap().fan, 0, "sent alone, no place in a group");
+}

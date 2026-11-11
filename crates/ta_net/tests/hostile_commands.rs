@@ -196,6 +196,7 @@ fn command(rng: &mut Rng, k: &Known, player: u8) -> Command {
         15 => Command::Formation { player, units: units(rng, k), order: order(rng, k), queue: rng.chance(2), shape: shape(rng, k) },
         16 => Command::Signal { player, kind: SignalKind::ALL[rng.below(6) as usize], at: pos(rng, k) },
         17 => Command::EditQueue { player, unit: unit(rng, k), index: rng.next() as u32, type_id: type_id(rng, k), pos: rng.chance(2).then(|| pos(rng, k)), to_front: rng.chance(2) },
+        18 if rng.chance(2) => Command::SetShootAll { player, on: rng.chance(2) },
         // (The host's own commands, and cheats: never a player's.)
         18 => Command::Abandon { player },
         _ => Command::Cheat { player, cheat: ta_sim::Cheat::Destroy(units(rng, k)) },
