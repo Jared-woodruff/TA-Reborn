@@ -48,6 +48,7 @@ impl LauncherApp {
             msaa_running: 0,
             ray_tracing_running: false,
             native: native_resolution(ui),
+            gpu_kind: super::about::computer(ui.ctx()).and_then(|hw| hw.gpu_kind),
             languages: &self.languages,
             language_dirs: &self.language_dirs,
             height: (!compact).then_some(height),

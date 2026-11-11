@@ -685,6 +685,23 @@ pub enum GpuKind {
     Other,
 }
 
+/// How many of Apple's base chips' graphics one named `lowercase` stands for (its Pro chips
+/// have about twice their graphics cores, its Max chips four times, its Ultras eight); 1 for
+/// any other.
+fn apple_class(lowercase: &str) -> f64 {
+    if !lowercase.starts_with("apple") {
+        1.0
+    } else if lowercase.contains("ultra") {
+        8.0
+    } else if lowercase.contains(" max") {
+        4.0
+    } else if lowercase.contains(" pro") {
+        2.0
+    } else {
+        1.0
+    }
+}
+
 impl Preset {
     /// The levels a player picks from.
     pub const LEVELS: [Preset; 4] = [Preset::Low, Preset::Medium, Preset::High, Preset::Ultra];
@@ -700,13 +717,14 @@ impl Preset {
         }
     }
 
-    /// The level for a graphics device: High on dedicated cards, Medium on recent
-    /// integrated graphics, Low on older ones and software renderers.
+    /// The level for a graphics device: High on dedicated cards and Apple's Max and Ultra
+    /// chips, Medium on recent integrated graphics, Low on older ones and software renderers.
     pub fn for_gpu(kind: GpuKind, name: &str) -> Preset {
         let n = name.to_ascii_lowercase();
         let has = |keys: &[&str]| keys.iter().any(|k| n.contains(k));
         match kind {
             GpuKind::Software => Preset::Low,
+            GpuKind::Integrated if apple_class(&n) >= 4.0 => Preset::High,
             // Iris Xe, Arc and the Radeon 600M-800M series are fast enough for Medium.
             GpuKind::Integrated if has(&["xe graphics", "arc(", "arc graphics", "610m", "660m", "680m", "740m", "760m", "780m", "880m", "890m", "8060s", "apple"]) => Preset::Medium,
             GpuKind::Integrated => Preset::Low,
@@ -717,15 +735,44 @@ impl Preset {
         }
     }
 
+    /// On integrated graphics (Intel's, AMD's and Apple's, which share the computer's memory),
+    /// the most pixels this level draws the battlefield at: 1080p's (1440p's at Ultra); twice
+    /// that on Apple's Pro chips, four times on its Max chips and eight on its Ultras (a level's
+    /// own render scale may draw fewer still: Low's 75%). A Mac's Retina screen has 2.7 to 3.7
+    /// times 1080p's pixels, more than such graphics draw the battlefield at in time (an M5
+    /// MacBook Air played on Low alone); the interface keeps the screen's own sharpness. None
+    /// on other graphics, Auto and Custom.
+    pub fn pixel_budget(self, kind: GpuKind, name: &str) -> Option<f64> {
+        if kind != GpuKind::Integrated {
+            return None;
+        }
+        let pixels = match self {
+            Preset::Low | Preset::Medium | Preset::High => 1920.0 * 1080.0,
+            Preset::Ultra => 2560.0 * 1440.0,
+            Preset::Auto | Preset::Custom => return None,
+        };
+        Some(pixels * apple_class(&name.to_ascii_lowercase()))
+    }
+
+    /// The render scale this level sets ([`Preset::apply`]), before fitting it to a screen.
+    pub fn render_scale(self) -> Option<f32> {
+        match self {
+            Preset::Low => Some(0.75),
+            Preset::Medium | Preset::High | Preset::Ultra => Some(1.0),
+            Preset::Auto | Preset::Custom => None,
+        }
+    }
+
     /// Sets the options of this level (Auto and Custom leave them as they are).
     pub fn apply(self, g: &mut Graphics) {
-        let (msaa, shadows, effects, scale) = match self {
-            Preset::Low => (1, Quality::Low, Quality::Low, 0.75),
-            Preset::Medium => (2, Quality::Medium, Quality::Medium, 1.0),
-            Preset::High => (4, Quality::High, Quality::High, 1.0),
-            Preset::Ultra => (8, Quality::Ultra, Quality::Ultra, 1.0),
+        let (msaa, shadows, effects) = match self {
+            Preset::Low => (1, Quality::Low, Quality::Low),
+            Preset::Medium => (2, Quality::Medium, Quality::Medium),
+            Preset::High => (4, Quality::High, Quality::High),
+            Preset::Ultra => (8, Quality::Ultra, Quality::Ultra),
             Preset::Auto | Preset::Custom => return,
         };
+        let Some(scale) = self.render_scale() else { return };
         let at_least = |level: Preset| self as u8 >= level as u8;
         g.msaa = msaa;
         g.shadows = shadows;
@@ -816,6 +863,10 @@ pub struct Graphics {
     pub ground_life: bool,
     /// The frame rate, and a frame's milliseconds, in a corner of the battlefield.
     pub show_frame_rate: bool,
+    /// The game has fitted the level's render scale to its screen and graphics once
+    /// ([`Graphics::fit_render_scale_once`]): at its first start, or the first after the update
+    /// that brought the fitting.
+    pub scale_fitted: bool,
 }
 
 fn custom_preset() -> Preset {
@@ -835,16 +886,57 @@ impl Graphics {
         options(self) != options(other)
     }
 
-    /// The level the options match, or Custom.
+    /// The level the options match, or Custom. A render scale below the level's own still
+    /// matches it: the level fitted to a screen of more pixels than its graphics draw
+    /// ([`Graphics::fit_render_scale`]), or lowered for speed alone.
     pub fn matching_preset(&self) -> Preset {
         Preset::LEVELS
             .into_iter()
             .find(|&p| {
                 let mut g = self.clone();
                 p.apply(&mut g);
+                g.render_scale = self.render_scale.min(g.render_scale);
                 g == *self
             })
             .unwrap_or(Preset::Custom)
+    }
+
+    /// The pixels of the game's picture with these settings: the screen's own in full screen
+    /// (`native`, when known), else the window's.
+    pub fn picture_pixels(&self, native: Option<(u32, u32)>) -> u64 {
+        let (w, h) = match (self.window_mode, native) {
+            (WindowMode::Borderless | WindowMode::Fullscreen, Some(native)) => native,
+            _ => (self.width, self.height),
+        };
+        w as u64 * h as u64
+    }
+
+    /// Sets the render scale of the level the options are at ([`Graphics::preset`]) for a
+    /// picture of `pixels` on graphics of `kind` named `name`: the level's own, or as much less
+    /// as draws the battlefield at no more than the level's [`Preset::pixel_budget`] there (on
+    /// the options' steps of 5%, half at the least). Other levels and graphics: as it is.
+    pub fn fit_render_scale(&mut self, kind: GpuKind, name: &str, pixels: u64) {
+        let (Some(budget), Some(own)) = (self.preset.pixel_budget(kind, name), self.preset.render_scale()) else { return };
+        let fitted = (budget / pixels.max(1) as f64).sqrt() as f32;
+        let stepped = (fitted * 20.0 + 1e-3).floor() / 20.0;
+        let lo = *limits::RENDER_SCALE.start();
+        self.render_scale = stepped.clamp(lo, own);
+    }
+
+    /// Once for the settings ([`Graphics::scale_fitted`]), as the game starts with its window
+    /// and device: [`Graphics::fit_render_scale`], where the render scale is the level's own (a
+    /// scale set by hand, and Custom, are kept). The launcher picks the first level before the
+    /// game has a window, and on a Mac without knowing the screen; settings from before the
+    /// fitting are fitted too. True when the settings changed (if only the mark).
+    pub fn fit_render_scale_once(&mut self, kind: GpuKind, name: &str, pixels: u64) -> bool {
+        if self.scale_fitted {
+            return false;
+        }
+        self.scale_fitted = true;
+        if self.preset.render_scale() == Some(self.render_scale) {
+            self.fit_render_scale(kind, name, pixels);
+        }
+        true
     }
 }
 
@@ -882,6 +974,7 @@ impl Default for Graphics {
             intro_room: true,
             ground_life: true,
             show_frame_rate: false,
+            scale_fitted: false,
         }
     }
 }
@@ -1730,6 +1823,65 @@ mod preset_tests {
         Preset::High.apply(&mut g);
         g.bloom = false;
         assert_eq!(g.matching_preset(), Preset::Custom);
+    }
+
+    /// On integrated graphics a level draws the battlefield at no more pixels than its budget
+    /// (on the options' steps, half at the least); elsewhere at its own render scale. The level
+    /// is still recognised.
+    #[test]
+    fn levels_fit_their_render_scale_to_the_screen_on_integrated_graphics() {
+        let fitted = |level: Preset, kind: GpuKind, name: &str, (w, h): (u64, u64)| {
+            let mut g = Graphics::default();
+            level.apply(&mut g);
+            g.preset = level;
+            g.fit_render_scale(kind, name, w * h);
+            assert_eq!(g.matching_preset(), level, "{level:?} {name} {w}x{h}");
+            g.render_scale
+        };
+        let integrated = GpuKind::Integrated;
+        // A 1080p laptop: as the levels have always been.
+        for level in Preset::LEVELS {
+            assert_eq!(fitted(level, integrated, "Intel(R) Iris(R) Xe Graphics", (1920, 1080)), level.render_scale().unwrap());
+        }
+        // A 13-inch MacBook Air (its Retina picture is 2940 x 1912 by default) and a 15-inch one.
+        assert_eq!(fitted(Preset::Medium, integrated, "Apple M5", (2940, 1912)), 0.6);
+        assert_eq!(fitted(Preset::High, integrated, "Apple M5", (2940, 1912)), 0.6);
+        assert_eq!(fitted(Preset::Low, integrated, "Apple M5", (2940, 1912)), 0.6);
+        assert_eq!(fitted(Preset::Ultra, integrated, "Apple M5", (2940, 1912)), 0.8);
+        assert_eq!(fitted(Preset::Medium, integrated, "Apple M5", (3420, 2224)), 0.5);
+        // A 14-inch MacBook Pro's Pro and Max chips draw more of it.
+        assert_eq!(fitted(Preset::Medium, integrated, "Apple M4 Pro", (3024, 1964)), 0.8);
+        assert_eq!(fitted(Preset::High, integrated, "Apple M4 Max", (3024, 1964)), 1.0);
+        // A dedicated card draws the whole picture.
+        assert_eq!(fitted(Preset::Ultra, GpuKind::Discrete, "NVIDIA GeForce RTX 4080", (3840, 2160)), 1.0);
+        // A render scale under the level's own, set by itself, is still the level.
+        let mut g = Graphics::default();
+        Preset::High.apply(&mut g);
+        g.render_scale = 0.7;
+        assert_eq!(g.matching_preset(), Preset::High);
+        // Once, as the game starts: where the scale is the level's own (left as the level set
+        // it); a scale set by hand is kept, and the next start leaves it.
+        let retina = 2940 * 1912;
+        let mut untouched = Graphics { preset: Preset::Medium, ..Default::default() };
+        Preset::Medium.apply(&mut untouched);
+        assert!(untouched.fit_render_scale_once(integrated, "Apple M5", retina));
+        assert_eq!(untouched.render_scale, 0.6);
+        untouched.render_scale = 1.0;
+        assert!(!untouched.fit_render_scale_once(integrated, "Apple M5", retina), "once only");
+        assert_eq!(untouched.render_scale, 1.0);
+        let mut by_hand = Graphics { preset: Preset::Medium, ..Default::default() };
+        Preset::Medium.apply(&mut by_hand);
+        by_hand.render_scale = 0.85;
+        assert!(by_hand.fit_render_scale_once(integrated, "Apple M5", retina));
+        assert_eq!(by_hand.render_scale, 0.85);
+        // (Settings from before it read as not yet fitted.)
+        let older: Config = toml::from_str("[graphics]\npreset = \"Medium\"\nrender_scale = 1.0\n").unwrap();
+        assert!(!older.graphics.scale_fitted);
+        // The full screen's pixels are the screen's own; a window's, its own.
+        g.window_mode = WindowMode::Fullscreen;
+        assert_eq!(g.picture_pixels(Some((2940, 1912))), 2940 * 1912);
+        g.window_mode = WindowMode::Windowed;
+        assert_eq!(g.picture_pixels(Some((2940, 1912))), g.width as u64 * g.height as u64);
     }
 
     #[test]

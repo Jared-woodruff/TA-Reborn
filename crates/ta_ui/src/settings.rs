@@ -98,6 +98,9 @@ pub struct Host<'a> {
     pub ray_tracing_running: bool,
     /// The monitor's resolution, when known (offered among the resolutions).
     pub native: Option<(u32, u32)>,
+    /// The kind of graphics the game draws on, when known: a level picked on integrated graphics
+    /// fits its render scale to the picture's pixels ([`ta_config::Graphics::fit_render_scale`]).
+    pub gpu_kind: Option<ta_config::GpuKind>,
     /// Interface languages, (code, name), and the folders their files are in.
     pub languages: &'a [(String, String)],
     pub language_dirs: &'a [PathBuf],
@@ -932,6 +935,10 @@ fn graphics(ui: &mut Ui, rows: &mut Rows, g: &mut Graphics, host: &Host) -> bool
                 level => {
                     level.apply(g);
                     g.preset = level;
+                    if let Some(kind) = host.gpu_kind {
+                        let (name, pixels) = (g.gpu.clone(), g.picture_pixels(host.native));
+                        g.fit_render_scale(kind, &name, pixels);
+                    }
                 }
             }
             picked = true;
@@ -1235,7 +1242,7 @@ mod tests {
     }
 
     fn host() -> Host<'static> {
-        Host { in_game: true, msaa_running: 4, ray_tracing_running: false, native: Some((2560, 1440)), languages: &[], language_dirs: &[], height: Some(600.0) }
+        Host { in_game: true, msaa_running: 4, ray_tracing_running: false, native: Some((2560, 1440)), gpu_kind: None, languages: &[], language_dirs: &[], height: Some(600.0) }
     }
 
     #[test]

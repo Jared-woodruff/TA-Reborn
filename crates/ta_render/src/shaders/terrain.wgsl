@@ -430,9 +430,10 @@ fn hd_ground(px: vec2<f32>) -> HdGround {
     out.grad = vec2<f32>(0.0);
     var m = 0.0;
     var m2 = 0.0;
+    let block = art_block(base - 1, 3, 0u);
     for (var y = 0; y < 4; y++) {
         for (var x = 0; x < 4; x++) {
-            let t = art_texel(base + vec2<i32>(x - 1, y - 1), 0u);
+            let t = art_block_texel(block, base + vec2<i32>(x - 1, y - 1));
             sharp += t * (cx[x] * cy[y]);
             soft += t * (bx[x] * by[y]);
             let l = sqrt(max(luminance(t), 0.0));
@@ -460,9 +461,10 @@ fn art_soft(px: vec2<f32>, lod: u32) -> vec3<f32> {
     let bx = bspline(f.x);
     let by = bspline(f.y);
     var c = vec3<f32>(0.0);
+    let block = art_block(base - 1, 3, lod);
     for (var y = 0; y < 4; y++) {
         for (var x = 0; x < 4; x++) {
-            c += art_texel(base + vec2<i32>(x - 1, y - 1), lod) * (bx[x] * by[y]);
+            c += art_block_texel(block, base + vec2<i32>(x - 1, y - 1)) * (bx[x] * by[y]);
         }
     }
     return c;
@@ -1418,6 +1420,10 @@ fn ground_color(in: VsOut, art: ArtFilter, mirror: bool) -> vec4<f32> {
     // HD surfaces up close (see `hd_ground`) on the art shown: smooth colour, fine grain,
     // and a relief normal for the relighting below.
     var relief_n = n;
+    // (The art averaged over four pixels or so, `art_soft` at mip 2: the HD surfaces' calm and
+    // the materials' read it alike, at the same place; looked up once, by whichever asks first.
+    // Never negative once looked up.)
+    var soft2 = vec3<f32>(-1.0);
     let hd = finish * (1.0 - smoothstep(0.3, 1.2, art.rho)) * detail_k * (1.0 - murk);
     if (hd > 0.0) {
         let g = hd_ground(shown.px);
@@ -1435,7 +1441,8 @@ fn ground_color(in: VsOut, art: ArtFilter, mirror: bool) -> vec4<f32> {
         let calmed = max(max(close, grazing), seam);
         var color = shown_color(g.color, shown);
         if (calmed > 0.0) {
-            let wide = shown_color(art_soft(shown.px, 2u), shown);
+            soft2 = art_soft(shown.px, 2u);
+            let wide = shown_color(soft2, shown);
             let calm = wide * clamp(luminance(g.color) / max(luminance(wide), 1e-3), 0.4, 2.0);
             color = mix(color, mix(calm, wide, mix(0.12, 0.42, reborn) + 0.5 * grazing), calmed);
         }
@@ -1464,7 +1471,10 @@ fn ground_color(in: VsOut, art: ArtFilter, mirror: bool) -> vec4<f32> {
         // relief lit as the slopes are (`terrain_relight`).
         var calm = painted_albedo;
         if (shown.far < 1.0) {
-            calm = mix(shown_color(art_soft(shown.px, 2u), shown), painted_albedo, shown.far);
+            if (soft2.x < 0.0) {
+                soft2 = art_soft(shown.px, 2u);
+            }
+            calm = mix(shown_color(soft2, shown), painted_albedo, shown.far);
         }
         let calm_l = max(luminance(calm), 1e-3);
         let l = mix(luminance(albedo), calm_l, mat_k * mat_smooth * mix(0.15, 1.0, reborn));

@@ -547,10 +547,17 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
 * **Pass order**: (ray tracing: acceleration structures) →
   (the relief's shadows, when the light moved or heights changed) → (ray tracing: depth prepass, trace and blur) → shadow map → (ray tracing) the 3D features' shadow map → (perspective) cloud shadow map and contact occlusion map
   around the view → particle simulation (compute) → (perspective, water in view) the
-  reflection pass → terrain → world text → decals → features painted lying → units/3D features → 3D trees and rocks (`foliage.rs`)
-  → billboards (trees) → sky on the remaining background → (water in view, or names in the
+  reflection pass → units/3D features → 3D trees and rocks (`foliage.rs`) → billboards (trees)
+  → terrain → world text → decals → features painted lying → sky on the remaining background
+  (what stands on the ground before it: the ground's is the costliest shading of the frame,
+  and the depth test skips it wherever something stands in front; nothing standing is blended,
+  and what lies on the ground is kept off what stands in front by the depth, so the picture is
+  the same; about a fifth of the frame on a forest) → (water in view, or names in the
   world: the pass ends, resolving into the water's copy of the opaque scene when there is
-  water, and a second pass keeps its depth read-only) the names in the world again over what
+  water, and a second pass keeps its depth read-only; on tiled graphics, `Gpu::tiled`, Metal:
+  Apple's own chips, the multisampled colour and the depth are stored only for a pass that
+  reads them, the last pass resolving and leaving its samples on the chip, as Apple advises)
+  the names in the world again over what
   stands on them (world text's second pass, reading the opaque scene's depth) → water (translucent, depth-tested, no
   depth write, reading the opaque scene's depth and colour) → smoke → dust/smoke/grit/spray particles → additive
   effects → spark/ember/fire/glow particles → beams → heat haze's hot air → post (depth of
@@ -1977,7 +1984,18 @@ build menu by `Purpose` on tabs (`Hud::build_tab`).
 
 * **Graphics levels** (`ta_config::Preset`): Low, Medium, High and Ultra set the options
   together (Low: no extra passes, the scene at 75% of the window's resolution through
-  `Renderer::set_render_scale`, the interface drawn over it at full resolution). A new
+  `Renderer::set_render_scale`, the interface drawn over it at full resolution; the composite
+  scales a smaller scene up through a Catmull-Rom cubic kept within the four texels round it,
+  `upscaled` in post.wgsl). On integrated graphics a level draws the battlefield at no more
+  pixels than its budget (`Preset::pixel_budget`: 1080p's, 1440p's at Ultra; twice that on
+  Apple's Pro chips, four times on its Max chips, eight on its Ultras):
+  `Graphics::fit_render_scale` lowers its render scale on a screen of more pixels, a Mac's
+  Retina screen above all (2.7 to 3.7 times 1080p's), when the level is picked (the options know the graphics' kind, `settings::Host::gpu_kind`; the
+  launcher from `Hardware::detect`, which on a Mac asks `sysctl` for Apple's chip), and once
+  for a settings file as the game starts with its window and device
+  (`Graphics::fit_render_scale_once`, `graphics.scale_fitted`; where the scale is still the
+  level's own: the launcher picks the first level before the game has a window, and a Mac's
+  screen is not known to it). A render scale under the level's own still matches the level. A new
   settings file starts at Auto: the game opens the device first (`Gpu::new`), picks a level
   from its kind and name (`Preset::for_gpu`: dedicated cards High, recent integrated
   graphics Medium, older ones and software renderers Low), saves it with the card's name,

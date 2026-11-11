@@ -18,7 +18,8 @@ struct PostUniform {
     /// intro room's tone curve's toe (0: not the room), w = its shoulder.
     heat: [f32; 4],
     /// x = 1 for space's look (see [`SpaceLook`]), y = the dither's strength (8-bit steps), z =
-    /// its fade (the picture's values times it, as a video fade).
+    /// its fade (the picture's values times it, as a video fade), w = 1 when the scene is drawn
+    /// smaller than the picture (scaled up through a cubic).
     look: [f32; 4],
     /// Photo mode's [`Look`]: x = contrast, y = warmth, z = grain, w = colour fringe.
     photo: [f32; 4],
@@ -244,6 +245,9 @@ pub(crate) struct PostFrame {
     pub room: bool,
     /// Space (see [`crate::space`]): its own exposure and glow, a filmic curve, dithered.
     pub space: Option<SpaceLook>,
+    /// The picture's size (the composite's target): larger than the scene's with a render scale
+    /// under 1, when the composite scales it up through a cubic (see `upscaled` in post.wgsl).
+    pub output: (u32, u32),
 }
 
 /// Space's picture: its exposure (times the light), its glow's strength and its corners'
@@ -568,6 +572,12 @@ impl Post {
         &self.sized.depth.view
     }
 
+    /// Whether this frame's post-processing reads the scene's depth (the depth of field): the
+    /// scene's passes keep it only then, or for the passes of their own that read it.
+    pub fn reads_depth(&self) -> bool {
+        self.settings.dof.is_some_and(|d| d.blur > 0.0)
+    }
+
     /// The scene's colour as resolved (as drawn, without antialiasing).
     pub fn scene_texture(&self) -> &wgpu::Texture {
         &self.sized.color.texture
@@ -621,7 +631,12 @@ impl Post {
                 grade: [st.exposure, st.bloom, st.vignette, st.saturation],
                 info: [1.0 / s.width as f32, 1.0 / s.height as f32, frame.time, if frame.modern { st.grade.clamp(0.0, 2.0) } else { 0.0 }],
                 heat: [frame.heat.max(0.0) * HEAT_PIXELS * s.height as f32 / 1080.0, if frame.modern { st.sharpen.clamp(0.0, 2.0) } else { 0.0 }, if frame.room { ROOM_TOE } else { 0.0 }, ROOM_SHOULDER],
-                look: [if frame.space.is_some() { 1.0 } else { 0.0 }, SPACE_DITHER, frame.space.map_or(1.0, |l| l.fade.clamp(0.0, 1.0)), 0.0],
+                look: [
+                    if frame.space.is_some() { 1.0 } else { 0.0 },
+                    SPACE_DITHER,
+                    frame.space.map_or(1.0, |l| l.fade.clamp(0.0, 1.0)),
+                    if frame.output.0 > s.width || frame.output.1 > s.height { 1.0 } else { 0.0 },
+                ],
                 photo: st.look.map_or([1.0, 0.0, 0.0, 0.0], |l| [l.contrast.clamp(0.3, 2.5), l.warmth.clamp(-1.0, 1.0), l.grain.clamp(0.0, 1.0), l.fringe.clamp(0.0, 1.0)]),
                 photo_tone: st.look.map_or([0.0; 4], |l| {
                     let special = match l.special {

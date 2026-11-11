@@ -729,8 +729,8 @@ impl FoliageRenderer {
         }
     }
 
-    /// Draws them into the scene (after the models: the ground and the units are in the depth
-    /// buffer, so hidden leaves are skipped).
+    /// Draws them into the scene (after the models, which are in the depth buffer so that hidden
+    /// leaves are skipped, and before the ground, which the leaves then hide from its shading).
     pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
         self.draw_with(pass, &self.opaque, &self.cutout, &self.batches);
     }

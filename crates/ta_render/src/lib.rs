@@ -2061,13 +2061,7 @@ impl Renderer {
             multiview_mask: None,
         });
         pass.set_bind_group(0, &self.reflection_bind_group, &[]);
-        if let Some(t) = &self.terrain {
-            t.draw_reflection(&mut pass, &self.terrain_pipeline);
-            if let (Some(skirt), true) = (&self.skirt, sky_on) {
-                pass.set_bind_group(2, &self.terrain_pipeline.detail, &[]);
-                skirt.draw(&mut pass, &self.terrain_pipeline.skirt_reflection, t.bind_group());
-            }
-        }
+        // (What stands on the ground first, the ground after it, as in the scene pass.)
         if let Some(m) = &self.models {
             m.draw_reflection(&mut pass);
         }
@@ -2075,6 +2069,13 @@ impl Renderer {
             f.draw_reflection(&mut pass);
         }
         self.sprites.draw_reflection(&mut pass, SpriteLayer::Billboard);
+        if let Some(t) = &self.terrain {
+            t.draw_reflection(&mut pass, &self.terrain_pipeline);
+            if let (Some(skirt), true) = (&self.skirt, sky_on) {
+                pass.set_bind_group(2, &self.terrain_pipeline.detail, &[]);
+                skirt.draw(&mut pass, &self.terrain_pipeline.skirt_reflection, t.bind_group());
+            }
+        }
         self.sprites.draw_reflection(&mut pass, SpriteLayer::Smoke);
         self.particles.draw_reflection(&mut pass, ParticleLayer::Alpha);
         self.sprites.draw_reflection(&mut pass, SpriteLayer::Effect);
@@ -2292,7 +2293,7 @@ impl Renderer {
         self.post.settings.dof = (frame.dof > 0.0).then_some(post::DepthOfField { mode: post::DofMode::Lens, focus, blur: frame.dof, band: 0.0 });
         let texture = &output.texture;
         let view = texture.create_view(&wgpu::TextureViewDescriptor { format: Some(self.gpu.view_format), ..Default::default() });
-        let post_frame = post::PostFrame { time: frame.time, heat: 0.0, depth: [near, far, 0.0], modern: false, room: true, space: None };
+        let post_frame = post::PostFrame { time: frame.time, heat: 0.0, depth: [near, far, 0.0], modern: false, room: true, space: None, output: (texture.width(), texture.height()) };
         self.post.run(device, &self.gpu.queue, &mut encoder, &view, post_frame, (None, None));
         self.post.settings.dof = photo_dof;
         let ui_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -2347,7 +2348,7 @@ impl Renderer {
         let view = texture.create_view(&wgpu::TextureViewDescriptor { format: Some(self.gpu.view_format), ..Default::default() });
         // (No depth of field in space: photo mode's is put back after.)
         let photo_dof = self.post.settings.dof.take();
-        let post_frame = post::PostFrame { time: frame.time, heat: 0.0, depth: [0.0, 1.0, 0.0], modern: false, room: false, space: look };
+        let post_frame = post::PostFrame { time: frame.time, heat: 0.0, depth: [0.0, 1.0, 0.0], modern: false, room: false, space: look, output: (texture.width(), texture.height()) };
         self.post.run(device, &self.gpu.queue, &mut encoder, &view, post_frame, (None, None));
         self.post.settings.dof = photo_dof;
         let ui_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -2605,6 +2606,17 @@ impl Renderer {
             self.world_text.prepare_over(device, self.post.depth_view());
         }
         let water_scene = self.water_scene.prepared().filter(|_| water_drawn);
+        // What is kept of the scene's targets once a pass ends, on tiled graphics (Apple's own
+        // chips), where a target left unkept never leaves the chip, and storing a multisampled
+        // one writes every sample of it out to memory: the multisampled colour only for a pass
+        // after it (the water's, the cockpit's; with antialiasing the picture itself is the
+        // resolved copy, written at the end of the pass), the depth only for what reads it (the
+        // water's pass, the names' second pass, the depth of field). (Elsewhere all is kept: a
+        // dedicated card gains nothing measurable by it.)
+        let antialiased = self.post.scene_attachment().1.is_some();
+        let second_pass = water_scene.is_some() || text_over;
+        let tiled = self.gpu.tiled;
+        let keep = |kept: bool| if kept || !tiled { wgpu::StoreOp::Store } else { wgpu::StoreOp::Discard };
         {
             let (color, resolve) = self.post.scene_attachment();
             let sky = self.lighting.sky_color;
@@ -2620,13 +2632,13 @@ impl Renderer {
                     },
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color { r: sky.x as f64, g: sky.y as f64, b: sky.z as f64, a: 1.0 }),
-                        store: wgpu::StoreOp::Store,
+                        store: keep(!antialiased || second_pass || cockpit_on),
                     },
                     depth_slice: None,
                 })],
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: self.post.depth_view(),
-                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
+                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: keep(second_pass || self.post.reads_depth()) }),
                     stencil_ops: None,
                 }),
                 timestamp_writes: scene_ts.as_ref().map(|t| t.writes()),
@@ -2634,6 +2646,19 @@ impl Renderer {
                 multiview_mask: None,
             });
             pass.set_bind_group(0, &self.frame_bind_group, &[]);
+            // What stands on the ground first, the ground after it: the ground's is the costliest
+            // shading of the frame, and wherever a unit, a tree or a painting stands in front of
+            // it the depth test now skips it (a forest's ground is mostly hidden: a fifth of the
+            // frame's time saved over Mossvale's woods). Nothing that stands is blended, so the
+            // picture is the same: what lies on the ground (the names, the scorch marks, the
+            // lying paintings) is still drawn after it, kept off what stands in front by the depth.
+            if let Some(m) = &self.models {
+                m.draw(&mut pass);
+            }
+            if let Some(f) = &self.foliage {
+                f.draw(&mut pass);
+            }
+            self.sprites.draw(&mut pass, SpriteLayer::Billboard);
             if let Some(t) = &self.terrain {
                 t.draw(&mut pass, &self.terrain_pipeline);
                 // The ground beyond the map, after the terrain so it is mostly depth-rejected.
@@ -2647,13 +2672,6 @@ impl Renderer {
             self.world_text.draw(&mut pass);
             self.sprites.draw(&mut pass, SpriteLayer::Decal);
             self.sprites.draw(&mut pass, SpriteLayer::Lying);
-            if let Some(m) = &self.models {
-                m.draw(&mut pass);
-            }
-            if let Some(f) = &self.foliage {
-                f.draw(&mut pass);
-            }
-            self.sprites.draw(&mut pass, SpriteLayer::Billboard);
             // Selected units' rings on the ground (and on the water), under what stands on them.
             self.rings.draw(&mut pass);
             // The sky fills whatever background is left after the opaque scene.
@@ -2678,7 +2696,7 @@ impl Renderer {
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: color,
                     resolve_target: resolve,
-                    ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: keep(!antialiased || cockpit_on) },
                     depth_slice: None,
                 })],
                 // (Read-only: the water's group reads it too, and the names' second pass.)
@@ -2711,6 +2729,7 @@ impl Renderer {
             modern: camera.mode == CameraMode::Perspective,
             room: false,
             space: None,
+            output: (texture.width(), texture.height()),
         };
         self.post.run(device, &self.gpu.queue, &mut encoder, &view, post_frame, (bloom_ts.as_ref(), composite_ts.as_ref()));
         // Strategic icons over the finished image, under the interface.
