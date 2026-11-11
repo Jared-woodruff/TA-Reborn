@@ -20,6 +20,15 @@
   of hovering in place. New planes sent to a rally point over the water circle there.
 - A group of planes ordered onto one target now spread across a front as they come in, instead
   of following each other in single file.
+- Putting a building down again where your selected constructor already plans one takes the
+  plan back, and putting a different building down over a plan puts it in the plan's place: a
+  wind generator instead of a solar collector, or a metal extractor placed in the fog of war
+  taken back. Plans of other constructors still keep their ground.
+- Shift with the right button while placing a building now ends the placing and queues the
+  order there as well, so a Commander told to build a plant can be sent on after it.
+- Bombers sent at something show TA's air-strike sight instead of the attack sight.
+- The music, and the battle behind the menu, now fall silent while a campaign briefing is read
+  out, and come back once it is over. The tutorial's spoken lines still only lower the music.
 
 ## 1.0.2 — 2026-11-11
 

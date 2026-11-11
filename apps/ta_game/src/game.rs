@@ -1876,6 +1876,10 @@ impl Game {
         // selection's own plans are about to be replaced, so only others' count.
         let replaced: &[UnitId] = if placement_modifiers.shift_key() || self.demo_shift { &[] } else { &self.selection };
         let planned = if self.placement.is_some() { self.planned_footprints(replaced) } else { Vec::new() };
+        // (One building put down: the selection's own plans under it never stand in its way. Put
+        // down again on one, it undoes it; another over them takes their place: see
+        // `own_plans_under`.)
+        let others_planned = if self.placement.is_some() { self.planned_footprints(&self.selection) } else { Vec::new() };
         if let Some(pl) = &mut self.placement {
             let extractor = self.sim.types.get(pl.type_id).extracts_metal > Fx::ZERO;
             pl.pos = self.cursor_ground.map(|g| {
@@ -1883,11 +1887,12 @@ impl Game {
                 Vec3::from_array(snapped.to_f32())
             });
             let t = self.sim.types.get(pl.type_id);
-            let free = |p: Vec3| {
+            let clear_of = |planned: &[(i32, i32, i32, i32)], p: Vec3| {
                 let r = footprint_rect(t, fx_vec(p));
                 !planned.iter().any(|q| r.0 < q.2 && q.0 < r.2 && r.1 < q.3 && q.1 < r.3)
             };
-            pl.valid = pl.pos.is_some_and(|p| self.sim.can_place(pl.type_id, fx_vec(p)) && free(p));
+            let free = |p: Vec3| clear_of(&planned, p);
+            pl.valid = pl.pos.is_some_and(|p| self.sim.can_place(pl.type_id, fx_vec(p)) && clear_of(&others_planned, p));
             pl.row.clear();
             if let (Some(a), Some(b)) = (pl.line_start, pl.pos) {
                 let t = self.sim.types.get(pl.type_id);
@@ -2301,16 +2306,42 @@ impl Game {
                 if !shift {
                     self.placement = None;
                 }
-            } else if let Some(pl) = &mut self.placement {
+            } else if let Some((type_id, at, valid)) = self.placement.as_mut().map(|pl| {
                 pl.line_start = None;
-                if let (Some(pos), true) = (pl.pos, pl.valid) {
-                    let type_id = pl.type_id;
+                (pl.type_id, pl.pos, pl.valid)
+            }) {
+                // The selection's own plans (queued, not yet started) under it: the same building
+                // put down on one again undoes it; another over them takes their place.
+                let under = at.map(|p| self.own_plans_under(type_id, fx_vec(p))).unwrap_or_default();
+                let here = at.map(|p| footprint_rect(self.sim.types.get(type_id), fx_vec(p)));
+                let same: Vec<(UnitId, u32, usize, ta_sim::FxVec3)> = under
+                    .iter()
+                    .copied()
+                    .filter(|&(_, _, kind, pos)| kind == type_id && here == Some(footprint_rect(self.sim.types.get(kind), pos)))
+                    .collect();
+                if !same.is_empty() {
+                    for (unit, index, kind, pos) in same {
+                        self.issue(Command::EditQueue { player: self.local_player, unit, index, type_id: kind, pos: Some(pos), to_front: false });
+                    }
+                    self.repeat_order = shift;
+                    self.ui_sounds.push("IMMEDIATEORDERS");
+                    if !shift {
+                        self.placement = None;
+                    }
+                } else if let (Some(pos), true) = (at, valid) {
                     let builders: Vec<UnitId> = self
                         .selection
                         .iter()
                         .copied()
                         .filter(|&id| self.sim.unit(id).is_some_and(|u| self.sim.unit_type(u).build_options.contains(&type_id)))
                         .collect();
+                    // (Queued after the rest: the plans under it go first. Without Shift the new
+                    // order takes the place of the whole queue anyway.)
+                    if shift {
+                        for (unit, index, kind, pos) in under {
+                            self.issue(Command::EditQueue { player: self.local_player, unit, index, type_id: kind, pos: Some(pos), to_front: false });
+                        }
+                    }
                     self.issue(Command::Order { player: self.local_player, units: builders, order: Order::Build { type_id, pos: fx_vec(pos) }, queue: shift });
                     self.repeat_order = shift;
                     self.ui_sounds.push("OKTOBUILD");
@@ -2318,7 +2349,6 @@ impl Game {
                         self.placement = None;
                     }
                 } else {
-                    let (type_id, at) = (pl.type_id, pl.pos);
                     let why = self.cannot_build(type_id, at);
                     self.trouble(why);
                     self.ui_sounds.push("NOTOKTOBUILD");
@@ -2404,6 +2434,12 @@ impl Game {
             let shift = input.button_released_modifiers(MouseButtonId::Right).shift_key() || self.demo_shift;
             if self.placement.is_some() {
                 self.placement = None;
+                // (Shift: the placing ends and the order goes on the end of the queue as well, as
+                // it would have without it: a Commander told to build a plant, Shift held, then
+                // sent somewhere after it. Without Shift a right-click only ends it, as in TA.)
+                if shift && !left_orders {
+                    self.context_order(true);
+                }
             } else if let Some(id) = self.radial_for_click() {
                 self.open_radial(id, mouse, false);
             } else if !left_orders {
@@ -3027,12 +3063,21 @@ impl Game {
         if over_ui || self.placement.is_some() {
             return C::Normal;
         }
+        // (The units that fire on an attack order: bombers alone show TA's air-strike sight.)
+        let attackers = || -> Vec<UnitId> {
+            self.selection
+                .iter()
+                .copied()
+                .filter(|&id| self.sim.unit(id).is_some_and(|u| u.owner == self.local_player && self.fires_on_attack(self.sim.unit_type(u))))
+                .collect()
+        };
         if self.force_fire {
-            return C::Attack;
+            return clicks::attack_cursor(&self.sim, &attackers());
         }
         if let Some(mode) = self.command_mode {
             return match mode {
-                CommandMode::Attack | CommandMode::DGun | CommandMode::Fight => C::Attack,
+                CommandMode::Attack => clicks::attack_cursor(&self.sim, &attackers()),
+                CommandMode::DGun | CommandMode::Fight => C::Attack,
                 CommandMode::Patrol => C::Patrol,
                 CommandMode::Guard => C::Defend,
                 CommandMode::Capture => C::Capture,
@@ -3058,7 +3103,7 @@ impl Game {
         // (`context_order`). A click that has nothing to do to the unit goes on to the ground.
         if let Some(target) = hovered.map(|u| u.id) {
             match clicks::click_on(&self.sim, me, &self.selection, target) {
-                Some(click) => return click.cursor(),
+                Some(click) => return click.cursor(&self.sim),
                 None if self.selection.contains(&target) => return C::Select,
                 None => {}
             }
@@ -3602,6 +3647,28 @@ impl Game {
         if let Some(&(first, _)) = movers.first() {
             self.voices.push((first, ta_audio::SoundEvent::Ok));
         }
+    }
+
+    /// The selected builders' plans (build orders queued and not yet started) whose ground a
+    /// building of `type_id` put down at `pos` would cover: each builder, the order's place in
+    /// its queue, and what and where the plan is.
+    fn own_plans_under(&self, type_id: usize, pos: ta_sim::FxVec3) -> Vec<(UnitId, u32, usize, ta_sim::FxVec3)> {
+        let r = footprint_rect(self.sim.types.get(type_id), pos);
+        let mut under = Vec::new();
+        for &id in &self.selection {
+            let Some(u) = self.sim.unit(id).filter(|u| u.owner == self.local_player && !u.dead) else { continue };
+            for (index, order) in u.orders.iter().enumerate() {
+                let Order::Build { type_id: kind, pos: at } = order else { continue };
+                if index == 0 && u.build.is_some() {
+                    continue;
+                }
+                let q = footprint_rect(self.sim.types.get(*kind), *at);
+                if r.0 < q.2 && q.0 < r.2 && r.1 < q.3 && q.1 < r.3 {
+                    under.push((id, index as u32, *kind, *at));
+                }
+            }
+        }
+        under
     }
 
     /// Footprints of the buildings our constructors have queued and not yet started (a job

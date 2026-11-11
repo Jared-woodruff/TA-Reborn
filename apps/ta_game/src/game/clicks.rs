@@ -3,7 +3,7 @@
 //! the two cannot disagree: constructors over a factory show the help they will give, and the
 //! click gives it.
 
-use ta_sim::{Locomotion, Sim, UnitId};
+use ta_sim::{Locomotion, Sim, Trajectory, UnitId};
 
 use crate::cursor::CursorKind;
 
@@ -24,12 +24,13 @@ pub(super) enum UnitClick {
 }
 
 impl UnitClick {
-    /// The cursor that says what the click does. Help with building or mending shows the one
+    /// The cursor that says what the click does. An attack shows the attack sight, or TA's
+    /// air-strike sight when only bombers take part. Help with building or mending shows the one
     /// TA gives a constructor over a nanoframe, the wrench, and so does help for a factory's
     /// production; standing guard shows the shield.
-    pub(super) fn cursor(&self) -> CursorKind {
+    pub(super) fn cursor(&self, sim: &Sim) -> CursorKind {
         match self {
-            UnitClick::Attack(_) => CursorKind::Attack,
+            UnitClick::Attack(armed) => attack_cursor(sim, armed),
             UnitClick::Load(_) => CursorKind::Load,
             UnitClick::Land(_) => CursorKind::Repair,
             UnitClick::Help { repair, assists, .. } if !repair.is_empty() || *assists => CursorKind::Repair,
@@ -38,6 +39,19 @@ impl UnitClick {
             UnitClick::Help { .. } => CursorKind::Select,
         }
     }
+}
+
+/// The sight for an attack by `attackers`: TA's air-strike sight when they are all bombers,
+/// else the attack sight.
+pub(super) fn attack_cursor(sim: &Sim, attackers: &[UnitId]) -> CursorKind {
+    if bombers_only(sim, attackers) { CursorKind::AirStrike } else { CursorKind::Attack }
+}
+
+/// Whether `attackers` are all bombers, aircraft whose weapons drop bombs (and there is one).
+pub(super) fn bombers_only(sim: &Sim, attackers: &[UnitId]) -> bool {
+    let mut kinds = attackers.iter().filter_map(|&id| sim.unit(id)).map(|u| sim.unit_type(u)).peekable();
+    kinds.peek().is_some()
+        && kinds.all(|t| t.locomotion == Locomotion::Air && t.weapons.iter().flatten().any(|&w| sim.weapon_types.get(w).trajectory == Trajectory::Dropped))
 }
 
 /// Mobile constructors: they repair, help build and reclaim (a factory builds in place).
@@ -256,20 +270,20 @@ mod tests {
         let (con, lab) = (y.put("CON", 0, 100, true), y.put("LAB", 0, 200, true));
         let click = y.click(&[con], lab).unwrap();
         assert_eq!(click, UnitClick::Help { repair: vec![], guard: vec![con], assists: true });
-        assert_eq!(click.cursor(), CursorKind::Repair, "the wrench, not the shield");
+        assert_eq!(click.cursor(&y.sim), CursorKind::Repair, "the wrench, not the shield");
         // An ally's factory too: help is help.
         let ally_lab = y.put("LAB", 1, 300, true);
-        assert_eq!(y.click(&[con], ally_lab).unwrap().cursor(), CursorKind::Repair);
+        assert_eq!(y.click(&[con], ally_lab).unwrap().cursor(&y.sim), CursorKind::Repair);
         // Tanks only stand guard over it: no wrench.
         let tank = y.put("TANK", 0, 120, true);
         let click = y.click(&[tank], lab).unwrap();
         assert_eq!(click, UnitClick::Help { repair: vec![], guard: vec![tank], assists: false });
-        assert_eq!(click.cursor(), CursorKind::Defend);
+        assert_eq!(click.cursor(&y.sim), CursorKind::Defend);
         // A constructor with the tank: the wrench, and both guard.
         assert_eq!(y.click(&[tank, con], lab).unwrap(), UnitClick::Help { repair: vec![], guard: vec![tank, con], assists: true });
         // A constructor over another constructor guards it (it follows), no wrench.
         let other = y.put("CON", 0, 150, true);
-        assert_eq!(y.click(&[con], other).unwrap().cursor(), CursorKind::Defend);
+        assert_eq!(y.click(&[con], other).unwrap().cursor(&y.sim), CursorKind::Defend);
     }
 
     #[test]
@@ -286,7 +300,7 @@ mod tests {
         // Nothing that can help it: the click does nothing, and the cursor does not say it does.
         let tower = y.put("TOWER", 0, 400, true);
         let damaged_friend = y.put("TANK", 1, 420, true);
-        assert_eq!(y.click(&[tower], damaged_friend).map(|c| c.cursor()), Some(CursorKind::Select));
+        assert_eq!(y.click(&[tower], damaged_friend).map(|c| c.cursor(&y.sim)), Some(CursorKind::Select));
     }
 
     #[test]
@@ -295,7 +309,7 @@ mod tests {
         let (con, tank) = (y.put("CON", 0, 100, true), y.put("TANK", 0, 140, true));
         let foe = y.put("TANK", 2, 300, true);
         assert_eq!(y.click(&[con, tank], foe), Some(UnitClick::Attack(vec![tank])));
-        assert_eq!(y.click(&[tank], foe).map(|c| c.cursor()), Some(CursorKind::Attack));
+        assert_eq!(y.click(&[tank], foe).map(|c| c.cursor(&y.sim)), Some(CursorKind::Attack));
         assert_eq!(y.click(&[con], foe), None, "an unarmed constructor goes to the ground beside it");
         assert_eq!(y.click(&[tank], tank), None, "a selected unit is not its own target");
         let tower = y.put("TOWER", 0, 500, true);
@@ -303,15 +317,32 @@ mod tests {
     }
 
     #[test]
+    fn bombers_show_the_air_strike_sight_and_mixed_groups_the_attack_sight() {
+        let mut y = Yard::new();
+        let (bomber, fighter, tank) = (y.put("BOMBER", 0, 100, true), y.put("PLANE", 0, 140, true), y.put("TANK", 0, 180, true));
+        let foe = y.put("TANK", 2, 400, true);
+        assert_eq!(y.click(&[bomber], foe).map(|c| c.cursor(&y.sim)), Some(CursorKind::AirStrike));
+        let other = y.put("BOMBER", 0, 120, true);
+        assert_eq!(y.click(&[bomber, other], foe).map(|c| c.cursor(&y.sim)), Some(CursorKind::AirStrike));
+        // (A fighter's guns, or a tank's, with them: the attack sight.)
+        assert_eq!(y.click(&[bomber, fighter], foe).map(|c| c.cursor(&y.sim)), Some(CursorKind::Attack));
+        assert_eq!(y.click(&[bomber, tank], foe).map(|c| c.cursor(&y.sim)), Some(CursorKind::Attack));
+        assert_eq!(y.click(&[fighter], foe).map(|c| c.cursor(&y.sim)), Some(CursorKind::Attack));
+        // (Nothing to attack with: never the air strike.)
+        assert!(!bombers_only(&y.sim, &[]));
+        assert_eq!(attack_cursor(&y.sim, &[bomber]), CursorKind::AirStrike);
+    }
+
+    #[test]
     fn aircraft_land_on_pads_and_transports_load_only_with_room() {
         let mut y = Yard::new();
         let (plane, tank, pad) = (y.put("PLANE", 0, 100, true), y.put("TANK", 0, 140, true), y.put("PAD", 0, 200, true));
         assert_eq!(y.click(&[plane, tank], pad), Some(UnitClick::Land(vec![plane])));
-        assert_eq!(y.click(&[plane], pad).map(|c| c.cursor()), Some(CursorKind::Repair), "landing to be mended");
-        assert_eq!(y.click(&[tank], pad).map(|c| c.cursor()), Some(CursorKind::Defend), "a tank guards the pad");
+        assert_eq!(y.click(&[plane], pad).map(|c| c.cursor(&y.sim)), Some(CursorKind::Repair), "landing to be mended");
+        assert_eq!(y.click(&[tank], pad).map(|c| c.cursor(&y.sim)), Some(CursorKind::Defend), "a tank guards the pad");
         let lift = y.put("TRANSPORT", 0, 300, true);
         assert_eq!(y.click(&[lift], tank), Some(UnitClick::Load(lift)));
-        assert_eq!(y.click(&[lift], tank).map(|c| c.cursor()), Some(CursorKind::Load));
+        assert_eq!(y.click(&[lift], tank).map(|c| c.cursor(&y.sim)), Some(CursorKind::Load));
         // (Not the enemy's, and an ally's is helped, not carried.)
         let foe = y.put("TANK", 2, 340, true);
         assert_eq!(y.click(&[lift], foe), None);
