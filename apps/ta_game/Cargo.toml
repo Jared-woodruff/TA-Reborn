@@ -65,7 +65,7 @@ pollster.workspace = true
 [target.'cfg(target_os = "macos")'.dependencies]
 # Full screen without the Dock and the menu bar (`src/macos.rs`): AppKit's presentation options.
 objc2 = "0.6.4"
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSResponder"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSResponder", "NSView", "NSWindow"] }
 
 [target.'cfg(windows)'.dependencies]
 # The companion screen: a window that does not take the keyboard from the battle.

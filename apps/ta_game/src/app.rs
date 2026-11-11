@@ -1261,6 +1261,8 @@ impl ApplicationHandler<egui_winit::accesskit_winit::Event> for App {
             let main = self.active_load.as_ref().map(|load| &load.window).or_else(|| self.state.as_ref().map(|state| &state.window));
             if let Some(window) = main.filter(|window| window.id() == id) {
                 crate::macos::keep_dock_and_menu_bar_away(window.fullscreen().is_some());
+                // (And the pointer the window wants set again: see macos.rs.)
+                crate::macos::refresh_cursor(window);
             }
         }
         // The companion screen's window: its own (closing it closes only it).
@@ -6176,6 +6178,10 @@ impl State {
             platform.cursor_icon = egui::CursorIcon::None;
         }
         self.egui.state.handle_platform_output(&self.window, platform);
+        // (A Mac's system pointer kept off TA's: the pointer the window wants set again now and
+        // then, see macos.rs.)
+        #[cfg(target_os = "macos")]
+        crate::macos::refresh_cursor_now_and_then(&self.window);
         let ppp = output.pixels_per_point;
         let prims = self.egui.ctx.tessellate(output.shapes, ppp);
         let mut textures_delta = output.textures_delta;
