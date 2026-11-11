@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.0.2 — 2026-11-11
+
+Faster on Macs and other integrated graphics, which now draw the battlefield at about 1080p's
+pixels. Also a fix for a crash on AMD's newest graphics cards, and a Mac's full screen without
+the Dock and the menu bar coming over the game.
 
 ### Changed
 - Faster on integrated graphics and high-resolution screens. On integrated graphics (Intel,
