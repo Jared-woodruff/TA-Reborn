@@ -29,16 +29,16 @@
 - Bombers sent at something show TA's air-strike sight instead of the attack sight.
 - The music, and the battle behind the menu, now fall silent while a campaign briefing is read
   out, and come back once it is over. The tutorial's spoken lines still only lower the music.
-
-### Fixed
-- On a Mac in full screen, the system's pointer could show on top of the game's own. The game
-  now has macOS apply the pointer it wants again whenever it takes the screen and once a second
-  while it has the keyboard.
 - Constructors on the ECONOMY duty now keep to a few plain jobs: metal extractors on free metal,
   power plants when power runs short (solar collectors, or wind generators where the wind pays
   better), and metal makers when there is power to spare, finishing buildings of those kinds
   left unfinished near them. They no longer build storage or geothermal plants, replace
   extractors with better ones, reclaim, or help at the factories.
+
+### Fixed
+- On a Mac in full screen, the system's pointer could show on top of the game's own. The game
+  now has macOS apply the pointer it wants again whenever it takes the screen and once a second
+  while it has the keyboard.
 
 ## 1.0.2 — 2026-11-11
 
