@@ -388,25 +388,37 @@ fn every_duty_keeps_order_on_islands_and_at_sea() {
     }
 }
 
-/// An advanced constructor on the economy duty upgrades extractors to moho mines once the metal
-/// income can pay for them, and stays its hand before (a moho costs 1,500 metal).
+/// An advanced constructor on the economy duty builds its costly mines (a moho costs 1,500 metal)
+/// on free metal once the metal income can pay for them, and stays its hand before. It never takes
+/// one of our extractors apart to put a better one in its place: the duty is kept plain.
 #[test]
-fn an_advanced_constructor_upgrades_extractors_when_the_income_can_pay() {
+fn an_advanced_constructor_mines_free_metal_once_the_income_can_pay_and_replaces_nothing() {
     for (mines, expect) in [(4, false), (12, true)] {
         let Some(mut scene) = Scene::on("sherwood", ["ARM", "CORE"], true) else { return };
         scene.sim.players[0].economy.metal = Fx::from_int(900);
         scene.sim.players[0].economy.energy = Fx::from_int(8000);
-        for d in deposits_near(&scene, 1500).iter().take(mines) {
-            scene.spawn_at("ARMMEX", 0, *d);
-        }
+        // (The nearest deposit left free.)
+        let deposits = deposits_near(&scene, 1500);
+        let ours: Vec<FxVec3> = deposits.iter().skip(1).take(mines).copied().collect();
+        let extractors: Vec<UnitId> = ours.iter().map(|&d| scene.spawn_at("ARMMEX", 0, d)).collect();
         for k in 0..8 {
             scene.spawn("ARMSOLAR", -140 - 70 * (k % 4), 250 + 90 * (k / 4));
         }
         serve(&mut scene, "ARMACK", Duty::Economy, 0);
         let a = audit(&mut scene, 4 * 60, &[]);
-        let mohos = a.ordered.iter().filter(|(_, c)| matches!(c, Command::Order { order: Order::Build { type_id, .. }, .. } if scene.sim.types.get(*type_id).name == "ARMMOHO")).count();
-        println!("{mines} extractors: {mohos} moho orders");
-        assert_eq!(mohos > 0, expect, "{mines} extractors");
+        let mohos: Vec<FxVec3> = a
+            .ordered
+            .iter()
+            .filter_map(|(_, c)| match c {
+                Command::Order { order: Order::Build { type_id, pos }, .. } if scene.sim.types.get(*type_id).name == "ARMMOHO" => Some(*pos),
+                _ => None,
+            })
+            .collect();
+        println!("{mines} extractors: moho orders at {:?}", mohos.iter().map(|p| (p.x.to_int(), p.z.to_int())).collect::<Vec<_>>());
+        assert_eq!(!mohos.is_empty(), expect, "{mines} extractors");
+        assert!(mohos.iter().all(|&p| ours.iter().all(|&d| px(p, d) > 48)), "a moho only where no extractor of ours stands");
+        assert!(!a.ordered.iter().any(|(_, c)| matches!(c, Command::Order { order: Order::ReclaimUnit(id), .. } if extractors.contains(id))), "no extractor taken apart");
+        assert!(extractors.iter().all(|&id| scene.sim.unit(id).is_some_and(|u| !u.dead)), "every extractor still standing");
     }
 }
 

@@ -712,6 +712,9 @@ fn the_officer_orders_only_the_constructors_on_duty_and_runs_no_factory() {
     // The factory has work (a computer player's builders would help it, and its factory would make
     // more).
     sim.step(&[Command::Produce { player: 0, factory: plant, type_id: tank, count: 2 }]);
+    // (Work of the duty's own: an extractor left unfinished near by. The economy duty does not help
+    // at the factories.)
+    let frame = sim.spawn_unit(sim.types.id("EXTRACTOR").unwrap(), 0, FxVec3::from_ints(360, 0, 240), 0, false).unwrap();
     let mut officer = DutyOfficer::new(0, &sim);
     officer.set(on_duty, Some(Duty::Economy));
     let mut ordered = Vec::new();
@@ -720,9 +723,10 @@ fn the_officer_orders_only_the_constructors_on_duty_and_runs_no_factory() {
         ordered.extend(commands.iter().cloned());
         sim.step(&commands);
     }
-    assert!(!ordered.is_empty(), "the constructor on duty was given work");
+    assert!(ordered.iter().any(|c| matches!(c, Command::Order { order: Order::Repair(id), .. } if *id == frame)), "the constructor on duty was given work: {ordered:?}");
     assert!(ordered.iter().all(|c| matches!(c, Command::Order { player: 0, units, .. } if units == &[on_duty])), "orders for the constructor on duty only: {ordered:?}");
     assert!(sim.unit(free).unwrap().orders.is_empty());
+    assert!(sim.unit(frame).is_some_and(|u| u.is_complete()), "and it finished the extractor");
     assert_eq!(officer.units().collect::<Vec<_>>(), [(on_duty, Duty::Economy)], "and it stays on duty");
 }
 

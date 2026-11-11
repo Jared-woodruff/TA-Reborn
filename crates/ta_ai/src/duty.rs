@@ -26,10 +26,12 @@ use super::*;
 /// What a constructor on duty does by itself.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Duty {
-    /// Metal extractors on free deposits, power when it runs short, metal makers and storage
-    /// when there is power to spare, better extractors for advanced constructors, wrecks and
-    /// rocks when metal is short; otherwise it finishes what is unfinished and helps the
-    /// factories. Never factories, defences or strategic buildings.
+    /// Metal extractors on free deposits, power plants when power runs short (solar collectors,
+    /// wind generators where the wind pays better, tidal generators at sea; an advanced
+    /// constructor's big plant), metal makers when there is power to spare, and buildings of those
+    /// kinds left unfinished near it; nothing else (kept plain, so that it can be counted on: no
+    /// storage, geothermal plants, upgrades, reclaiming or help at the factories). Never
+    /// factories, defences or strategic buildings.
     Economy,
     /// Mends the most damaged buildings and units near the base; otherwise finishes what is
     /// unfinished and helps the factories.
@@ -590,100 +592,45 @@ impl SkirmishAi {
         if self.info[b.type_id].commander { COMMANDER_REACH } else { BUILDER_REACH }
     }
 
-    /// The economy: free metal first, power when it runs short, then what turns spare power into
-    /// metal and keeps the gusts, better extractors for advanced constructors, and wrecks and
-    /// rocks when metal is short; else a hand with what is unfinished.
+    /// The economy, kept plain so that a player can tell what it will do: its own kinds of
+    /// building left unfinished near by finished first; power when it is all but gone; free metal
+    /// (an advanced constructor's costly mines once the income can pay for them); more power when
+    /// it runs short; metal makers with power to spare; else home.
     fn economy_duty(&mut self, sim: &Sim, s: &Survey, b: &Unit, plan: &mut Plan) -> Option<Task> {
-        let bi = self.info[b.type_id].clone();
         let (all_opts, opts) = self.duty_options(sim, b);
-        let t2 = bi.tech >= 2;
-        let Ledger { e_low, e_crit, overflowing, metal_starved, power_spare } = self.ledger(s);
+        let t2 = self.info[b.type_id].tech >= 2;
+        let Ledger { e_low, e_crit, metal_starved, power_spare, .. } = self.ledger(s);
         let pend = |plan: &Plan, r: Role| plan.pending[r as usize];
-        // Builders only get this far down without an extractor job, so any of them may build
-        // power when it runs short.
+        // (Builders only get this far down without an extractor job, so any of them may build
+        // power when it runs short.)
         let gen_limit = 1 + s.builders_t1 + t2 as usize;
-        // With advanced constructors around, power comes from big plants.
-        let big_power = s.builders_t2 > 0 && s.minutes >= 15;
-        // Metal piling up in storage: more extractors won't help, spend it instead.
-        let metal_rich = self.metal_avg > Fx::from_ratio(8, 10) && s.m_inc >= fx(20);
-        let metal_short = self.metal_avg < Fx::from_ratio(3, 10);
-        let far = Some(self.economy_far(s, b, plan));
-        let can_reclaim = sim.unit_type(b).def.can_reclaim;
-
+        // (A frame of its own kind left behind, when it had to get away or was put on this duty
+        // in the middle of one, say: finished rather than left to come apart while another goes
+        // up beside it.)
+        let own_kind = |r: Role| matches!(r, Role::Extractor | Role::Generator | Role::MetalMaker);
+        if let Some(t) = self.finish_task_of(sim, s, b, self.duty_reach(b), &own_kind) {
+            return Some(t);
+        }
         // Power all but gone, or running short with none going up (a lone constructor would
         // otherwise take every free deposit first): the first thing.
-        let lacking = e_crit && pend(plan, Role::Generator) < 2 || e_low && pend(plan, Role::Generator) == 0;
-        if lacking && let Some(t) = self.energy_task(sim, s, b, &all_opts, plan) {
+        if (e_crit && pend(plan, Role::Generator) < 2 || e_low && pend(plan, Role::Generator) == 0) && let Some(t) = self.plant_task(sim, s, b, &all_opts, plan) {
             return Some(t);
         }
-        // Constructors that fly or hover: first the metal no other constructor gets to.
-        if self.expander(b.type_id) && self.far_deposits(s) > 0 && let Some(t) = self.extractor_task(sim, s, b, &all_opts, None, plan) {
+        // Free metal. (An advanced constructor's mines cost much: once the income can pay, two
+        // at a time.)
+        let mines = !t2 || (s.m_inc >= fx(ADVANCED_INCOME) || s.metal >= fx(ADVANCED_STOCK)) && pend(plan, Role::Extractor) < 2;
+        let far = Some(self.economy_far(s, b, plan));
+        if mines && let Some(t) = self.extractor_task(sim, s, b, &all_opts, far, plan) {
             return Some(t);
         }
-        // Geothermal vents are the best power there is (when power is what we need).
-        let no_geo = !s.own.iter().any(|u| sim.types.get(u.type_id).needs_geo);
-        if (e_low || s.minutes >= 4 && self.energy_avg < Fx::from_ratio(6, 10) && no_geo) && pend(plan, Role::Generator) < gen_limit && let Some(t) = self.geo_task(sim, s, b, &opts, plan) {
+        if e_low && pend(plan, Role::Generator) < gen_limit && let Some(t) = self.plant_task(sim, s, b, &all_opts, plan) {
             return Some(t);
         }
-        // Out of metal with power to spare: a maker first (it costs no metal and pays at once, and
-        // an extractor far off waits for the very metal that is missing), and room in store for
-        // the gusts.
-        if metal_starved && power_spare {
-            if let Some(t) = self.maker_task(sim, s, b, &opts, plan, true) {
-                return Some(t);
-            }
-            if overflowing && let Some(t) = self.storage_task(sim, s, b, &opts, plan) {
-                return Some(t);
-            }
-        }
-        // Free metal; for advanced constructors moho mines on free deposits, then in place of
-        // our small extractors (only where the old one can be taken apart for its metal).
-        if !metal_rich {
-            if !t2 {
-                if let Some(t) = self.extractor_task(sim, s, b, &all_opts, far, plan) {
-                    return Some(t);
-                }
-            } else if (s.m_inc >= fx(ADVANCED_INCOME) || s.metal >= fx(ADVANCED_STOCK)) && pend(plan, Role::Extractor) < 2 {
-                if let Some(t) = self.extractor_task(sim, s, b, &all_opts, far, plan) {
-                    return Some(t);
-                }
-                if can_reclaim && let Some(t) = self.upgrade_task(sim, s, b, &opts) {
-                    return Some(t);
-                }
-            }
-        }
-        if metal_short && let Some(t) = self.wreck_task(sim, b, plan) {
+        // Power to spare: metal makers (sooner when metal is what holds everything up).
+        if let Some(t) = self.maker_task(sim, s, b, &opts, plan, metal_starved && power_spare) {
             return Some(t);
         }
-        if e_low && pend(plan, Role::Generator) < gen_limit && (t2 || !big_power || self.energy_avg < Fx::from_ratio(1, 10)) && let Some(t) = self.energy_task(sim, s, b, &all_opts, plan) {
-            return Some(t);
-        }
-        if t2 {
-            // Power still comes first for advanced constructors.
-            if let Some(t) = self.fusion_task(sim, s, b, &opts, plan) {
-                return Some(t);
-            }
-            if can_reclaim && let Some(t) = self.upgrade_task(sim, s, b, &opts) {
-                return Some(t);
-            }
-        }
-        if let Some(t) = self.maker_task(sim, s, b, &opts, plan, false) {
-            return Some(t);
-        }
-        // Short of metal with every deposit taken: turn power into metal, building the power
-        // first where the surplus can't run another maker yet.
-        if self.metal_avg < Fx::from_ratio(25, 100) && s.minutes >= 4 && s.makers < self.p.max_makers && (t2 || !big_power) {
-            if let Some(t) = self.maker_task(sim, s, b, &opts, plan, true) {
-                return Some(t);
-            }
-            if pend(plan, Role::Generator) < gen_limit && self.energy_avg < Fx::from_ratio(8, 10) && !overflowing && let Some(t) = self.energy_task(sim, s, b, &all_opts, plan) {
-                return Some(t);
-            }
-        }
-        if let Some(t) = self.storage_task(sim, s, b, &opts, plan) {
-            return Some(t);
-        }
-        self.lend_a_hand(sim, s, b, plan, metal_short)
+        self.go_home(sim, s, b)
     }
 
     /// Mends the most damaged of ours near the base; else a hand with what is unfinished.
