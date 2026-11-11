@@ -57,6 +57,8 @@ mod jukebox;
 mod lobby;
 mod loading;
 mod lore;
+#[cfg(target_os = "macos")]
+mod macos;
 mod map_preview;
 mod menu;
 mod minimap;

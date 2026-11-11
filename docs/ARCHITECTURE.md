@@ -2005,6 +2005,18 @@ build menu by `Purpose` on tabs (`Hud::build_tab`).
   options show the level the options match. 2x and 8x antialiasing need the device's
   adapter-specific format features (requested when offered); otherwise 4x is the most.
 
+* **A Mac's full screen** (`macos.rs`): the game's full screen is macOS's own (a space of its
+  own, winit's `Fullscreen::Borderless`), where the menu bar comes down when the pointer
+  touches the top of the screen and the Dock comes up at its edge, over the game, and the
+  pointer over them leaves the window (edge scrolling stopped). While the window is in full
+  screen the game hides both outright through AppKit's presentation options (`objc2-app-kit`),
+  set whenever the window comes into view, takes the keyboard or changes size
+  (`WindowEvent::Occluded`, `Focused`, `Resized`), as winit's later "borderless game" option
+  does on coming into view: AppKit's own options return when
+  the player comes back to the space, and options set before the space opens (as winit 0.30's
+  `with_borderless_game` sets them) are those the system restores when it closes, leaving a
+  window without its menu bar. Out of full screen, any hiding left over is undone.
+
 * **Colour-blind colours** (`gameplay.colour_blind`; `palette.rs`): player colours from a
   table after Okabe and Ito's palette (TA's red slot orange, green bluish green...),
   health bars blue-yellow-vermillion, the movement map and placement glows blue and

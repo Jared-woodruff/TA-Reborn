@@ -1253,6 +1253,16 @@ impl ApplicationHandler<egui_winit::accesskit_winit::Event> for App {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        // A Mac's full screen without the Dock and the menu bar coming over the game at the
+        // screen's edges (see macos.rs), whenever the window comes into view, takes the
+        // keyboard or changes size (into full screen and out of it); loading or not.
+        #[cfg(target_os = "macos")]
+        if matches!(event, WindowEvent::Occluded(false) | WindowEvent::Focused(true) | WindowEvent::Resized(_)) {
+            let main = self.active_load.as_ref().map(|load| &load.window).or_else(|| self.state.as_ref().map(|state| &state.window));
+            if let Some(window) = main.filter(|window| window.id() == id) {
+                crate::macos::keep_dock_and_menu_bar_away(window.fullscreen().is_some());
+            }
+        }
         // The companion screen's window: its own (closing it closes only it).
         if let Some(state) = &mut self.state
             && let Some(companion) = state.companion.as_mut().filter(|c| c.id() == id)

@@ -26,6 +26,10 @@
   chips, High on the Max and Ultra.
 
 ### Fixed
+- On a Mac in full screen, the menu bar and the Dock no longer come over the game when the
+  pointer touches the screen's edges. Scrolling the map by the edges brought them up, and with
+  the pointer over them the scrolling stopped. They now stay hidden while the game is in full
+  screen; Cmd+Tab still switches apps, and they come back when the game leaves full screen.
 - On AMD's newest graphics cards (a Radeon RX 9070 XT), the game could crash on Vulkan while
   preparing its graphics, the crash report naming the sprites' pipelines. One value in its Vulkan
   shaders, the sample mask, was written in a form Vulkan's rules do not allow, and AMD's driver
