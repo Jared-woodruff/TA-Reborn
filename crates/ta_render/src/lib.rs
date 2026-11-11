@@ -81,6 +81,88 @@ pub mod world_text;
 
 use std::time::Instant;
 
+/// What the renderer is building as the game starts ("" once it is built), for a crash report:
+/// a graphics driver that fails while compiling a shader takes the game down with it (the game's
+/// crash handler names the step from here).
+static BUILDING: std::sync::Mutex<(&'static str, Option<Instant>)> = std::sync::Mutex::new(("", None));
+
+/// What the renderer was building when last asked: empty once it is built (see [`Building`]).
+pub fn startup_step() -> &'static str {
+    BUILDING.lock().unwrap_or_else(std::sync::PoisonError::into_inner).0
+}
+
+/// Seconds after which a step still being built is said in the log (a graphics driver's shader
+/// compiler that never finishes would otherwise leave no trace).
+const STILL_BUILDING: [u64; 3] = [10, 60, 300];
+
+/// The renderer's start step by step: what is being built now ([`startup_step`]), and what each
+/// step took (a graphics driver's shader compiler that takes long shows in the log).
+struct Building {
+    started: Instant,
+    steps: Vec<(&'static str, f32)>,
+    /// Set when the building is over: the watch (see [`STILL_BUILDING`]) stops.
+    over: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl Building {
+    fn new() -> Building {
+        let over = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let watch = over.clone();
+        let _ = std::thread::Builder::new().name("renderer-watch".into()).spawn(move || {
+            let mut told: (&'static str, usize) = ("", 0);
+            while !watch.load(std::sync::atomic::Ordering::Relaxed) {
+                std::thread::sleep(std::time::Duration::from_millis(250));
+                let (step, since) = *BUILDING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                let Some(since) = since.filter(|_| !step.is_empty()) else { continue };
+                if told.0 != step {
+                    told = (step, 0);
+                }
+                if let Some(&secs) = STILL_BUILDING.get(told.1)
+                    && since.elapsed().as_secs() >= secs
+                {
+                    log::warn!("renderer: still building {step} after {secs} s (the graphics driver compiling their shaders)");
+                    told.1 += 1;
+                }
+            }
+        });
+        Building { started: Instant::now(), steps: Vec::new(), over }
+    }
+
+    fn step<T>(&mut self, what: &'static str, make: impl FnOnce() -> T) -> T {
+        *BUILDING.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = (what, Some(Instant::now()));
+        // `TA_CRASH_IN=<words>`: an access violation in the step whose name has them, as a
+        // graphics driver's would be, to try the game's crash report.
+        if std::env::var("TA_CRASH_IN").is_ok_and(|words| !words.is_empty() && what.contains(words.as_str())) {
+            log::warn!("TA_CRASH_IN: crashing in {what} on purpose");
+            // SAFETY: none meant: the crash is the point.
+            unsafe { std::ptr::write_volatile(std::ptr::without_provenance_mut::<u8>(16), 1) };
+        }
+        let t0 = Instant::now();
+        let made = make();
+        let secs = t0.elapsed().as_secs_f32();
+        if secs >= 5.0 {
+            log::warn!("renderer: {what} took {secs:.1} s (the graphics driver compiling their shaders)");
+        }
+        self.steps.push((what, secs));
+        made
+    }
+
+    /// The end: logged, the slowest steps first.
+    fn done(mut self, what: &str) {
+        *BUILDING.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = ("", None);
+        self.over.store(true, std::sync::atomic::Ordering::Relaxed);
+        self.steps.sort_by(|a, b| b.1.total_cmp(&a.1));
+        let slowest: Vec<String> = self.steps.iter().take(4).map(|(step, secs)| format!("{step} {secs:.2} s")).collect();
+        log::info!("{what} built in {:.2} s (the slowest: {})", self.started.elapsed().as_secs_f32(), slowest.join(", "));
+    }
+}
+
+impl Drop for Building {
+    fn drop(&mut self) {
+        self.over.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec2, Vec3};
 
@@ -790,6 +872,7 @@ impl Renderer {
 
     /// A renderer on a device already opened (so its kind can pick the options first).
     pub fn with_gpu(gpu: Gpu, width: u32, height: u32, options: RendererOptions) -> anyhow::Result<Self> {
+        let mut building = Building::new();
         // (Before any pipeline: the shaders read the ray-traced result, or not.)
         util::set_ray_traced(gpu.ray_tracing);
         let device = &gpu.device;
@@ -933,11 +1016,11 @@ impl Renderer {
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             ..Default::default()
         });
-        let occlusion = OcclusionMap::new(device);
-        let cloud_shadows = CloudShadows::new(device);
+        let occlusion = building.step("the contact occlusion's pipelines", || OcclusionMap::new(device));
+        let cloud_shadows = building.step("the cloud shadows' pipelines", || CloudShadows::new(device));
         let ground_dummy = util::Target::new(device, "ground dummy", 1, 1, wgpu::TextureFormat::Rg8Unorm, 1, wgpu::TextureUsages::TEXTURE_BINDING);
-        let terrain_shadow = TerrainShadow::new(device);
-        let ray_tracing = gpu.ray_tracing.then(|| RayTracing::new(device));
+        let terrain_shadow = building.step("the relief's shadow pipelines", || TerrainShadow::new(device));
+        let ray_tracing = gpu.ray_tracing.then(|| building.step("the ray tracing's pipelines", || RayTracing::new(device)));
         let resources = |frame_buffer, shadow_view| FrameResources {
             frame_buffer,
             shadow_view,
@@ -958,22 +1041,23 @@ impl Renderer {
         let frame_bind_group = frame_group(device, "frame", &frame_layout, &FrameResources { rt_views: rt_scene, ..resources(&frame_buffer, &shadow_map.view) });
         let shadow_pass_bind_group = frame_group(device, "frame (shadow pass)", &frame_layout, &FrameResources { rt_views: rt_shadow, ..resources(&frame_buffer, &shadow_dummy.view) });
         let reflection_bind_group = frame_group(device, "frame (reflection)", &frame_layout, &FrameResources { rt_views: rt_scene, ..resources(&reflection_frame_buffer, &shadow_map.view) });
-        let reflections = Reflections::new(device, &frame_layout);
-        let post = Post::new(device, gpu.view_format, width, height, samples);
-        let terrain_detail = terrain_detail::TerrainDetail::new(device, &gpu.queue);
-        let terrain_pipeline = TerrainPipeline::new(device, &frame_layout, &terrain_detail, util::HDR_FORMAT, samples);
+        let reflections = building.step("the reflections' pipelines", || Reflections::new(device, &frame_layout));
+        let post = building.step("the post-processing pipelines", || Post::new(device, gpu.view_format, width, height, samples));
+        let terrain_detail = building.step("the ground's detail materials", || terrain_detail::TerrainDetail::new(device, &gpu.queue));
+        let terrain_pipeline = building.step("the terrain's pipelines", || TerrainPipeline::new(device, &frame_layout, &terrain_detail, util::HDR_FORMAT, samples));
         let water_scene = WaterScene::new(device, samples);
-        let water_pipeline = WaterPipeline::new(device, &frame_layout, &terrain_pipeline, &reflections.layout, &water_scene.layout, util::HDR_FORMAT, samples);
-        let sky_pipeline = SkyPipeline::new(device, &frame_layout, util::HDR_FORMAT, samples);
-        let sprites = SpriteRenderer::new(device, &frame_layout, util::HDR_FORMAT, samples);
-        let foliage = foliage::FoliageRenderer::new(device, &gpu.queue, &frame_layout, util::HDR_FORMAT, samples).map_err(|e| log::error!("foliage: {e:#}")).ok();
-        let beams = BeamRenderer::new(device, &frame_layout, util::HDR_FORMAT, samples);
-        let rings = rings::RingRenderer::new(device, &frame_layout, util::HDR_FORMAT, samples);
-        let world_text = WorldTextRenderer::new(device, &gpu.queue, &frame_layout, util::HDR_FORMAT, samples);
-        let wakes = wakes::WakeRenderer::new(device, &frame_layout);
-        let icons = icons::IconRenderer::new(device, gpu.view_format);
-        let heat = HeatRenderer::new(device, &frame_layout, util::HDR_FORMAT, samples);
-        let particles = GpuParticles::new(device, &gpu.queue, &frame_layout, util::HDR_FORMAT, samples, &ground_dummy.view);
+        let water_pipeline = building.step("the water's pipelines", || WaterPipeline::new(device, &frame_layout, &terrain_pipeline, &reflections.layout, &water_scene.layout, util::HDR_FORMAT, samples));
+        let sky_pipeline = building.step("the sky's pipelines", || SkyPipeline::new(device, &frame_layout, util::HDR_FORMAT, samples));
+        let sprites = building.step("the sprites' pipelines", || SpriteRenderer::new(device, &frame_layout, util::HDR_FORMAT, samples));
+        let foliage = building.step("the trees' and rocks' pipelines", || foliage::FoliageRenderer::new(device, &gpu.queue, &frame_layout, util::HDR_FORMAT, samples).map_err(|e| log::error!("foliage: {e:#}")).ok());
+        let beams = building.step("the beams' pipelines", || BeamRenderer::new(device, &frame_layout, util::HDR_FORMAT, samples));
+        let rings = building.step("the rings' pipelines", || rings::RingRenderer::new(device, &frame_layout, util::HDR_FORMAT, samples));
+        let world_text = building.step("the world text's pipelines", || WorldTextRenderer::new(device, &gpu.queue, &frame_layout, util::HDR_FORMAT, samples));
+        let wakes = building.step("the wakes' pipelines", || wakes::WakeRenderer::new(device, &frame_layout));
+        let icons = building.step("the icons' pipelines", || icons::IconRenderer::new(device, gpu.view_format));
+        let heat = building.step("the heat haze's pipelines", || HeatRenderer::new(device, &frame_layout, util::HDR_FORMAT, samples));
+        let particles = building.step("the particles' pipelines", || GpuParticles::new(device, &gpu.queue, &frame_layout, util::HDR_FORMAT, samples, &ground_dummy.view));
+        building.done("renderer");
 
         Ok(Renderer {
             gpu,
@@ -1409,13 +1493,9 @@ impl Renderer {
     /// that may be drawn) are loaded.
     pub fn init_models_with_skins(&mut self, gafs: &[ta_formats::gaf::Gaf], palette: &ta_formats::image::Palette, skin: Option<&ta_skins::Pack>, enemy_skin: Option<&ta_skins::Pack>, used: Option<&std::collections::HashSet<String>>) {
         let textures = TextureLibrary::new_with_skins(&self.gpu.device, &self.gpu.queue, gafs, palette, skin, enemy_skin, used);
-        self.models = Some(ModelRenderer::new(
-            &self.gpu.device,
-            &self.frame_layout,
-            util::HDR_FORMAT,
-            self.post.samples,
-            textures,
-        ));
+        let mut building = Building::new();
+        self.models = Some(building.step("the units' pipelines", || ModelRenderer::new(&self.gpu.device, &self.frame_layout, util::HDR_FORMAT, self.post.samples, textures)));
+        building.done("the units' pipelines");
     }
 
     /// Submits this frame's model instances. Their contact occlusion (perspective camera) is
