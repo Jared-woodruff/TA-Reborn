@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = ["crates/*", "apps/*"]
+# A patched copy of a dependency, not ours to test (see third_party/naga/TA_REBORN_PATCH.md).
+exclude = ["third_party/naga"]
 
 [workspace.package]
 version = "1.0.1"
@@ -85,3 +87,9 @@ opt-level = 1
 lto = "off"
 debug = 0
 incremental = false
+
+# naga 30.0.1 with one fix in its SPIR-V writer: the `SampleMask` built-in declared as the array
+# Vulkan requires (gfx-rs/wgpu#7311); the scalar wgpu writes is the suspected cause of AMD's Vulkan crash.
+# See third_party/naga/TA_REBORN_PATCH.md; drop it when wgpu ships the fix.
+[patch.crates-io]
+naga = { path = "third_party/naga" }

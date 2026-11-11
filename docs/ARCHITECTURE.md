@@ -648,6 +648,14 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   threads of their own, side by side (`util::side_by_side`; FXC is a function keeping nothing
   between calls, while DXC is one compiler object wgpu shares, so never with DXC;
   `TA_PIPELINES_ONE_BY_ONE=1` turns it off).
+* **naga, patched** (`third_party/naga`, in place of the crates.io copy through the root
+  `Cargo.toml`'s `[patch.crates-io]`): wgpu 30's shader translator writes the `SampleMask`
+  built-in as a scalar in SPIR-V, where Vulkan requires an array of 32-bit integers
+  (gfx-rs/wgpu#7311). The billboards, units and 3D trees and rocks write one (`Covered`,
+  common.wgsl), and AMD's Vulkan driver failed building the sprites' pipelines, the first that
+  do. The patch declares `array<u32, 1>`; `third_party/naga/TA_REBORN_PATCH.md` has the diff,
+  and when to drop it; `sample_masks_are_arrays_in_spirv` (ta_render) checks every such entry
+  point.
 * **Terrain**: chunked heightmap mesh; fragment shader resolves the virtual map image
   through a tile-index texture and a deduplicated tile atlas with per-tile box mips
   (exact for 32 px tiles) plus a per-tile-average texture for far LODs. Dynamic relighting
