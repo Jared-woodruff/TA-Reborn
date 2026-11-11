@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- On AMD's newest graphics cards (a Radeon RX 9070 XT), the game could crash on Vulkan while
+  preparing its graphics, the crash report naming the sprites' pipelines. One value in its Vulkan
+  shaders, the sample mask, was written in a form Vulkan's rules do not allow, and AMD's driver
+  expects the allowed form; it is now written as the rules require. The picture is the same as
+  before.
+
 ## 1.0.1 — 2026-11-11
 
 DirectX 12 works: the game no longer stays on its first loading screen there. Also a watch on

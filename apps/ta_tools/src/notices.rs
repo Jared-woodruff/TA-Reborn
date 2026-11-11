@@ -158,15 +158,21 @@ fn libraries(meta: &Value) -> Result<Vec<Library>> {
             }
         }
     }
+    // Ours are the workspace's members; procedural macros stay in the compiler. (A path
+    // dependency outside the workspace is a third-party library patched in the repository,
+    // under third_party/: listed, and said to be modified.)
+    let ours: BTreeSet<&str> = meta["workspace_members"].as_array().unwrap_or(&empty).iter().filter_map(Value::as_str).collect();
     let mut out: Vec<Library> = seen
         .iter()
         .filter_map(|id| packages.get(id))
-        // Ours are path dependencies (no source); procedural macros stay in the compiler.
-        .filter(|p| !p["source"].is_null() && !proc_macro(p))
+        .filter(|p| p["id"].as_str().is_some_and(|id| !ours.contains(id)) && !proc_macro(p))
         .map(|p| {
             let (name, version) = (p["name"].as_str().unwrap_or("?").to_string(), p["version"].as_str().unwrap_or("?").to_string());
             let licence = p["license"].as_str().map(str::to_string).or_else(|| p["license_file"].as_str().map(|f| format!("see {f}"))).unwrap_or_else(|| "unspecified".into());
-            let source = p["repository"].as_str().map(str::to_string).unwrap_or_else(|| format!("https://crates.io/crates/{name}"));
+            let mut source = p["repository"].as_str().map(str::to_string).unwrap_or_else(|| format!("https://crates.io/crates/{name}"));
+            if p["source"].is_null() {
+                source.push_str(&format!(" (modified for TA Reborn: third_party/{name}/TA_REBORN_PATCH.md in its source says how)"));
+            }
             let authors = p["authors"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default();
             let dir = PathBuf::from(p["manifest_path"].as_str().unwrap_or("")).parent().map(Path::to_path_buf).unwrap_or_default();
             Library { name, version, licence, source, authors, dir }
@@ -225,4 +231,41 @@ fn walk(dir: &Path, depth: usize, in_licence_dir: bool, found: &mut Vec<PathBuf>
 /// A licence text with its layout ignored (the same licence wrapped differently is one).
 fn normalise(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The workspace's own crates are left out; a library from crates.io is listed, and so is
+    /// one patched in the repository (a path dependency outside the workspace), said to be
+    /// modified.
+    #[test]
+    fn third_party_libraries_patched_in_the_repository_are_listed() {
+        let package = |id: &str, name: &str, source: Option<&str>| {
+            serde_json::json!({ "id": id, "name": name, "version": "1.0.0", "license": "MIT OR Apache-2.0", "source": source, "repository": format!("https://example.invalid/{name}"), "authors": [], "manifest_path": format!("/x/{name}/Cargo.toml"), "targets": [{ "kind": ["lib"] }] })
+        };
+        let meta = serde_json::json!({
+            "packages": [
+                package("game", "ta_game", None),
+                package("launcher", "ta_launcher", None),
+                package("lib", "ta_render", None),
+                package("naga", "naga", None),
+                package("wgpu", "wgpu", Some("registry+https://github.com/rust-lang/crates.io-index")),
+            ],
+            "workspace_members": ["game", "launcher", "lib"],
+            "resolve": { "nodes": [
+                { "id": "game", "deps": [{ "pkg": "lib", "dep_kinds": [{ "kind": null }] }] },
+                { "id": "launcher", "deps": [] },
+                { "id": "lib", "deps": [{ "pkg": "wgpu", "dep_kinds": [{ "kind": null }] }, { "pkg": "naga", "dep_kinds": [{ "kind": null }] }] },
+                { "id": "wgpu", "deps": [] },
+                { "id": "naga", "deps": [] },
+            ] },
+        });
+        let listed = libraries(&meta).unwrap();
+        let names: Vec<&str> = listed.iter().map(|l| l.name.as_str()).collect();
+        assert_eq!(names, ["naga", "wgpu"]);
+        assert!(listed[0].source.contains("modified for TA Reborn"), "{}", listed[0].source);
+        assert!(!listed[1].source.contains("modified"), "{}", listed[1].source);
+    }
 }

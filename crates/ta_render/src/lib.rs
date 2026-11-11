@@ -2987,6 +2987,55 @@ mod tests {
         }
     }
 
+    /// Vulkan requires the variable decorated `SampleMask` to be an array of 32-bit integers
+    /// (VUID-SampleMask-SampleMask-04359). naga 30 wrote a `u32`, the suspected cause of AMD's
+    /// Vulkan driver crashing as it built the sprites' pipelines; the patched naga in
+    /// third_party/naga writes `array<u32, 1>`. Every entry point writing a sample mask, compiled
+    /// as a pipeline compiles it (eight samples), declares the array and stores through it.
+    /// (Not on macOS, whose wgpu has no SPIR-V writer.)
+    #[cfg(any(windows, target_os = "linux"))]
+    #[test]
+    fn sample_masks_are_arrays_in_spirv() {
+        let unit = model::unit_source();
+        let shaders = [
+            ("sprites", include_str!("shaders/sprite.wgsl"), "fs_cutout"),
+            ("units", unit.as_str(), "fs_main"),
+            ("foliage", include_str!("shaders/foliage.wgsl"), "fs_cutout"),
+            ("foliage", include_str!("shaders/foliage.wgsl"), "fs_opaque"),
+        ];
+        for (label, source, entry) in shaders {
+            let module = validated(label, source);
+            let info = naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::all()).validate(&module).unwrap();
+            let mut constants = naga::back::PipelineConstants::default();
+            constants.insert("SCENE_SAMPLES".to_string(), 8.0);
+            let (settled, settled_info) = naga::back::pipeline_constants::process_overrides(&module, &info, Some((naga::ShaderStage::Fragment, entry)), &constants).unwrap();
+            let pipeline = naga::back::spv::PipelineOptions { shader_stage: naga::ShaderStage::Fragment, entry_point: entry.into() };
+            let words = naga::back::spv::write_vec(&settled, &settled_info, &naga::back::spv::Options::default(), Some(&pipeline)).unwrap();
+            // The instructions (opcode, operands), after the five words of the header.
+            let mut ops: Vec<(u32, &[u32])> = Vec::new();
+            let mut at = 5;
+            while at < words.len() {
+                let count = (words[at] >> 16) as usize;
+                ops.push((words[at] & 0xffff, &words[at + 1..at + count]));
+                at += count;
+            }
+            let defining = |opcode: u32, result_at: usize, id: u32| ops.iter().find(|(op, args)| *op == opcode && args.get(result_at) == Some(&id)).map(|&(_, args)| args);
+            const OP_DECORATE: u32 = 71;
+            const BUILT_IN: u32 = 11;
+            const SAMPLE_MASK: u32 = 20;
+            let masks: Vec<u32> = ops.iter().filter(|(op, args)| *op == OP_DECORATE && args.get(1) == Some(&BUILT_IN) && args.get(2) == Some(&SAMPLE_MASK)).map(|(_, args)| args[0]).collect();
+            assert_eq!(masks.len(), 1, "{label} {entry}: one sample mask written");
+            let variable = defining(59, 1, masks[0]).expect("its OpVariable");
+            let pointer = defining(32, 0, variable[0]).expect("its OpTypePointer");
+            let array = defining(28, 0, pointer[2]).unwrap_or_else(|| panic!("{label} {entry}: the SampleMask variable is not an array"));
+            assert_eq!(defining(21, 0, array[1]), Some(&[array[1], 32, 0][..]), "{label} {entry}: an array of u32");
+            assert_eq!(defining(43, 1, array[2]).map(|c| c[2]), Some(1), "{label} {entry}: of one element");
+            // (Written through an access chain to its element, never stored to whole.)
+            assert!(ops.iter().any(|(op, args)| *op == 65 && args.get(2) == Some(&masks[0])), "{label} {entry}: stored through its element");
+            assert!(!ops.iter().any(|(op, args)| *op == 62 && args.first() == Some(&masks[0])), "{label} {entry}: never stored to whole");
+        }
+    }
+
     /// How much code each function of the terrain's and the water's shaders makes in each entry
     /// point once every call is inlined, as HLSL's compilers inline them: its own expressions
     /// times the copies of it the entry point's calls make, the largest first (`TA_INLINE_TOP`,
