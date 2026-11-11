@@ -2932,6 +2932,9 @@ mod tests {
     /// The terrain's and the water's shaders as wgpu's DirectX 12 backend hands them to its shader
     /// compiler (HLSL, an entry point a file, its constants settled), with wgpu's loop bounding
     /// and without, into `TA_HLSL_OUT`: `tools/shaders/hlsl_times.ps1` times fxc and dxc on them.
+    /// (Windows only, as the compilers are: naga's HLSL writer comes with wgpu's Direct3D 12
+    /// backend, which macOS builds leave out.)
+    #[cfg(windows)]
     #[test]
     #[ignore]
     fn dump_hlsl() {
