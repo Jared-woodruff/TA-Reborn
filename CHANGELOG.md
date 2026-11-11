@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.0.1 — 2026-11-11
+
+DirectX 12 works: the game no longer stays on its first loading screen there. Also a watch on
+the game's memory, and crash reports for graphics drivers.
 
 ### Added
 - A watch on the game's memory. Every minute of a battle the log records how much memory the
@@ -18,9 +21,10 @@
 - On DirectX 12 the game no longer stays on its first loading screen. Windows' own shader
   compiler took many minutes over the ground's and the water's shaders. The game now ships
   Microsoft's DirectX Shader Compiler (DXC), and the shaders are written to compile several times
-  faster with either compiler. On the computer it was measured on, the first battle opens in about
-  20 seconds on DirectX 12 (a minute and a half without DXC). The picture is the same as before,
-  and Vulkan draws it in the same time.
+  faster with either compiler. On the computer it was measured on, the first battle opens on
+  DirectX 12 in about half a minute the first time and in about 20 seconds after that (a minute
+  and a half without DXC). The picture is the same as before, and Vulkan draws it in the same
+  time.
 - In a window smaller than 1024×600 points, a battle's first frame after its loading screen was
   laid out for a window of 10,000 points: the classic interface drew its panel and its letters
   dozens of times too large for one frame, which a graphics card could refuse.
