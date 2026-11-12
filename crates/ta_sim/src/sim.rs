@@ -1144,6 +1144,7 @@ impl Sim {
             return;
         }
         let now_ms = self.now_ms();
+        let (ally_masks, max_id) = (self.ally_masks(), self.units.len() as i32);
         // The unit, and the others its script may ask where they are (its own slot reads as no
         // one: a script knows its unit as itself).
         let (before, rest) = self.units.split_at_mut(slot);
@@ -1160,8 +1161,9 @@ impl Sim {
                     std::cmp::Ordering::Equal => None,
                 };
                 let u = other?.as_ref()?;
-                Some(OtherUnit { pos: u.model_pos(types.get(u.type_id)), height: types.get(u.type_id).model.height })
+                Some(OtherUnit::of(u, types))
             };
+            let allies = ally_masks.get(unit.owner as usize).copied().unwrap_or(0);
             let mut host = UnitHost {
                 unit_type: types.get(unit.type_id),
                 requests: &mut self.host_requests,
@@ -1170,6 +1172,8 @@ impl Sim {
                 events: &mut self.events,
                 now_ms,
                 lookup: &lookup,
+                max_id,
+                allies,
             };
             f(&mut cob, &mut host);
             if let Some(u) = self.units[slot].as_mut() {
@@ -1187,8 +1191,10 @@ impl Sim {
     fn run_scripts(&mut self, types: &UnitTypes) {
         use rayon::prelude::*;
         let (now, tick) = (self.now_ms(), self.tick);
-        // Where everyone is, for scripts asking about another unit.
-        let others: Vec<Option<OtherUnit>> = self.units.iter().map(|u| u.as_ref().map(|u| OtherUnit { pos: u.model_pos(types.get(u.type_id)), height: types.get(u.type_id).model.height })).collect();
+        // Where everyone is (and whose, and how far built), for scripts asking about another
+        // unit.
+        let others: Vec<Option<OtherUnit>> = self.units.iter().map(|u| u.as_ref().map(|u| OtherUnit::of(u, types))).collect();
+        let (ally_masks, max_id) = (self.ally_masks(), self.units.len() as i32);
         let world = &self.world;
         let run = |(slot, u): (usize, &mut Option<Unit>)| -> Option<(Vec<SimEvent>, Vec<HostRequest>)> {
             let u = u.as_mut()?;
@@ -1206,8 +1212,9 @@ impl Sim {
             // (A script knows its own unit as itself, not among the others.)
             let lookup = |sid: i32| sid.checked_sub(1).and_then(|s| usize::try_from(s).ok()).filter(|&i| i != slot).and_then(|i| others.get(i).copied().flatten());
             let unit_type = types.get(u.type_id);
+            let allies = ally_masks.get(u.owner as usize).copied().unwrap_or(0);
             {
-                let mut host = UnitHost { unit_type, requests: &mut requests, unit: &mut *u, world, events: &mut events, now_ms: now, lookup: &lookup };
+                let mut host = UnitHost { unit_type, requests: &mut requests, unit: &mut *u, world, events: &mut events, now_ms: now, lookup: &lookup, max_id, allies };
                 cob.run(&mut host);
             }
             u.cob = Some(cob);
@@ -5343,6 +5350,13 @@ impl Sim {
 
     /// Same player or same team.
     #[inline]
+    /// Each player's allies, its own number among them (bit n: player n), as scripts ask
+    /// (`UNIT_ALLIED`).
+    fn ally_masks(&self) -> Vec<u64> {
+        let players = self.players.len().min(64);
+        (0..players as u8).map(|a| (0..players as u8).filter(|&b| self.allied(a, b)).fold(0u64, |mask, b| mask | 1 << b)).collect()
+    }
+
     pub fn allied(&self, a: u8, b: u8) -> bool {
         a == b || self.players.get(a as usize).zip(self.players.get(b as usize)).is_some_and(|(pa, pb)| pa.team == pb.team)
     }

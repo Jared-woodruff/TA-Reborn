@@ -128,8 +128,10 @@ pub const RECORD_VERSION: u32 = 46;
 /// a circle of its own; 86, an aircraft on patrol, attack-move or attack worn below two-thirds of
 /// its health breaks off for the nearest free repair deck (its orders held until it is mended),
 /// pads switched off are not used, pads mend only the aircraft on their decks, and a plane sent
-/// onto a pad looks for it as far as it flies on before stopping.
-pub const SIMULATION_VERSION: u32 = 86;
+/// onto a pad looks for it as far as it flies on before stopping; 87, scripts asking TA 3.1's
+/// questions about units by id (`MIN_ID`, `MAX_ID`, `MY_ID`, `UNIT_TEAM`,
+/// `UNIT_BUILD_PERCENT_LEFT`, `UNIT_ALLIED`, `UNIT_IS_ON_THIS_COMP`) are answered, not told 0.
+pub const SIMULATION_VERSION: u32 = 87;
 /// Records shorter than one year of simulated time are supported. Shared with the
 /// launcher's metadata reader so impossible durations cannot start endless save catch-up.
 pub const MAX_RECORD_TICKS: u64 = 30 * 3600 * 24 * 365;

@@ -2129,7 +2129,7 @@ fn walker() -> (UnitType, World) {
 fn call(u: &mut Unit, t: &UnitType, world: &World, name: &str) {
     let mut cob = u.cob.take().expect("a script");
     let (mut requests, mut events) = (Vec::new(), Vec::new());
-    let mut host = UnitHost { unit: &mut *u, requests: &mut requests, unit_type: t, world, events: &mut events, now_ms: 0, lookup: &|_| None };
+    let mut host = UnitHost { unit: &mut *u, requests: &mut requests, unit_type: t, world, events: &mut events, now_ms: 0, lookup: &|_| None, max_id: 1, allies: 1 };
     cob.call(&mut host, name, &[]).expect("the function runs");
     u.cob = Some(cob);
 }
@@ -2260,4 +2260,50 @@ fn no_auto_fire_units_are_set_to_hold_fire_when_finished() {
     assert_eq!(sim.unit(anti_nuke).unwrap().fire_state, 2, "an anti-nuke the exception");
     sim.on_completed(anti_nuke);
     assert_eq!(sim.unit(anti_nuke).unwrap().fire_state, 2, "finished too");
+}
+
+/// TA 3.1's questions about units by id, which the mods made for the patched engines ask (TA:
+/// Escalation in most of its scripts; TA's own never): the range of ids, the unit's own, and
+/// another unit's player, how much of it is left to build, whether it is an ally and whether
+/// this computer has it, answered from the battle (every unit is this computer's: each plays the
+/// whole battle). A unit asked about that is not there is 0 to every question.
+#[test]
+fn scripts_ask_about_units_by_id_as_ta_31_answered() {
+    use crate::cob::CobProgram;
+    use crate::host::value::*;
+    use ta_formats::cob::{CobFunction, CobScript, op};
+    let data = data_of(&[unit("PROBE", "")]);
+    let mut sim = sim_of(data, 3);
+    // Players 0 and 1 on one side, 2 their enemy.
+    sim.players[1].team = sim.players[0].team;
+    let questions = [
+        (MY_ID, 0), (MIN_ID, 0), (MAX_ID, 0),
+        (UNIT_TEAM, 2), (UNIT_TEAM, 3), (UNIT_ALLIED, 2), (UNIT_ALLIED, 3), (UNIT_ALLIED, 1),
+        (UNIT_BUILD_PERCENT_LEFT, 3), (UNIT_BUILD_PERCENT_LEFT, 1), (UNIT_IS_ON_THIS_COMP, 3), (UNIT_IS_ON_THIS_COMP, 99),
+        (UNIT_TEAM, 99),
+    ];
+    let mut script = CobScript { static_var_count: questions.len() as u32, ..Default::default() };
+    script.functions.push(CobFunction { name: "Ask".into(), offset: 0 });
+    for (i, (value, unit)) in questions.iter().enumerate() {
+        // static i = get value(unit, 0, 0, 0)
+        script.code.extend([op::PUSH_CONSTANT, *value as u32, op::PUSH_CONSTANT, *unit as u32]);
+        script.code.extend([op::PUSH_CONSTANT, 0, op::PUSH_CONSTANT, 0, op::PUSH_CONSTANT, 0, op::GET, op::POP_STATIC, i as u32]);
+    }
+    script.code.extend([op::PUSH_CONSTANT, 0, op::RETURN]);
+    Arc::get_mut(&mut sim.types).unwrap().types[0].script = Some(Arc::new(CobProgram::new(script, &[])));
+    let ours = sim.spawn_unit(0, 0, FxVec3::from_ints(100, 60, 100), 0, true).unwrap();
+    let ally = sim.spawn_unit(0, 1, FxVec3::from_ints(300, 60, 100), 0, true).unwrap();
+    let enemy = sim.spawn_unit(0, 2, FxVec3::from_ints(500, 60, 500), 0, false).unwrap();
+    assert_eq!([ours.script_id(), ally.script_id(), enemy.script_id()], [1, 2, 3], "ids are places from 1");
+    sim.with_script(ours, |cob, host| {
+        cob.call(host, "Ask", &[]).expect("the function runs");
+    });
+    let s = &sim.unit(ours).unwrap().cob.as_ref().unwrap().statics;
+    assert_eq!(&s[..2], [1, 1], "its own id; the lowest an id may be");
+    assert!(s[2] >= 3, "the highest an id may be covers every unit: {}", s[2]);
+    assert_eq!(&s[3..5], [1, 2], "the ally's player, the enemy's");
+    assert_eq!(&s[5..8], [1, 0, 1], "the ally is, the enemy is not, the unit is its own");
+    assert_eq!(&s[8..10], [100, 0], "the enemy's frame is all to build, the unit is finished");
+    assert_eq!(&s[10..12], [1, 0], "a unit there is this computer's; none at all is not");
+    assert_eq!(s[12], 0);
 }

@@ -469,6 +469,18 @@ Escalation also replaces `fx.gaf`'s Explode2-Explode4 and Nuke1 with shield bubb
   less than 32,768 px apart on a map of any size. `GROUND_HEIGHT(packed)` reads its point
   back as the one nearest the unit asking. Other values handed to scripts saturate at the
   `i32` range instead of wrapping (`HYPOT` squares in `i128`, `VETERAN_LEVEL` = kills × 100).
+* TA 3.1's questions about units by id (`exthead.h`, as the mods' own script sources define
+  them; none of TA's 841 scripts asks them): `MIN_ID` 69 and `MAX_ID` 70, the lowest and highest
+  ids a unit may have; `MY_ID` 71; `UNIT_TEAM` 72 (the unit's player),
+  `UNIT_BUILD_PERCENT_LEFT` 73, `UNIT_ALLIED` 74 and `UNIT_IS_ON_THIS_COMP` 75 ("is unit owned by
+  the local computer"), each of the unit whose id is the first argument (none: the unit
+  itself). A script id is the unit's place plus one. The mods made for the patched engines go
+  through every id with them: Total Mayhem's geothermal plants find their upgrade module (by its
+  height, at their own position, finished) and take it on, but only `if get
+  UNIT_IS_ON_THIS_COMP(...)`, as TA ran each player's units on that player's computer and the
+  change was made there alone; TA: Escalation asks them in 326 of its 550 scripts. Every
+  computer plays the whole battle here, so every unit is each one's own: the change is made in
+  every copy alike. Spring's engine took the same numbers up to 74; its 75 is `MAX_SPEED`.
 * Aiming, as the shipped `Aim*` scripts expect it (`crates/ta_sim/src/combat.rs`;
   `tests/play_review.rs` plays the units named here):
   * A script ends an aim it no longer needs itself: every `Aim*` starts `signal SIG_AIM;

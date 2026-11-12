@@ -58,6 +58,12 @@
   launcher's Mods page lists each one under IN YOUR TOTAL ANNIHILATION FOLDER: ADD AS A MOD
   adds it to your mods, its files linked from there (copied when the mods folder is on
   another drive) and the game's folder left as it is.
+- Units' scripts asking TA 3.1's questions about other units (the range of unit ids, a unit's own id,
+  another's player, how much of it is left to build, whether it is an ally) were told 0 to each.
+  TA: Escalation asks them in most of its scripts and Total Mayhem for its upgrades (a geothermal
+  plant finds its upgrade module by them), so what those scripts do never happened. They are now
+  answered as TA 3.1 answered them. TA's own scripts never ask them: the original game plays as
+  before.
 - On the Skins page, at some window widths and interface sizes, "Use the same skin for both
   sides" was squeezed into a column a letter wide, or the search and the skins below it went
   out of reach. It now goes on a line of its own when it does not fit beside the skins.
