@@ -41,10 +41,14 @@ impl UnitStudio {
             backend_options: crate::gpu::backend_options(),
             memory_budget_thresholds: Default::default(), display: None,
         });
+        // (The card the game draws on, as `Gpu::new` asks for it: low power took a computer's
+        // integrated graphics beside its graphics card, and their driver, not the game's.)
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::LowPower, compatible_surface: None,
+            power_preference: wgpu::PowerPreference::HighPerformance, compatible_surface: None,
             force_fallback_adapter: false, apply_limit_buckets: false,
         })).context("opening the preview graphics adapter")?;
+        let info = adapter.get_info();
+        log::info!("unit preview GPU: {} ({:?}, {:?}, driver {})", info.name, info.backend, info.device_type, info.driver_info);
         let supported = adapter.limits();
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("unit preview device"),

@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- The Skins page's turning 3D preview stopped on its second frame; it turns again.
+- The skin preview now draws on the same graphics card as the game. On a computer with
+  integrated graphics beside its graphics card it drew on the integrated graphics, whose driver
+  could crash the launcher.
+- When the skin preview cannot draw, the Skins page no longer opens a new graphics device for
+  every picture; Retry preview tries again.
+- If the launcher crashes in a graphics driver, it now saves `launcher-crash.txt` naming the
+  driver and says so, as the game does.
+- Opening a skin whose scale has more than two decimals no longer marks it as changed.
+
 ## 1.0.3 — 2026-11-12
 
 Battles now end in dark clouds at the map's edge, and the camera zooms out no further than the

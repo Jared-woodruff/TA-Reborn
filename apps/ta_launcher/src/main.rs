@@ -25,6 +25,7 @@ mod library;
 mod moddb;
 mod modlist;
 mod music_control;
+mod native_crash;
 mod maps;
 mod mod_library;
 mod news;
@@ -187,6 +188,8 @@ fn main() {
         log::info!("{note}");
     }
     let crash_path = log_dir.join("launcher-crash.txt");
+    // (A driver's own fault, which no panic hook sees: named in the same file.)
+    native_crash::report_native_crashes(crash_path.clone(), unattended);
     std::panic::set_hook(Box::new(move |info| {
         // (A damaged music file, caught where it was read: it is skipped, nothing crashed.)
         if ta_audio::guarded_panic() {

@@ -84,6 +84,9 @@ struct Shared {
     ctx: Mutex<Option<egui::Context>>,
     ready: Condvar,
     stop: AtomicBool,
+    /// The player asked to try again: the worker may open a graphics device again after one
+    /// failed (`State::broken`).
+    retry: AtomicBool,
 }
 
 #[derive(Default)]
@@ -228,7 +231,9 @@ impl Preview {
         let one_row = ui.available_width() - (26.0 + words + reset + 3.0 * 10.0) >= figure + 140.0;
         let mut degrees = self.yaw.to_degrees().rem_euclid(360.0);
         let mut angle = |ui: &mut Ui, room: f32| ui.allocate_ui(egui::vec2(room.max(1.0), widgets::CONTROL_HEIGHT), |ui| {
-            widgets::value_slider(ui, egui::Slider::new(&mut degrees, 0.0..=360.0).suffix("°").fixed_decimals(0), figure)
+            // (Clamped as edited only: always, egui rounds the value to its whole degrees every
+            // frame and calls that a change, which paused the turning preview on its second.)
+            widgets::value_slider(ui, egui::Slider::new(&mut degrees, 0.0..=360.0).clamping(egui::SliderClamping::Edits).suffix("°").fixed_decimals(0), figure)
         }).inner;
         let mut slider = None;
         let label = ui.horizontal(|ui| {
@@ -295,6 +300,7 @@ impl Preview {
 
     fn retry(&mut self) {
         self.error = None;
+        if let Some(shared) = &self.shared { shared.retry.store(true, Ordering::Relaxed); }
         // An old image can remain after a later GPU/readback failure. A paused or reduced-
         // motion preview still needs a fresh request when the player explicitly retries.
         self.redraw = true;
@@ -500,6 +506,12 @@ enum Loaded {
 struct State {
     source: Option<(String, Source)>,
     studio: Option<ta_render::preview::UnitStudio>,
+    /// Why the graphics device could not be had (it would not open, or its driver failed as it
+    /// drew): every picture fails at once with this until the player retries (or the worker,
+    /// idle, starts afresh), rather than a new device opened, and failing, for each thumbnail.
+    broken: Option<String>,
+    /// How a device is opened (tests: one that fails).
+    open: Option<fn() -> anyhow::Result<ta_render::preview::UnitStudio>>,
     loaded: Option<Loaded>,
     names: Vec<String>,
     slots: Arc<SlotImages>,
@@ -515,8 +527,33 @@ impl State {
     }
 
     fn studio(&mut self) -> anyhow::Result<()> {
-        if self.studio.is_none() { self.studio = Some(ta_render::preview::UnitStudio::new()?); }
+        if let Some(error) = &self.broken { anyhow::bail!("{error}"); }
+        if self.studio.is_none() {
+            match self.open.unwrap_or(ta_render::preview::UnitStudio::new)() {
+                Ok(studio) => self.studio = Some(studio),
+                Err(error) => {
+                    let error = format!("{error:#}");
+                    self.broken = Some(error.clone());
+                    anyhow::bail!(error);
+                }
+            }
+        }
         Ok(())
+    }
+
+    /// A picture's outcome: a panic is the driver failing as it drew, and the device is broken
+    /// (`broken`); any failure drops the device and the skin it holds (opened again next time, as
+    /// after a device lost, unless broken).
+    fn settle<T>(&mut self, outcome: std::thread::Result<anyhow::Result<T>>, driver: &str) -> anyhow::Result<T> {
+        let result = outcome.unwrap_or_else(|_| {
+            self.broken = Some(driver.to_string());
+            Err(anyhow::anyhow!(driver.to_string()))
+        });
+        if result.is_err() {
+            self.studio = None;
+            self.loaded = None;
+        }
+        result
     }
 
     fn paint(&mut self, request: &Request, shared: &Shared) -> anyhow::Result<Pictures> {
@@ -642,9 +679,9 @@ fn worker(shared: Arc<Shared>) {
         let request = pending.take();
         drop(pending);
         if let Some(request) = request {
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| state.paint(&request, &shared)))
-                .unwrap_or_else(|_| Err(anyhow::anyhow!("the graphics driver could not render this preview")));
-            if result.is_err() { state.studio = None; state.loaded = None; }
+            if shared.retry.swap(false, Ordering::Relaxed) { state.broken = None; }
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| state.paint(&request, &shared)));
+            let result = state.settle(outcome, "the graphics driver could not render this preview");
             *shared.reply.lock().unwrap_or_else(|e| e.into_inner()) = Some(Reply { key: request.key, pictures: result.map_err(|e| e.to_string()) });
             request.ctx.request_repaint();
             continue;
@@ -653,9 +690,8 @@ fn worker(shared: Arc<Shared>) {
         // models), before the next preview makes its own again.
         let stopped = take_each(&shared.thumbs, |thumb| {
             if shared.stop.load(Ordering::Relaxed) { return std::ops::ControlFlow::Break(()); }
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| state.thumbnail(&thumb, &shared)))
-                .unwrap_or_else(|_| Err(anyhow::anyhow!("the graphics driver could not render this thumbnail")));
-            if result.is_err() { state.studio = None; state.loaded = None; }
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| state.thumbnail(&thumb, &shared)));
+            let result = state.settle(outcome, "the graphics driver could not render this thumbnail");
             shared.made.lock().unwrap_or_else(|e| e.into_inner()).push((thumb.key, result.map_err(|e| e.to_string())));
             if let Some(ctx) = shared.ctx.lock().unwrap_or_else(|e| e.into_inner()).as_ref() { ctx.request_repaint(); }
             std::ops::ControlFlow::Continue(())
@@ -771,6 +807,67 @@ mod tests {
         let fourth = show(&mut preview, None, 1, 2).expect("another skin opened");
         assert_ne!(third, fourth);
         assert!(preview.textures.is_empty(), "the previous skin's paint is not shown as the new one");
+    }
+
+    /// A turning preview, shown frame after frame with nothing touched, keeps turning: its angle
+    /// slider, showing whole degrees, rounded the angle every frame and called that a change,
+    /// which paused it on its second frame.
+    #[test]
+    fn a_turning_preview_is_not_paused_by_its_own_slider() {
+        let ctx = egui::Context::default();
+        crate::theme::install(&ctx);
+        let reference = Reference { game_dir: Some("game".into()), enabled: Vec::new(), available: Vec::new() };
+        let shared = Arc::new(Shared::default());
+        let mut preview = Preview::default();
+        preview.shared = Some(shared.clone());
+        preview.key = Some(Key { source: source_key(&reference), root: PathBuf::new(), skin: "reborn".into(), revision: 0, textures: 0, units: Default::default() });
+        preview.textures = vec![ctx.load_texture("cached", ColorImage::filled([1, 1], egui::Color32::WHITE), TextureOptions::LINEAR)];
+        let mut requests = 0;
+        for frame in 0..60 {
+            let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(500.0, 400.0))), time: Some(frame as f64 / 15.0), ..Default::default() };
+            ctx.run_ui(input, |ui| preview.show(ui, reference.clone(), PathBuf::new(), Paint::Saved("reborn".into()), 0, &Default::default(), 200.0)).drop_without_applying_deltas();
+            if shared.request.lock().unwrap().take().is_some() { requests += 1; }
+            // (No worker: as if each frame's picture had come back.)
+            preview.waiting = false;
+        }
+        assert!(!preview.paused, "nothing paused it, yet it is paused at {:.2} degrees", preview.yaw.to_degrees());
+        assert!(preview.yaw.to_degrees() > 30.0, "4 s turn it about 55 degrees: {:.2}", preview.yaw.to_degrees());
+        assert!(requests > 10, "a picture for each step it turns: {requests} in 60 frames");
+    }
+
+    /// A graphics device that will not open is tried once, not again for every thumbnail, until
+    /// the player retries; then it is tried once more.
+    #[test]
+    fn a_device_that_fails_is_not_opened_for_every_thumbnail() {
+        static OPENED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        fn failing() -> anyhow::Result<ta_render::preview::UnitStudio> {
+            OPENED.fetch_add(1, Ordering::Relaxed);
+            anyhow::bail!("no adapter")
+        }
+        let mut state = State { open: Some(failing), ..Default::default() };
+        for _ in 0..5 {
+            assert!(state.studio().is_err());
+        }
+        assert_eq!(OPENED.load(Ordering::Relaxed), 1, "opened once for five pictures");
+        // (A driver failing as it draws is as broken.)
+        state.broken = None;
+        let failed: anyhow::Result<()> = state.settle(Err(Box::new("driver")), "the driver failed");
+        assert!(failed.is_err() && state.broken.is_some());
+        assert!(state.studio().is_err());
+        assert_eq!(OPENED.load(Ordering::Relaxed), 1, "a broken device is not opened again");
+        // Retry: tried once more.
+        state.broken = None;
+        assert!(state.studio().is_err());
+        assert_eq!(OPENED.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn retry_lets_the_worker_open_a_device_again() {
+        let shared = Arc::new(Shared::default());
+        let mut preview = Preview::default();
+        preview.shared = Some(shared.clone());
+        preview.retry();
+        assert!(shared.retry.load(Ordering::Relaxed), "the worker is told");
     }
 
     #[test]
