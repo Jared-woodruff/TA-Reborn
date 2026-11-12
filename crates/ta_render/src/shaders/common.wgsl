@@ -112,7 +112,9 @@ struct Frame {
     rt: vec4<f32>,
     // The liquid below sea level (see water.rs): x = 1 for acid (0 for water), y = 1 in space
     // (perspective camera with the sky: the map's void cells drawn as nothing, the sky all
-    // round; see sky::WorldSky::space), zw = unused
+    // round; see sky::WorldSky::space), z = 1 in a battle (perspective camera with the sky, not
+    // in space: nothing beyond the map, the sky pass's sea of dark clouds under it; see
+    // sky::Beyond::Clouds), w = unused
     liquid: vec4<f32>,
     // The world's colour grade (WorldGrade in terrain_detail.rs, see `world_grade`): x the gain,
     // y the contrast, z the saturation, w the key after the gain; the shade's tint (w how

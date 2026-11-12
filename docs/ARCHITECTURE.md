@@ -579,7 +579,14 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   the eye over the ground). `Camera::place` puts the perspective eye anywhere, looking any way
   (straight up and down included: the view's up is square to the yaw's right), with a near
   plane of its own (`Camera::near`) for an eye low over the ground; the view's bounds take in
-  what stands and flies round an eye that looks up (staged scenes' free camera).
+  what stands and flies round an eye that looks up (staged scenes' free camera). The player's
+  camera in a battle (`State::players_view`: not a staged scene's, a film's, the highlights' or
+  photo mode's) zooms out only until the whole map is in view (`zoom_out_limit`; on the largest
+  maps 0.08 pixels a unit on a window 1,080 high, scaled with the window's height, so every
+  screen takes in as much), and zoomed out over more than half the map in a direction its focus
+  keeps away from that direction's edges, at the middle once the view takes in all of it
+  (`view_margins`: the view's extent at the focus turned with the yaw, not foreshortened by the
+  pitch), so the map fills the view rather than the dark beyond it.
 * **Pass order**: (ray tracing: acceleration structures) →
   (the relief's shadows, when the light moved or heights changed) → (ray tracing: depth prepass, trace and blur) → shadow map → (ray tracing) the 3D features' shadow map → (perspective) cloud shadow map and contact occlusion map
   around the view → particle simulation (compute) → (perspective, water in view) the
@@ -1418,7 +1425,16 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   as much of it sea, its coasts wandering by noise where the edge is part land and part sea,
   its land as high and as rugged, in patches of those colours; as the far land takes over,
   the mirror image is read ever more coarsely, so land crossing the edge shrinks back from its
-  coasts rather than ending on a line. A metal or urban world's far land is blocks of plating
+  coasts rather than ending on a line. In a battle none of this ground is drawn
+  (`SkySettings::beyond`, `Beyond::Clouds`, which the game sets outside its films: the menu's,
+  a staged scene's, the credits'; the map editor too; `TA_BEYOND=clouds|land` for captures): no
+  skirt, no water beyond the map, and below the horizon the sky pass draws a sea of dark clouds
+  160 units under the sea level instead (`beyond_void` in sky.wgsl, the frame's `liquid.z`):
+  billows drifting slowly with a slower murk under them, band-limited by the pixel footprint as
+  the sky's clouds are, lit faintly from above, shaded under the map's edges, a dull glow between
+  them on a lava world, merging far out into an even dark that lies along the horizon as a bank.
+  The battlefield stands out, as in Supreme Commander; zoomed out, the land beyond had filled
+  most of the screen, shimmering. A metal or urban world's far land is blocks of plating
   and the moon's a field of craters (its regolith's detail map enlarged), lit by the sun
   (`far_surface` in terrain.wgsl). The terrain and water shaders are each built twice
   (`FAR_LAND`, `terrain::shader_source_for`): the map's own pipelines without any of this, the

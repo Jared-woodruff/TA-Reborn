@@ -27,6 +27,12 @@
 //!   Water and lava continue over it at sea level (the water pass draws the same mesh
 //!   flattened, with the far shorelines resolved per pixel); painted voids stay empty (their
 //!   mist continues, no surface is drawn), as on the map.
+//! * **In a battle** ([`Beyond::Clouds`], which the game sets outside its films) none of that
+//!   ground or water is drawn: below the horizon the sky pass draws a sea of dark clouds some
+//!   way under the map instead (`beyond_void` in `sky.wgsl`, the frame uniform's `liquid.z`),
+//!   drifting slowly, faintly lit from above, shaded along the map's edges, merging far out
+//!   into an even dark that lies along the horizon as a bank. The battlefield stands out, as
+//!   in Supreme Commander, and nothing drawn beyond it can shimmer or fight over depth.
 //! * Everything above is off in the classic projection, which never shows the horizon: the
 //!   frame uniform's `sky.w` flag is 0 there and every shader keeps its original path.
 //!
@@ -65,6 +71,18 @@ pub struct SkySettings {
     /// How far the ground continues beyond the map edges, in world units; it dissolves into
     /// the horizon haze over the outer half of this distance. 0 draws the sky only.
     pub horizon_extent: f32,
+    /// What lies beyond the map's edges.
+    pub beyond: Beyond,
+}
+
+/// What lies beyond the map's edges (perspective camera with the sky).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Beyond {
+    /// The land and sea carried on to the horizon (see the module's notes): the films' world.
+    #[default]
+    Land,
+    /// A sea of dark clouds under the map, the battlefield the focus: a battle's.
+    Clouds,
 }
 
 impl Default for SkySettings {
@@ -77,6 +95,7 @@ impl Default for SkySettings {
             cloud_speed: 30.0,
             sun_size: 0.7,
             horizon_extent: 60000.0,
+            beyond: Beyond::Land,
         }
     }
 }

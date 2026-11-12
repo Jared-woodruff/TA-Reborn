@@ -83,8 +83,10 @@ impl View {
 
     fn set_world(&mut self, renderer: &mut Renderer, planet: &str) {
         // (Its world's ground, look, grade and sky, as in a battle, not the last battle's; its
-        // tiles exactly as they are painted with.)
+        // tiles exactly as they are painted with; the sea of dark clouds beyond its edges, as a
+        // battle has, so the map's bounds are plain.)
         renderer.set_ground_world(planet, false);
+        renderer.lighting.sky.beyond = ta_render::Beyond::Clouds;
         // Lava planets' seas are lava, acid planets' acid; elsewhere the painted art decides (as
         // in a battle).
         renderer.lighting.water.fluid = None;
