@@ -5,7 +5,7 @@ members = ["crates/*", "apps/*"]
 exclude = ["third_party/naga"]
 
 [workspace.package]
-version = "1.0.2"
+version = "1.0.3"
 edition = "2024"
 rust-version = "1.95"
 authors = ["TA Reborn contributors"]
