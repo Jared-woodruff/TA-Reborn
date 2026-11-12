@@ -45,6 +45,19 @@
   a page and the orders under them, and were squeezed onto TA's 480. The side panel is now laid
   out on the screen a mod's menus were made for: every page with all twelve places, the arrows
   to turn them and the orders, as in the mods' own engines. TA's own menus are unchanged.
+- TA: Escalation, Total Mayhem and the other mods made for patched engines did not load when
+  dropped into a mods folder by hand (an archive alone, or a folder without the `mod.toml` the
+  launcher writes): their units, menus and weapons are in folders of their own (`unitse`,
+  `guim`, `weaponm`...), which were not read. TA: Escalation played as the original game, Total
+  Mayhem without its menus or weapons. Such a mod's own folders are now found from what it holds,
+  as the launcher's installer finds them.
+- Mods installed into Total Annihilation's own folder, as their own installers had you do,
+  were loaded as part of the original game: TA: Escalation's models and scripts took the place
+  of TA's own units' while Escalation itself did not load, and Total Mayhem's units came
+  without their menus or weapons. They are now left out of the original game, and the
+  launcher's Mods page lists each one under IN YOUR TOTAL ANNIHILATION FOLDER: ADD AS A MOD
+  adds it to your mods, its files linked from there (copied when the mods folder is on
+  another drive) and the game's folder left as it is.
 - On the Skins page, at some window widths and interface sizes, "Use the same skin for both
   sides" was squeezed into a column a letter wide, or the search and the skins below it went
   out of reach. It now goes on a line of its own when it does not fit beside the skins.

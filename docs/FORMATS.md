@@ -94,6 +94,13 @@ These limits also bound repeated pointers to the same underlying bytes:
 
   Their engines read only those, so the originals' are hidden beneath (Talon's `unitTAL`
   holds ARM and CORE as well as TAL).
+* Their installers put them in TA's own folder, beside TA's archives: TA: Escalation Gold
+  10.2.0 as `TAESC.gp3`, `T2ESC.ufo`, `T3ESC.ufo`, `T4ESC1.ufo` (sounds, models and animations
+  only), `T4ESC2.ufo`, `T5ESC.ufo`, `TXESC.ufo` and `TADEMO.ufo`; Total Mayhem 11.3 as
+  `mayhem.gp3` and `TADemoM.ufo`, with its own `TotalA.exe` over TA's. Read by TA's own engine,
+  their folders of their own were never seen, but their shared folders were: TA: Escalation's
+  `objects3d` and `scripts` hold models and scripts named after TA's own units (`ARMCOM`,
+  `ARMSOLAR`, `CORAK`...), and Total Mayhem's archive holds TA's `units` folder (504 units).
 
 ## TDF family (`.tdf .fbi .gui .ota`)
 

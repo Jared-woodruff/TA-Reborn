@@ -497,6 +497,12 @@ fn main() -> Result<()> {
             for d in vfs.subdirs("") {
                 println!("  {d:<16} {:>6} files", vfs.list(&d, None, true).len());
             }
+            // Mods their installers put in the game's folder: left out of the original game.
+            for m in ta_vfs::mods::game_folder_mods(&install.root) {
+                let archives: Vec<String> = m.archives.iter().filter_map(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).collect();
+                let folders: Vec<String> = m.rename.iter().map(|(from, to)| format!("{from} as {to}")).collect();
+                println!("mod in the game's folder, left out: {} (id {}): {}; reads {}", m.name, m.id, archives.join(", "), folders.join(", "));
+            }
         }
         Cmd::Find { dir, ext, recursive } => {
             let (_, vfs) = open_vfs()?;

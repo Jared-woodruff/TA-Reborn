@@ -3618,7 +3618,26 @@ menu's briefing replays the narration through `MusicRequest::Narration`.
   a mod first hides what the layers beneath have in the folders it replaces, then mounts
   its files under TA's names. An archive of a mod that cannot be read (the empty
   placeholders some ship to blank out the original's) is skipped with a warning; named like
-  one of the install's, it still replaces that one.
+  one of the install's, it still replaces that one. A mod without a manifest (an archive
+  dropped into a mods folder by hand, a folder of them, loose folders) has its renamed folders
+  found from what it holds as the installer finds a package's (`mods::implicit_renames`,
+  `package::detected_renames`): before, TA: Escalation dropped in that way played as the original
+  game and Total Mayhem without its menus or weapons.
+* **Mods in the original game's folder** (`ta_vfs::mods::game_folder_mods`): the patched
+  engines' mods were installed into TA's own folder by their installers, their archives beside
+  TA's. Mounted with the original game they played neither (TA: Escalation's models and scripts
+  in place of TA's own units' with nothing of Escalation's own; Total Mayhem's units with TA's
+  menus and no weapons). An archive there that is none of the original releases'
+  (`install::ARCHIVES`) and uses folders of its own in place of TA's is a mod's; archives
+  sharing such a folder are one mod's, and those TA Reborn knows by name (`KNOWN_ARCHIVES`: TA:
+  Escalation's eight, Total Mayhem's two, under the catalogue's ids) are the mod's whatever they
+  hold. `mods::mount` always leaves them out of the original game (`Mounted::game_folder_mods`).
+  Unit packs and maps with TA's own folders stay, as TA's engine read them. The launcher's Mods
+  page offers each one not installed (IN YOUR TOTAL ANNIHILATION FOLDER, ADD AS A MOD:
+  `getmods::Source::GameFolder`): its archives are hard-linked into a work folder (copied where a
+  link cannot be made, across drives), then published as any install is, the game's folder
+  left as it is (`package::game_folder_plan`, `getmods::link_planned`); a catalogue mod keeps the
+  catalogue's name, team and page, its version unknown.
 * **Installing a downloaded mod** (`ta_vfs::package`, used by the launcher and by
   `ta-tools mod-install`): `Unpacker` unpacks the zip, rar or 7z with 7-Zip when installed,
   else Windows' own tar (bsdtar stops without a word inside some RARs, so an unpacked total

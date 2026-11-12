@@ -190,7 +190,9 @@ impl Vfs {
     }
 
     /// Mounts an original TA install directory (archives first, loose files underneath), whole:
-    /// the game without mods. With mods, [`mods::mount`] mounts it, less what they replace.
+    /// the game without mods. With mods, [`mods::mount`] mounts it, less what they replace. The
+    /// archives of mods made for other engines its folder holds are never the original game's
+    /// ([`mods::game_folder_mods`]).
     pub fn mount_game_dir(&mut self, dir: &Path, layer: &str) -> Result<()> {
         self.mount_game_dir_without(dir, layer, &[])
     }
@@ -198,6 +200,16 @@ impl Vfs {
     /// [`Self::mount_game_dir`] but the archives named in `left_out` (file names, in any case):
     /// those the mods on replace ([`mods::replaced_archives`]).
     pub fn mount_game_dir_without(&mut self, dir: &Path, layer: &str, left_out: &[String]) -> Result<()> {
+        let mut left_out = left_out.to_vec();
+        for m in mods::game_folder_mods(dir) {
+            left_out.extend(m.archives.iter().filter_map(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()));
+        }
+        self.mount_install(dir, layer, &left_out)
+    }
+
+    /// The install at `dir`, but the archives named in `left_out` (which [`mods::mount`] works
+    /// out: those the mods on replace, and those of mods in the game's folder).
+    pub(crate) fn mount_install(&mut self, dir: &Path, layer: &str, left_out: &[String]) -> Result<()> {
         self.mount_loose(dir, layer, true)?;
         self.mount_archives_without(dir, layer, &Renames::default(), left_out)?;
         Ok(())
@@ -305,7 +317,7 @@ impl Vfs {
         archives.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| b.1.cmp(&a.1)));
         for (_, name, path) in archives {
             if left_out.iter().any(|out| out.to_lowercase() == name.to_lowercase()) {
-                log::info!("left out {} [{layer}]: a mod on replaces it", path.display());
+                log::info!("left out {} [{layer}]", path.display());
                 continue;
             }
             // (One unreadable archive, e.g. an empty placeholder some mods ship to blank out
@@ -465,7 +477,7 @@ pub fn archive_files(dir: &Path) -> Result<Vec<PathBuf>> {
         .collect())
 }
 
-fn collect_files(root: &Path, dir: &Path, skip_root_files: bool, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
+pub(crate) fn collect_files(root: &Path, dir: &Path, skip_root_files: bool, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
     if dir.strip_prefix(root).map_or(0, |p| p.components().count()) > 64 {
         return Err(std::io::Error::other("loose content nesting exceeds 64 levels"));
     }

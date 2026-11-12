@@ -51,6 +51,10 @@ pub enum Source {
     Package { path: PathBuf, id: String, name: String },
     /// A classic TA archive, kept as a single file in the mods folder.
     Classic { path: PathBuf, id: String, name: String },
+    /// A mod its own installer put in the original game's folder, made for an engine of its own
+    /// (`ta_vfs::mods::game_folder_mods`): installed as a mod with its archives linked from there
+    /// (copied where a link cannot be made), the game's folder left as it is.
+    GameFolder(ta_vfs::mods::GameFolderMod),
 }
 
 impl Source {
@@ -59,6 +63,7 @@ impl Source {
         match self {
             Source::Catalogue(entry, _) => entry.id,
             Source::Package { id, .. } | Source::Classic { id, .. } => id,
+            Source::GameFolder(found) => &found.id,
         }
     }
 
@@ -253,7 +258,7 @@ impl Installer {
         if let Ok(mut c) = self.cancelled.lock() {
             c.retain(|x| *x != id);
         }
-        if let Source::Package { name, .. } | Source::Classic { name, .. } = &source {
+        if let Source::Package { name, .. } | Source::Classic { name, .. } | Source::GameFolder(ta_vfs::mods::GameFolderMod { name, .. }) = &source {
             self.packages.insert(id.clone(), name.clone());
         } else {
             self.packages.remove(&id);
@@ -335,6 +340,7 @@ fn install(
             return Ok((0, 0, id.clone()));
         }
         Source::Catalogue(entry, from) => return install_catalogue(entry, from.as_deref(), mods_dir, cache, send, cancelled, running, game),
+        Source::GameFolder(found) => return install_from_game_folder(found, mods_dir, cache, send, cancelled, running, game),
         Source::Package { path, id, name } => {
             let manifest = ta_vfs::mods::ModManifest {
                 id: id.clone(),
@@ -401,6 +407,74 @@ fn install(
         log::info!("installed {} {} ({} units, {} maps; left out: {})", manifest.name, manifest.version, plan.units, plan.maps, plan.skipped.join(", "));
         Ok((plan.units, plan.maps, manifest.id))
     })()
+}
+
+/// Installs a mod found in the original game's folder as a mod of its own: its archives linked
+/// into a work folder from the game's (copied where they cannot be: another drive), then published
+/// as any install is. The catalogue's mods keep their name, team and page; which release the
+/// game's folder holds is not known, so neither is its version.
+fn install_from_game_folder(
+    found: &ta_vfs::mods::GameFolderMod,
+    mods_dir: &Path,
+    cache: &Path,
+    send: &dyn Fn(Stage),
+    cancelled: &dyn Fn() -> bool,
+    running: &Mutex<Option<moddb::Stopper>>,
+    game: &AtomicBool,
+) -> Result<(usize, usize, String), Failure> {
+    let entry = catalogue::get(&found.id);
+    let manifest = ta_vfs::mods::ModManifest {
+        id: found.id.clone(),
+        name: entry.map_or_else(|| found.name.clone(), |entry| entry.name.to_string()),
+        version: String::new(),
+        description: entry.map_or_else(String::new, |entry| entry.pitch.to_string()),
+        authors: entry.map(|entry| vec![entry.team.to_string()]).unwrap_or_default(),
+        depends: Vec::new(),
+        load_after: Vec::new(),
+        source: entry.map_or_else(String::new, |entry| entry.page()),
+        rename: found.rename.clone(),
+        replaces: Vec::new(),
+    };
+    if !ta_vfs::package::safe_component(&manifest.id) || !(1..=64).contains(&manifest.id.chars().count()) {
+        return Err(ta_ui::i18n::t("invalid mod id").to_string().into());
+    }
+    let plan = ta_vfs::package::game_folder_plan(found);
+    if plan.archives.is_empty() || plan.archives.iter().any(|path| !path.is_file()) {
+        return Err(ta_ui::i18n::tf("{name} is no longer in the game's folder", &[("name", &manifest.name)]).into());
+    }
+    let total: u64 = plan.archives.iter().map(|path| std::fs::metadata(path).map_or(0, |m| m.len())).sum();
+    send(Stage::Copying { got: 0, total });
+    let workspace = InstallWorkspace::create(&cache.join("unpack"))?;
+    let temp = workspace.0.join("content");
+    let linked = link_planned(&plan, &temp, &|got| send(Stage::Copying { got, total }), cancelled)
+        .map_err(|e| if e.kind() == std::io::ErrorKind::Interrupted { Failure::Cancelled } else { Failure::Error(e.to_string()) })?;
+    if cancelled() {
+        return Err(Failure::Cancelled);
+    }
+    publish_install(&linked, &manifest, mods_dir, cancelled, running, game)?;
+    log::info!("added {} from the game's folder ({} units, {} maps; {})", manifest.name, plan.units, plan.maps,
+        plan.archives.iter().filter_map(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).collect::<Vec<_>>().join(", "));
+    Ok((plan.units, plan.maps, manifest.id))
+}
+
+/// The plan's archives in `to` (made): each a hard link to the original (the same file in two
+/// folders, taking no more room), or a copy where the disk makes none (another drive); `progress`
+/// told the bytes done.
+fn link_planned(plan: &ta_vfs::package::Plan, to: &Path, progress: &dyn Fn(u64), cancelled: &dyn Fn() -> bool) -> std::io::Result<ta_vfs::package::Plan> {
+    std::fs::create_dir_all(to)?;
+    let mut done = 0u64;
+    let mut archives = Vec::new();
+    for from in &plan.archives {
+        if cancelled() { return Err(std::io::ErrorKind::Interrupted.into()); }
+        let target = to.join(from.file_name().unwrap_or_default());
+        if std::fs::hard_link(from, &target).is_err() {
+            copy_file(from, &target, cancelled)?;
+        }
+        done += std::fs::metadata(&target).map_or(0, |m| m.len());
+        progress(done);
+        archives.push(target);
+    }
+    Ok(ta_vfs::package::Plan { root: to.to_path_buf(), archives, ..plan.clone() })
 }
 
 /// Close must not terminate the process between moving the previous version aside
@@ -2009,5 +2083,43 @@ mod tests {
         assert_eq!(wait(&mut installer, "second"), Stage::Cancelled);
         assert!(!dir.join("mods").join("second").exists());
         let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+#[cfg(test)]
+mod game_folder_tests {
+    use super::*;
+
+    /// A mod its own installer put in the original game's folder is added as a mod of its own:
+    /// its archive in the mod's folder (linked: the same file), the game's folder left as it is,
+    /// the folders of its own in its manifest, and the catalogue's name, team and page for a mod
+    /// the catalogue has (which release it is, no one can say).
+    #[test]
+    fn a_mod_in_the_game_folder_is_added_with_its_files_left_there() {
+        let dir = std::env::temp_dir().join(format!("ta_game_folder_install_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let game = dir.join("game");
+        ta_vfs::test_archive::write(&game.join("totala1.hpi"), &[("units/armcom.fbi", b"base")]);
+        ta_vfs::test_archive::write(&game.join("mayhem.gp3"), &[("units/armcom.fbi", b"mayhem"), ("guim/armcom1.gui", b"mayhem"), ("weaponm/weapons.tdf", b"mayhem")]);
+        let found = ta_vfs::mods::game_folder_mods(&game);
+        assert_eq!(found.len(), 1, "TA's own archive is no mod's");
+        let (mods, cache) = (dir.join("mods"), dir.join("cache"));
+        let result = install(&Source::GameFolder(found[0].clone()), &mods, &cache, &|_| {}, &|| false, &Mutex::default(), &AtomicBool::new(false));
+        assert_eq!(result.unwrap(), (1, 0, "totalmayhem".to_string()));
+        let installed = ta_vfs::mods::read_mod(&mods.join("totalmayhem")).unwrap().unwrap();
+        assert_eq!((installed.manifest.name.as_str(), installed.manifest.version.as_str()), ("Total Mayhem", ""));
+        assert_eq!(installed.manifest.source, "https://mayhem.tauniverse.com/totalm.htm");
+        assert_eq!(installed.manifest.rename, BTreeMap::from([("guim".to_string(), "guis".to_string()), ("weaponm".to_string(), "weapons".to_string())]));
+        assert!(game.join("mayhem.gp3").is_file(), "the game's folder is left as it is");
+        assert_eq!(std::fs::read(mods.join("totalmayhem").join("mayhem.gp3")).unwrap(), std::fs::read(game.join("mayhem.gp3")).unwrap());
+        // Played, it is the mod: its menus and weapons where TA reads them.
+        let mounted = ta_vfs::mods::mount(Some(&game), None, &[&installed], &|m| m.manifest.id.clone());
+        assert_eq!(mounted.vfs.read("guis/armcom1.gui").unwrap(), b"mayhem");
+        assert_eq!(mounted.vfs.read("units/armcom.fbi").unwrap(), b"mayhem");
+        // One that has gone from the game's folder meanwhile is not installed.
+        std::fs::remove_file(game.join("mayhem.gp3")).unwrap();
+        assert!(install(&Source::GameFolder(found[0].clone()), &dir.join("mods2"), &cache, &|_| {}, &|| false, &Mutex::default(), &AtomicBool::new(false)).is_err());
+        assert!(!dir.join("mods2").join("totalmayhem").exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
