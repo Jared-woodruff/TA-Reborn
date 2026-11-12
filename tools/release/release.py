@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Validate and assemble the six release jobs; never silently replace published files."""
+"""Validate and assemble the six release jobs, attach them to the release's draft and publish it
+once complete, then retire the previous release; never silently replace published files."""
 import argparse
 import hashlib
 import json
@@ -129,16 +130,43 @@ def assemble(source, destination, ver, revision):
     return sorted(files) + [sums.name]
 
 
+def expected_assets(ver):
+    """The complete release set: every target's files, the x64 alias and the global checksums."""
+    expected = {f'TA-Reborn-{ver}-setup.exe', f'TA-Reborn-{ver}-SHA256SUMS.txt'}
+    for target in TARGETS:
+        payloads, manifest, build_record = names(ver, target)
+        expected.update(payloads + [manifest, build_record])
+    return expected
+
+
+def release_state(repository, tag, fields):
+    # (gh finds a draft by its tag too, which the API's lookup by tag does not.)
+    return json.loads(subprocess.check_output(['gh', 'release', 'view', tag, '--repo', repository, '--json', fields], text=True))
+
+
+def require_draft(ver, repository, tag):
+    """The tag's release must be a draft with nothing attached yet: the packages go to the draft,
+    which is published once complete, and the previous release stays published meanwhile."""
+    if tag not in (ver, 'v' + ver):
+        raise ValueError(f'Release tag {tag!r} does not match Cargo.toml version {ver}')
+    try:
+        state = release_state(repository, tag, 'assets,isDraft,name')
+    except subprocess.CalledProcessError as error:
+        raise ValueError(f'No release for {tag}: create its draft with its notes first (gh release create {tag} --draft ...)') from error
+    if not state.get('isDraft'):
+        raise ValueError(f'The release for {tag} is already published: packages are attached to its draft, published once complete')
+    if state.get('assets'):
+        raise ValueError(f'The draft for {tag} already holds files; review and remove them before building it again')
+    return state.get('name') or tag
+
+
 def publish(folder, ver, repository, tag):
     if tag not in (ver, 'v' + ver):
         raise ValueError('Publish tag does not match the workspace version')
     paths = sorted(folder.iterdir())
     legacy = f'TA-Reborn-{ver}-setup.exe'
     sums = f'TA-Reborn-{ver}-SHA256SUMS.txt'
-    expected = {legacy, sums}
-    for target in TARGETS:
-        payloads, manifest, build_record = names(ver, target)
-        expected.update(payloads + [manifest, build_record])
+    expected = expected_assets(ver)
     if {p.name for p in paths} != expected:
         raise ValueError('Publish requires the complete assembled release set')
     # Recheck unpacked/downloaded artifacts at publication, including manual draft uploads.
@@ -151,10 +179,11 @@ def publish(folder, ver, repository, tag):
     for name, actual in files.items():
         if global_hashes[name] != actual:
             raise ValueError(f'Global checksum mismatch: {name}')
-    release = json.loads(subprocess.check_output(
-        ['gh', 'release', 'view', tag, '--repo', repository, '--json', 'assets,isDraft,isImmutable'], text=True))
+    release = release_state(repository, tag, 'assets,isDraft,isImmutable')
     if release.get('isImmutable'):
         raise ValueError('Cannot attach packages to an immutable release; attach files to its draft before publication')
+    if not release.get('isDraft'):
+        raise ValueError('Packages are attached to the release\'s draft, which is published only once complete')
     existing = {asset['name'] for asset in release['assets']}
     overlap = existing.intersection(p.name for p in paths)
     if overlap:
@@ -172,6 +201,40 @@ def publish(folder, ver, repository, tag):
     subprocess.run(command + remaining, check=True)
 
 
+def promote(folder, ver, repository, tag):
+    """Publishes the tag's draft as the latest release once it holds exactly the assembled set,
+    each file at its full size, and only then deletes the release that was the latest before it
+    (its tag stays): until the new release is whole, players keep downloading the previous one.
+    Returns the tags of the releases deleted."""
+    if tag not in (ver, 'v' + ver):
+        raise ValueError('Promote tag does not match the workspace version')
+    expected = expected_assets(ver)
+    local = {p.name: p.stat().st_size for p in folder.iterdir()}
+    if set(local) != expected:
+        raise ValueError('Promotion requires the complete assembled release set')
+    state = release_state(repository, tag, 'assets,isDraft')
+    if not state.get('isDraft'):
+        raise ValueError(f'The release for {tag} is not a draft; it was published before its packages were complete')
+    uploaded = {asset['name']: asset for asset in state.get('assets', [])}
+    if set(uploaded) != expected:
+        raise ValueError(f'The draft must hold exactly the release set: missing {sorted(expected - set(uploaded))}, '
+                         f'unexpected {sorted(set(uploaded) - expected)}')
+    for name, size in local.items():
+        asset = uploaded[name]
+        if asset.get('size') != size or asset.get('state', 'uploaded') != 'uploaded':
+            raise ValueError(f'Incomplete upload in the draft: {name}')
+    releases = json.loads(subprocess.check_output(
+        ['gh', 'release', 'list', '--repo', repository, '--exclude-drafts', '--json', 'tagName,isLatest', '--limit', '100'], text=True))
+    previous = [r['tagName'] for r in releases if r.get('isLatest') and r.get('tagName') != tag]
+    subprocess.run(['gh', 'release', 'edit', tag, '--repo', repository, '--draft=false', '--latest'], check=True)
+    if release_state(repository, tag, 'isDraft').get('isDraft'):
+        raise ValueError(f'The release for {tag} is still a draft after publishing it')
+    for old in previous:
+        # (Without --cleanup-tag: the old release's tag stays.)
+        subprocess.run(['gh', 'release', 'delete', old, '--repo', repository, '--yes'], check=True)
+    return previous
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
@@ -184,6 +247,9 @@ def main():
     collect.add_argument('--output', type=Path, required=True)
     upload = sub.add_parser('publish')
     upload.add_argument('--dir', type=Path, required=True)
+    sub.add_parser('draft')
+    finish = sub.add_parser('promote')
+    finish.add_argument('--dir', type=Path, required=True)
     args = parser.parse_args()
     ver = version()
     if args.command == 'validate':
@@ -198,6 +264,12 @@ def main():
             print(name)
     elif args.command == 'publish':
         publish(args.dir, ver, os.environ['GITHUB_REPOSITORY'], os.environ['RELEASE_TAG'])
+    elif args.command == 'draft':
+        name = require_draft(ver, os.environ['GITHUB_REPOSITORY'], os.environ['RELEASE_TAG'])
+        print(f'Building {name} into its draft')
+    elif args.command == 'promote':
+        retired = promote(args.dir, ver, os.environ['GITHUB_REPOSITORY'], os.environ['RELEASE_TAG'])
+        print(f"Published {os.environ['RELEASE_TAG']}; deleted the previous release: {', '.join(retired) or 'none'} (tags kept)")
 
 
 if __name__ == '__main__':

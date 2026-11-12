@@ -27,9 +27,23 @@ Vulkan drivers are required. macOS uses Metal. The launcher uses OpenGL.
 3. Inspect the packages on the target systems, including original-game discovery, audio,
    a real match, launcher skin previews, and installation/removal. Hosted compile and
    synthetic-data tests do not establish graphics-driver or gameplay compatibility.
-4. Publish the matching GitHub release. The **Release** workflow builds all six targets,
-   verifies their checksums and source revisions, and attaches the complete package set.
-   A failure in any target prevents the publish job. A tag/version mismatch fails early.
+4. Create the release as a **draft**, with its notes, on the release commit, then push the
+   matching tag. The previous release stays published, and downloadable, until the new one
+   is whole:
+
+   ```bash
+   gh release create v2.2.0 --draft --target <commit> --title "TA Reborn 2.2.0" --notes-file notes.md
+   git tag v2.2.0 <commit> && git push origin v2.2.0
+   ```
+
+   The tag starts the **Release** workflow. It requires the tag's draft, with nothing attached
+   yet (a missing draft fails at once, before the builds), builds all six targets, verifies
+   their checksums and source revisions, and attaches the complete package set to the draft.
+   Then it publishes the draft as the latest release, once it holds exactly the set, each file
+   at its full size, and only then deletes the release that was the latest before it, keeping
+   its tag. A failure in any target, or in the upload, leaves the draft unpublished and the
+   previous release as it was. A tag/version mismatch fails early. Publishing a release by
+   hand no longer starts the workflow.
 
 The workflow uses GitHub's [native x64 and ARM64 hosted runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
 Private repositories consume the account's Actions allowance; exhausted allowance or disabled
@@ -49,11 +63,13 @@ The uploader refuses to overwrite existing filenames. If upload is interrupted, 
 the release and its checksums before removing only the incomplete assets and retrying.
 Do not replace packages that users have already downloaded; publish a new version instead.
 
-For repositories using [immutable releases](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases),
-use the manual rehearsal first, download and unpack `release-files`, attach those files to
-the **draft** release with the uploader below, then publish it. Use a checkout of the same
-tag and an authenticated GitHub CLI. The uploader preserves the asset order required by
-older launchers; do not upload the whole folder concurrently by hand.
+The workflow attaches the files to the draft before publishing it, so it also works with
+[immutable releases](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases).
+To attach a rehearsal's files by hand instead, download and unpack `release-files`, attach
+them to the **draft** release with the uploader below, then publish it with `promote` (same
+environment, `--dir` the same folder), which also deletes the previous release. Use a checkout
+of the same tag and an authenticated GitHub CLI. The uploader preserves the asset order
+required by older launchers; do not upload the whole folder concurrently by hand.
 
 ```bash
 GITHUB_REPOSITORY=Jared-woodruff/TA-Reborn RELEASE_TAG=v2.2.0 \

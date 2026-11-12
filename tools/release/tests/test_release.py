@@ -98,9 +98,10 @@ class ReleaseTests(unittest.TestCase):
         folder = self.root / 'publish'
         release.assemble(self.source, folder, self.ver, self.revision)
         for state in [dict(isDraft=False, isImmutable=True, assets=[]),
-                      dict(isDraft=False, isImmutable=False, assets=[{'name': 'TA-Reborn-2.1.0-setup.exe'}]),
-                      dict(isDraft=False, isImmutable=False, assets=[{'name': 'another-setup.exe'}]),
-                      dict(isDraft=False, isImmutable=False, assets=[{'name': 'another-SHA256SUMS.txt'}])]:
+                      dict(isDraft=False, isImmutable=False, assets=[]),
+                      dict(isDraft=True, isImmutable=False, assets=[{'name': 'TA-Reborn-2.1.0-setup.exe'}]),
+                      dict(isDraft=True, isImmutable=False, assets=[{'name': 'another-setup.exe'}]),
+                      dict(isDraft=True, isImmutable=False, assets=[{'name': 'another-SHA256SUMS.txt'}])]:
             with patch.object(release.subprocess, 'check_output', return_value=json.dumps(state)), \
                  patch.object(release.subprocess, 'run') as upload:
                 with self.assertRaises(ValueError):
@@ -111,7 +112,7 @@ class ReleaseTests(unittest.TestCase):
         self.fixtures()
         folder = self.root / 'publish'
         release.assemble(self.source, folder, self.ver, self.revision)
-        for draft in (False, True):
+        for draft in (True,):
             state = dict(isDraft=draft, isImmutable=False, assets=[])
             with patch.object(release.subprocess, 'check_output', return_value=json.dumps(state)), \
                  patch.object(release.subprocess, 'run') as upload:
@@ -192,6 +193,70 @@ class ReleaseTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'Legacy setup must be identical'):
                 release.publish(folder, self.ver, 'owner/repo', 'v2.1.0')
             upload.assert_not_called()
+
+    def uploaded(self, folder, **changes):
+        assets = [dict(name=p.name, size=p.stat().st_size, state='uploaded') for p in sorted(folder.iterdir())]
+        for asset in assets:
+            asset.update(changes.get(asset['name'], {}))
+        return assets
+
+    def test_the_build_needs_an_empty_draft_for_its_tag(self):
+        for state, error in [(dict(isDraft=False, assets=[], name='TA Reborn 2.1.0'), 'already published'),
+                             (dict(isDraft=True, assets=[{'name': 'x'}], name='TA Reborn 2.1.0'), 'already holds files')]:
+            with patch.object(release.subprocess, 'check_output', return_value=json.dumps(state)):
+                with self.assertRaisesRegex(ValueError, error):
+                    release.require_draft(self.ver, 'owner/repo', 'v2.1.0')
+        with patch.object(release.subprocess, 'check_output', side_effect=release.subprocess.CalledProcessError(1, 'gh')):
+            with self.assertRaisesRegex(ValueError, 'create its draft'):
+                release.require_draft(self.ver, 'owner/repo', 'v2.1.0')
+        with self.assertRaisesRegex(ValueError, 'does not match'):
+            release.require_draft(self.ver, 'owner/repo', 'v2.2.0')
+        state = dict(isDraft=True, assets=[], name='TA Reborn 2.1.0')
+        with patch.object(release.subprocess, 'check_output', return_value=json.dumps(state)):
+            self.assertEqual(release.require_draft(self.ver, 'owner/repo', 'v2.1.0'), 'TA Reborn 2.1.0')
+
+    def test_a_complete_draft_is_published_before_the_previous_release_is_deleted(self):
+        self.fixtures()
+        folder = self.root / 'publish'
+        release.assemble(self.source, folder, self.ver, self.revision)
+        draft = json.dumps(dict(isDraft=True, assets=self.uploaded(folder)))
+        listed = json.dumps([dict(tagName='v2.1.0', isLatest=False), dict(tagName='v2.0.9', isLatest=True), dict(tagName='v2.0.8', isLatest=False)])
+        answers = [draft, listed, json.dumps(dict(isDraft=False))]
+        with patch.object(release.subprocess, 'check_output', side_effect=answers), \
+             patch.object(release.subprocess, 'run') as run:
+            self.assertEqual(release.promote(folder, self.ver, 'owner/repo', 'v2.1.0'), ['v2.0.9'])
+        calls = [call.args[0] for call in run.call_args_list]
+        self.assertEqual(calls[0][:4], ['gh', 'release', 'edit', 'v2.1.0'])
+        self.assertIn('--draft=false', calls[0])
+        self.assertIn('--latest', calls[0])
+        self.assertEqual(calls[1][:4], ['gh', 'release', 'delete', 'v2.0.9'])
+        self.assertNotIn('--cleanup-tag', calls[1])
+        self.assertEqual(len(calls), 2, 'only the previous latest release goes')
+
+    def test_an_incomplete_or_published_draft_is_not_promoted(self):
+        self.fixtures()
+        folder = self.root / 'publish'
+        release.assemble(self.source, folder, self.ver, self.revision)
+        setup = 'TA-Reborn-2.1.0-windows-x64-setup.exe'
+        for state, error in [(dict(isDraft=True, assets=self.uploaded(folder)[1:]), 'exactly the release set'),
+                             (dict(isDraft=True, assets=self.uploaded(folder, **{setup: dict(size=1)})), 'Incomplete upload'),
+                             (dict(isDraft=True, assets=self.uploaded(folder, **{setup: dict(state='starter')})), 'Incomplete upload'),
+                             (dict(isDraft=False, assets=self.uploaded(folder)), 'not a draft')]:
+            with patch.object(release.subprocess, 'check_output', return_value=json.dumps(state)), \
+                 patch.object(release.subprocess, 'run') as run:
+                with self.assertRaisesRegex(ValueError, error):
+                    release.promote(folder, self.ver, 'owner/repo', 'v2.1.0')
+                run.assert_not_called()
+
+    def test_the_first_release_has_no_previous_one_to_delete(self):
+        self.fixtures()
+        folder = self.root / 'publish'
+        release.assemble(self.source, folder, self.ver, self.revision)
+        answers = [json.dumps(dict(isDraft=True, assets=self.uploaded(folder))), json.dumps([]), json.dumps(dict(isDraft=False))]
+        with patch.object(release.subprocess, 'check_output', side_effect=answers), \
+             patch.object(release.subprocess, 'run') as run:
+            self.assertEqual(release.promote(folder, self.ver, 'owner/repo', 'v2.1.0'), [])
+        self.assertEqual(len(run.call_args_list), 1)
 
     def test_workspace_version_is_read_from_the_correct_section(self):
         (self.root / 'Cargo.toml').write_text('[package]\nversion="0.1.0"\n[workspace.package]\nversion = "2.1.0-rc.1"\n')
