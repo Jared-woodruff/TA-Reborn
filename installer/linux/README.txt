@@ -19,12 +19,27 @@ Remove the program with: sudo pacman -R ta-reborn
 Arch Linux ARM is a separate distribution; these packages do not imply official
 Arch Linux support for ARM hardware.
 
-Portable archive / Steam Deck desktop mode:
+Portable archive:
 Extract the .tar.gz and run ./ta-launcher. Optionally run ./install.sh to copy the
 program into your user data directory and add an applications-menu entry.
 Use ./install.sh --uninstall to remove that per-user installation. Settings, saves,
 profiles and imported mods remain in your user configuration directory.
-On Steam Deck, add the installed launcher to Steam as a non-Steam game.
+
+Steam Deck:
+Use the portable archive (x64); the .deb and Arch packages install into SteamOS's
+read-only system. In Desktop Mode, extract the .tar.gz and run ./install.sh. Then in
+Steam choose Add a Non-Steam Game and pick TA Reborn (the launcher, installed as
+~/.local/share/ta-reborn/ta-launcher), so that it also starts from Game Mode.
+TA Reborn finds Total Annihilation where Steam, Heroic or Proton put it: the Steam
+release in any Steam library, the SD card's included; GOG's copy installed with
+Heroic, wherever Heroic's own record says; or GOG's installer (or the CD) run through
+Steam as a non-Steam game, in that game's Proton prefix. Otherwise choose the folder in
+the launcher.
+The first start recognises the Deck (Steam's SteamDeck=1, the Deck's firmware, SteamOS
+or its graphics) and sets itself up for it: full screen at 1280 x 800 with vertical
+sync, the interface at 125%, the launcher maximised, and the Medium graphics level once
+the game first opens the Deck's graphics. All of it can be changed in Settings. In
+Game Mode the launcher fills the screen.
 
 The portable build needs glibc 2.35 or newer, ALSA, udev, X11 or Wayland libraries,
 OpenGL/EGL and a working Vulkan driver. File pickers use xdg-desktop-portal and a

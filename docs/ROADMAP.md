@@ -158,9 +158,15 @@ each part works; this file tracks what is done and what is still open.
   Windows' own fonts; the first start picks the computer's language.
 - Gamepads (the Steam Deck's controls included): sticks scroll and aim a cursor, A and B
   click in battle and in every menu, triggers zoom, bumpers hold Shift and Ctrl.
-- Linux: the install found in Wine, Proton (Steam), Heroic, Lutris and Bottles prefixes, a
-  packaging script (`installer/build_linux.sh`) and a per-user `install.sh` with a menu
-  entry. Not yet built or run on Linux (see Open).
+- Linux: released for x64 and ARM64 since 1.0.0, built natively on Ubuntu 22.04 by the
+  release workflow (`.github/workflows/packages.yml`, `installer/build_linux.sh`) as an Ubuntu
+  package, an Arch package and a portable archive with a per-user `install.sh` and menu
+  entry; Linux check and test jobs in `quality.yml`. The install found in Steam libraries,
+  Heroic's record of its GOG installs, and Wine, Lutris, Bottles, Heroic and Proton prefixes.
+- The Steam Deck: recognised at the first start (Steam's `SteamDeck=1`, the firmware, SteamOS
+  or its graphics), which sets the game up for it: full screen at 1280 × 800, vertical sync,
+  the interface at 125%, the launcher maximised (full screen inside gamescope, Game Mode); the
+  Medium level for its graphics.
 - HUD with TA's build pictures, hover cards (waiting for the pointer to rest), range rings,
   area orders, factory routes, formation moves, control groups, camera bookmarks, TA's
   animated cursors, statistics; a top bar that speaks up only when a store stalls, runs dry
@@ -212,9 +218,11 @@ each part works; this file tracks what is done and what is still open.
   `.github/workflows/quality.yml`. Hosted runners do not have the original game's data;
   installed-game and GPU visual checks remain local release work.
 - **Linux**: the code keeps to cross-platform crates (winit, wgpu on Vulkan, cpal on ALSA,
-  gilrs on udev, rfd through the XDG portal) and guards the Windows-only parts, but no Linux
-  build has been made yet: run `installer/build_linux.sh` on a Linux machine (or WSL) and
-  play-test, the Steam Deck in particular.
+  gilrs on udev, rfd through the XDG portal) and guards the Windows-only parts; the release
+  workflow builds and packages it, and CI checks and tests it, but on hosted runners with no
+  screen and no game data. What is left is play-testing on Linux machines, the Steam Deck in
+  particular: its first start's setup in Game Mode and Desktop Mode, the launcher full screen
+  under gamescope, and installs found in Proton prefixes and on an SD card.
 - **Beyond 20,000 units**: the slowest ticks of a 20,000-unit battle (25-40 ms, about one in
   a hundred) bring a distance field over most of the map up to date when wrecks fall by its
   goal, one core's work each; such a field could be split, or brought up to date over

@@ -10,7 +10,8 @@ apps/
   ta_tools      ta-tools.exe      — inspect / convert / validate game data
 crates/
   ta_formats    parsers: HPI, TDF, GAF, 3DO, COB, TNT, PCX, palette; TNT and TDF writers
-  ta_vfs        layered virtual file system, GOG/Steam install discovery, mod ordering
+  ta_vfs        layered virtual file system, install discovery (GOG, Steam, Heroic, Wine and
+                Proton prefixes), mod ordering
   ta_config     user settings (%APPDATA%\TA Reborn\config.toml; the folder under the name up
                 to 1.9, TA Remastered, moves there when either program starts: adopt_old_folder)
   ta_skins      bounded cosmetic skin packs, creator folders and deterministic import/export
@@ -2087,14 +2088,43 @@ build menu by `Purpose` on tabs (`Hud::build_tab`).
   (`Graphics::fit_render_scale_once`, `graphics.scale_fitted`; where the scale is still the
   level's own: the launcher picks the first level before the game has a window, and a Mac's
   screen is not known to it). A render scale under the level's own still matches the level. A new
-  settings file starts at Auto: the game opens the device first (`Gpu::new`), picks a level
-  from its kind and name (`Preset::for_gpu`: dedicated cards High, recent integrated
-  graphics Medium, older ones and software renderers Low), saves it with the card's name,
-  and only then builds the renderer (`Renderer::with_gpu`, `RendererOptions::msaa`: the
-  largest sample count up to the setting that the device supports). Settings files from
-  before levels existed read as Custom and keep their options. The launcher and the in-game
-  options show the level the options match. 2x and 8x antialiasing need the device's
-  adapter-specific format features (requested when offered); otherwise 4x is the most.
+  settings file starts at Auto, and the first start (below) picks the level where the computer
+  tells its card. Where it is still Auto (Linux, or AUTO chosen again in the options) the game
+  opens the device first (`Gpu::new`), picks a level from its kind and name
+  (`Preset::for_gpu`: dedicated cards High, recent integrated graphics and the Steam Deck's
+  Medium, older ones and software renderers Low), saves it with the card's name, and only
+  then builds the renderer (`Renderer::with_gpu`, `RendererOptions::msaa`: the largest sample
+  count up to the setting that the device supports). Settings files from before levels
+  existed read as Custom and keep their options. The launcher and the in-game options show
+  the level the options match. 2x and 8x antialiasing need the device's adapter-specific
+  format features (requested when offered); otherwise 4x is the most.
+
+* **The first start** (`ta_config::hardware`): the launcher's or the game's, whichever comes
+  first, while `Config::first_start` (the level Auto, `graphics.set_up` not yet marked).
+  `Hardware::detect` looks at the computer: on Windows the graphics card with the most
+  memory of its own (DXGI), the memory and the screen; on a Mac `sysctl`'s memory and
+  processor, and an Apple chip's graphics; on Linux /proc's memory and processor. It also
+  tells a handheld (`Handheld::detect`): a Steam Deck by any one of Steam's `SteamDeck=1`,
+  the firmware's maker and model (`/sys/devices/virtual/dmi/id`: Valve's Jupiter or
+  Galileo), SteamOS's `ID=steamos` in `/etc/os-release`, or its graphics' name ("AMD Custom
+  GPU 0405" or "0932", Mesa's "vangogh"). The variables and files are read on Linux alone;
+  the tests give them to `Handheld::detect_with`. `Config::set_up_for` sets the game up from
+  it, all of it there: the level for the card (`Hardware::first_level`; Linux knows no card
+  before the game opens one, so the level stays Auto for it), the screen's own size, full
+  screen; on a handheld also vertical sync, the launcher maximised (`launcher.maximized`, from
+  then on kept as the window is left), and under Linux the interface at the largest 5% step
+  that leaves the screen the battle's 1024 × 600 points and the launcher's 940 × 600
+  (`limits::ui_scale_to_fit`, `GAME_POINTS`, `LAUNCHER_POINTS`; the two share the setting:
+  125% at a Deck's 1280 × 800, which the game's cap, `ui_zoom_for`, keeps whole). Windows
+  enlarges a small screen's interface itself. Then `graphics.set_up` is marked, and the
+  settings are the player's: a level put back to AUTO in the options is picked again as the
+  game next starts (`Graphics::pick_level_for`, else from the card), the window left as it
+  is; RESET ALL SETTINGS and the graphics' RESTORE DEFAULTS set up again.
+  Inside gamescope, SteamOS's Game Mode (`hardware::gamescope`: `GAMESCOPE_WAYLAND_DISPLAY`,
+  or `XDG_CURRENT_DESKTOP=gamescope`), the launcher opens full screen whatever its settings,
+  pixel for pixel where gamescope would scale a window, and Steam closes it. That is never
+  kept: on the desktop, where a launcher full screen could not be closed without a keyboard,
+  it is the window it was.
 
 * **A Mac's full screen** (`macos.rs`): the game's full screen is macOS's own (a space of its
   own, winit's `Fullscreen::Borderless`), where the menu bar comes down when the pointer
@@ -3888,6 +3918,19 @@ deployment on PLAY (`paint_launch`, 1.8 s, while the game starts).
   hosts remain credited, and files are never re-hosted. `--get-mod <id>` starts a supported
   automatic install (manual entries return instructions), `--offline` prevents network
   access, and `--mods-tab installed` opens the other tab.
+* **Finding the game** (`ta_vfs::install`, the launcher's `detect.rs`): the folder set in the
+  settings (one that is not a copy of the game is said so), else in order
+  `TA_REBORN_GAME_DIR`, GOG's registry key, the Steam release (its uninstall key, then every
+  library's `appmanifest_298030.acf`) and the usual folders. On Linux and macOS GOG's place
+  is taken by Heroic's record of its GOG installs (`gog_store/installed.json`, its Flatpak's
+  too: the folder of `appName` 1207658880, wherever it was put, an SD card included), then
+  the folders a GOG installer or TA's CD makes (`DRIVE_C_FOLDERS`, each name matched whatever
+  its case) in Wine, Lutris, Bottles, Heroic and CrossOver prefixes, and Heroic's own
+  folders; Steam's libraries are those its `libraryfolders.vdf` lists (the native client's,
+  the Flatpak's, a Deck's SD card), and last come the same folders in each library's Proton
+  prefixes (`steamapps/compatdata/<id>/pfx/drive_c`: an installer run through Steam as a
+  non-Steam game, a Deck's way), only those there are. The store a copy came from is read
+  from its files (`identify`: GOG's `goggame-1207658880.info`, Steam's app manifest).
 * Pages: Play (install detection, launch), Mods, Settings (everything in config.toml,
   saved as edited: the settings screen of the game's options, `ta_ui::settings`, with
   RESET ALL over it), Benchmark (below), About (the project, the legal position and licences, with buttons

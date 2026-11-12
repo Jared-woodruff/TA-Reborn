@@ -6,10 +6,15 @@
 //!
 //! 1. an explicit path (command line / config),
 //! 2. the `TA_REBORN_GAME_DIR` environment variable,
-//! 3. the GOG registry key written by both the offline installer and GOG Galaxy,
+//! 3. the GOG registry key written by both the offline installer and GOG Galaxy; on Linux and
+//!    macOS, Heroic's record of its GOG installs (`gog_store/installed.json`), then the folders a
+//!    GOG installer or TA's CD makes in Wine, Lutris, Bottles, Heroic and CrossOver prefixes,
+//!    and Heroic's own folders,
 //! 4. the Steam release: its uninstall key, then every Steam library (the folder each one's
 //!    `appmanifest_298030.acf` names),
-//! 5. well-known default install folders (GOG's and Steam's).
+//! 5. well-known default install folders (GOG's and Steam's); on Linux, the folders a GOG
+//!    installer or TA's CD makes in the Proton prefixes of every Steam library (such an
+//!    installer run through Steam as a non-Steam game: a Steam Deck's way to install it).
 //!
 //! Which store a copy came from ([`Store`]), and its build, are read from its files: GOG's
 //! `goggame-1207658880.info`, or the Steam library's app manifest.
@@ -189,6 +194,10 @@ pub fn candidates(explicit: Option<&Path>) -> Vec<(PathBuf, InstallSource)> {
     for p in steam_paths() {
         out.push((p, InstallSource::Steam));
     }
+    // (The installer's default folders, though Steam's: the files tell GOG's copy from a CD's.)
+    for p in proton_prefix_paths() {
+        out.push((p, InstallSource::CommonLocation));
+    }
     for drive in if cfg!(windows) { ["C", "D", "E", "F"].as_slice() } else { [].as_slice() } {
         for sub in [
             r"GOG Games\Total Annihilation",
@@ -308,14 +317,26 @@ fn gog_registry_paths() -> Vec<PathBuf> {
     out
 }
 
-/// Elsewhere the Windows game lives in a Wine prefix: plain Wine, Lutris and Bottles
-/// prefixes, or Heroic's GOG installs (which put the game straight in a folder).
+/// Elsewhere the Windows game lives in a Wine prefix, or where Heroic put it ([`unix_gog_paths`]).
 #[cfg(not(windows))]
 fn gog_registry_paths() -> Vec<PathBuf> {
     let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else { return Vec::new() };
+    let wine_prefix = std::env::var_os("WINEPREFIX").map(PathBuf::from);
+    let config = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from);
+    unix_gog_paths(&home, wine_prefix, config.as_deref())
+}
+
+/// The Windows game on Linux and macOS: where Heroic's record of its GOG installs says it put
+/// it (any folder, an SD card), the folders a GOG installer or TA's CD makes in plain Wine,
+/// Lutris, Bottles, Heroic and CrossOver prefixes, and Heroic's own folders (it puts GOG's
+/// games straight in a folder). `config`: the configuration folder (`XDG_CONFIG_HOME`), else
+/// `~/.config`.
+#[cfg(any(not(windows), test))]
+fn unix_gog_paths(home: &Path, wine_prefix: Option<PathBuf>, config: Option<&Path>) -> Vec<PathBuf> {
+    let mut out = heroic_paths(home, config);
     let mut prefixes = vec![home.join(".wine")];
-    if let Some(p) = std::env::var_os("WINEPREFIX") {
-        prefixes.insert(0, PathBuf::from(p));
+    if let Some(p) = wine_prefix {
+        prefixes.insert(0, p);
     }
     // Every prefix one level down in the usual homes of Lutris, Bottles and Heroic.
     for parent in [
@@ -330,16 +351,122 @@ fn gog_registry_paths() -> Vec<PathBuf> {
             prefixes.extend(entries.flatten().map(|e| e.path()));
         }
     }
-    let mut out = Vec::new();
     for prefix in prefixes {
-        let c = prefix.join("drive_c");
-        for sub in ["GOG Games/Total Annihilation", "Program Files (x86)/GOG Galaxy/Games/Total Annihilation", "Program Files (x86)/GOG.com/Total Annihilation", "Games/Total Annihilation", "Cavedog/TotalA"] {
-            out.push(c.join(sub));
-        }
+        out.extend(drive_c_folders(&prefix.join("drive_c")));
     }
     // Heroic installs GOG games natively under ~/Games/Heroic/<title>.
     out.push(home.join("Games/Heroic/Total Annihilation"));
     out.push(home.join("Games/Heroic/Total Annihilation Commander Pack"));
+    out
+}
+
+/// Where GOG's installer, GOG Galaxy and TA's CD put the game on a Windows system's drive: in a
+/// Wine or Proton prefix, under its `drive_c`.
+#[cfg(any(not(windows), test))]
+const DRIVE_C_FOLDERS: &[&str] = &[
+    "GOG Games/Total Annihilation",
+    "Program Files (x86)/GOG Galaxy/Games/Total Annihilation",
+    "Program Files (x86)/GOG.com/Total Annihilation",
+    "Program Files (x86)/Total Annihilation",
+    "Program Files/Total Annihilation",
+    "Games/Total Annihilation",
+    "Cavedog/TotalA",
+];
+
+/// [`DRIVE_C_FOLDERS`] in the drive `drive_c`, each folder found whatever the case of its name.
+#[cfg(any(not(windows), test))]
+fn drive_c_folders(drive_c: &Path) -> impl Iterator<Item = PathBuf> + '_ {
+    DRIVE_C_FOLDERS.iter().map(move |folder| join_ci(drive_c, folder))
+}
+
+/// `relative` ('/' between its names) under `base`, each folder found whatever the case of its
+/// name (Linux tells "TotalA" from "TOTALA", and Windows' installers write either); as written
+/// from the first that is missing.
+#[cfg(any(not(windows), test))]
+fn join_ci(base: &Path, relative: &str) -> PathBuf {
+    let mut path = base.to_path_buf();
+    for name in relative.split('/') {
+        let exact = path.join(name);
+        path = if exact.is_dir() { exact } else { find_dir_ci(&path, name).unwrap_or(exact) };
+    }
+    path
+}
+
+/// Heroic's own records of its GOG installs (`heroic/gog_store/installed.json` in `config`,
+/// else `~/.config`, and in its Flatpak's): the Commander Pack's folder, wherever it was put.
+#[cfg(any(not(windows), test))]
+fn heroic_paths(home: &Path, config: Option<&Path>) -> Vec<PathBuf> {
+    let native = config.map_or_else(|| home.join(".config"), Path::to_path_buf);
+    let flatpak = home.join(".var/app/com.heroicgameslauncher.hgl/config");
+    let mut out = Vec::new();
+    for dir in [native, flatpak] {
+        let record = std::fs::read_to_string(dir.join("heroic").join("gog_store").join("installed.json"));
+        if let Some(path) = record.ok().and_then(|text| heroic_install_path(&text))
+            && !out.contains(&path)
+        {
+            out.push(path);
+        }
+    }
+    out
+}
+
+/// The Commander Pack's folder in the text of Heroic's `installed.json`
+/// (`{"installed": [{"appName": "1207658880", "install_path": "...", ...}, ...]}`).
+#[cfg(any(not(windows), test))]
+fn heroic_install_path(text: &str) -> Option<PathBuf> {
+    use serde_json::Value;
+    let installed = serde_json::from_str::<Value>(text).ok()?.get("installed")?.clone();
+    let entries: Vec<Value> = match installed {
+        Value::Array(entries) => entries,
+        Value::Object(entries) => entries.into_iter().map(|(_, entry)| entry).collect(),
+        _ => return None,
+    };
+    let ours = |entry: &&Value| match entry.get("appName") {
+        Some(Value::String(id)) => id == GOG_GAME_ID,
+        Some(Value::Number(id)) => id.to_string() == GOG_GAME_ID,
+        _ => false,
+    };
+    let path = entries.iter().find(ours)?.get("install_path")?.as_str()?;
+    (!path.is_empty()).then(|| PathBuf::from(path))
+}
+
+/// Linux's Steam runs Windows programs through Proton ([`proton_paths`]).
+#[cfg(not(windows))]
+fn proton_prefix_paths() -> Vec<PathBuf> {
+    std::env::var_os("HOME").map_or_else(Vec::new, |home| proton_paths(Path::new(&home)))
+}
+
+#[cfg(windows)]
+fn proton_prefix_paths() -> Vec<PathBuf> {
+    Vec::new()
+}
+
+/// The game's folders in the Proton prefixes of the Steam libraries under `home`
+/// (`<library>/steamapps/compatdata/<app>/pfx/drive_c`): a GOG installer or TA's CD run through
+/// Steam as a non-Steam game installs it there. Only folders there are (every game Steam runs
+/// through Proton has a prefix: listing seven guesses for each would bury the search's list).
+#[cfg(any(not(windows), test))]
+fn proton_paths(home: &Path) -> Vec<PathBuf> {
+    // (`~/.steam/steam` is usually a link to `~/.local/share/Steam`: each library once.)
+    let (mut libraries, mut seen) = (Vec::new(), Vec::new());
+    for root in unix_steam_roots(home) {
+        for library in steam_libraries(&root) {
+            let real = std::fs::canonicalize(&library).unwrap_or_else(|_| library.clone());
+            if !seen.contains(&real) {
+                seen.push(real);
+                libraries.push(library);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for library in libraries {
+        let Ok(apps) = std::fs::read_dir(library.join("steamapps").join("compatdata")) else { continue };
+        let mut drives: Vec<PathBuf> = apps.flatten().map(|app| app.path().join("pfx").join("drive_c")).filter(|c| c.is_dir()).collect();
+        drives.sort();
+        for drive_c in drives {
+            out.extend(drive_c_folders(&drive_c).filter(|folder| folder.is_dir()));
+        }
+    }
     out
 }
 
@@ -517,5 +644,113 @@ mod tests {
     fn explicit_invalid_path_is_reported() {
         let err = discover(Some(Path::new("Z:/definitely/not/here"))).unwrap_err();
         assert!(matches!(err, InstallError::Invalid { .. }));
+    }
+
+    /// An empty home for a test.
+    fn home(name: &str) -> PathBuf {
+        let home = std::env::temp_dir().join(format!("ta_install_{name}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(&home).unwrap();
+        home
+    }
+
+    /// The game's files where an installer put them.
+    fn install_at(dir: &Path) {
+        std::fs::create_dir_all(dir).unwrap();
+        for file in REQUIRED_FILES {
+            std::fs::write(dir.join(file), b"HAPI").unwrap();
+        }
+    }
+
+    /// One folder, however its name is spelt (Linux keeps the case on disk; Windows and macOS
+    /// match any).
+    fn same_folder(a: &Path, b: &Path) -> bool {
+        std::fs::canonicalize(a).unwrap() == std::fs::canonicalize(b).unwrap()
+    }
+
+    /// A GOG installer or TA's CD run through Steam as a non-Steam game (a Steam Deck's way)
+    /// installs the game in that game's Proton prefix: found there, in any library (an SD card's
+    /// too), whatever the case of the CD's folders; other games' prefixes add nothing to the
+    /// search.
+    #[test]
+    fn installs_in_steams_proton_prefixes_are_found() {
+        let home = home("proton");
+        let steam = home.join(".local/share/Steam");
+        let gog = steam.join("steamapps/compatdata/3087654321/pfx/drive_c/GOG Games/Total Annihilation");
+        install_at(&gog);
+        std::fs::write(gog.join("goggame-1207658880.info"), "{\n  \"buildId\": \"53419283\"\n}").unwrap();
+        // Another game's prefix.
+        std::fs::create_dir_all(steam.join("steamapps/compatdata/1091500/pfx/drive_c/Program Files/Common Files")).unwrap();
+        // The SD card, a library of its own, where the CD went (its folders in capitals).
+        let card = home.join("run/media/deck/SD");
+        let vdf = format!("\"libraryfolders\"\n{{\n\t\"1\"\n\t{{\n\t\t\"path\"\t\t\"{}\"\n\t}}\n}}\n", card.display());
+        std::fs::write(steam.join("steamapps/libraryfolders.vdf"), vdf).unwrap();
+        let cd = card.join("steamapps/compatdata/2999999999/pfx/drive_c/CAVEDOG/TOTALA");
+        install_at(&cd);
+        let found = proton_paths(&home);
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert!(same_folder(&found[0], &gog) && same_folder(&found[1], &cd), "{found:?}");
+        for path in &found {
+            assert!(validate(path).is_ok(), "{}", path.display());
+        }
+        // Its files say which copy it is.
+        assert_eq!(identify(&found[0], InstallSource::CommonLocation), (Store::Gog, Some("53419283".into())));
+        assert_eq!(identify(&found[1], InstallSource::CommonLocation), (Store::Unknown, None));
+        std::fs::remove_dir_all(home).unwrap();
+    }
+
+    /// Heroic's record of its GOG installs names the game's folder wherever it was put (an SD
+    /// card here): its own app's record and its Flatpak's, first among the places searched off
+    /// Windows. Other games' entries, and records without the game, add nothing.
+    #[test]
+    fn heroics_record_of_its_gog_installs_is_read() {
+        let home = home("heroic");
+        let record = |path: &Path| {
+            serde_json::json!({ "installed": [
+                { "platform": "windows", "install_path": "/home/deck/Games/Heroic/Another Game", "is_dlc": false, "appName": "1207658924" },
+                { "platform": "windows", "install_path": path, "is_dlc": false, "appName": GOG_GAME_ID, "buildId": "53419283" },
+            ] })
+            .to_string()
+        };
+        let card = home.join("run/media/deck/SD/Heroic/Total Annihilation");
+        install_at(&card);
+        let native = home.join(".config/heroic/gog_store");
+        std::fs::create_dir_all(&native).unwrap();
+        std::fs::write(native.join("installed.json"), record(&card)).unwrap();
+        assert_eq!(heroic_paths(&home, None), std::slice::from_ref(&card));
+        assert_eq!(unix_gog_paths(&home, None, None).first(), Some(&card));
+        // The Flatpak's record too; and a configuration folder of the player's own, which holds none.
+        let flatpak_install = home.join("Games/Heroic/TA");
+        let flatpak = home.join(".var/app/com.heroicgameslauncher.hgl/config/heroic/gog_store");
+        std::fs::create_dir_all(&flatpak).unwrap();
+        std::fs::write(flatpak.join("installed.json"), record(&flatpak_install)).unwrap();
+        assert_eq!(heroic_paths(&home, None), [card.clone(), flatpak_install.clone()]);
+        assert_eq!(heroic_paths(&home, Some(&home.join("elsewhere"))), [flatpak_install]);
+        // Records without the game, or not to be read.
+        assert_eq!(heroic_install_path("{\"installed\": []}"), None);
+        assert_eq!(heroic_install_path("{\"installed\": [{\"appName\": \"1207658880\", \"install_path\": \"\"}]}"), None);
+        assert_eq!(heroic_install_path("{\"installed\": [{\"appName\": \"1207658880\"}]}"), None);
+        assert_eq!(heroic_install_path("not json"), None);
+        assert_eq!(heroic_install_path("{\"installed\": {\"1207658880\": {\"appName\": 1207658880, \"install_path\": \"/games/ta\"}}}"), Some(PathBuf::from("/games/ta")));
+        std::fs::remove_dir_all(home).unwrap();
+    }
+
+    /// Wine's prefixes are searched for the same folders as Proton's: the CD's install in
+    /// `Program Files`, in `WINEPREFIX` and in `~/.wine`.
+    #[test]
+    fn wine_prefixes_are_searched_for_the_installers_folders() {
+        let home = home("wine");
+        let cd = home.join(".wine/drive_c/Program Files/Total Annihilation");
+        install_at(&cd);
+        let own = home.join("prefixes/ta");
+        let gog = own.join("drive_c/Program Files (x86)/Total Annihilation");
+        install_at(&gog);
+        let found = unix_gog_paths(&home, Some(own), None);
+        let at = |dir: &Path| found.iter().position(|p| p.as_path() == dir);
+        assert!(at(&gog).unwrap() < at(&cd).unwrap(), "{found:?}");
+        for folder in DRIVE_C_FOLDERS {
+            assert!(found.contains(&join_ci(&home.join(".wine/drive_c"), folder)), "{folder}");
+        }
+        std::fs::remove_dir_all(home).unwrap();
     }
 }

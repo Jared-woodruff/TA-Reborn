@@ -187,7 +187,8 @@ pub struct Launcher {
     /// Crisp contextual Reborn pointers; off preserves the system accessibility pointer.
     pub themed_cursor: bool,
     /// The window's inside when the launcher last closed (points), and whether it was
-    /// maximised; None: the size it comes at.
+    /// maximised (as a handheld's first start puts it: [`Config::set_up_for`]); None: the size
+    /// it comes at.
     pub window: Option<[f32; 2]>,
     pub maximized: bool,
     /// The newest version whose news the player has been shown (the launcher shows what is new
@@ -733,12 +734,16 @@ impl Preset {
     }
 
     /// The level for a graphics device: High on dedicated cards and Apple's Max and Ultra
-    /// chips, Medium on recent integrated graphics, Low on older ones and software renderers.
+    /// chips, Medium on recent integrated graphics and the Steam Deck, Low on older ones and
+    /// software renderers.
     pub fn for_gpu(kind: GpuKind, name: &str) -> Preset {
         let n = name.to_ascii_lowercase();
         let has = |keys: &[&str]| keys.iter().any(|k| n.contains(k));
         match kind {
             GpuKind::Software => Preset::Low,
+            // The Steam Deck's graphics, of the Radeon 660M's class, however its driver reports
+            // them (Windows on a Deck gives them a gigabyte of their own: a dedicated card's).
+            _ if hardware::steam_deck_gpu(&n) => Preset::Medium,
             GpuKind::Integrated if apple_class(&n) >= 4.0 => Preset::High,
             // Iris Xe, Arc and the Radeon 600M-800M series are fast enough for Medium.
             GpuKind::Integrated if has(&["xe graphics", "arc(", "arc graphics", "610m", "660m", "680m", "740m", "760m", "780m", "880m", "890m", "8060s", "apple"]) => Preset::Medium,
@@ -882,6 +887,12 @@ pub struct Graphics {
     /// ([`Graphics::fit_render_scale_once`]): at its first start, or the first after the update
     /// that brought the fitting.
     pub scale_fitted: bool,
+    /// The first start has set the game up for this computer ([`Config::set_up_for`]: the
+    /// screen's size, full screen, on a handheld the interface's scale). The level may be Auto
+    /// after it: on Linux, where the first start knows no graphics card, the game picks it from
+    /// the card it opens, as it does a level put back to Auto in the options, the rest left as
+    /// the player has it. (Files from before the mark have a level of their own.)
+    pub set_up: bool,
 }
 
 fn custom_preset() -> Preset {
@@ -990,6 +1001,7 @@ impl Default for Graphics {
             ground_life: true,
             show_frame_rate: false,
             scale_fitted: false,
+            set_up: false,
         }
     }
 }
@@ -1301,11 +1313,28 @@ pub mod limits {
     pub const MAX_VOICES: RangeInclusive<u32> = 8..=256;
     pub const UNIT_LIMIT: RangeInclusive<u32> = 50..=20_000;
     pub const UI_SCALE: RangeInclusive<f32> = 0.75..=2.0;
+    /// The least room (points, width and height) the battlefield and the game's menus are laid
+    /// out for: the game shows its interface no larger than leaves them this much.
+    pub const GAME_POINTS: (f32, f32) = (1024.0, 600.0);
+    /// The least the game's options and Conquest are laid out for (they reflow and scroll, so
+    /// they keep a larger scale than the rest).
+    pub const OPTIONS_POINTS: (f32, f32) = (800.0, 480.0);
+    /// The least the launcher's window and pages are laid out for.
+    pub const LAUNCHER_POINTS: (f32, f32) = (940.0, 600.0);
     pub const CURSOR_SCALE: RangeInclusive<f32> = 1.0..=2.5;
     pub const MESSAGE_DURATION: RangeInclusive<f32> = 1.0..=4.0;
     pub const SPEED: RangeInclusive<f32> = 0.25..=4.0;
     pub const SCROLL_SPEED: RangeInclusive<f32> = 0.25..=4.0;
     pub const PLAYER_NAME_CHARS: usize = 24;
+
+    /// The largest interface scale on the settings' 5% steps at which a screen of `pixels` (at
+    /// the system's own scale) still leaves `points` of room ([`GAME_POINTS`],
+    /// [`LAUNCHER_POINTS`]); 100% where it leaves less, and no more than the settings offer.
+    pub fn ui_scale_to_fit(pixels: (u32, u32), points: (f32, f32)) -> f32 {
+        let fit = (pixels.0 as f32 / points.0).min(pixels.1 as f32 / points.1);
+        let stepped = (fit * 20.0 + 1e-3).floor() / 20.0;
+        stepped.clamp(1.0, *UI_SCALE.end())
+    }
 }
 
 /// The folder under the game's old name, in use for this run because it could not be moved
@@ -1897,6 +1926,43 @@ mod preset_tests {
         assert_eq!(g.picture_pixels(Some((2940, 1912))), 2940 * 1912);
         g.window_mode = WindowMode::Windowed;
         assert_eq!(g.picture_pixels(Some((2940, 1912))), g.width as u64 * g.height as u64);
+    }
+
+    /// The Steam Deck's graphics are of the Radeon 660M's class: Medium, however its driver
+    /// names and reports them, and at that level its 1280 × 800 pixels are drawn whole.
+    #[test]
+    fn the_steam_decks_graphics_are_medium() {
+        for (kind, name) in [
+            (GpuKind::Integrated, "AMD Custom GPU 0405 (RADV VANGOGH)"),
+            (GpuKind::Integrated, "AMD Custom GPU 0932 (RADV VANGOGH)"),
+            (GpuKind::Discrete, "AMD Custom GPU 0405"),
+            (GpuKind::Other, "AMD Custom GPU 0405 (radeonsi, vangogh, LLVM 15.0.7, DRM 3.54)"),
+        ] {
+            assert_eq!(Preset::for_gpu(kind, name), Preset::Medium, "{name}");
+        }
+        assert_eq!(Preset::for_gpu(GpuKind::Integrated, "AMD Radeon 660M"), Preset::Medium, "its class");
+        assert_eq!(Preset::for_gpu(GpuKind::Integrated, "AMD Radeon(TM) Graphics"), Preset::Low, "not every AMD chip");
+        assert_eq!(Preset::for_gpu(GpuKind::Software, "llvmpipe (LLVM 15.0.7, 256 bits)"), Preset::Low);
+        let mut g = Graphics::default();
+        Preset::Medium.apply(&mut g);
+        g.preset = Preset::Medium;
+        assert!(g.fit_render_scale_once(GpuKind::Integrated, "AMD Custom GPU 0405 (RADV VANGOGH)", 1280 * 800));
+        assert_eq!(g.render_scale, 1.0);
+        assert_eq!(g.matching_preset(), Preset::Medium);
+    }
+
+    /// The interface's scale for a screen: the largest 5% step that leaves the layout its room,
+    /// never under 100% nor over the settings' most.
+    #[test]
+    fn the_interface_scale_fills_a_screen_as_far_as_its_layout_allows() {
+        use limits::{GAME_POINTS, LAUNCHER_POINTS, ui_scale_to_fit};
+        assert_eq!(ui_scale_to_fit((1280, 800), GAME_POINTS), 1.25);
+        assert_eq!(ui_scale_to_fit((1280, 800), LAUNCHER_POINTS), 1.3, "4/3, on the steps");
+        assert_eq!(ui_scale_to_fit((1920, 1200), GAME_POINTS), 1.85);
+        assert_eq!(ui_scale_to_fit((1920, 1080), GAME_POINTS), 1.8);
+        assert_eq!(ui_scale_to_fit((1024, 600), GAME_POINTS), 1.0);
+        assert_eq!(ui_scale_to_fit((800, 480), GAME_POINTS), 1.0, "never smaller than it comes");
+        assert_eq!(ui_scale_to_fit((7680, 4320), GAME_POINTS), *limits::UI_SCALE.end());
     }
 
     #[test]

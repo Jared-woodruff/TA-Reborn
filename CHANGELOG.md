@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Added
+- The Steam Deck is recognised on the first start (by Steam's `SteamDeck=1`, the Deck's
+  firmware, SteamOS or its graphics), and the game is set up for it: full screen at 1280 × 800
+  with vertical sync, the interface at 125%, as large as the battle's panels allow on its
+  screen, the launcher maximised, and the Medium graphics level, which suits the Deck's
+  graphics. Whatever you change afterwards is kept.
+- In SteamOS's Game Mode (and anywhere else inside gamescope) the launcher now fills the screen,
+  drawn pixel for pixel instead of a window scaled up. On the desktop it stays a window, as you
+  left it.
+- On Linux the launcher now finds Total Annihilation where Heroic installed it, wherever that is
+  (another folder, an SD card), as Heroic's own record says; and where GOG's installer or the CD,
+  run through Steam as a non-Steam game, put it in that game's Proton prefix, in any Steam
+  library. In Wine prefixes it now also looks in `Program Files`, and finds the CD's folders
+  whatever the case of their names.
+
+### Changed
+- On Linux the first start no longer sets every computer to the Medium graphics level. The
+  game now picks the level from the graphics card it opens: High on a dedicated card, Medium on
+  recent integrated graphics and the Steam Deck, Low on older integrated graphics.
+- Choosing AUTO for the graphics level in the options now picks the level again the next time
+  the game starts, and leaves the window as it is. Before, the window went back to full screen
+  at the screen's size too.
+
 ### Fixed
 - Damaged aircraft never used repair pads unless sent to one. Aircraft on patrol, attack-move
   or an attack now break off when worn below two-thirds of their health, fly to the nearest

@@ -404,11 +404,12 @@ impl LauncherApp {
             config.gameplay.player_name = profile.name.clone();
         }
         // The first start: set up for this computer (its graphics level, the screen's own
-        // size, full screen). After that the settings are the player's. (`TA_FIRST_RUN`
-        // shows it in a capture.)
-        let first_run = (config.graphics.preset == ta_config::Preset::Auto && (args.screenshot.is_none() || std::env::var_os("TA_FIRST_RUN").is_some())).then(|| {
+        // size, full screen; on a handheld the interface's scale and this window maximised:
+        // `Config::set_up_for`). After that the settings are the player's. (`TA_FIRST_RUN`
+        // shows it in a capture.) A level put back to Auto waits for the game, as it says.
+        let first_run = (config.first_start() && (args.screenshot.is_none() || std::env::var_os("TA_FIRST_RUN").is_some())).then(|| {
             let hw = ta_config::hardware::Hardware::detect();
-            config.graphics.set_up_for(&hw);
+            config.set_up_for(&hw);
             log::info!("first start on {}: {} graphics", hw.summary(), config.graphics.preset.label());
             FirstRun { computer: hw.summary(), level: config.graphics.preset, size: (config.graphics.width, config.graphics.height), language: None }
         });
@@ -482,6 +483,11 @@ impl LauncherApp {
         };
         let unattended = args.screenshot.is_some() || args.film.is_some();
         let window = (!unattended && args.window_size.is_none()).then(|| (config.launcher.window.unwrap_or([1120.0, 720.0]), config.launcher.maximized));
+        // A handheld's first start maximises this window too (it opened before the settings
+        // were set up; from then on it opens as it was left).
+        if first_run.is_some() && window.is_some_and(|(_, maximized)| maximized) {
+            cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+        }
         LauncherApp {
             skins: crate::skins::Library::new(store.dir().join("skins"), [config.graphics.unit_skin.clone(), config.graphics.enemy_skin().to_string()]),
             confirm_uninstall: None,
@@ -2196,11 +2202,11 @@ impl LauncherApp {
         if self.fitted {
             return;
         }
-        let (monitor, outer, inner, maximized) = ctx.input(|i| (i.viewport().monitor_size, i.viewport().outer_rect, i.viewport().inner_rect, i.viewport().maximized));
+        let (monitor, outer, inner, maximized, fullscreen) = ctx.input(|i| (i.viewport().monitor_size, i.viewport().outer_rect, i.viewport().inner_rect, i.viewport().maximized, i.viewport().fullscreen));
         let (Some(monitor), Some(outer), Some(inner)) = (monitor, outer, inner) else { return };
         self.fitted = true;
-        // (A maximised window fills the screen as it should.)
-        if maximized == Some(true) {
+        // (A maximised window, or one full screen, fills the screen as it should.)
+        if maximized == Some(true) || fullscreen == Some(true) {
             return;
         }
         // (The monitor's size includes the taskbar; the window's frame and title bar come on top
@@ -2212,7 +2218,7 @@ impl LauncherApp {
         if size.x <= room.x && size.y <= room.y {
             return;
         }
-        let minimum = (egui::vec2(940.0, 600.0) / zoom).min(room);
+        let minimum = (egui::Vec2::from(ta_config::limits::LAUNCHER_POINTS) / zoom).min(room);
         ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(minimum));
         let fit = size.min(room).max(minimum);
         log::info!("window {:.0} x {:.0} does not fit the screen ({:.0} x {:.0}): {:.0} x {:.0}", size.x, size.y, monitor.x, monitor.y, fit.x, fit.y);
@@ -4114,6 +4120,31 @@ name = \"{}\"
         info.maximized = Some(false);
         frame(&ctx, &mut app, input);
         assert_eq!(app.window, Some(([1300.0, 800.0], false)));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A window full screen (inside gamescope, SteamOS's Game Mode) keeps the size and the
+    /// maximising it has on the desktop, and is not fitted to the screen as a window is.
+    #[test]
+    fn a_full_screen_window_keeps_its_desktop_size() {
+        let dir = temp_dir("fullscreen_window");
+        let path = dir.join("config.toml");
+        let (ctx, mut app) = launcher(&path, &[]);
+        app.window = Some(([1120.0, 720.0], true));
+        let mut input = RawInput::default();
+        let info = input.viewports.entry(egui::ViewportId::ROOT).or_default();
+        info.monitor_size = Some(vec2(1280.0, 800.0));
+        info.outer_rect = Some(Rect::from_min_size(Pos2::ZERO, vec2(1280.0, 800.0)));
+        info.inner_rect = Some(Rect::from_min_size(Pos2::ZERO, vec2(1280.0, 800.0)));
+        (info.maximized, info.fullscreen) = (Some(false), Some(true));
+        let output = frame(&ctx, &mut app, input);
+        assert_eq!(app.window, Some(([1120.0, 720.0], true)));
+        assert!(app.fitted, "looked at once");
+        let resized = output.viewport_output.values().flat_map(|v| &v.commands).any(|c| matches!(c, egui::ViewportCommand::InnerSize(_) | egui::ViewportCommand::MinInnerSize(_)));
+        assert!(!resized, "a full screen is left as it is");
+        app.on_exit(None);
+        let saved = ta_config::Config::try_load_from(&path).unwrap();
+        assert_eq!((saved.launcher.window, saved.launcher.maximized), (Some([1120.0, 720.0]), true));
         let _ = std::fs::remove_dir_all(dir);
     }
 

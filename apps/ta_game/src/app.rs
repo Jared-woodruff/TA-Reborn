@@ -1506,26 +1506,32 @@ fn attract_setup(assets: &Assets, seed: u64) -> GameSetup {
 impl State {
     fn begin(event_loop: &ActiveEventLoop, args: &Args, config: &ta_config::Config) -> Result<(Arc<Window>, ta_render::Gpu, ta_config::Config)> {
         // The very first start (the launcher never ran): set up for this computer, its
-        // graphics level, the screen's own size and full screen. After that the settings are
-        // the player's.
+        // graphics level, the screen's own size and full screen (`Config::set_up_for`). After
+        // that the settings are the player's.
         let mut first = config.clone();
         if first.graphics.preset == ta_config::Preset::Auto && args.screenshot.is_none() {
             let hw = ta_config::hardware::Hardware::detect();
-            log::info!("first start on {}: {} graphics", hw.summary(), hw.preset().label());
-            first.graphics.set_up_for(&hw);
-            // The menus in the computer's own language, when there is a translation of it.
-            let dirs = ta_ui::i18n::language_dirs(&ta_config::config_dir());
-            if first.gameplay.language.is_empty()
-                && std::env::var_os("TA_LANG").is_none()
-                && let Some(code) = ta_config::hardware::system_language().and_then(|l| ta_ui::i18n::closest(&l, &ta_ui::i18n::languages(&dirs)))
-            {
-                log::info!("first start: the menus in {code}, as the computer's");
-                first.gameplay.language = code;
-                if let Err(e) = ta_ui::i18n::set_language(&first.gameplay.language, &dirs) {
-                    log::warn!("{e}");
+            if first.first_start() {
+                first.set_up_for(&hw);
+                log::info!("first start on {}: {} graphics", hw.summary(), first.graphics.preset.label());
+                // The menus in the computer's own language, when there is a translation of it.
+                let dirs = ta_ui::i18n::language_dirs(&ta_config::config_dir());
+                if first.gameplay.language.is_empty()
+                    && std::env::var_os("TA_LANG").is_none()
+                    && let Some(code) = ta_config::hardware::system_language().and_then(|l| ta_ui::i18n::closest(&l, &ta_ui::i18n::languages(&dirs)))
+                {
+                    log::info!("first start: the menus in {code}, as the computer's");
+                    first.gameplay.language = code;
+                    if let Err(e) = ta_ui::i18n::set_language(&first.gameplay.language, &dirs) {
+                        log::warn!("{e}");
+                    }
                 }
+            } else {
+                // The level put back to Auto in the options (or still to be picked on Linux): the
+                // level alone, where the computer tells it; else from the card, once it is open.
+                first.graphics.pick_level_for(&hw);
             }
-            if let Err(e) = first.save() {
+            if first != *config && let Err(e) = first.save() {
                 log::warn!("could not save settings: {e}");
             }
         }
@@ -3196,13 +3202,8 @@ impl State {
     /// battlefield and remaining menus still need 1024 x 600 points and keep their fit limit.
     fn ui_zoom(&self) -> f32 {
         let size = self.window.inner_size();
-        let display = (self.window.scale_factor() as f32).max(0.5);
-        let fit = |width: f32, height: f32| (size.width as f32 / display / width).min(size.height as f32 / display / height);
-        if self.options_open || self.screen == Screen::Menu && self.menu.page == crate::menu::Page::Conquest {
-            let (least, most) = (*ta_config::limits::UI_SCALE.start(), *ta_config::limits::UI_SCALE.end());
-            return self.settings.gameplay.ui_scale.clamp(least, most).min(fit(800.0, 480.0).max(least));
-        }
-        self.settings.gameplay.ui_scale.clamp(0.6, 2.5).min(fit(1024.0, 600.0).max(0.6))
+        let reflowing = self.options_open || self.screen == Screen::Menu && self.menu.page == crate::menu::Page::Conquest;
+        ui_zoom_for(self.settings.gameplay.ui_scale, (size.width, size.height), self.window.scale_factor() as f32, reflowing)
     }
 
     /// In battle, Tab is the game's (held, the players panel): egui would otherwise move the
@@ -8435,6 +8436,20 @@ impl State {
 }
 
 
+/// The interface's scale for the setting `scale` in a window of `size` pixels on a display that
+/// scales by `display` ([`State::ui_zoom`]): no larger than leaves the battlefield and the menus
+/// their room (`limits::GAME_POINTS`), or the pages that reflow theirs (`OPTIONS_POINTS`).
+fn ui_zoom_for(scale: f32, size: (u32, u32), display: f32, reflowing: bool) -> f32 {
+    use ta_config::limits;
+    let display = display.max(0.5);
+    let fit = |(width, height): (f32, f32)| (size.0 as f32 / display / width).min(size.1 as f32 / display / height);
+    if reflowing {
+        let (least, most) = (*limits::UI_SCALE.start(), *limits::UI_SCALE.end());
+        return scale.clamp(least, most).min(fit(limits::OPTIONS_POINTS).max(least));
+    }
+    scale.clamp(0.6, 2.5).min(fit(limits::GAME_POINTS).max(0.6))
+}
+
 /// First start (level Auto): picks the graphics level for the card and applies it. Notes the
 /// card either way; true when the settings changed.
 fn auto_graphics(g: &mut ta_config::Graphics, info: &wgpu::AdapterInfo, pixels: u64) -> bool {
@@ -9428,6 +9443,34 @@ mod tests {
         clamp_classic_view(&mut camera, map, free);
         let seen = screen_of(&camera, Vec2::new(commander.x, commander.z));
         assert!(seen.cmpge(free.0).all() && seen.cmple(free.1).all(), "the Commander at {seen:?}, the view at {:?}", camera.focus);
+    }
+
+    /// A Steam Deck's first start, as the game goes on from it: set up under SteamOS (the level
+    /// left Auto), then the Deck's graphics opened as Vulkan names them: Medium, all its 1280 ×
+    /// 800 pixels drawn. The interface at the 125% set, the most the battlefield's room allows
+    /// there, a larger setting held to it; under a desktop's own 125% the same size on screen.
+    #[test]
+    fn a_steam_deck_plays_at_medium_with_its_interface_as_large_as_the_battle_allows() {
+        use ta_config::hardware::{Handheld, Hardware};
+        let deck = Hardware { os: "linux", handheld: Some(Handheld::SteamDeck), threads: 8, ram_mb: 14_830, ..Default::default() };
+        let mut config = ta_config::Config::default();
+        config.set_up_for(&deck);
+        assert_eq!(config.graphics.preset, ta_config::Preset::Auto, "left to the game");
+        let mut info = wgpu::AdapterInfo::new(wgpu::DeviceType::IntegratedGpu, wgpu::Backend::Vulkan);
+        info.name = "AMD Custom GPU 0405 (RADV VANGOGH)".into();
+        // As `State::begin` goes: the render scale fitted once, then the level picked.
+        let mut g = config.graphics.clone();
+        let pixels = g.picture_pixels(Some((1280, 800)));
+        assert!(g.fit_render_scale_once(gpu_kind(info.device_type), &info.name, pixels));
+        assert!(auto_graphics(&mut g, &info, pixels));
+        assert_eq!((g.preset, g.render_scale, g.gpu.as_str()), (ta_config::Preset::Medium, 1.0, info.name.as_str()));
+        assert!(!auto_graphics(&mut g, &info, pixels), "once");
+        let scale = config.gameplay.ui_scale;
+        assert_eq!(scale, 1.25);
+        assert_eq!(ui_zoom_for(scale, (1280, 800), 1.0, false), 1.25);
+        assert_eq!(ui_zoom_for(scale, (1280, 800), 1.0, true), 1.25, "the options and Conquest");
+        assert_eq!(ui_zoom_for(1.5, (1280, 800), 1.0, false), 1.25);
+        assert_eq!(ui_zoom_for(scale, (1280, 800), 1.25, false) * 1.25, 1.25);
     }
 }
 
