@@ -1,8 +1,10 @@
 name: Release
 
 on:
-  release:
-    types: [published]
+  # Pushing a version tag, once the release's draft (with its notes) exists, builds the packages
+  # into the draft and publishes it when complete; see docs/RELEASING.md.
+  push:
+    tags: ['v*']
   # A manual run builds downloadable workflow artifacts without publishing anything.
   workflow_dispatch:
 
@@ -14,15 +16,41 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  draft:
+    name: Find the release's draft
+    if: github.event_name == 'push'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      # (A draft is visible only with write access.)
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require a draft waiting for its packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python tools/release/release.py draft
+
   packages:
+    needs: draft
+    # (A manual run has no draft to find.)
+    if: ${{ !cancelled() && needs.draft.result != 'failure' }}
     uses: ./.github/workflows/packages.yml
 
   publish:
-    name: Attach verified packages to the release
-    if: github.event_name == 'release'
+    name: Attach the packages to the draft, publish it, retire the previous release
+    if: github.event_name == 'push'
     needs: packages
+    # (Two tags' publications one after the other: the second sees the first's latest release.)
+    concurrency:
+      group: release-publication
+      cancel-in-progress: false
     runs-on: ubuntu-22.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: write
     steps:
@@ -34,8 +62,13 @@ jobs:
         with:
           name: release-files
           path: dist/publish
-      - name: Upload without replacing existing release assets
+      - name: Upload to the draft without replacing existing assets
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ github.ref_name }}
         run: python tools/release/release.py publish --dir dist/publish
+      - name: Publish the complete draft, then delete the previous release (its tag stays)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python tools/release/release.py promote --dir dist/publish
