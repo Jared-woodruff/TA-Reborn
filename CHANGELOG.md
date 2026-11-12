@@ -46,6 +46,9 @@
   walled in by them, unable to move again. Units now step off a new building's site clear of
   the builder's next sites, a unit left standing in a building is put on the nearest free
   ground, and a filled rectangle is built from its far side towards the builders.
+- On a Mac in full screen, the system's pointer could show on top of the game's own. The game
+  now has macOS apply the pointer it wants again whenever it takes the screen and once a second
+  while it has the keyboard.
 
 ## 1.0.2 — 2026-11-11
 
