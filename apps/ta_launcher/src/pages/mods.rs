@@ -61,6 +61,7 @@ impl LauncherApp {
         self.mods_header(ui, short);
         self.mods_tabs(ui);
         self.mod_problems(ui);
+        self.game_folder_offers(ui);
         self.package_installs(ui);
         match self.mods_tab {
             ModsTab::Library => self.mod_library_view(ui),
@@ -117,6 +118,39 @@ impl LauncherApp {
             });
             ui.label(RichText::new(t("Fix the files, then press Rescan. Broken mods are skipped.")).color(STEEL));
         });
+    }
+
+    /// The mods the original game's folder holds, made for engines of their own, that are not
+    /// installed as mods: TA Reborn plays the original game without them, and adds them as mods
+    /// (their archives linked from there) at a click.
+    fn game_folder_offers(&mut self, ui: &mut Ui) {
+        let offers: Vec<(String, String, usize)> = self.game_folder_mods.iter()
+            .filter(|m| self.mods.get(&m.id).is_none() && !self.installer.stages.get(&m.id).is_some_and(Stage::active))
+            .map(|m| (m.id.clone(), m.name.clone(), m.archives.len()))
+            .collect();
+        if offers.is_empty() { return; }
+        widgets::card(ui, |ui| {
+            widgets::card_title(ui, "IN YOUR TOTAL ANNIHILATION FOLDER");
+            ui.add(egui::Label::new(RichText::new(t("These mods' own installers put them in the original game's folder, for engines of their own. TA Reborn plays the original game without them: add one to play it.")).color(STEEL)).wrap());
+            ui.add_space(space::XS);
+            for (id, name, archives) in &offers {
+                ui.push_id(("game_folder_mod", id), |ui| {
+                    ui.horizontal(|ui| {
+                        // (The name at the left, the button at the right.)
+                        let room = (ui.available_width() - 190.0).max(80.0);
+                        ui.allocate_ui_with_layout(vec2(room, 26.0), Layout::left_to_right(Align::Center), |ui| {
+                            ui.set_min_width(room);
+                            ui.add(egui::Label::new(RichText::new(name).font(strong(14.0)).color(TEXT_BRIGHT)).truncate())
+                                .on_hover_text(tf("{n} archives in the game's folder", &[("n", archives)]));
+                        });
+                        if ui.add(ActionButton::primary("ADD AS A MOD").height(26.0)).hover_tip(t("Add it to your mods, its files linked from the game's folder (which is left as it is)")).clicked() {
+                            self.push(Action::AddGameFolderMod(id.clone()));
+                        }
+                    });
+                });
+            }
+        });
+        ui.add_space(space::S);
     }
 
     /// Mods the player brought, being installed (or that failed to): one row each. (The
@@ -1094,6 +1128,53 @@ mod tests {
         assert_eq!(app.config.mods.enabled, ["missing-mod", "naval", "tweaks"]);
         run(&mut app, vec![key(egui::Key::End)]);
         assert_eq!(app.config.mods.enabled, ["missing-mod", "tweaks", "naval"]);
+        drop(app);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Mods made for other engines in the original game's folder are offered at the top of the
+    /// page until they are added; ADD AS A MOD installs one, its files linked from there.
+    #[test]
+    fn the_game_folders_mods_are_offered_until_added() {
+        use clap::Parser;
+        let dir = std::env::temp_dir().join(format!("ta_mod_page_game_folder_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let game = dir.join("game");
+        ta_vfs::test_archive::write(&game.join("TAESC.gp3"), &[("unitse/armcom.fbi", b"escalation"), ("guie/armcom1.gui", b"escalation")]);
+        let ctx = egui::Context::default();
+        let config = dir.join("config.toml");
+        let args = crate::Args::parse_from(["ta-launcher", "--offline", "--pretend-missing", "--config", config.to_str().unwrap()]);
+        let mut app = LauncherApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()), args);
+        app.skins.shutdown();
+        app.game_folder_mods = ta_vfs::mods::game_folder_mods(&game);
+        let screen = |events: Vec<egui::Event>| egui::RawInput { screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(1200.0, 900.0))), events, ..Default::default() };
+        let run = |app: &mut LauncherApp, events: Vec<egui::Event>| {
+            let mut output = ctx.run_ui(screen(events), |ui| app.mods_page(ui));
+            output.textures_delta.clear();
+            texts(&output)
+        };
+        run(&mut app, Vec::new());
+        let shown = run(&mut app, Vec::new());
+        assert!(shown.iter().any(|(text, _)| text == "IN YOUR TOTAL ANNIHILATION FOLDER"), "{shown:?}");
+        let add = shown.iter().find(|(text, _)| text == "ADD AS A MOD").map(|(_, rect)| rect.center()).expect("its button");
+        for pressed in [true, false] {
+            run(&mut app, vec![egui::Event::PointerMoved(add), egui::Event::PointerButton { pos: add, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() }]);
+        }
+        let actions = std::mem::take(&mut app.actions);
+        assert!(matches!(actions.as_slice(), [Action::AddGameFolderMod(id)] if id == "escalation"), "{actions:?}");
+        app.apply(Action::AddGameFolderMod("escalation".into()), &eframe::Frame::_new_kittest());
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        while app.installer.stages.get("escalation").is_some_and(Stage::active) && std::time::Instant::now() < deadline {
+            app.installer.poll();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(matches!(app.installer.stages.get("escalation"), Some(Stage::Done { .. })), "{:?}", app.installer.stages.get("escalation"));
+        app.refresh_mods();
+        assert!(app.mods.get("escalation").is_some(), "installed as the catalogue's TA: Escalation");
+        assert!(game.join("TAESC.gp3").is_file(), "the game's folder is left as it is");
+        run(&mut app, Vec::new());
+        assert!(!run(&mut app, Vec::new()).iter().any(|(text, _)| text == "ADD AS A MOD"), "offered no more");
+        app.installer.shutdown();
         drop(app);
         let _ = std::fs::remove_dir_all(dir);
     }

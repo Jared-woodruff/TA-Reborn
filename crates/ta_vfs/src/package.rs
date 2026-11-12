@@ -373,14 +373,11 @@ pub fn plan(unpacked: &Path) -> Result<Plan, PackageError> {
         }
     }
     // What the content holds, by top folder: how many files of each kind.
-    let mut contents: BTreeMap<String, BTreeMap<String, usize>> = BTreeMap::new();
+    let mut contents = Contents::new();
     let mut content_paths = std::collections::BTreeSet::new();
     let mut count = |p: &str| {
         content_paths.insert(p.to_string());
-        if let Some((top, rest)) = p.split_once('/') {
-            let ext = rest.rsplit_once('.').map_or("", |(_, e)| e).to_string();
-            *contents.entry(top.to_string()).or_default().entry(ext).or_default() += 1;
-        }
+        count_content(&mut contents, p);
     };
     for path in &plan.archives {
         let Ok(archive) = ta_archive(path) else { continue };
@@ -396,14 +393,7 @@ pub fn plan(unpacked: &Path) -> Result<Plan, PackageError> {
         });
     }
     // Folders of the mod's own standing in for TA's; loose ones that do not are left out.
-    for (top, kinds) in &contents {
-        let Some((folder, kind)) = rename_candidate(top) else { continue };
-        let files: usize = kinds.values().sum();
-        let fitting = kinds.get(kind).copied().unwrap_or(0);
-        if fitting * 2 > files && !contents.contains_key(folder) && !declared.contains(top) {
-            plan.rename.insert(top.clone(), folder.to_string());
-        }
-    }
+    plan.rename.extend(detected_renames(&contents, &declared));
     let (rename, unpacked_root) = (plan.rename.clone(), unpacked.to_path_buf());
     plan.folders.retain(|f| {
         let name = f.file_name().map_or(String::new(), |n| n.to_string_lossy().to_ascii_lowercase());
@@ -427,6 +417,66 @@ pub fn plan(unpacked: &Path) -> Result<Plan, PackageError> {
         if path.starts_with("maps/") && path.ends_with(".ota") { plan.maps += 1; }
     }
     Ok(plan)
+}
+
+/// What a mod's content holds, by top folder (normalised): how many files of each kind (their
+/// extensions).
+pub(crate) type Contents = BTreeMap<String, BTreeMap<String, usize>>;
+
+/// Counts a file of a mod's content, at its normalised path, into `contents`.
+pub(crate) fn count_content(contents: &mut Contents, path: &str) {
+    if let Some((top, rest)) = path.split_once('/') {
+        let ext = rest.rsplit_once('.').map_or("", |(_, e)| e).to_string();
+        *contents.entry(top.to_string()).or_default().entry(ext).or_default() += 1;
+    }
+}
+
+/// The folders of a mod's own that stand in for TA's (`guim` → `guis`, `unitse` → `units`): a
+/// top folder named like one ([`rename_candidate`]) and mostly of the kind of file that one holds,
+/// where the mod has no folder of TA's own name beside it. `declared` (a manifest's own) are left
+/// as their manifest has them.
+pub(crate) fn detected_renames(contents: &Contents, declared: &std::collections::BTreeSet<String>) -> BTreeMap<String, String> {
+    let mut rename = BTreeMap::new();
+    for (top, kinds) in contents {
+        let Some((folder, kind)) = rename_candidate(top) else { continue };
+        let files: usize = kinds.values().sum();
+        let fitting = kinds.get(kind).copied().unwrap_or(0);
+        if fitting * 2 > files && !contents.contains_key(folder) && !declared.contains(top) {
+            rename.insert(top.clone(), folder.to_string());
+        }
+    }
+    rename
+}
+
+/// What a TA archive holds ([`Contents`]), or nothing when it does not read.
+pub(crate) fn archive_contents(path: &Path) -> Option<Contents> {
+    let archive = ta_formats::hpi::HpiArchive::open(path).ok()?;
+    let mut contents = Contents::new();
+    for f in archive.files() {
+        count_content(&mut contents, &crate::normalize(&f.path));
+    }
+    Some(contents)
+}
+
+/// What goes into the mod a mod found in the original game's folder is added as
+/// ([`crate::mods::GameFolderMod`]): its archives where they are (the launcher links them into the
+/// mod's folder, never taking them out of the game's), the folders of its own it uses, and the
+/// units and maps it brings.
+pub fn game_folder_plan(found: &crate::mods::GameFolderMod) -> Plan {
+    let root = found.archives.first().and_then(|p| p.parent()).map(Path::to_path_buf).unwrap_or_default();
+    let mut plan = Plan { root, archives: found.archives.clone(), rename: found.rename.clone(), ..Default::default() };
+    let mapped = crate::Renames::new(&plan.rename);
+    let mut paths = std::collections::BTreeSet::new();
+    for archive in &plan.archives {
+        if let Ok(archive) = ta_formats::hpi::HpiArchive::open(archive) {
+            paths.extend(archive.files().iter().map(|f| mapped.apply(crate::normalize(&f.path))));
+        }
+    }
+    for path in paths {
+        if path.starts_with("units/") && path.ends_with(".fbi") { plan.units += 1; }
+        if path.starts_with("maps/") && path.ends_with(".ota") { plan.maps += 1; }
+    }
+    plan
 }
 
 /// Direct children that must be retained for explicitly mapped (possibly nested) paths.

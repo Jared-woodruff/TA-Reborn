@@ -197,6 +197,8 @@ pub enum Action {
     Uninstall(String),
     /// Installs a mod from an archive or a folder the player brought.
     InstallPackage(PathBuf),
+    /// Adds a mod found in the original game's folder (by id) as a mod of its own.
+    AddGameFolderMod(String),
     /// Picks a mod archive to install.
     BrowsePackage,
     /// Turns a mod on (asking first when it is a second total conversion).
@@ -253,6 +255,10 @@ pub struct LauncherApp {
     profiles: profiles::Profiles,
     pub(crate) detection: Detection,
     pub(crate) mods: ModList,
+    /// Mods made for other engines in the original game's folder, as their own installers had
+    /// players put them there (`ta_vfs::mods::game_folder_mods`): never part of the original game,
+    /// offered on the Mods page to be added as mods.
+    pub(crate) game_folder_mods: Vec<ta_vfs::mods::GameFolderMod>,
     pub(crate) mod_validation: crate::validation::ModValidation,
     pub(crate) maps: crate::maps::Library,
     pub(crate) skins: crate::skins::Library,
@@ -445,6 +451,7 @@ impl LauncherApp {
         }
         // (Scanned in the menus' language: a mod's problems are told in it.)
         let mods = ModList::scan(mod_folders(&config, &store), &config.mods.enabled);
+        let game_folder_mods = detection.install().map(|i| ta_vfs::mods::game_folder_mods(&i.root)).unwrap_or_default();
         let mut mod_validation = crate::validation::ModValidation::new(store.dir().join("cache/mod-validation"));
         mod_validation.sync(detection.install().map(|i| i.root.clone()), mods.mods.iter().map(|m| m.info.clone()).collect(), false);
         // (Captures and tests stay off the network; a local file source is fine.)
@@ -547,6 +554,7 @@ impl LauncherApp {
             store,
             profiles,
             detection,
+            game_folder_mods,
             mods,
             mod_validation,
             maps: Default::default(),
@@ -853,15 +861,22 @@ impl LauncherApp {
         self.detection = detect::detect(self.config.game_dir.as_deref(), self.pretend_missing);
         let root = self.detection.install().map(|i| i.root.clone());
         if root != previous {
+            self.scan_game_folder();
             self.sync_mod_validation();
             self.skins.invalidate_preview();
             self.sounds = crate::sounds::Sounds::start(root.filter(|_| self.capture.is_none()), self.film.is_some());
         }
     }
 
+    /// Looks again for mods made for other engines in the original game's folder.
+    fn scan_game_folder(&mut self) {
+        self.game_folder_mods = self.detection.install().map(|i| ta_vfs::mods::game_folder_mods(&i.root)).unwrap_or_default();
+    }
+
     pub(crate) fn rescan_mods(&mut self) {
         self.rescan_maps();
         self.skins.invalidate_preview();
+        self.scan_game_folder();
         self.mods = ModList::scan(mod_folders(&self.config, &self.store), &self.config.mods.enabled);
         self.sync_mod_validation();
         self.mod_library.changes.clear();
@@ -872,6 +887,7 @@ impl LauncherApp {
     pub(crate) fn refresh_mods(&mut self) {
         self.rescan_maps();
         self.skins.invalidate_preview();
+        self.scan_game_folder();
         self.mods = ModList::scan(mod_folders(&self.config, &self.store), &self.config.mods.enabled);
         self.mod_validation.sync_changed(self.detection.install().map(|i| i.root.clone()),
             self.mods.mods.iter().map(|m| m.info.clone()).collect());
@@ -919,7 +935,7 @@ impl LauncherApp {
         self.store.dir().join("logs")
     }
 
-    fn apply(&mut self, action: Action, frame: &eframe::Frame) {
+    pub(crate) fn apply(&mut self, action: Action, frame: &eframe::Frame) {
         // A film launches, opens and asks for nothing.
         if self.film.is_some() && !matches!(action, Action::Rescan | Action::RescanMods | Action::RescanSkins | Action::UseAutoDetect | Action::ClearExtraModsDir
             | Action::EnableMod(_) | Action::DisableMod(_) | Action::HideMod(..) | Action::UnhideAllMods) {
@@ -950,6 +966,13 @@ impl LauncherApp {
                 }
             }
             Action::InstallPackage(path) => self.install_package(&path),
+            Action::AddGameFolderMod(id) => {
+                if !self.map_import_blocks_mod_changes() && !self.game_holds_mods(Some(&id))
+                    && let Some(found) = self.game_folder_mods.iter().find(|m| m.id == id).cloned()
+                {
+                    self.installer.start(Source::GameFolder(found));
+                }
+            }
             Action::EnableMod(id) => self.enable_mod(&id),
             Action::DisableMod(id) => modlist::set_enabled(&mut self.config.mods.enabled, &id, false),
             Action::HideMod(id, hidden) => self.set_mod_hidden(&id, hidden),

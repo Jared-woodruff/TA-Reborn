@@ -170,7 +170,9 @@ pub fn read_mod(path: &Path) -> Result<Option<ModInfo>, ModError> {
             manifest
         } else {
             // (A folder's whole name: "TA.Escalation" is not "TA", nor "Mod v1.2" "Mod v1".)
-            implicit_manifest(&path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default())
+            let mut manifest = implicit_manifest(&path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default());
+            manifest.rename = implicit_renames(path, &ModKind::Directory);
+            manifest
         };
         Ok(Some(ModInfo { manifest, path: path.to_path_buf(), kind: ModKind::Directory }))
     } else if path
@@ -179,7 +181,9 @@ pub fn read_mod(path: &Path) -> Result<Option<ModInfo>, ModError> {
         .is_some_and(|e| ARCHIVE_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
     {
         let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-        Ok(Some(ModInfo { manifest: implicit_manifest(&stem), path: path.to_path_buf(), kind: ModKind::Archive }))
+        let mut manifest = implicit_manifest(&stem);
+        manifest.rename = implicit_renames(path, &ModKind::Archive);
+        Ok(Some(ModInfo { manifest, path: path.to_path_buf(), kind: ModKind::Archive }))
     } else {
         Ok(None)
     }
@@ -203,6 +207,41 @@ fn read_manifest(path: &Path) -> std::io::Result<String> {
     file.take((1 << 20) + 1).read_to_string(&mut text)?;
     if text.len() > 1 << 20 { return Err(std::io::Error::other("mod manifest exceeds 1 MiB")); }
     Ok(text)
+}
+
+/// The folders of its own a mod without a manifest uses in place of TA's ([`ModManifest::rename`]),
+/// read from what it holds as the installer reads a package's (`package::detected_renames`): a mod
+/// made for a patched engine (TA: Escalation's `unitse` and `guie`, Total Mayhem's `guim` and
+/// `weaponm`) dropped into a mods folder by hand plays as it does installed from its package.
+/// (Without them its units, menus and weapons were never read: TA: Escalation was the original
+/// game, Total Mayhem its units with TA's menus and no weapons of their own.)
+fn implicit_renames(path: &Path, kind: &ModKind) -> BTreeMap<String, String> {
+    let mut contents = crate::package::Contents::new();
+    let mut add = |more: crate::package::Contents| {
+        for (top, kinds) in more {
+            let into = contents.entry(top).or_default();
+            for (kind, n) in kinds {
+                *into.entry(kind).or_default() += n;
+            }
+        }
+    };
+    match kind {
+        ModKind::Archive => add(crate::package::archive_contents(path).unwrap_or_default()),
+        ModKind::Directory => {
+            for archive in crate::archive_files(path).unwrap_or_default() {
+                add(crate::package::archive_contents(&archive).unwrap_or_default());
+            }
+            let mut loose = Vec::new();
+            if crate::collect_files(path, path, true, &mut loose).is_ok() {
+                let mut found = crate::package::Contents::new();
+                for file in loose {
+                    crate::package::count_content(&mut found, &crate::normalize(&file.to_string_lossy()));
+                }
+                add(found);
+            }
+        }
+    }
+    crate::package::detected_renames(&contents, &BTreeSet::new())
 }
 
 fn implicit_manifest(stem: &str) -> ModManifest {
@@ -279,6 +318,102 @@ pub fn replaced_archives(install: &Path, mods: &[&ModInfo]) -> Vec<String> {
     out
 }
 
+/// A mod the original game's folder holds, put there as the mod's own installer had a player put
+/// it (its archives beside TA's), made for an engine of its own: its archives use folders of the
+/// mod's own in place of TA's ([`ModManifest::rename`]), which TA's engine never read. Mounted
+/// with the original game, it played neither: TA: Escalation's models and scripts took the place of
+/// TA's own units' with nothing of Escalation's own, Total Mayhem's units came without their menus
+/// or weapons. Its archives are never the original game's ([`mount`]); the launcher adds it as a
+/// mod.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GameFolderMod {
+    /// The id the catalogue knows it by (`escalation`), else its main archive's name.
+    pub id: String,
+    pub name: String,
+    /// Its archives in the game's folder, sorted.
+    pub archives: Vec<PathBuf>,
+    pub rename: BTreeMap<String, String>,
+}
+
+/// The longest mod id the launcher installs, in letters.
+pub const MOST_ID_LETTERS: usize = 64;
+
+/// Mods TA Reborn knows by the names of the archives their installers put in the game's folder (in
+/// lower case): the first made for the mod's own engine, which says the mod is there; with it, the
+/// others are the mod's whatever they hold (TA: Escalation's `t4esc1.ufo` holds only sounds and
+/// models). Their ids are the catalogue's.
+const KNOWN_ARCHIVES: &[(&str, &str, &[&str])] = &[
+    ("escalation", "TA: Escalation", &["taesc.gp3", "t2esc.ufo", "t3esc.ufo", "t4esc1.ufo", "t4esc2.ufo", "t5esc.ufo", "txesc.ufo", "tademo.ufo"]),
+    ("totalmayhem", "Total Mayhem", &["mayhem.gp3", "tademom.ufo"]),
+];
+
+/// The mods made for other engines in the original game's folder `install` ([`GameFolderMod`]):
+/// those TA Reborn knows by name ([`KNOWN_ARCHIVES`]), then each other archive with folders of its
+/// own in place of TA's, with those sharing one of them (a mod's several archives). The archives
+/// of the original game's releases are never one's ([`crate::install::ARCHIVES`]), nor archives
+/// with TA's folders alone: unit packs and maps TA's own engine read too.
+pub fn game_folder_mods(install: &Path) -> Vec<GameFolderMod> {
+    struct Found {
+        path: PathBuf,
+        name: String,
+        rename: BTreeMap<String, String>,
+        size: u64,
+    }
+    let mut found: Vec<Found> = crate::archive_files(install)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|path| {
+            let name = path.file_name()?.to_string_lossy().to_lowercase();
+            if crate::install::ARCHIVES.contains(&name.as_str()) {
+                return None;
+            }
+            let rename = crate::package::detected_renames(&crate::package::archive_contents(&path)?, &BTreeSet::new());
+            let size = std::fs::metadata(&path).map_or(0, |m| m.len());
+            Some(Found { path, name, rename, size })
+        })
+        .collect();
+    found.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.path.cmp(&b.path)));
+    let mut mods = Vec::new();
+    let mut taken = BTreeSet::new();
+    for (id, name, archives) in KNOWN_ARCHIVES {
+        if !found.iter().any(|f| f.name == archives[0] && !f.rename.is_empty()) {
+            continue;
+        }
+        let own: Vec<&Found> = found.iter().filter(|f| archives.contains(&f.name.as_str())).collect();
+        taken.extend(own.iter().map(|f| f.name.clone()));
+        mods.push(GameFolderMod {
+            id: id.to_string(),
+            name: name.to_string(),
+            archives: own.iter().map(|f| f.path.clone()).collect(),
+            rename: own.iter().flat_map(|f| f.rename.clone()).collect(),
+        });
+    }
+    // The others: archives sharing a folder of their own are one mod's.
+    let mut groups: Vec<Vec<&Found>> = Vec::new();
+    for f in found.iter().filter(|f| !f.rename.is_empty() && !taken.contains(&f.name)) {
+        let mut group = vec![f];
+        let mut i = groups.len();
+        while i > 0 {
+            i -= 1;
+            if groups[i].iter().any(|other| other.rename.keys().any(|folder| f.rename.contains_key(folder))) {
+                group.extend(groups.remove(i));
+            }
+        }
+        groups.push(group);
+    }
+    for mut group in groups {
+        group.sort_by(|a, b| a.name.cmp(&b.name));
+        let main = group.iter().max_by(|a, b| a.size.cmp(&b.size).then_with(|| b.name.cmp(&a.name))).expect("a group has an archive");
+        let name = main.path.file_stem().map_or(String::new(), |s| s.to_string_lossy().into_owned());
+        // (An id the installer takes, however long the archive's name: room left for a "-2".)
+        let short: String = name.to_lowercase().chars().take(MOST_ID_LETTERS - 4).collect();
+        let base = Some(short.trim_end_matches(['.', ' ']).to_string()).filter(|id| crate::package::safe_component(id)).unwrap_or_else(|| "game-folder-mod".to_string());
+        let id = (1..).map(|n| if n == 1 { base.clone() } else { format!("{base}-{n}") }).find(|id| !mods.iter().any(|m: &GameFolderMod| m.id == *id)).expect("a free id");
+        mods.push(GameFolderMod { id, name, archives: group.iter().map(|f| f.path.clone()).collect(), rename: group.iter().flat_map(|f| f.rename.clone()).collect() });
+    }
+    mods
+}
+
 /// The game's content as [`mount`] mounted it, and what of it could not be.
 pub struct Mounted {
     pub vfs: crate::Vfs,
@@ -291,6 +426,9 @@ pub struct Mounted {
     pub mods: Result<Vec<String>, ModError>,
     /// The install's archives left out, as named there: the mods mounted replace them.
     pub replaced: Vec<String>,
+    /// The mods made for other engines in the install's folder ([`game_folder_mods`]), whose
+    /// archives are left out of the original game too.
+    pub game_folder_mods: Vec<GameFolderMod>,
 }
 
 /// Mounts the game's content as the game does: the original game's install at `install`, less the
@@ -324,8 +462,16 @@ pub fn mount(install: Option<&Path>, builtin: Option<&Path>, mods: &[&ModInfo], 
     }
     let on: &[&ModInfo] = if problem.is_none() { mods } else { &[] };
     let replaced = install.map(|dir| replaced_archives(dir, on)).unwrap_or_default();
+    // (Mods made for other engines in the game's folder are never the original game's.)
+    let game_folder = install.map(game_folder_mods).unwrap_or_default();
+    let mut left_out = replaced.clone();
+    for m in &game_folder {
+        let names: Vec<String> = m.archives.iter().filter_map(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).collect();
+        log::info!("{} is in the game's folder, made for its own engine: its archives are left out of the original game ({})", m.name, names.join(", "));
+        left_out.extend(names.into_iter().filter(|n| !replaced.iter().any(|r| r.eq_ignore_ascii_case(n))));
+    }
     let mut vfs = crate::Vfs::new();
-    let install = install.map_or(Ok(()), |dir| vfs.mount_game_dir_without(dir, "base", &replaced));
+    let install = install.map_or(Ok(()), |dir| vfs.mount_install(dir, "base", &left_out));
     let builtin = builtin.map_or(Ok(()), |dir| vfs.mount_mod_dir(dir, crate::BUILTIN_LAYER));
     let mods = match problem {
         Some(problem) => Err(problem),
@@ -336,7 +482,7 @@ pub fn mount(install: Option<&Path>, builtin: Option<&Path>, mods: &[&ModInfo], 
             Ok(mods.iter().map(|m| m.manifest.id.clone()).collect())
         }
     };
-    Mounted { vfs, install, builtin, mods, replaced }
+    Mounted { vfs, install, builtin, mods, replaced, game_folder_mods: game_folder }
 }
 
 /// [`mount`] with the mods `enabled` (found among `available`) in their load order
@@ -902,6 +1048,106 @@ mod replacement_tests {
         assert_eq!(listing(&without.vfs), listing(&alone), "no mod: the install as it always was");
         assert!(without.replaced.is_empty());
         assert_eq!(without.vfs.read("units/armsy.fbi").unwrap(), b"core contingency");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// Mods made for other engines, put in the game's folder by their own installers: TA:
+    /// Escalation's (folders of its own, and an archive of its name holding sounds alone), Total
+    /// Mayhem's (TA's `units` beside folders of its own), and one TA Reborn does not know by name
+    /// (two archives sharing a folder of their own). Each is found as a mod, and none of their
+    /// archives is the original game's, whatever mods are on: TA's Commander stays TA's, not Total
+    /// Mayhem's, its model not Escalation's. A map pack and TA's own archives stay.
+    #[test]
+    fn mods_in_the_game_folder_are_never_the_original_games() {
+        let root = temp("game_folder");
+        let game = install(&root);
+        test_archive::write(&game.join("TAESC.gp3"), &[("unitse/armcom.fbi", b"escalation"), ("guie/armcom1.gui", b"escalation"), ("downloadse/esc.tdf", b"escalation"), ("objects3d/armcom.3do", b"escalation")]);
+        test_archive::write(&game.join("T4ESC1.ufo"), &[("sounds/boom.wav", b"escalation")]);
+        test_archive::write(&game.join("mayhem.gp3"), &[("units/armcom.fbi", b"mayhem"), ("guim/armcom1.gui", b"mayhem"), ("weaponm/weapons.tdf", b"mayhem")]);
+        test_archive::write(&game.join("Talon.gp3"), &[("unittal/talcom.fbi", b"talon"), ("guital/talcom1.gui", b"talon")]);
+        test_archive::write(&game.join("TalonExtra.ufo"), &[("guital/talcom2.gui", b"talon")]);
+        test_archive::write(&game.join("MyMaps.ufo"), &[("maps/mine.tnt", b"maps"), ("maps/mine.ota", b"maps")]);
+        let found = game_folder_mods(&game);
+        let names = |m: &GameFolderMod| m.archives.iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect::<Vec<_>>();
+        let pairs = |list: &[(&str, &str)]| list.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect::<BTreeMap<String, String>>();
+        assert_eq!(found.iter().map(|m| (m.id.as_str(), m.name.as_str())).collect::<Vec<_>>(), [("escalation", "TA: Escalation"), ("totalmayhem", "Total Mayhem"), ("talon", "Talon")]);
+        assert_eq!(names(&found[0]), ["T4ESC1.ufo", "TAESC.gp3"], "an archive of its name is the mod's whatever it holds");
+        assert_eq!(found[0].rename, pairs(&[("downloadse", "download"), ("guie", "guis"), ("unitse", "units")]));
+        assert_eq!((names(&found[1]), found[1].rename.clone()), (vec!["mayhem.gp3".to_string()], pairs(&[("guim", "guis"), ("weaponm", "weapons")])));
+        assert_eq!((names(&found[2]), found[2].rename.clone()), (vec!["Talon.gp3".to_string(), "TalonExtra.ufo".to_string()], pairs(&[("guital", "guis"), ("unittal", "units")])));
+        let plan = crate::package::game_folder_plan(&found[2]);
+        assert_eq!((plan.root.clone(), plan.units, plan.maps), (game.clone(), 1, 0), "its unit counted where its engine read it");
+        for on in [Vec::new(), vec![mod_dir(&root, "maps", "", &[("more.ufo", &[("maps/more.tnt", b"more")])])]] {
+            let mounted = mount(Some(&game), None, &on.iter().collect::<Vec<_>>(), &ids);
+            assert_eq!(mounted.game_folder_mods, found);
+            let vfs = &mounted.vfs;
+            assert_eq!(vfs.read("units/armcom.fbi").unwrap(), b"patch", "TA's own Commander, not Total Mayhem's");
+            for gone in ["objects3d/armcom.3do", "sounds/boom.wav", "guim/armcom1.gui", "guital/talcom2.gui", "unitse/armcom.fbi"] {
+                assert!(!vfs.exists(gone), "{gone} is a mod's, not the original game's");
+            }
+            assert!(vfs.exists("maps/mine.tnt"), "a map pack stays the original game's, as TA read it");
+            assert!(vfs.exists("units/armscab.fbi"), "and TA's own post-release units");
+        }
+        // Mounted alone (the launcher's pictures and sounds, the tests), the install leaves them out
+        // too.
+        let mut alone = crate::Vfs::new();
+        alone.mount_game_dir(&game, "base").unwrap();
+        assert_eq!(alone.read("units/armcom.fbi").unwrap(), b"patch");
+        assert!(!alone.exists("objects3d/armcom.3do") && alone.exists("maps/mine.tnt"));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// A mod in the game's folder whose archive's name is longer than a mod id may be gets an id
+    /// the installer takes, a second of the same name one too.
+    #[test]
+    fn a_long_named_mod_in_the_game_folder_gets_an_id_the_installer_takes() {
+        let root = temp("long_name");
+        let game = install(&root);
+        let long = format!("{} Extra Units.", "Very".repeat(20));
+        test_archive::write(&game.join(format!("{long}gp3")), &[("unitsx/a.fbi", b"a"), ("unitsx/b.fbi", b"b")]);
+        test_archive::write(&game.join(format!("{long}ufo")), &[("unitsy/c.fbi", b"c")]);
+        let found = game_folder_mods(&game);
+        assert_eq!(found.len(), 2, "two mods, sharing no folder of their own");
+        for m in &found {
+            assert!((1..=MOST_ID_LETTERS).contains(&m.id.chars().count()), "{} is too long", m.id);
+            assert!(crate::package::safe_component(&m.id), "{}", m.id);
+        }
+        assert_ne!(found[0].id, found[1].id);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// A mod made for a patched engine dropped into a mods folder by hand, without a manifest (a
+    /// folder of its archives, an archive alone, loose folders): its folders of its own are read as
+    /// TA's, as the installer has them; a mod with TA's folders alone, a manifest's renames, are
+    /// left as they are.
+    #[test]
+    fn a_mod_without_a_manifest_reads_its_own_engines_folders() {
+        let root = temp("implicit");
+        let game = install(&root);
+        let mods = root.join("mods");
+        test_archive::write(&mods.join("Total Mayhem").join("mayhem.gp3"), &[("units/armcom.fbi", b"mayhem"), ("guim/armcom1.gui", b"mayhem"), ("weaponm/weapons.tdf", b"mayhem"), ("unitpicm/armcom.pcx", b"mayhem")]);
+        test_archive::write(&mods.join("TAESC.gp3"), &[("unitse/armcom.fbi", b"escalation"), ("guie/armcom1.gui", b"escalation"), ("gamedate/sidedata.tdf", b"escalation"), ("downloadse/a.tdf", b"escalation")]);
+        std::fs::create_dir_all(mods.join("talon").join("unittal")).unwrap();
+        std::fs::write(mods.join("talon").join("unittal").join("talcom.fbi"), b"talon").unwrap();
+        test_archive::write(&mods.join("units.ufo"), &[("units/new.fbi", b"new")]);
+        let (found, problems) = scan(&mods);
+        assert!(problems.is_empty(), "{problems:?}");
+        let rename = |id: &str| found.iter().find(|m| m.manifest.id == id).unwrap_or_else(|| panic!("{id}")).manifest.rename.clone();
+        let pairs = |list: &[(&str, &str)]| list.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect::<BTreeMap<String, String>>();
+        assert_eq!(rename("total mayhem"), pairs(&[("guim", "guis"), ("unitpicm", "unitpics"), ("weaponm", "weapons")]));
+        assert_eq!(rename("taesc"), pairs(&[("downloadse", "download"), ("gamedate", "gamedata"), ("guie", "guis"), ("unitse", "units")]));
+        assert_eq!(rename("talon"), pairs(&[("unittal", "units")]));
+        assert!(rename("units").is_empty(), "TA's own folders stand for themselves");
+        let mayhem = found.iter().find(|m| m.manifest.id == "total mayhem").unwrap();
+        let mounted = mount(Some(&game), None, &[mayhem], &ids);
+        assert!(mounted.mods.is_ok(), "{:?}", mounted.mods.err());
+        assert_eq!(mounted.vfs.read("guis/armcom1.gui").unwrap(), b"mayhem", "its menus where TA reads them");
+        assert_eq!(mounted.vfs.read("weapons/weapons.tdf").unwrap(), b"mayhem", "and its weapons, in place of TA's");
+        assert_eq!(mounted.vfs.read("units/armcom.fbi").unwrap(), b"mayhem");
+        let escalation = found.iter().find(|m| m.manifest.id == "taesc").unwrap();
+        let mounted = mount(Some(&game), None, &[escalation], &ids);
+        assert_eq!(mounted.vfs.read("units/armcom.fbi").unwrap(), b"escalation", "its units in place of TA's");
+        assert!(!mounted.vfs.exists("units/armsy.fbi"), "TA's own hidden beneath, as its engine read only its folder");
         let _ = std::fs::remove_dir_all(root);
     }
 
