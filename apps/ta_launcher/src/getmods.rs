@@ -435,7 +435,7 @@ fn install_from_game_folder(
         rename: found.rename.clone(),
         replaces: Vec::new(),
     };
-    if !ta_vfs::package::safe_component(&manifest.id) || !(1..=64).contains(&manifest.id.chars().count()) {
+    if !ta_vfs::package::safe_component(&manifest.id) || !(1..=ta_vfs::mods::MOST_ID_LETTERS).contains(&manifest.id.chars().count()) {
         return Err(ta_ui::i18n::t("invalid mod id").to_string().into());
     }
     let plan = ta_vfs::package::game_folder_plan(found);

@@ -335,6 +335,9 @@ pub struct GameFolderMod {
     pub rename: BTreeMap<String, String>,
 }
 
+/// The longest mod id the launcher installs, in letters.
+pub const MOST_ID_LETTERS: usize = 64;
+
 /// Mods TA Reborn knows by the names of the archives their installers put in the game's folder (in
 /// lower case): the first made for the mod's own engine, which says the mod is there; with it, the
 /// others are the mod's whatever they hold (TA: Escalation's `t4esc1.ufo` holds only sounds and
@@ -402,7 +405,9 @@ pub fn game_folder_mods(install: &Path) -> Vec<GameFolderMod> {
         group.sort_by(|a, b| a.name.cmp(&b.name));
         let main = group.iter().max_by(|a, b| a.size.cmp(&b.size).then_with(|| b.name.cmp(&a.name))).expect("a group has an archive");
         let name = main.path.file_stem().map_or(String::new(), |s| s.to_string_lossy().into_owned());
-        let base = Some(name.to_lowercase()).filter(|id| crate::package::safe_component(id)).unwrap_or_else(|| "game-folder-mod".to_string());
+        // (An id the installer takes, however long the archive's name: room left for a "-2".)
+        let short: String = name.to_lowercase().chars().take(MOST_ID_LETTERS - 4).collect();
+        let base = Some(short.trim_end_matches(['.', ' ']).to_string()).filter(|id| crate::package::safe_component(id)).unwrap_or_else(|| "game-folder-mod".to_string());
         let id = (1..).map(|n| if n == 1 { base.clone() } else { format!("{base}-{n}") }).find(|id| !mods.iter().any(|m: &GameFolderMod| m.id == *id)).expect("a free id");
         mods.push(GameFolderMod { id, name, archives: group.iter().map(|f| f.path.clone()).collect(), rename: group.iter().flat_map(|f| f.rename.clone()).collect() });
     }
@@ -1089,6 +1094,25 @@ mod replacement_tests {
         alone.mount_game_dir(&game, "base").unwrap();
         assert_eq!(alone.read("units/armcom.fbi").unwrap(), b"patch");
         assert!(!alone.exists("objects3d/armcom.3do") && alone.exists("maps/mine.tnt"));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// A mod in the game's folder whose archive's name is longer than a mod id may be gets an id
+    /// the installer takes, a second of the same name one too.
+    #[test]
+    fn a_long_named_mod_in_the_game_folder_gets_an_id_the_installer_takes() {
+        let root = temp("long_name");
+        let game = install(&root);
+        let long = format!("{} Extra Units.", "Very".repeat(20));
+        test_archive::write(&game.join(format!("{long}gp3")), &[("unitsx/a.fbi", b"a"), ("unitsx/b.fbi", b"b")]);
+        test_archive::write(&game.join(format!("{long}ufo")), &[("unitsy/c.fbi", b"c")]);
+        let found = game_folder_mods(&game);
+        assert_eq!(found.len(), 2, "two mods, sharing no folder of their own");
+        for m in &found {
+            assert!((1..=MOST_ID_LETTERS).contains(&m.id.chars().count()), "{} is too long", m.id);
+            assert!(crate::package::safe_component(&m.id), "{}", m.id);
+        }
+        assert_ne!(found[0].id, found[1].id);
         let _ = std::fs::remove_dir_all(root);
     }
 
