@@ -30,6 +30,26 @@ pub mod value {
     pub const BUGGER_OFF: i32 = 19;
     pub const ARMORED: i32 = 20;
     pub const VETERAN_LEVEL: i32 = 32;
+    /// TA 3.1's questions about units by id (the `exthead.h` the mods' scripts include; TA's own
+    /// scripts never ask them): the lowest and highest ids a unit may have, the unit's own, and
+    /// another's player, how much of it is left to build, whether it is the unit's ally, and
+    /// whether this computer owns it. The mods made for the patched engines build on them: TA:
+    /// Escalation in 326 of its 550 scripts, Total Mayhem's upgrades (a geothermal plant finds
+    /// its upgrade module by going through every id, then takes it on).
+    pub const MIN_ID: i32 = 69;
+    pub const MAX_ID: i32 = 70;
+    pub const MY_ID: i32 = 71;
+    pub const UNIT_TEAM: i32 = 72;
+    pub const UNIT_BUILD_PERCENT_LEFT: i32 = 73;
+    pub const UNIT_ALLIED: i32 = 74;
+    pub const UNIT_IS_ON_THIS_COMP: i32 = 75;
+}
+
+/// How much of a unit is left to build, as TA's scripts are told it (`BUILD_PERCENT_LEFT`): 0
+/// when it is finished, up to 100 for a frame just begun.
+pub fn build_percent_left(progress: Fx) -> i32 {
+    let left = Fx::ONE - progress.min(Fx::ONE);
+    (left * Fx::from_int(100)).to_int().clamp(0, 100) as i32
 }
 
 /// Packs integer world x/z the way TA scripts expect (`PACKXZ`): two 16-bit fields that wrap
@@ -81,6 +101,18 @@ pub fn script_angle(a: i32) -> i32 {
 pub struct OtherUnit {
     pub pos: FxVec3,
     pub height: Fx,
+    /// Its player.
+    pub owner: u8,
+    /// How much of it is left to build ([`build_percent_left`]).
+    pub build_left: i32,
+}
+
+impl OtherUnit {
+    /// What a script may ask about the unit `u`.
+    pub fn of(u: &Unit, types: &crate::defs::UnitTypes) -> OtherUnit {
+        let t = types.get(u.type_id);
+        OtherUnit { pos: u.model_pos(t), height: t.model.height, owner: u.owner, build_left: build_percent_left(u.build_progress) }
+    }
 }
 
 /// World and callback requests made by a script, applied by the simulation once
@@ -106,6 +138,12 @@ pub struct UnitHost<'a> {
     pub now_ms: i64,
     /// Lookup of other units by script id.
     pub lookup: &'a dyn Fn(i32) -> Option<OtherUnit>,
+    /// The highest script id a unit may have (`MAX_ID`): as many as the battle has places for
+    /// units.
+    pub max_id: i32,
+    /// The players allied with the unit's, its own among them (bit n: player n), for
+    /// `UNIT_ALLIED`.
+    pub allies: u64,
 }
 
 impl UnitHost<'_> {
@@ -181,14 +219,37 @@ impl CobHost for UnitHost<'_> {
                 let (x, z) = unpack_xz_near(args[0], u.pos);
                 self.world.height_at(x, z).to_cob()
             }
-            BUILD_PERCENT_LEFT => {
-                let left = Fx::ONE - u.build_progress.min(Fx::ONE);
-                (left * Fx::from_int(100)).to_int().clamp(0, 100) as i32
-            }
+            BUILD_PERCENT_LEFT => build_percent_left(u.build_progress),
             YARD_OPEN => u.yard_open as i32,
             BUGGER_OFF => 0,
             ARMORED => u.armored as i32,
             VETERAN_LEVEL => u.kills.saturating_mul(100).min(i32::MAX as u64) as i32,
+            // Script ids are the units' places, from 1.
+            MIN_ID => 1,
+            MAX_ID => self.max_id,
+            MY_ID => u.id.script_id(),
+            UNIT_TEAM | UNIT_BUILD_PERCENT_LEFT | UNIT_ALLIED | UNIT_IS_ON_THIS_COMP => {
+                // The unit asked about (no id, as with UNIT_XZ: the unit itself); no unit there:
+                // 0 to every question.
+                let (owner, left) = if args[0] == u.id.script_id() || args[0] == 0 {
+                    (u.owner, build_percent_left(u.build_progress))
+                } else {
+                    match (self.lookup)(args[0]) {
+                        Some(o) => (o.owner, o.build_left),
+                        None => return 0,
+                    }
+                };
+                match id {
+                    UNIT_TEAM => owner as i32,
+                    UNIT_BUILD_PERCENT_LEFT => left,
+                    UNIT_ALLIED => (self.allies >> owner.min(63) & 1) as i32,
+                    // TA's engine ran each player's units on that player's computer, and scripts
+                    // made changes there alone (taking a unit on, letting it go). Every computer
+                    // plays the whole battle here, so every unit is this computer's: each makes
+                    // the change in its own copy, as the owner's did in TA.
+                    _ => 1,
+                }
+            }
             _ => 0,
         }
     }
