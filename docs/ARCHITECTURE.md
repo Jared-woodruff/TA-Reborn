@@ -2170,8 +2170,10 @@ build menu by `Purpose` on tabs (`Hud::build_tab`).
   the focus or a game runs (`Pad::listen`). `pad::State` turns them into egui's events in the
   input hook (`pad_input`): the d-pad and the left stick (a direction past 0.55, until back
   under 0.35) move the focus as in the game's menus, repeating after 0.42 s every 0.11 s;
-  A uses what has the focus, else clicks where the right stick put the pointer, else focuses
-  the first control; B and Start go back; LB and RB turn the pages (`pad_pages`, taken by
+  A follows the way the pad last moved (`State::pointing`, as the game's `pad_focus`): it
+  clicks where the right stick put the pointer when the stick moved since the d-pad last moved
+  the focus (or nothing has the focus), else uses what has the focus, else focuses the first
+  control; B and Start go back; LB and RB turn the pages (`pad_pages`, taken by
   `shortcuts` as Ctrl+1 to Ctrl+8 are: not under a dialog); the right stick moves the pointer
   (and the system's, `ViewportCommand::CursorPosition`); the triggers scroll what is under
   it; X is Shift+F10 (a card's menu), Y Ctrl+F (the search), View F1 (the list of keys and

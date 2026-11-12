@@ -2,7 +2,8 @@
 //! pad) or any pad of that layout. The moves of the game's menus (`ta_ui::pad`): the d-pad and
 //! the left stick move the keyboard focus (held, they repeat), A works what has it, B and Start
 //! go back; the control reached is scrolled into view. And the launcher's own: the bumpers turn
-//! the pages, the right stick moves the pointer (A then clicks there), the triggers scroll, X
+//! the pages, the right stick moves the pointer (A then clicks there, until the d-pad moves the
+//! focus again: A follows the way the pad last moved), the triggers scroll, X
 //! opens the chosen card's menu (Shift+F10), Y the page's search (Ctrl+F) and View the list of
 //! keys and buttons (F1).
 //!
@@ -58,10 +59,13 @@ pub struct State {
     stick: Option<Nav>,
     /// The direction held, and when it next repeats.
     repeat: Option<(Nav, f64)>,
-    /// A was pressed with nothing focused: the pointer's button is down.
+    /// A was pressed to click where the pointer is: the pointer's button is down.
     clicking: bool,
     /// The pointer as the right stick moved it (points), until the mouse takes it back.
     pointer: Option<Pos2>,
+    /// The right stick moved the pointer since the d-pad (or the left stick) last moved the
+    /// focus: A clicks where the pointer is, not on the control with the focus.
+    pointing: bool,
     follow: FocusFollow,
     last: Option<f64>,
 }
@@ -109,6 +113,7 @@ impl State {
             && moved.distance(ours) > 2.0
         {
             self.pointer = None;
+            self.pointing = false;
         }
         let mut f = Frame::default();
         let mut nav = Vec::new();
@@ -124,14 +129,15 @@ impl State {
                         continue;
                     }
                     match button {
-                        // A: what has the focus; else a click where the stick put the pointer;
-                        // else the focus goes to the first control.
-                        Button::South if focused.is_some() => nav.push(Nav::Activate),
-                        Button::South => match self.pointer {
+                        // A: a click where the right stick put the pointer, when it moved since
+                        // the d-pad last moved the focus (or nothing has the focus); else what has
+                        // the focus; else the focus goes to the first control.
+                        Button::South => match self.pointer.filter(|_| self.pointing || focused.is_none()) {
                             Some(pos) => {
                                 self.clicking = true;
                                 f.events.push(Event::PointerButton { pos, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
                             }
+                            None if focused.is_some() => nav.push(Nav::Activate),
                             None => nav.push(Nav::Down),
                         },
                         Button::East => nav.push(Nav::Back),
@@ -195,10 +201,15 @@ impl State {
                 self.repeat = Some((direction, time + REPEAT_EVERY));
             }
         }
+        // The d-pad moved the focus: A works what has it again.
+        if nav.iter().any(|n| n.moves()) {
+            self.pointing = false;
+        }
         // The right stick moves the pointer: faster the further it is pushed (a curve keeps small
         // moves precise), scaled to the window.
         let aim = dead(self.right, deadzone);
         if aim != Vec2::ZERO {
+            self.pointing = true;
             let sensitivity = if sensitivity.is_finite() { sensitivity.clamp(0.25, 3.0) } else { 1.0 };
             let speed = POINTER_SPEED * sensitivity * (screen.y / 720.0).max(0.5);
             let from = at.unwrap_or((screen / 2.0).to_pos2());
@@ -425,6 +436,28 @@ mod tests {
         frame(&mut state, &[Reading::Axis(Axis::RightStickY, 0.0), Reading::Pressed(Button::South)], 0.35, None);
         let f = frame(&mut state, &[Reading::Gone], 0.4, None);
         assert!(f.events.iter().any(|e| matches!(e, Event::PointerButton { pressed: false, .. })));
+    }
+
+    /// A works what the pad last moved to: the control the d-pad focused; the right stick having
+    /// moved the pointer since, what is under the pointer (the focus still on the control); the
+    /// d-pad again, the control.
+    #[test]
+    fn a_follows_the_way_the_pad_last_moved() {
+        let mut state = State::default();
+        let focused = Some(Id::new("button"));
+        let clicks = |f: &Frame| f.events.iter().any(|e| matches!(e, Event::PointerButton { pressed: true, .. }));
+        let enters = |f: &Frame| keys(&f.events).contains(&(Key::Enter, true, Modifiers::NONE));
+        let tap = |button| [Reading::Pressed(button), Reading::Released(button)];
+        frame(&mut state, &tap(Button::DPadDown), 0.0, focused);
+        let f = frame(&mut state, &tap(Button::South), 0.05, focused);
+        assert!(enters(&f) && !clicks(&f), "the focused control: {:?}", f.events);
+        frame(&mut state, &[Reading::Axis(Axis::RightStickX, 1.0)], 0.1, focused);
+        frame(&mut state, &[Reading::Axis(Axis::RightStickX, 0.0)], 0.15, focused);
+        let f = frame(&mut state, &tap(Button::South), 0.2, focused);
+        assert!(clicks(&f) && !enters(&f), "under the pointer: {:?}", f.events);
+        frame(&mut state, &tap(Button::DPadUp), 0.25, focused);
+        let f = frame(&mut state, &tap(Button::South), 0.3, focused);
+        assert!(enters(&f) && !clicks(&f), "the focused control again: {:?}", f.events);
     }
 
     /// The triggers scroll: the right one down the page, the left one up.
