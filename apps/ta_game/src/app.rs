@@ -6280,6 +6280,10 @@ impl State {
         // coming), over the settings'.)
         let scenario_hours = self.game.scenario.as_ref().filter(|_| self.screen == Screen::Playing).and_then(|r| r.time.as_ref()).map(|h| h.at(time));
         self.renderer.lighting.time_of_day = photo_hours.or(forced_time()).or(stage_hours).or(scenario_hours).or_else(|| time_of_day(&self.settings.graphics, seconds));
+        // Beyond the map's edges: in a battle a sea of dark clouds under it, the battlefield the
+        // focus; the land and sea carried on to the horizon in the films (the menu's, a staged
+        // scene's, the credits').
+        self.renderer.lighting.sky.beyond = beyond_the_map(self.screen == Screen::Playing && self.stage.is_none() && !self.credits_playing());
         // The showroom's sea: clear and calm over a unit under it, so the model reads (TA's own
         // everywhere else).
         let sea = self.showroom.as_ref().filter(|_| self.screen == Screen::Menu).map_or(crate::showroom::Sea::Open, |r| r.sea);
@@ -8640,6 +8644,18 @@ fn apply_camera_spec(camera: &mut Camera, spec: &str) {
 fn forced_time() -> Option<f32> {
     static FORCED: std::sync::OnceLock<Option<f32>> = std::sync::OnceLock::new();
     *FORCED.get_or_init(|| std::env::var("TA_TIME").ok().and_then(|v| v.parse().ok()))
+}
+
+/// What lies beyond the map's edges: in a `battle` a sea of dark clouds, else (the films) the
+/// land carried on. `TA_BEYOND=clouds|land` sets it whatever is shown, for captures. Read once.
+fn beyond_the_map(battle: bool) -> ta_render::Beyond {
+    static FORCED: std::sync::OnceLock<Option<ta_render::Beyond>> = std::sync::OnceLock::new();
+    let forced = *FORCED.get_or_init(|| match std::env::var("TA_BEYOND").ok().as_deref() {
+        Some("clouds") => Some(ta_render::Beyond::Clouds),
+        Some("land") => Some(ta_render::Beyond::Land),
+        _ => None,
+    });
+    forced.unwrap_or(if battle { ta_render::Beyond::Clouds } else { ta_render::Beyond::Land })
 }
 
 /// The clock over the battlefield at `seconds` of game time: the setting's fixed time of day,

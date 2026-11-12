@@ -222,7 +222,7 @@ pub use beams::{BeamInstance, BeamRenderer};
 pub use rings::RingInstance;
 pub use world_text::{GlyphInstance, WorldTextRenderer};
 pub use reflection::WaterReflections;
-pub use sky::SkySettings;
+pub use sky::{Beyond, SkySettings};
 pub use sprites::{SpriteId, SpriteInstance, SpriteLayer, SpriteRenderer};
 pub use terrain_pads::GroundPad;
 pub use timing::PassTime;
@@ -1391,8 +1391,9 @@ impl Renderer {
             return;
         };
         let size = t.field.size_px();
-        // (In space nothing lies beyond the map.)
-        let reach = if self.world_sky.space > 0.0 { 0.0 } else { self.lighting.sky.horizon_extent.clamp(0.0, 1.0e6) };
+        // (In space nothing lies beyond the map, nor in a battle: the sky pass draws its sea of
+        // clouds there.)
+        let reach = if self.world_sky.space > 0.0 || self.lighting.sky.beyond == Beyond::Clouds { 0.0 } else { self.lighting.sky.horizon_extent.clamp(0.0, 1.0e6) };
         if self.skirt.as_ref().is_some_and(|s| s.map_size == size && s.reach == reach) {
             return;
         }
@@ -2012,7 +2013,12 @@ impl Renderer {
             } else {
                 [0.0; 4]
             },
-            liquid: [if acid { 1.0 } else { 0.0 }, if sky_on && self.world_sky.space > 0.0 { 1.0 } else { 0.0 }, 0.0, 0.0],
+            liquid: [
+                if acid { 1.0 } else { 0.0 },
+                if sky_on && self.world_sky.space > 0.0 { 1.0 } else { 0.0 },
+                if sky_on && self.world_sky.space <= 0.0 && self.lighting.sky.beyond == Beyond::Clouds { 1.0 } else { 0.0 },
+                0.0,
+            ],
             world_grade: self.world_grade,
             drift: [self.wind_drift.x, self.wind_drift.y, 0.0, 0.0],
         };
