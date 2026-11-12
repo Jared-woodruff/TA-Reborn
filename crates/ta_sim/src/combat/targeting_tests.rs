@@ -124,7 +124,7 @@ fn ranking_keeps_visibility_categories_priority_retaliation_and_id_ties() {
             _ => first,
         };
         assert_eq!(
-            sim.find_target(gun, 0, weapons.get(weapon), 0, None),
+            sim.find_target(gun, 0, weapons.get(weapon), 0, None, weapons.get(weapon).range),
             Some(Target::Unit(expected)),
             "target ranking case {case}"
         );
@@ -164,10 +164,10 @@ fn a_bad_target_is_taken_on_last() {
     sim.grid.rebuild(sim.units.iter().flatten());
     let weapons = sim.weapon_types.clone();
     let w = sim.unit_type(sim.unit(gun).unwrap()).weapons[0].unwrap();
-    assert_eq!(sim.find_target(gun, 0, weapons.get(w), 0, None), Some(Target::Unit(decoy)), "with +shootall the nearest");
+    assert_eq!(sim.find_target(gun, 0, weapons.get(w), 0, None, weapons.get(w).range), Some(Target::Unit(decoy)), "with +shootall the nearest");
     sim.step(&[crate::Command::SetShootAll { player: 0, on: false }]);
     sim.grid.rebuild(sim.units.iter().flatten());
-    assert_eq!(sim.find_target(gun, 0, weapons.get(w), 0, None), Some(Target::Unit(target)), "and without it the better one again");
+    assert_eq!(sim.find_target(gun, 0, weapons.get(w), 0, None, weapons.get(w).range), Some(Target::Unit(target)), "and without it the better one again");
 }
 
 /// Each weapon keeps its own (TA's `wpri_`, `wsec_badTargetCategory`): a cruiser's guns never
@@ -187,8 +187,8 @@ fn each_weapon_keeps_its_own_bad_targets() {
     let weapons = sim.weapon_types.clone();
     let w = |sim: &Sim, k: usize| sim.unit_type(sim.unit(twin).unwrap()).weapons[k].unwrap();
     let (w0, w1) = (w(&sim, 0), w(&sim, 1));
-    assert_eq!(sim.find_target(twin, 0, weapons.get(w0), 0, None), Some(Target::Unit(target)), "the first leaves the decoy");
-    assert_eq!(sim.find_target(twin, 1, weapons.get(w1), 0, None), Some(Target::Unit(decoy)), "the second leaves the target");
+    assert_eq!(sim.find_target(twin, 0, weapons.get(w0), 0, None, weapons.get(w0).range), Some(Target::Unit(target)), "the first leaves the decoy");
+    assert_eq!(sim.find_target(twin, 1, weapons.get(w1), 0, None, weapons.get(w1).range), Some(Target::Unit(decoy)), "the second leaves the target");
 }
 
 /// A weapon whose bad targets are every unit it could hit would never fire of its own accord,
@@ -219,8 +219,8 @@ fn a_weapon_whose_bad_targets_are_all_it_could_hit_takes_on_what_it_can() {
     let weapons = sim.weapon_types.clone();
     let w = |sim: &Sim, id: UnitId| sim.unit_type(sim.unit(id).unwrap()).weapons[0].unwrap();
     let (flak, aa) = (w(&sim, flakker), w(&sim, picky));
-    assert_eq!(sim.find_target(flakker, 0, weapons.get(flak), 0, None), Some(Target::Unit(jet)), "the flak takes the jet on");
-    assert_eq!(sim.find_target(picky, 0, weapons.get(aa), 0, None), Some(Target::Unit(jet)), "the jet is FAST: a bad target, but the only one near");
+    assert_eq!(sim.find_target(flakker, 0, weapons.get(flak), 0, None, weapons.get(flak).range), Some(Target::Unit(jet)), "the flak takes the jet on");
+    assert_eq!(sim.find_target(picky, 0, weapons.get(aa), 0, None, weapons.get(aa).range), Some(Target::Unit(jet)), "the jet is FAST: a bad target, but the only one near");
 }
 
 /// Only the units a player can field count: a weapon whose bad targets are every unit the sides

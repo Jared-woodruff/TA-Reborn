@@ -277,9 +277,13 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   must cover a metal deposit cell, except on metal worlds (plain ground of 100 metal or more,
   `World::metal_world`); the HUD says so while placing one, and the AI's metal spots follow
   the same rule. Mobile units standing where a building is laid (its builder too) step off
-  it (`Sim::step_aside`: a move to the nearest place they can stand, ahead of their orders;
-  from inside an obstacle a unit walks straight out); an enemy standing there blocks the
-  site. Units a falling wreck covers are thrown clear of it, a cell or two, their orders
+  it (`Sim::step_aside`: a move to the nearest place they can stand, clear of the builder's
+  next sites where there is one, ahead of their orders; from inside an obstacle a unit walks
+  straight out); an enemy standing there blocks the site. A ground unit left standing in a
+  building (a walk out that another building stopped) is put on the nearest free cell
+  (`Sim::step_out_of_building`, looked at every eight ticks while it stands still): from in
+  there no route leads anywhere, and a Commander building a block of solar collectors was
+  walled in by them. Units a falling wreck covers are thrown clear of it, a cell or two, their orders
   untouched (`Sim::throw_clear`: sending each off it and back made thousands of new routes
   in a big battle).
 * **Combat** (`combat.rs`): targets via a uniform grid; aiming through the unit's own
@@ -300,7 +304,13 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   when they are the first weapon (bombers; the Phoenix and Hurricane carry an anti-air
   laser beside their bombs, and used to fire only that) or nothing else the unit carries
   can hit the target; the Commanders' D-gun is their third weapon and waits for manual
-  fire. An attack order closes to the reach of the weapons it fires. Shells pick targets
+  fire. A plane's bombs also find their own targets on patrol and attack-move with fire at will
+  (TA's bombers stand on hold fire, `StandingFireOrder=0`): what its side sees or has on radar
+  within its bombs' lead plus 160 px (`Sim::bomber_lookout`; the lead is 460 to 565 px for
+  TA's bombers, beyond their 350 px sight), the nearest first. It keeps the target for its runs
+  (not cleared after a drop; a building through the turn out of its sight as well,
+  `Sim::held_building`) and flies on along its way once the target is gone; a plain move
+  bombs nothing. An attack order closes to the reach of the weapons it fires. Shells pick targets
   they carry to (v² / g on level ground, with the height between: `Sim::weapon_reach`).
   Direct-fire shots pass through friendly units; shells, bombs, blasts and the D-gun
   still cause friendly fire. Flames harm neither the unit that throws them nor its side:
@@ -2599,7 +2609,9 @@ build menu by `Purpose` on tabs (`Hud::build_tab`).
   place): the simulation finds it in the queue as it stands when the command runs (the
   nearest of that kind, should a unit or a building have finished meanwhile) and, for a
   constructor, gives the rest of its orders again from there. (`QueueFront`, by index alone,
-  is kept for old replays.) Alt+drag while placing fills a rectangle; COMBAT, BUILDERS,
+  is kept for old replays.) Alt+drag while placing fills a rectangle, built from the side
+  farthest from where the builders will start (`far_side_first`): they stand in what is still
+  open and finish at its near edge; COMBAT, BUILDERS,
   DAMAGED and IDLE narrow a selection.
 * **Duties** (`game/duty.rs`, key `duty` Alt+D, the stance column's DUTY button and its menu, the
   radial menu's DUTY choice and ring: both read `game::duty::CHOICES` and `Game::duty_control`, so
@@ -3395,8 +3407,9 @@ menu's briefing replays the narration through `MusicRequest::Narration`.
   units then hunt (`hunt`, every 2 s): idle ones attack-move to the player's nearest
   forces; ones that have hardly moved for 6 s with somewhere to go (wedged in a crowd)
   each get a point of their own near it. A unit whose every weapon fires on order only (a
-  bomber: TA's bombs are `commandfire`, never aimed of their own accord, so an attack-move
-  only flew it over the player's base) is given an attack order on the nearest of the
+  bomber: TA's bombs are `commandfire`, aimed of their own accord only on patrol or
+  attack-move with fire at will, and TA's bombers stand on hold fire, so an attack-move only
+  flew it over the player's base) is given an attack order on the nearest of the
   player's side its own side sees (in sight or on radar: `Sim::seen_by`, never through the
   fog) that its weapons can hit (`Sim::engages`: not an aircraft in flight, nor a bad
   target), then an attack-move to where that stood; it keeps on it while it stands and is

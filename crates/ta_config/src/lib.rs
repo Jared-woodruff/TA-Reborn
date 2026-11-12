@@ -119,8 +119,11 @@ pub const RECORD_VERSION: u32 = 46;
 /// `+shootall` makes every target alike; construction left with nobody at it un-builds after ten
 /// seconds, its metal coming back; a unit is taken apart in time by its metal (a metal maker at
 /// once); a plane idle over the sea circles round its spot; planes sent at one target together
-/// come in on it across a front.
-pub const SIMULATION_VERSION: u32 = 81;
+/// come in on it across a front; 82, a bomber on patrol or attack-move with fire at will bombs
+/// what its side sees near its way by itself, keeping a building through its turn for the next run;
+/// 83, units stepping off a building's site step clear of the builder's next sites, and a unit
+/// standing in a building is put on the nearest free cell.
+pub const SIMULATION_VERSION: u32 = 83;
 /// Records shorter than one year of simulated time are supported. Shared with the
 /// launcher's metadata reader so impossible durations cannot start endless save catch-up.
 pub const MAX_RECORD_TICKS: u64 = 30 * 3600 * 24 * 365;
