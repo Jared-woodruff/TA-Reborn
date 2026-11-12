@@ -26,6 +26,18 @@
   at the screen's size too.
 
 ### Fixed
+- Damaged aircraft never used repair pads unless sent to one. Aircraft on patrol, attack-move
+  or an attack now break off when worn below two-thirds of their health, fly to the nearest
+  free Air Repair Pad or carrier, however far, land on it and are repaired, then carry on with
+  what they were doing. A pad takes one aircraft at a time: the others keep on with their
+  mission until it is free, and an idle aircraft parked on a pad makes room for a damaged one.
+  A new order calls the trip off. Idle aircraft, and aircraft only moved somewhere, still don't
+  go looking for a pad.
+- Repair pads also repaired aircraft parked on the ground beside them, and went on working
+  switched off. They now repair only the aircraft landed on them, and a pad switched off takes
+  no aircraft and repairs none.
+- Thunder and Hurricane bombers sent to a repair pad flew on past it, landed on the ground
+  beyond and were never repaired. They now come back and land on it.
 - The Skins page's turning 3D preview stopped on its second frame; it turns again.
 - The skin preview now draws on the same graphics card as the game. On a computer with
   integrated graphics beside its graphics card it drew on the integrated graphics, whose driver

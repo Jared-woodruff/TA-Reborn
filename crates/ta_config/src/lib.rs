@@ -123,8 +123,13 @@ pub const RECORD_VERSION: u32 = 46;
 /// what its side sees near its way by itself, keeping a building through its turn for the next run;
 /// 83, units stepping off a building's site step clear of the builder's next sites, and a unit
 /// standing in a building is put on the nearest free cell; 84, a ship is built at the surface (a
-/// shipyard's pad is under the water), and construction aircraft drift round what they build.
-pub const SIMULATION_VERSION: u32 = 85;
+/// shipyard's pad is under the water), and construction aircraft drift round what they build;
+/// 85, scouts, construction aircraft and transports idle over the sea circle there too, each round
+/// a circle of its own; 86, an aircraft on patrol, attack-move or attack worn below two-thirds of
+/// its health breaks off for the nearest free repair deck (its orders held until it is mended),
+/// pads switched off are not used, pads mend only the aircraft on their decks, and a plane sent
+/// onto a pad looks for it as far as it flies on before stopping.
+pub const SIMULATION_VERSION: u32 = 86;
 /// Records shorter than one year of simulated time are supported. Shared with the
 /// launcher's metadata reader so impossible durations cannot start endless save catch-up.
 pub const MAX_RECORD_TICKS: u64 = 30 * 3600 * 24 * 365;

@@ -1298,6 +1298,7 @@ impl Sim {
         u.carry_piece = piece;
         if newly {
             u.orders.clear();
+            u.repair_trip = false;
             u.path.clear();
             u.path_goal = None;
             u.move_request = None;
@@ -1742,6 +1743,11 @@ impl Sim {
             u.face = None;
             u.transport_job = None;
             u.hover_alt = None;
+            // (A repair trip is called off. In the air it gives up its deck; landed on it, it
+            // keeps it until the new order takes it off, as any order does.)
+            if std::mem::take(&mut u.repair_trip) && !u.landed {
+                u.air_pad = None;
+            }
             if u.build.is_some() {
                 self.finish_build_job(id);
             }
@@ -2194,10 +2200,14 @@ impl Sim {
         }
         let Some(u) = self.unit(id) else { return };
         if u.is_complete() && !u.dead {
+            // (An aircraft on a repair trip holds its orders: `update_air` takes it to its deck.)
+            let held = u.repair_trip;
             // Phase timings (diagnostics) on one tick in PHASE_SAMPLE, scaled up: reading the
             // clock for every unit on every tick costs about as much as a phase.
             let ta = self.sampled().then(std::time::Instant::now);
-            self.update_orders(id, t);
+            if !held {
+                self.update_orders(id, t);
+            }
             if t.is_factory {
                 self.update_factory(id, t);
             }
@@ -2312,14 +2322,15 @@ impl Sim {
 
     // ---- Orders -------------------------------------------------------------------------
 
-    /// Air repair pads mend friendly aircraft resting on them, sharing the pad's
-    /// construction pace between them (TA repairs cost no resources).
+    /// Air repair pads mend the friendly aircraft landed on their decks (those that took one:
+    /// not those parked on the ground beside them), sharing the pad's construction pace between
+    /// them (TA repairs cost no resources). A pad switched off mends none.
     fn update_air_base(&mut self, id: UnitId, t: &UnitType) {
         const EVERY: u64 = 5;
         if !(self.tick + id.slot as u64).is_multiple_of(EVERY) {
             return;
         }
-        let Some(u) = self.unit(id).filter(|u| u.is_complete()) else { return };
+        let Some(u) = self.unit(id).filter(|u| u.is_complete() && (u.activated || !t.def.on_offable)) else { return };
         let (pos, owner) = (u.pos, u.owner);
         let reach = Fx::from_int(t.footprint.0.max(t.footprint.1) as i64 * 8 + 24);
         let mut near = std::mem::take(&mut self.scratch);
@@ -2329,7 +2340,8 @@ impl Sim {
             .filter_map(|&slot| self.units.get(slot as usize).and_then(|o| o.as_ref()))
             .filter(|o| {
                 let ot = self.types.get(o.type_id);
-                !o.dead && o.is_complete() && o.carried_by.is_none() && o.landed && ot.locomotion == Locomotion::Air && self.allied(owner, o.owner) && o.health < ot.max_health && o.pos.within_xz(pos, reach)
+                !o.dead && o.is_complete() && o.carried_by.is_none() && o.landed && o.air_pad.is_some_and(|(deck, _)| deck == id)
+                    && ot.locomotion == Locomotion::Air && self.allied(owner, o.owner) && o.health < ot.max_health
             })
             .map(|o| o.id)
             .collect();
@@ -2656,6 +2668,7 @@ impl Sim {
             }
             u.owner = to;
             u.orders.clear();
+            u.repair_trip = false;
             u.path.clear();
             u.path_goal = None;
             u.move_request = None;
@@ -5595,6 +5608,7 @@ impl Sim {
             mix(u.transport_job.map_or(0, |(_, tick)| tick as i64));
             target(&mut mix, u.air_pad.map(|(id, _)| Target::Unit(id)));
             mix(u.air_pad.and_then(|(_, piece)| piece).map_or(-1, |p| p as i64));
+            mix(u.repair_trip as i64);
             mix(u.health.0);
             target(&mut mix, u.last_attacker.map(Target::Unit));
             mix(u.last_damage.0);
