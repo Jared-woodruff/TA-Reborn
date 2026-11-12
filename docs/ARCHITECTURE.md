@@ -706,8 +706,10 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   metal and urban worlds, `TerrainGpu::set_built`), pre-sharpened on steep ground, and taken
   at the vertices of a cubic B-spline through those points; vertices whose neighbours all lie
   on one side of the sea stay there. Lone spikes become low mounds, crests and notches round
-  off; the heightmap texture (half floats) carries these drawn heights to every shader, the
-  waterline's distances follow them, and `terrain::drawn_height` gives them to what stands on
+  off; the heightmap texture (half floats, each rounded down: a half holds a height to 0.12 at
+  worst, and rounded to the nearest the ground levelled under a building came up through its
+  runway, `terrain::halves`) carries these drawn heights to every shader, the waterline's
+  distances follow them, and `terrain::drawn_height` gives them to what stands on
   the ground (`ta_game::scene::drawn_ground`); the simulation keeps TA's.
   The map editor changes it in place: `TerrainGpu::update_heights` / `update_tiles` upload
   the changed region of every mip level (from CPU copies kept for this; the drawn heights
@@ -719,7 +721,10 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   or a dune its flat base hung over the drawn ground downhill (TA's camera never showed it; a
   3D camera low over the ground does). When a building on land is put down (a nanoframe yet),
   `ta_game::scene` hands the renderer its pad (footprint, base height, tick:
-  `Renderer::add_ground_pads`, once a frame): the footprint's vertices are drawn at its base,
+  `Renderer::add_ground_pads`, once a frame): the footprint's vertices are drawn at its base
+  (and the building's level faces at and just under its base, an air plant's runway, are lifted
+  0.15 over it, `model::lift_ground_pads`, so that the depth buffer tells them from the ground
+  however far out the camera is),
   and what that raised (or cut) at each edge vertex is carried out from it and eased away
   over an apron of 2 to 6 cells, wider the more there is to take up (a bank no steeper than
   about 25° more than the ground under it, falling steadily and easing out at its foot), added

@@ -6,8 +6,11 @@
 
 use ta_formats::model3do::{FIXED_ONE, Model3do};
 
-/// Pads end at least this far above the base...
-const ABOVE: f32 = 0.06;
+/// Pads end at least this far above the base (and the ground levelled under the building, at
+/// its base: drawn heights are rounded down, `terrain::halves`)... (0.06 was within what a
+/// depth buffer tells apart far out, and an air plant's runway flickered with the ground through
+/// it as the camera moved, zoomed out.)
+const ABOVE: f32 = 0.15;
 /// ...and their layers (a marking on a runway) are kept in order within this much more.
 const SPAN: f32 = 0.1;
 /// Deeper than this under the base is a foundation, meant to go into the ground.

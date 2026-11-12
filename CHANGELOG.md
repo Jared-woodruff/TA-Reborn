@@ -48,6 +48,10 @@
   the surface once finished. They are now built at the surface.
 - A shipyard's ghost, while placing it or queued, showed on the sea floor; it now shows where
   the shipyard will stand.
+- Aircraft plants' runways (and other buildings' flat bases, such as solar collectors') could
+  flicker, the ground showing through them in lines, most of all zoomed out: the ground under a
+  building was drawn up to a fraction of a pixel too high, level with the runway. It is now
+  drawn never above where it belongs, and the runway sits a little higher over it.
 - A constructor building a block of buildings that touch (Alt+drag while placing) could be
   walled in by them, unable to move again. Units now step off a new building's site clear of
   the builder's next sites, a unit left standing in a building is put on the nearest free

@@ -482,8 +482,37 @@ fn update_float_mips(levels: &mut [(u32, u32, Vec<f32>)], channels: usize, rect:
 }
 
 /// `values` as half floats (little-endian), rounded to the nearest.
+/// The heightmap's floats (a height over 255, the under-sea mark) as half-precision bits, each
+/// the largest half not above it: a half holds a height to 0.12 units at worst (heights from 128
+/// up), and rounded to the nearest the ground levelled under a building (`terrain_pads`, at its
+/// base) could be drawn up to 0.06 over the base, through the faces of the building lifted 0.06
+/// over it (an air plant's runway, `model::lift_ground_pads`), which flickered. Rounded down the
+/// ground is never over what it is meant to be at: lower by 0.12 at most, which nothing sees.
 fn halves(values: &[f32]) -> Vec<u8> {
-    values.iter().flat_map(|&v| half_bits(v).to_le_bytes()).collect()
+    values.iter().flat_map(|&v| half_bits_floor(v).to_le_bytes()).collect()
+}
+
+/// `x` (0 or a normal number below 65504) as the bits of the largest half-precision number not
+/// above it.
+fn half_bits_floor(x: f32) -> u16 {
+    let bits = half_bits(x);
+    if half_value(bits) <= x {
+        return bits;
+    }
+    // (The next half down: the bits of halves of one sign are in order of size, from zero out.)
+    match bits {
+        0 => 0x8001,
+        0x8000.. => bits + 1,
+        _ => bits - 1,
+    }
+}
+
+/// The number half-precision `bits` hold (normal numbers and zero, as [`half_bits`] writes).
+fn half_value(bits: u16) -> f32 {
+    let sign = if bits & 0x8000 != 0 { -1.0 } else { 1.0 };
+    let (e, m) = (((bits >> 10) & 0x1F) as i32, (bits & 0x3FF) as f32);
+    let magnitude = if e == 0 { m / 1024.0 * 2f32.powi(-14) } else { (1.0 + m / 1024.0) * 2f32.powi(e - 15) };
+    sign * magnitude
 }
 
 /// `x` (0 or a normal number below 65504) as IEEE half-precision bits, rounded to the nearest
@@ -2002,6 +2031,22 @@ mod edit_tests {
         // Many: the one rectangle round them all.
         let many: Vec<[i32; 4]> = (0..40).map(|i| [i * 50, 0, i * 50 + 10, 10]).collect();
         assert_eq!(merged_rects(many), vec![[0, 0, 39 * 50 + 10, 10]]);
+    }
+
+    /// The ground's heights go to the graphics card rounded down, never up: the ground levelled
+    /// under a building (at its base) never comes up through the faces lifted just over it.
+    #[test]
+    fn heights_are_never_drawn_above_where_they_are() {
+        for h in [0.0f32, 1.0, 37.25, 64.0, 85.0, 100.3, 127.9, 128.0, 128.6, 150.07, 200.0, 254.9, 255.0] {
+            let bits = half_bits_floor(h / 255.0);
+            let back = half_value(bits) * 255.0;
+            assert!(back <= h, "{h}: drawn at {back}, above it");
+            assert!(h - back <= 0.125, "{h}: drawn at {back}, more than a half's step under it");
+        }
+        // (The under-sea marks, 0, 1 and 2, kept exactly.)
+        for mark in [0.0f32, 1.0, 2.0] {
+            assert_eq!(half_value(half_bits_floor(mark)), mark);
+        }
     }
 
     #[test]
