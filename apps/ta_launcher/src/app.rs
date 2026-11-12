@@ -389,7 +389,7 @@ pub const MAX_FPS: f64 = 120.0;
 impl LauncherApp {
     pub fn new(cc: &eframe::CreationContext<'_>, args: Args) -> Self {
         if !theme::install(&cc.egui_ctx) {
-            log::info!("Bahnschrift not found; using egui's built-in fonts");
+            log::info!("Bahnschrift not found: the interface is in Sofia Sans");
         }
         let legacy_path = args.config.clone().unwrap_or_else(|| ta_config::config_dir().join("config.toml"));
         let legacy_path = std::path::absolute(&legacy_path).unwrap_or(legacy_path);

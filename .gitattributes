@@ -14,5 +14,7 @@
 *.bmp binary
 *.glb binary
 *.tnt binary
+*.ttf binary
+*.otf binary
 # TA's map descriptions keep the CRLF line endings TA writes (and the map generator).
 *.ota -text

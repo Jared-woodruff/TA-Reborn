@@ -102,7 +102,14 @@ pub fn reborn() -> Section {
                 ],
             ),
             block(t("DEVELOPMENT TOOLS"), &["Claude Code · Codex", "Blender · Python · NumPy · Pillow", "gltfpack · RenderDoc · ImageMagick · NSIS"]),
-            block(t("TYPEFACE"), &[t("Bahnschrift, from Windows"), t("Chinese, Japanese and Korean: Microsoft YaHei, Microsoft JhengHei, Yu Gothic and Malgun Gothic, from Windows")]),
+            block(
+                t("TYPEFACE"),
+                &[
+                    t("Bahnschrift, from Windows"),
+                    t("Sofia Sans by Lettersoup, where Windows' fonts are missing, under the SIL Open Font License"),
+                    t("Chinese, Japanese and Korean: Microsoft YaHei, Microsoft JhengHei, Yu Gothic and Malgun Gothic, from Windows"),
+                ],
+            ),
             block(t("MAP DATA"), &[t("Made with Natural Earth: the coasts and lakes of Australia, the United States and the world"), "naturalearthdata.com"]),
             block(t("THANKS"), &[t("The Total Annihilation community, whose decades of file-format research made this possible"), t("Everyone who has kept Total Annihilation alive since 1997: map makers, unit makers, modders and players")]),
             block("", &[t("Total Annihilation is © its respective owners. TA Reborn is an unofficial fan project, not affiliated with or endorsed by them.")]),

@@ -88,6 +88,9 @@ pub fn run(out: &Path, target: &str) -> Result<()> {
     if !unlicensed.is_empty() {
         bail!("no licence text found for: {}", unlicensed.join(", "));
     }
+    // The font compiled in (`crates/ta_ui/fonts`): its licence goes with it.
+    let ofl = std::fs::read_to_string(Path::new("crates").join("ta_ui").join("fonts").join("OFL.txt")).context("reading the bundled font's licence")?;
+    add(ofl.replace("\r\n", "\n").trim_end().to_string(), format!("{SOFIA_SANS} (crates/ta_ui/fonts/OFL.txt)"));
 
     let mut s = String::new();
     let title = format!("TA Reborn {version} - third-party notices");
@@ -114,6 +117,7 @@ pub fn run(out: &Path, target: &str) -> Result<()> {
          used with permission. It is not covered by TA Reborn's licence\n\
          (assets/reborn/music/NOTICE.txt).\n\n",
     );
+    let _ = writeln!(s, "{}\n", font_notice());
 
     let heading = format!("LIBRARIES ({})", libraries.len());
     let _ = writeln!(s, "{heading}\n{}\n", "-".repeat(heading.len()));
@@ -134,6 +138,22 @@ pub fn run(out: &Path, target: &str) -> Result<()> {
     std::fs::write(out, s)?;
     eprintln!("{}: {} libraries, {} licence texts", out.display(), libraries.len(), texts.len());
     Ok(())
+}
+
+/// The bundled font, as the licence texts name it.
+const SOFIA_SANS: &str = "Sofia Sans 4.101";
+
+/// What the notices say of the bundled font: whose it is, its licence, and what TA Reborn changed.
+fn font_notice() -> String {
+    format!(
+        "The interface's typeface where Windows' Bahnschrift is missing (Linux, macOS) is {SOFIA_SANS}\n\
+         by Lettersoup (Botio Nikoltchev and Ani Petrova), Copyright 2019 The Sofia Sans Project\n\
+         Authors (https://github.com/lettersoup/Sofia-Sans), its Semi Condensed and Extra Condensed\n\
+         variable fonts, compiled into the programs. It is licensed under the SIL Open Font License,\n\
+         version 1.1, whose text follows with the libraries' licences below. TA Reborn's copy is\n\
+         modified: its Cyrillic letters are mapped to the forms used in Russian and Ukrainian, which\n\
+         the original keeps for its Russian language setting (tools/fonts/sofia_sans.py)."
+    )
 }
 
 /// The third-party libraries in the executables, sorted by name and version.
@@ -267,5 +287,17 @@ mod tests {
         assert_eq!(names, ["naga", "wgpu"]);
         assert!(listed[0].source.contains("modified for TA Reborn"), "{}", listed[0].source);
         assert!(!listed[1].source.contains("modified"), "{}", listed[1].source);
+    }
+
+    /// The font compiled into the programs is named with its licence, the licence's text is in
+    /// the repository to go with it, and the change made to it is said.
+    #[test]
+    fn the_bundled_font_and_its_licence_are_in_the_notices() {
+        let notice = font_notice();
+        for part in ["Sofia Sans", "SIL Open Font License", "Copyright 2019 The Sofia Sans Project", "modified"] {
+            assert!(notice.contains(part), "{part:?} in {notice}");
+        }
+        let ofl = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/ta_ui/fonts/OFL.txt")).unwrap();
+        assert!(ofl.starts_with("Copyright 2019 The Sofia Sans Project Authors") && ofl.contains("SIL OPEN FONT LICENSE Version 1.1"));
     }
 }

@@ -2011,7 +2011,7 @@ build menu by `Purpose` on tabs (`Hud::build_tab`).
   screens (the battle room, the load game dialog, the main menu, the in-game buttons):
   grimy dark metal, steel pipe frames, olive-black wells, gunmetal buttons with cream
   stencil lettering, green lamps; brass for the main action and focus; Bahnschrift read
-  from the Windows font folder. `theme` holds the palette (`AMBER` and its kin are the
+  from the Windows font folder, else Sofia Sans, bundled (below). `theme` holds the palette (`AMBER` and its kin are the
   brass: the names stayed), the spacing scale (`space`) and the egui style (`install` for
   the launcher's roomy one; the game's `install_compact` keeps the HUD, tooltips and
   drop-downs dense). `metal` paints the materials, as shapes so that panels can put them
@@ -3782,6 +3782,22 @@ menu's briefing replays the narration through `MusicRequest::Narration`.
   they have every letter of; other text (Cyrillic, Chinese...) is drawn in the interface's
   font at their size (`TaFont::covers`), and TA's own button words ("Options Menu") are
   translated where the template has them.
+* The interface's typeface (`theme::ui_face`): Bahnschrift from Windows'
+  fonts (its weight axis for text at 400 and 600, weight 700 at width 75 for titles), read at
+  runtime, never shipped. Where it is missing (Linux, the Steam Deck, macOS; `TA_UI_FONT=bundled`
+  anywhere) it is Sofia Sans (SIL Open Font License 1.1, `crates/ta_ui/fonts/`, compiled in):
+  Semi Condensed for text at the same weights, Extra Condensed for titles at 700 (as wide as
+  Bahnschrift's condensed bold; Condensed is a sixth wider), at the same sizes: its lines are
+  Bahnschrift's 1.2 em, so the layouts made for Bahnschrift hold, and its text is 3 to 14%
+  narrower, its capitals 8% shorter. (Drawn 4% larger, to match Bahnschrift's lower case, its
+  lines were 4% taller and pushed controls below the fold of small windows; its line height
+  made shorter to match, egui's whole-pixel baselines left capitals a pixel high at some
+  sizes.) Sofia Sans draws Cyrillic in its Bulgarian forms by default and keeps the Russian
+  ones behind its Russian `locl`, which egui's shaping (no language) never asks for: the
+  bundled copy maps those 30 characters to their Russian forms (`tools/fonts/sofia_sans.py`;
+  `fonts/README.md` says what and why). The third-party
+  notices carry its licence (`ta-tools notices`). Photo captions and the credits' letters
+  take the same faces (`ui_face`).
 * Chinese, Japanese and Korean (`theme::cjk_faces`): Bahnschrift has none of them, so the
   system's own faces follow it in every family, read at runtime (Windows: Microsoft YaHei UI,
   Microsoft JhengHei UI, Yu Gothic UI, Malgun Gothic, regular and bold; elsewhere Noto Sans

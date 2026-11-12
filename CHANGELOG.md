@@ -18,6 +18,10 @@
   whatever the case of their names.
 
 ### Changed
+- On Linux, the Steam Deck and macOS, the interface's text is now set in Sofia Sans, a typeface
+  close to Windows' Bahnschrift that comes with TA Reborn, instead of a thin fallback font. It
+  has Cyrillic and Greek, so Russian and Ukrainian menus read in one typeface, in the letter
+  forms those languages use.
 - On Linux the first start no longer sets every computer to the Medium graphics level. The
   game now picks the level from the graphics card it opens: High on a dedicated card, Medium on
   recent integrated graphics and the Steam Deck, Low on older integrated graphics.
@@ -26,6 +30,9 @@
   at the screen's size too.
 
 ### Fixed
+- On the Skins page, at some window widths and interface sizes, "Use the same skin for both
+  sides" was squeezed into a column a letter wide, or the search and the skins below it went
+  out of reach. It now goes on a line of its own when it does not fit beside the skins.
 - Damaged aircraft never used repair pads unless sent to one. Aircraft on patrol, attack-move
   or an attack now break off when worn below two-thirds of their health, fly to the nearest
   free Air Repair Pad or carrier, however far, land on it and are repaired, then carry on with

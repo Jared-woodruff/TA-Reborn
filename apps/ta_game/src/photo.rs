@@ -1047,8 +1047,17 @@ fn thumbnail(shot: &Screenshot) -> Option<egui::ColorImage> {
 /// by the picture's height.
 fn stamp(shot: &mut Screenshot, caption: &Caption) {
     use ab_glyph::{Font, FontVec, PxScale, ScaleFont, VariableFont, point};
-    let (bytes, variable) = ta_ui::theme::ui_font_bytes();
-    let Ok(mut font) = FontVec::try_from_vec(bytes) else { return };
+    use ta_ui::theme::{Weight, ui_face};
+    // The interface's faces: its regular for the line, its condensed bold for the title.
+    let font_of = |weight: Weight| {
+        let face = ui_face(weight);
+        let mut font = FontVec::try_from_vec(face.bytes.to_vec()).ok()?;
+        for (tag, value) in face.coords {
+            let _ = font.set_variation(tag, *value);
+        }
+        Some(font)
+    };
+    let (Some(line_font), Some(title_font)) = (font_of(Weight::Regular), font_of(Weight::Display)) else { return };
     let h = shot.height as f32;
     let margin = (h * 0.035).round();
     let (title_px, line_px) = (h * 0.034, h * 0.021);
@@ -1102,15 +1111,8 @@ fn stamp(shot: &mut Screenshot, caption: &Caption) {
     };
     let line_base = h - margin;
     let title_base = line_base - line_px * 1.45;
-    if variable {
-        let _ = font.set_variation(b"wght", 400.0);
-    }
-    write(&font, &caption.line.to_uppercase(), line_px, margin, line_base, line_px * 0.12, [0.95, 0.94, 0.9], &mut blend);
-    if variable {
-        let _ = font.set_variation(b"wght", 700.0);
-        let _ = font.set_variation(b"wdth", 75.0);
-    }
-    let width = write(&font, &caption.title.to_uppercase(), title_px, margin, title_base, title_px * 0.16, [0.95, 0.82, 0.49], &mut blend);
+    write(&line_font, &caption.line.to_uppercase(), line_px, margin, line_base, line_px * 0.12, [0.95, 0.94, 0.9], &mut blend);
+    let width = write(&title_font, &caption.title.to_uppercase(), title_px, margin, title_base, title_px * 0.16, [0.95, 0.82, 0.49], &mut blend);
     // The brass rule over them.
     let rule_y = (title_base - title_px * 1.05) as i64;
     let thick = (h * 0.0025).max(1.0) as i64;

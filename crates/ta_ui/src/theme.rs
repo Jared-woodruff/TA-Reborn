@@ -7,14 +7,17 @@
 //! Text uses Bahnschrift, the DIN-style variable font that ships with Windows 10 and later.
 //! It is read from the system font folder at runtime (never embedded or redistributed); its
 //! weight and width axes provide regular, semi-bold and condensed-bold faces from one file.
-//! Elsewhere, or if the font is missing, egui's built-in fonts are used. Chinese, Japanese
-//! and Korean, which it lacks, come from the system's fonts too (see [`cjk_faces`]). Every
+//! Where it is missing (Linux, the Steam Deck, macOS) the interface is set in Sofia Sans, a
+//! technical sans of the same kind with Latin, Greek and Cyrillic, bundled under the SIL Open
+//! Font License (`fonts/`): Semi Condensed for text, Extra Condensed for titles, its lines as tall
+//! as Bahnschrift's and its text a little narrower ([`ui_face`]). Chinese, Japanese
+//! and Korean, which both lack, come from the system's fonts (see [`cjk_faces`]). Every
 //! face's capitals are set in the middle of their line (see [`VMetrics::cap_centring`]), so
 //! text centred in a box or beside a lamp, a bullet or an arrow sits level with it.
 
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use egui::epaint::text::VariationCoords;
 use egui::style::{HandleShape, Selection, WidgetVisuals, Widgets};
@@ -110,7 +113,53 @@ pub fn mono(size: f32) -> FontId {
     FontId::monospace(size)
 }
 
-/// Installs the fonts and the dark style. Returns `true` if the Windows UI font was found.
+/// The weights of the interface's text: [`body`], [`strong`] and [`display`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Weight {
+    Regular,
+    Strong,
+    Display,
+}
+
+/// A face of the interface's typeface: a font file, and the variation coordinates that make the
+/// face of it.
+#[derive(Clone, Copy, Debug)]
+pub struct UiFace {
+    pub bytes: &'static [u8],
+    pub coords: &'static [(&'static [u8; 4], f32)],
+}
+
+/// Sofia Sans (Lettersoup: Botio Nikoltchev and Ani Petrova; the SIL Open Font License 1.1, its
+/// text in `fonts/OFL.txt`) for where Bahnschrift is missing: Semi Condensed for text, Extra
+/// Condensed for titles (as wide as Bahnschrift's condensed bold; Condensed is a sixth wider),
+/// each varying by weight. At the same size its lines are as tall as Bahnschrift's (1.2 em), so
+/// the layouts made for Bahnschrift hold; its text is 3 to 14% narrower, its capitals 8% shorter.
+const SOFIA_SANS_SEMI_CONDENSED: &[u8] = include_bytes!("../fonts/SofiaSansSemiCondensed.ttf");
+const SOFIA_SANS_EXTRA_CONDENSED: &[u8] = include_bytes!("../fonts/SofiaSansExtraCondensed.ttf");
+
+/// The interface's face for `weight`: Bahnschrift at that weight (and, for titles, its condensed
+/// width) where Windows has it and it can be read, else Sofia Sans's file for it at that weight.
+/// `TA_UI_FONT=bundled` takes Sofia Sans anyway, to see the interface as Linux, the Steam Deck and
+/// macOS show it.
+pub fn ui_face(weight: Weight) -> UiFace {
+    face_of(bahnschrift(), weight)
+}
+
+/// [`ui_face`] with Bahnschrift's bytes, or without it.
+fn face_of(bahnschrift: Option<&'static [u8]>, weight: Weight) -> UiFace {
+    let (bytes, coords): (&'static [u8], &'static [(&'static [u8; 4], f32)]) = match (bahnschrift, weight) {
+        (Some(bytes), Weight::Regular) => (bytes, &[(b"wght", 400.0)]),
+        (Some(bytes), Weight::Strong) => (bytes, &[(b"wght", 600.0)]),
+        (Some(bytes), Weight::Display) => (bytes, &[(b"wght", 700.0), (b"wdth", 75.0)]),
+        (None, Weight::Regular) => (SOFIA_SANS_SEMI_CONDENSED, &[(b"wght", 400.0)]),
+        (None, Weight::Strong) => (SOFIA_SANS_SEMI_CONDENSED, &[(b"wght", 600.0)]),
+        (None, Weight::Display) => (SOFIA_SANS_EXTRA_CONDENSED, &[(b"wght", 700.0)]),
+    };
+    UiFace { bytes, coords }
+}
+
+/// Installs the fonts and the dark style. Returns `true` if Bahnschrift, Windows' font, was
+/// found (else the interface is in Sofia Sans, bundled).
 pub fn install(ctx: &egui::Context) -> bool {
     let system_font = install_fonts(ctx);
     follow_language(ctx);
@@ -135,6 +184,15 @@ pub fn install_compact(ctx: &egui::Context) -> bool {
 }
 
 fn install_fonts(ctx: &egui::Context) -> bool {
+    let bahnschrift = bahnschrift();
+    ctx.set_fonts(definitions(bahnschrift, &crate::i18n::language()));
+    bahnschrift.is_some()
+}
+
+/// The fonts of the interface in `language`: Bahnschrift's faces (from its bytes, else Sofia
+/// Sans's), egui's own behind them for what they lack, then the system's Chinese, Japanese and
+/// Korean faces, the language's own first.
+fn definitions(bahnschrift: Option<&'static [u8]>, language: &str) -> FontDefinitions {
     let mut fonts = FontDefinitions::default();
     let mut fallbacks = fonts.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
     // Hack carries the arrows and geometric shapes (▲ ▼ → ●) that Ubuntu-Light lacks.
@@ -145,14 +203,10 @@ fn install_fonts(ctx: &egui::Context) -> bool {
         proportional.clone_from(&fallbacks);
     }
 
-    let mut strong = Vec::new();
-    let mut display = Vec::new();
-    let system_font = system_ui_font();
-    let found = system_font.is_some();
     // (Other scripts' faces are set on the interface font's baseline: egui puts each at its
     // own ascent.)
-    let ui_metrics = system_font.as_deref().map_or_else(|| fonts.font_data.get("Ubuntu-Light").and_then(|f| vmetrics(&f.font, f.index)), |b| vmetrics(b, 0));
-    // egui's own faces (the fallbacks for the symbols Bahnschrift lacks, and the monospace)
+    let ui_metrics = vmetrics(face_of(bahnschrift, Weight::Regular).bytes, 0);
+    // egui's own faces (the fallbacks for the symbols the interface's lacks, and the monospace)
     // with their capitals in the middle of their lines too: then they are level with it.
     for name in ["Hack", "Ubuntu-Light"] {
         if let Some(data) = fonts.font_data.get(name)
@@ -163,28 +217,28 @@ fn install_fonts(ctx: &egui::Context) -> bool {
             fonts.font_data.insert(name.to_owned(), Arc::new(data));
         }
     }
-    if let Some(bytes) = system_font {
-        let centring = ui_metrics.map_or(0.0, |m| m.cap_centring());
-        let face = |coords: &[(&[u8; 4], f32)]| {
-            Arc::new(FontData::from_owned(bytes.clone()).tweak(FontTweak {
-                coords: VariationCoords::new(coords.iter().copied()),
-                y_offset_factor: centring,
-                ..Default::default()
-            }))
-        };
-        fonts.font_data.insert("ui-regular".into(), face(&[(b"wght", 400.0)]));
-        fonts.font_data.insert("ui-strong".into(), face(&[(b"wght", 600.0)]));
-        fonts.font_data.insert("ui-display".into(), face(&[(b"wght", 700.0), (b"wdth", 75.0)]));
-        if let Some(proportional) = fonts.families.get_mut(&FontFamily::Proportional) {
-            proportional.insert(0, "ui-regular".into());
-        }
-        strong.push("ui-strong".to_owned());
-        display.push("ui-display".to_owned());
+    // The interface's faces, each with its capitals in the middle of its line.
+    let face = |weight: Weight| {
+        let face = face_of(bahnschrift, weight);
+        let centring = vmetrics(face.bytes, 0).map_or(0.0, |m| m.cap_centring());
+        Arc::new(FontData::from_static(face.bytes).tweak(FontTweak {
+            coords: VariationCoords::new(face.coords.iter().copied()),
+            y_offset_factor: centring,
+            ..Default::default()
+        }))
+    };
+    fonts.font_data.insert("ui-regular".into(), face(Weight::Regular));
+    fonts.font_data.insert("ui-strong".into(), face(Weight::Strong));
+    fonts.font_data.insert("ui-display".into(), face(Weight::Display));
+    if let Some(proportional) = fonts.families.get_mut(&FontFamily::Proportional) {
+        proportional.insert(0, "ui-regular".into());
     }
+    let mut strong = vec!["ui-strong".to_owned()];
+    let mut display = vec!["ui-display".to_owned()];
     strong.extend(fallbacks.iter().cloned());
     display.extend(fallbacks);
     // Chinese, Japanese and Korean after them: the interface language's faces first.
-    let (regular, bold) = cjk_faces(&crate::i18n::language(), ui_metrics);
+    let (regular, bold) = cjk_faces(language, ui_metrics);
     for (name, data) in regular.iter().chain(&bold) {
         fonts.font_data.insert(name.clone(), data.clone());
     }
@@ -201,8 +255,7 @@ fn install_fonts(ctx: &egui::Context) -> bool {
     // Named families must always be bound, or egui panics when they are used.
     fonts.families.insert(FontFamily::Name(STRONG_FAMILY.into()), strong);
     fonts.families.insert(FontFamily::Name(DISPLAY_FAMILY.into()), display);
-    ctx.set_fonts(fonts);
-    found
+    fonts
 }
 
 /// Puts the fonts in again at the start of the frame after the interface's language
@@ -357,6 +410,7 @@ impl VMetrics {
         self.ascent + self.descent + self.gap
     }
 
+
     /// How far down to move its glyphs (in ems) so its capitals sit in the middle of their
     /// line: egui puts the baseline an ascent below the line's top and the whole line gap
     /// under the text, which leaves capitals high (Bahnschrift's by 0.16 em), while
@@ -451,28 +505,24 @@ pub fn fallback_faces() -> Vec<(&'static [u8], u32)> {
     faces
 }
 
-/// The interface's own face, as a font file (Bahnschrift; without it, egui's built-in face),
-/// and whether it varies by weight and width (Bahnschrift does): for text drawn into pictures
-/// outside the interface (a photo's caption).
-pub fn ui_font_bytes() -> (Vec<u8>, bool) {
-    match system_ui_font() {
-        Some(bytes) => (bytes, true),
-        None => (FontDefinitions::default().font_data.get("Ubuntu-Light").map_or_else(Vec::new, |f| f.font.to_vec()), false),
-    }
-}
-
-/// Reads Bahnschrift from the Windows font folder, if present and parseable.
-fn system_ui_font() -> Option<Vec<u8>> {
-    let bytes = std::fs::read(windows_fonts().join("bahnschrift.ttf")).ok()?;
-    // egui panics on font data it cannot parse, so only accept a font whose variation axes
-    // can be read — which also proves the weight axis we rely on exists.
-    let probe = FontData::from_owned(bytes);
-    let has_weight_axis = probe.variation_axes().iter().any(|axis| axis.tag.to_be_bytes() == *b"wght");
-    if !has_weight_axis {
-        log::info!("system UI font unusable; falling back to built-in fonts");
-        return None;
-    }
-    Some(probe.font.into_owned())
+/// Bahnschrift from the Windows font folder, if present and parseable (and not passed by:
+/// `TA_UI_FONT=bundled`), read once.
+fn bahnschrift() -> Option<&'static [u8]> {
+    static FOUND: OnceLock<Option<&'static [u8]>> = OnceLock::new();
+    *FOUND.get_or_init(|| {
+        if std::env::var_os("TA_UI_FONT").is_some_and(|v| v.eq_ignore_ascii_case("bundled")) {
+            return None;
+        }
+        let bytes = font_file(&windows_fonts().join("bahnschrift.ttf"))?;
+        // egui panics on font data it cannot parse, so only accept a font whose variation axes
+        // can be read — which also proves the weight axis we rely on exists.
+        let has_weight_axis = has_face(bytes, 0) && FontData::from_static(bytes).variation_axes().iter().any(|axis| axis.tag.to_be_bytes() == *b"wght");
+        if !has_weight_axis {
+            log::info!("Bahnschrift unusable; the interface is in Sofia Sans");
+            return None;
+        }
+        Some(bytes)
+    })
 }
 
 // ---- Style --------------------------------------------------------------------------------
@@ -589,20 +639,149 @@ fn widgets() -> Widgets {
 mod tests {
     use super::*;
 
+    /// Every face's capitals sit in the middle of their line: Bahnschrift's (where Windows has
+    /// it) and Sofia Sans's.
     #[test]
     fn capitals_sit_in_the_middle_of_their_line() {
-        let ctx = egui::Context::default();
-        if !install(&ctx) {
-            return; // (No Bahnschrift: egui's own fonts.)
+        for bahnschrift in [bahnschrift(), None] {
+            let ctx = egui::Context::default();
+            install(&ctx);
+            ctx.set_fonts(definitions(bahnschrift, "en"));
+            ctx.run_ui(Default::default(), |ui| {
+                for font in [display(30.0), strong(12.0), body(14.5)] {
+                    let galley = ui.painter().layout_no_wrap("H".to_owned(), font.clone(), Color32::WHITE);
+                    let glyph = &galley.rows[0].row.glyphs[0];
+                    let ink = galley.rows[0].pos.y + glyph.pos.y + glyph.uv_rect.offset.y + glyph.uv_rect.size.y / 2.0;
+                    assert!((ink - galley.size().y / 2.0).abs() < 0.75, "{font:?} in {bahnschrift:?}: capitals centred at {ink}, the line's middle {}", galley.size().y / 2.0, bahnschrift = bahnschrift.map(|_| "Bahnschrift"));
+                }
+            })
+            .drop_without_applying_deltas();
         }
+    }
+
+    /// Without Bahnschrift the interface is in Sofia Sans: its text and titles in their own
+    /// files, its lines as tall as Bahnschrift's 1.2 em and its text no wider (where Windows has
+    /// it to compare, laid out as the interface lays them out), so the layouts made for
+    /// Bahnschrift hold.
+    #[test]
+    fn without_bahnschrift_the_interface_is_in_sofia_sans() {
+        assert!(std::ptr::eq(face_of(None, Weight::Regular).bytes, SOFIA_SANS_SEMI_CONDENSED));
+        assert!(std::ptr::eq(face_of(None, Weight::Strong).bytes, SOFIA_SANS_SEMI_CONDENSED));
+        assert!(std::ptr::eq(face_of(None, Weight::Display).bytes, SOFIA_SANS_EXTRA_CONDENSED));
+        for bytes in [SOFIA_SANS_SEMI_CONDENSED, SOFIA_SANS_EXTRA_CONDENSED] {
+            assert!(has_face(bytes, 0));
+            let axes = FontData::from_static(bytes).variation_axes();
+            assert!(axes.iter().any(|axis| axis.tag.to_be_bytes() == *b"wght"), "a weight axis");
+            let line = vmetrics(bytes, 0).unwrap().row();
+            assert!((line - 1.2).abs() < 0.002, "a line {line} em high");
+        }
+        let Some(bahnschrift) = bahnschrift() else { return };
+        // As tall and as wide, laid out as the interface lays them out.
+        let size = |bahnschrift: Option<&'static [u8]>, text: &str, font: FontId| {
+            let ctx = egui::Context::default();
+            install(&ctx);
+            ctx.set_fonts(definitions(bahnschrift, "en"));
+            let mut size = egui::Vec2::ZERO;
+            ctx.run_ui(Default::default(), |ui| size = ui.painter().layout_no_wrap(text.to_owned(), font.clone(), Color32::WHITE).size()).drop_without_applying_deltas();
+            size
+        };
+        for (text, font) in [
+            ("Set up for this computer. They are yours to change in Settings.", body(14.5)),
+            ("Настройки игры, звук и управление", body(14.5)),
+            ("RESTORE DEFAULTS", strong(14.0)),
+            ("SINGLE PLAYER", display(26.0)),
+            ("НАСТРОЙКИ", display(26.0)),
+        ] {
+            let (ours, sofia) = (size(Some(bahnschrift), text, font.clone()), size(None, text, font.clone()));
+            let wide = sofia.x / ours.x;
+            assert!((0.84..=1.0).contains(&wide), "{text:?}: Sofia Sans {:.1} points wide, Bahnschrift {:.1} ({wide:.2})", sofia.x, ours.x);
+            assert!((sofia.y - ours.y).abs() < 0.3, "{text:?}: a line of Sofia Sans {:.2} points high, of Bahnschrift {:.2}", sofia.y, ours.y);
+        }
+    }
+
+    /// Sofia Sans draws Cyrillic as Russian and Ukrainian readers know it: the Bulgarian forms
+    /// it draws by default (в as tall as b, т as wide as m) are mapped away in the bundled copy
+    /// (`tools/fonts/sofia_sans.py`), since egui's shaping never asks for its Russian ones.
+    #[test]
+    fn sofia_sans_draws_cyrillic_in_the_forms_russian_and_ukrainian_use() {
+        let ctx = egui::Context::default();
+        install(&ctx);
+        ctx.set_fonts(definitions(None, "ru"));
         ctx.run_ui(Default::default(), |ui| {
-            for font in [display(30.0), strong(12.0), body(14.5)] {
-                let galley = ui.painter().layout_no_wrap("H".to_owned(), font.clone(), Color32::WHITE);
-                let glyph = &galley.rows[0].row.glyphs[0];
-                let ink = galley.rows[0].pos.y + glyph.pos.y + glyph.uv_rect.offset.y + glyph.uv_rect.size.y / 2.0;
-                assert!((ink - galley.size().y / 2.0).abs() < 0.75, "{font:?}: capitals centred at {ink}, the line's middle {}", galley.size().y / 2.0);
+            for font in [body(40.0), display(40.0)] {
+                // The ink of a letter: its width and height.
+                let ink = |letter: &str| {
+                    let galley = ui.painter().layout_no_wrap(letter.to_owned(), font.clone(), Color32::WHITE);
+                    galley.rows[0].row.glyphs[0].uv_rect.size
+                };
+                let (ve, b, x) = (ink("в"), ink("b"), ink("x"));
+                assert!(ve.y < b.y * 0.85 && (ve.y - x.y).abs() < x.y * 0.1, "{font:?}: в {:.1} high, b {:.1}, x {:.1}: in its Bulgarian form", ve.y, b.y, x.y);
+                let (te, m) = (ink("т"), ink("m"));
+                assert!(te.x < m.x * 0.8, "{font:?}: т {:.1} wide, m {:.1}: in its Bulgarian form", te.x, m.x);
             }
         })
         .drop_without_applying_deltas();
+    }
+
+    /// Where a font's table `tag` starts.
+    fn table(font: &[u8], tag: &[u8; 4]) -> usize {
+        let tables = u16::from_be_bytes([font[4], font[5]]) as usize;
+        let record = (0..tables).map(|i| 12 + 16 * i).find(|&r| &font[r..r + 4] == tag).unwrap_or_else(|| panic!("no {} table", String::from_utf8_lossy(tag)));
+        u32::from_be_bytes(font[record + 8..record + 12].try_into().unwrap()) as usize
+    }
+
+    /// Whether a font's character map (its Unicode table for the Basic Multilingual Plane,
+    /// format 4) has `c`.
+    fn maps(font: &[u8], c: char) -> bool {
+        let be16 = |at: usize| u16::from_be_bytes([font[at], font[at + 1]]) as usize;
+        let be32 = |at: usize| u32::from_be_bytes(font[at..at + 4].try_into().unwrap()) as usize;
+        let cmap = table(font, b"cmap");
+        let table = (0..be16(cmap + 2)).map(|i| cmap + 4 + 8 * i).find(|&r| (be16(r), be16(r + 2)) == (3, 1)).map(|r| cmap + be32(r + 4)).expect("Windows' Unicode table");
+        assert_eq!(be16(table), 4, "format 4");
+        let segments = be16(table + 6) / 2;
+        let (ends, starts, deltas, offsets) = (table + 14, table + 16 + 2 * segments, table + 16 + 4 * segments, table + 16 + 6 * segments);
+        let c = c as usize;
+        if c > 0xFFFF {
+            return false;
+        }
+        let Some(i) = (0..segments).find(|&i| be16(ends + 2 * i) >= c) else { return false };
+        let start = be16(starts + 2 * i);
+        if c < start {
+            return false;
+        }
+        let offset = be16(offsets + 2 * i);
+        let glyph = if offset == 0 {
+            (c + be16(deltas + 2 * i)) & 0xFFFF
+        } else {
+            let at = offsets + 2 * i + offset + 2 * (c - start);
+            match be16(at) {
+                0 => 0,
+                g => (g + be16(deltas + 2 * i)) & 0xFFFF,
+            }
+        };
+        glyph != 0
+    }
+
+    /// Sofia Sans has every letter of every translation but Chinese, Japanese and Korean (which
+    /// come from the system's fonts): Russian and Ukrainian above all (Barlow, first thought of,
+    /// has no Cyrillic), Greek too.
+    #[test]
+    fn sofia_sans_has_every_letter_of_the_translations() {
+        let cjk = |c: char| matches!(c as u32, 0x1100..=0x11FF | 0x2E80..=0x9FFF | 0xAC00..=0xD7AF | 0xF900..=0xFAFF | 0xFF00..=0xFFEF);
+        let lang = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../lang");
+        let mut letters = std::collections::BTreeSet::new();
+        for entry in std::fs::read_dir(&lang).expect("the translations") {
+            let path = entry.unwrap().path();
+            if path.extension().is_some_and(|e| e == "toml") {
+                letters.extend(std::fs::read_to_string(&path).unwrap().chars().filter(|&c| c.is_alphanumeric() && !cjk(c)));
+            }
+        }
+        assert!(['д', 'ї', 'ґ', 'ł', 'ğ', 'ã', 'ß'].iter().all(|c| letters.contains(c)), "the translations' letters read");
+        // (And the letters of every language's own name, and Greek's, for names and chat.)
+        letters.extend("ΑαΒβΓγΔδΕεΖζΗηΘθΙιΚκΛλΜμΝνΞξΟοΠπΡρΣσςΤτΥυΦφΧχΨψΩωάέήίόύώ".chars());
+        for (name, font) in [("Sofia Sans Semi Condensed", SOFIA_SANS_SEMI_CONDENSED), ("Sofia Sans Extra Condensed", SOFIA_SANS_EXTRA_CONDENSED)] {
+            let missing: String = letters.iter().filter(|&&c| !maps(font, c)).collect();
+            assert!(missing.is_empty(), "{name} lacks {missing:?}");
+        }
     }
 }

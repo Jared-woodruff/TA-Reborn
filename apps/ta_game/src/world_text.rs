@@ -2,8 +2,9 @@
 //! a nanolathe, over the battle they are part of (the credits' roll, `credits_show.rs`).
 //!
 //! The renderer draws glyphs from an atlas of signed distance fields (`ta_render::world_text`);
-//! this module cuts them: each character of the interface's face (Bahnschrift, with the system's
-//! Chinese, Japanese and Korean faces behind it for the scripts it lacks) is drawn four times
+//! this module cuts them: each character of the interface's face (Bahnschrift, else Sofia Sans,
+//! with the system's Chinese, Japanese and Korean faces behind it for the scripts it lacks:
+//! `ta_ui::theme::ui_face`) is drawn four times
 //! larger than its cell, thresholded, and turned into the distance from its outline by two
 //! exact distance transforms, and the cell is the average of each four by four. A [`Text`] is
 //! lines of such glyphs laid out round the middle of its block, put in the world (where it stands
@@ -47,14 +48,24 @@ impl Weight {
         self as usize
     }
 
-    /// The face's weight and width.
-    fn axes(self) -> (f32, f32) {
+    /// The interface's face of this weight.
+    fn ui(self) -> ta_ui::theme::Weight {
         match self {
-            Weight::Display => (700.0, 75.0),
-            Weight::Strong => (600.0, 100.0),
-            Weight::Regular => (400.0, 100.0),
+            Weight::Display => ta_ui::theme::Weight::Display,
+            Weight::Strong => ta_ui::theme::Weight::Strong,
+            Weight::Regular => ta_ui::theme::Weight::Regular,
         }
     }
+}
+
+/// The interface's face of `weight` ([`ta_ui::theme::ui_face`]), its weight (and width) set.
+fn ui_font(weight: ta_ui::theme::Weight) -> Option<FontVec> {
+    let face = ta_ui::theme::ui_face(weight);
+    let mut font = FontVec::try_from_vec(face.bytes.to_vec()).ok()?;
+    for (tag, value) in face.coords {
+        let _ = font.set_variation(tag, *value);
+    }
+    Some(font)
 }
 
 /// One face to draw glyphs from.
@@ -111,16 +122,10 @@ struct Fonts {
 
 impl Fonts {
     fn load() -> Fonts {
-        let (bytes, variable) = ta_ui::theme::ui_font_bytes();
         let mut faces = Vec::new();
         let mut sets: [Vec<usize>; 3] = Default::default();
         for weight in [Weight::Display, Weight::Strong, Weight::Regular] {
-            if let Ok(mut font) = FontVec::try_from_vec(bytes.clone()) {
-                if variable {
-                    let (w, wd) = weight.axes();
-                    let _ = font.set_variation(b"wght", w);
-                    let _ = font.set_variation(b"wdth", wd);
-                }
+            if let Some(font) = ui_font(weight.ui()) {
                 sets[weight.index()].push(faces.len());
                 faces.push(Face::Owned(font));
             }
@@ -714,12 +719,7 @@ mod tests {
     use super::*;
 
     fn face() -> Face {
-        let (bytes, variable) = ta_ui::theme::ui_font_bytes();
-        let mut font = FontVec::try_from_vec(bytes).expect("the interface's face");
-        if variable {
-            let _ = font.set_variation(b"wght", 700.0);
-        }
-        Face::Owned(font)
+        Face::Owned(ui_font(ta_ui::theme::Weight::Display).expect("the interface's face"))
     }
 
     #[test]
