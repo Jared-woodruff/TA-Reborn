@@ -2154,6 +2154,30 @@ build menu by `Purpose` on tabs (`Hud::build_tab`).
   the d-pad strikes the group keys 1-4, Start Escape, and the other buttons strike actions
   by name (`Input::pad_action`, which `Bindings::pressed` honours whatever the keys are
   bound to). The F1 reference lists the layout (`gamepad::LAYOUT`).
+  On the menus and over a battle's dialogs the d-pad, A, B and Start work the interface as
+  keys (`ta_ui::pad`, shared with the launcher): arrows move the keyboard focus (Tab first,
+  nothing having it), A is Enter on what has it, B and Start are Escape. On a text field,
+  which keeps the arrows for its cursor (`Context::text_edit_focused`), the d-pad goes on
+  with Tab and Shift+Tab. egui leaves a control the keys move to where it is, out of sight in
+  a list that scrolls: `pad::FocusFollow` sees the focus go (egui hands it over a frame after
+  the keys) and asks for the control to be scrolled into view with an AccessKit
+  `ScrollIntoView` request in the next frame's input, which every scroll area round it takes
+  as the control is laid out (`pad::scroll_into_view`), keeping frames coming until the list
+  is drawn scrolled.
+* **The launcher's gamepad** (`apps/ta_launcher/src/pad.rs`, `gameplay.gamepad`): a thread
+  reads the pads (gilrs, `next_event_blocking`) and wakes the window as one is used (an idle
+  launcher draws nothing); readings are dropped, and nothing woken, while the window lacks
+  the focus or a game runs (`Pad::listen`). `pad::State` turns them into egui's events in the
+  input hook (`pad_input`): the d-pad and the left stick (a direction past 0.55, until back
+  under 0.35) move the focus as in the game's menus, repeating after 0.42 s every 0.11 s;
+  A follows the way the pad last moved (`State::pointing`, as the game's `pad_focus`): it
+  clicks where the right stick put the pointer when the stick moved since the d-pad last moved
+  the focus (or nothing has the focus), else uses what has the focus, else focuses the first
+  control; B and Start go back; LB and RB turn the pages (`pad_pages`, taken by
+  `shortcuts` as Ctrl+1 to Ctrl+8 are: not under a dialog); the right stick moves the pointer
+  (and the system's, `ViewportCommand::CursorPosition`); the triggers scroll what is under
+  it; X is Shift+F10 (a card's menu), Y Ctrl+F (the search), View F1 (the list of keys and
+  buttons, with the controller's). Never in captures, films or tests.
 
 * **Mouse buttons** (`gameplay.order_button`): the right button gives orders (the
   default), or the left one, as in TA's original interface. Then a click on our own unit

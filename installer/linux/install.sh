@@ -11,8 +11,11 @@ data="$(cd -- "$data" && pwd -P)"
 dest="$data/ta-reborn"
 apps="$data/applications"
 entry="$apps/ta-reborn-launcher.desktop"
+# The game alone, with the launcher's settings: for Steam's "Add a Non-Steam Game" (a Steam
+# Deck's Game Mode) when the launcher is not wanted in between.
+game_entry="$apps/ta-reborn-game.desktop"
 marker="$dest/.ta-reborn-install"
-[[ ! -L "$dest" && ! -L "$apps" && ! -L "$entry" && ! -L "$marker" ]] || { echo 'Refusing a linked install or menu destination.' >&2; exit 1; }
+[[ ! -L "$dest" && ! -L "$apps" && ! -L "$entry" && ! -L "$game_entry" && ! -L "$marker" ]] || { echo 'Refusing a linked install or menu destination.' >&2; exit 1; }
 [[ "$(realpath -m -- "$dest")" == "$data/ta-reborn" ]] || { echo 'Unsafe install destination.' >&2; exit 1; }
 [[ $# -eq 0 || ( $# -eq 1 && "$1" == --uninstall ) ]] || { echo 'Usage: ./install.sh [--uninstall]' >&2; exit 1; }
 items=(ta-launcher ta-reborn assets lang docs README.txt LICENSE.txt THIRD-PARTY-NOTICES.txt build-info.json ta-reborn.png install.sh)
@@ -28,7 +31,9 @@ if [[ "${1:-}" == "--uninstall" ]]; then
     # other user-created files; never recursively remove the installation itself.
     for item in "${items[@]}"; do rm -rf -- "$dest/$item"; done
     rm -f -- "$marker"
-    if [[ -f "$entry" ]] && grep -qx 'X-TA-Reborn-Managed=true' "$entry"; then rm -f -- "$entry"; fi
+    for menu in "$entry" "$game_entry"; do
+        if [[ -f "$menu" ]] && grep -qx 'X-TA-Reborn-Managed=true' "$menu"; then rm -f -- "$menu"; fi
+    done
     echo "TA Reborn removed. Settings, saves and mods were kept. Remaining files: $dest"
     exit 0
 fi
@@ -47,18 +52,35 @@ done
 for item in "${items[@]}"; do cp -R -- "$here/$item" "$dest/"; done
 printf '%s\n' TA_REBORN_PER_USER_INSTALL_V1 > "$marker"
 chmod +x -- "$dest/ta-launcher" "$dest/ta-reborn" "$dest/install.sh"
-launcher="$dest/ta-launcher"
-launcher="${launcher//\\/\\\\}"
-launcher="${launcher//\"/\\\"}"
-launcher="${launcher//\$/\\\$}"
-launcher="${launcher//\`/\\\`}"
-launcher="${launcher//%/%%}"
+# A path for a desktop entry's Exec, quoted and escaped as the specification asks.
+exec_path() {
+    local path="$1"
+    path="${path//\\/\\\\}"
+    path="${path//\"/\\\"}"
+    path="${path//\$/\\\$}"
+    path="${path//\`/\\\`}"
+    path="${path//%/%%}"
+    printf '%s' "$path"
+}
+launcher="$(exec_path "$dest/ta-launcher")"
+game="$(exec_path "$dest/ta-reborn")"
 cat > "$entry" <<EOF
 [Desktop Entry]
 Type=Application
 Name=TA Reborn
 Comment=A new engine for Total Annihilation (needs your own copy of the game)
 Exec="$launcher"
+Icon=$dest/ta-reborn.png
+Terminal=false
+Categories=Game;StrategyGame;
+X-TA-Reborn-Managed=true
+EOF
+cat > "$game_entry" <<EOF
+[Desktop Entry]
+Type=Application
+Name=TA Reborn (game only)
+Comment=Starts the game straight away, with the settings made in the launcher
+Exec="$game"
 Icon=$dest/ta-reborn.png
 Terminal=false
 Categories=Game;StrategyGame;

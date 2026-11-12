@@ -29,6 +29,7 @@ mod native_crash;
 mod maps;
 mod mod_library;
 mod news;
+mod pad;
 mod pages;
 mod persist;
 mod theme;

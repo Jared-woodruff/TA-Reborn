@@ -9,6 +9,7 @@
 use gilrs::{Axis, Button, EventType, GamepadId, Gilrs};
 use glam::Vec2;
 use ta_ui::i18n::n;
+pub use ta_ui::pad::Nav;
 use winit::keyboard::KeyCode;
 
 /// One frame of pad input, in the terms of mouse and keyboard.
@@ -34,22 +35,7 @@ pub struct PadFrame {
     pub ctrl: bool,
 }
 
-/// The pad's buttons as the interface takes them, as keys: the d-pad moves the keyboard focus,
-/// A works what has it, B (and on the menus Start) goes back.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Nav {
-    Up,
-    Down,
-    Left,
-    Right,
-    Activate,
-    /// B.
-    Back,
-    /// Start (in a battle, its own Escape: the game menu).
-    Menu,
-}
-
-/// What a button does to the interface, if anything.
+/// What a button does to the interface, if anything (as keys: `ta_ui::pad`).
 fn nav_of(button: Button) -> Option<Nav> {
     Some(match button {
         Button::DPadUp => Nav::Up,
@@ -248,31 +234,6 @@ impl Gamepad {
         out
     }
 
-    /// The pad's moves on the interface as egui's keys: the d-pad's arrows move the keyboard
-    /// focus (Tab the first time, nothing having it: to the first button that takes it), A is
-    /// Enter on what has it (nothing having it, A is the pointer's click alone), B and Start
-    /// are Escape.
-    pub fn nav_events(nav: &[Nav], focused: bool) -> Vec<egui::Event> {
-        let mut focused = focused;
-        let mut out = Vec::new();
-        for &n in nav {
-            let key = match n {
-                Nav::Up | Nav::Down | Nav::Left | Nav::Right if !focused => {
-                    focused = true;
-                    egui::Key::Tab
-                }
-                Nav::Up => egui::Key::ArrowUp,
-                Nav::Down => egui::Key::ArrowDown,
-                Nav::Left => egui::Key::ArrowLeft,
-                Nav::Right => egui::Key::ArrowRight,
-                Nav::Activate if focused => egui::Key::Enter,
-                Nav::Activate => continue,
-                Nav::Back | Nav::Menu => egui::Key::Escape,
-            };
-            out.extend([true, false].map(|pressed| egui::Event::Key { key, physical_key: None, pressed, repeat: false, modifiers: egui::Modifiers::NONE }));
-        }
-        out
-    }
 }
 
 /// The two mouse-button emulations must describe the selected battle scheme. A still
@@ -387,24 +348,13 @@ mod tests {
         assert_eq!(buttons.update([false, false], [false, false]), (None, Some(false)));
     }
 
+    /// The buttons that work the menus (as keys there: `ta_ui::pad`).
     #[test]
     fn the_pad_works_menus_as_keys_do() {
-        use egui::Key;
-        let keys = |nav: &[Nav], focused| -> Vec<(Key, bool)> {
-            Gamepad::nav_events(nav, focused).into_iter().filter_map(|e| match e { egui::Event::Key { key, pressed, .. } => Some((key, pressed)), _ => None }).collect()
-        };
         assert_eq!(nav_of(Button::DPadDown), Some(Nav::Down));
         assert_eq!(nav_of(Button::South), Some(Nav::Activate));
         assert_eq!((nav_of(Button::East), nav_of(Button::Start)), (Some(Nav::Back), Some(Nav::Menu)));
         assert_eq!(nav_of(Button::West), None, "X is the battle's alone");
-        // Nothing focused: the first move focuses the first button, the next ones move on.
-        assert_eq!(keys(&[Nav::Down, Nav::Down], false), [(Key::Tab, true), (Key::Tab, false), (Key::ArrowDown, true), (Key::ArrowDown, false)]);
-        assert_eq!(keys(&[Nav::Left], true), [(Key::ArrowLeft, true), (Key::ArrowLeft, false)]);
-        // A works what has the focus, else it is the pointer's click alone.
-        assert_eq!(keys(&[Nav::Activate], true), [(Key::Enter, true), (Key::Enter, false)]);
-        assert!(keys(&[Nav::Activate], false).is_empty());
-        assert_eq!(keys(&[Nav::Back], false), [(Key::Escape, true), (Key::Escape, false)]);
-        assert_eq!(keys(&[Nav::Menu], true), [(Key::Escape, true), (Key::Escape, false)]);
     }
 
     #[test]

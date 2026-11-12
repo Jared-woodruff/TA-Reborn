@@ -40,6 +40,10 @@ or its graphics) and sets itself up for it: full screen at 1280 x 800 with verti
 sync, the interface at 125%, the launcher maximised, and the Medium graphics level once
 the game first opens the Deck's graphics. All of it can be changed in Settings. In
 Game Mode the launcher fills the screen.
+The Deck's controls work the launcher: the d-pad or left stick moves between controls,
+A uses them, B goes back, the bumpers turn the pages and View lists every button.
+install.sh also adds "TA Reborn (game only)" to the applications menu: added to Steam in
+place of the launcher, it starts the game straight away with the launcher's settings.
 
 The portable build needs glibc 2.35 or newer, ALSA, udev, X11 or Wayland libraries,
 OpenGL/EGL and a working Vulkan driver. File pickers use xdg-desktop-portal and a

@@ -298,6 +298,8 @@ struct State {
     /// The pad's d-pad moved the keyboard focus since its pointer or the mouse last moved: its A
     /// works what has the focus, not what is under the pointer.
     pad_focus: bool,
+    /// Scrolls the control the pad's d-pad moved the focus to into view.
+    pad_follow: ta_ui::pad::FocusFollow,
     /// A script's pad buttons for the next reading of the pads (`TA_UI_PAD`), and whether it
     /// has pressed any (a pad in use, as far as the menus are told).
     demo_pad: Vec<crate::gamepad::Nav>,
@@ -2311,6 +2313,7 @@ impl State {
             gamepad: crate::gamepad::Gamepad::new(config.gameplay.gamepad && args.screenshot.is_none()),
             pad: Default::default(),
             pad_focus: false,
+            pad_follow: Default::default(),
             demo_pad: Vec::new(),
             demo_pad_used: false,
             keyboard_pointer: Default::default(),
@@ -7425,16 +7428,22 @@ impl State {
         }
     }
 
-    fn feed_pad_to_egui(&self, raw: &mut egui::RawInput) {
+    fn feed_pad_to_egui(&mut self, raw: &mut egui::RawInput) {
         let m = self.input.modifiers;
         let modifiers = egui::Modifiers { alt: m.alt_key(), ctrl: m.control_key(), shift: m.shift_key(), mac_cmd: false, command: m.control_key() };
         raw.events.extend(crate::gamepad::Gamepad::egui_events(&self.pad, self.input.mouse, self.egui.ctx.pixels_per_point(), modifiers));
-        let focused = self.egui.ctx.memory(|m| m.focused()).is_some();
-        raw.events.extend(crate::gamepad::Gamepad::nav_events(&self.pad.nav, focused));
+        // The d-pad's moves as keys, and the control they reach scrolled into view.
+        let focused = self.egui.ctx.memory(|m| m.focused());
+        let typing = self.egui.ctx.text_edit_focused();
+        let (events, waiting) = self.pad_follow.events(&self.pad.nav, focused, typing);
+        raw.events.extend(events);
+        if waiting {
+            self.egui.ctx.request_repaint();
+        }
     }
 
     /// On the menus and over a battle's dialogs the pad works the interface as keys do
-    /// (`Gamepad::nav_events`): its d-pad no control group there (they did nothing but that,
+    /// (`ta_ui::pad::nav_events`): its d-pad no control group there (they did nothing but that,
     /// and nothing went back but the pointer taken to BACK), nor its B a right-click; its A, once
     /// the d-pad has moved the focus, no click wherever the pointer happens to be. Elsewhere its
     /// moves are dropped. (The menu shows how, while a pad is in use.)

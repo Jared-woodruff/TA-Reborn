@@ -376,6 +376,10 @@ pub struct LauncherApp {
     paced: Option<Instant>,
     /// The Menu key was down as the last frame began (it opens a library's context menu).
     menu_key: bool,
+    /// The gamepads, read while the settings have them on (not in captures, films or tests).
+    pad: Option<crate::pad::Pad>,
+    /// Pages the pad's bumpers turned, for the next shortcuts (back is negative).
+    pad_pages: i32,
     /// The copy of an unreadable settings file the player was told of (see `tell_recovery`).
     backup_told: Option<PathBuf>,
 }
@@ -536,6 +540,8 @@ impl LauncherApp {
             film: None,
             paced: None,
             menu_key: false,
+            pad: None,
+            pad_pages: 0,
             backup_told: None,
             config,
             store,
@@ -2315,7 +2321,7 @@ impl eframe::App for LauncherApp {
         self.sounds.music(ctx, &self.config.audio, minimized || self.game.is_running());
     }
 
-    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
         if let Some(film) = &mut self.film {
             film.input(raw_input);
             return;
@@ -2325,6 +2331,7 @@ impl eframe::App for LauncherApp {
         if crate::library::menu::menu_key(&mut self.menu_key, raw_input.focused) {
             raw_input.events.push(egui::Event::Key { key: egui::Key::F10, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::SHIFT });
         }
+        self.pad_input(ctx, raw_input);
     }
 
     fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
@@ -3342,6 +3349,80 @@ mod tests {
         assert_eq!(app.page, Page::Play);
         assert!(!app.focus_update, "the update card must be rendered and consume the reveal request even without game data");
         app.skins.shutdown();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A pad works the launcher (its state as the pads' thread feeds it, the frames as the input
+    /// hook runs them): the bumpers turn the pages, not under a dialog; the d-pad moves the
+    /// focus down a long page, each control it reaches scrolled into view; B goes back.
+    #[test]
+    fn a_pad_turns_the_pages_and_keeps_the_focus_in_view() {
+        use crate::pad::Reading;
+        use gilrs::Button;
+        let dir = temp_dir("pad");
+        let (ctx, mut app) = launcher(&dir.join("config.toml"), &["--pretend-missing"]);
+        app.skins.shutdown();
+        let screen = Rect::from_min_size(Pos2::ZERO, vec2(1120.0, 720.0));
+        let mut pad = crate::pad::State::default();
+        let mut time = 0.0;
+        let mut step = |app: &mut LauncherApp, readings: &[Reading]| {
+            time += 0.05;
+            let focused = ctx.memory(|m| m.focused());
+            let f = pad.frame(readings, time, None, None, screen.size(), focused, ctx.text_edit_focused(), 0.18, 1.0);
+            app.pad_pages += f.pages;
+            frame(&ctx, app, RawInput { events: f.events, screen_rect: Some(screen), ..Default::default() });
+        };
+        let press = |button| [Reading::Pressed(button), Reading::Released(button)];
+        step(&mut app, &[]);
+        for _ in 0..3 {
+            step(&mut app, &press(Button::RightTrigger));
+        }
+        assert_eq!(app.page, Page::Skins);
+        step(&mut app, &press(Button::LeftTrigger));
+        assert_eq!(app.page, Page::Maps);
+        for _ in 0..12 {
+            step(&mut app, &press(Button::RightTrigger));
+        }
+        assert_eq!(app.page, Page::About, "the last page: no further");
+        // Under a dialog the bumpers do nothing.
+        app.show_shortcuts = true;
+        step(&mut app, &press(Button::LeftTrigger));
+        assert_eq!(app.page, Page::About);
+        step(&mut app, &press(Button::East));
+        assert!(!app.show_shortcuts, "B closes the dialog");
+        // Into the graphics settings (down the categories, right into their controls), then down
+        // them, far past the window's foot: every control the focus reaches is in view.
+        app.open_page(Page::Settings);
+        app.settings_view.open(ta_ui::settings::Category::Graphics);
+        step(&mut app, &[]);
+        let mut go = |app: &mut LauncherApp, button| {
+            step(app, &press(button));
+            for _ in 0..3 {
+                step(app, &[]);
+            }
+            let id = ctx.memory(|m| m.focused())?;
+            let rect = ctx.read_response(id).map(|r| r.rect).expect("the focused control is laid out");
+            assert!(rect.top() >= -1.0 && rect.bottom() <= screen.bottom() + 1.0, "the control with the focus is in view: {rect:?}");
+            Some((id, rect))
+        };
+        // (From nothing to the header, down the rail, right to the settings' search: a text
+        // field, which the d-pad leaves with Tab, to the first category; right into its controls.)
+        for _ in 0..3 {
+            go(&mut app, Button::DPadDown);
+        }
+        go(&mut app, Button::DPadRight);
+        assert!(ctx.text_edit_focused(), "the settings' search");
+        let (_, category) = go(&mut app, Button::DPadDown).expect("the first category");
+        assert!(!ctx.text_edit_focused(), "the d-pad left the search");
+        go(&mut app, Button::DPadRight).expect("a control has the focus");
+        let mut seen = std::collections::HashSet::new();
+        for _ in 0..30 {
+            if let Some((id, rect)) = go(&mut app, Button::DPadDown) {
+                assert!(rect.left() > category.right(), "among the controls: {rect:?}");
+                seen.insert(id);
+            }
+        }
+        assert!(seen.len() > 12, "the d-pad went down the controls: {}", seen.len());
         let _ = std::fs::remove_dir_all(dir);
     }
 

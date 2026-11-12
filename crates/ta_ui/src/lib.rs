@@ -19,6 +19,7 @@ pub mod icon;
 pub mod loading;
 pub mod metal;
 pub mod motion;
+pub mod pad;
 pub mod panel;
 pub mod portrait;
 pub mod profiles;

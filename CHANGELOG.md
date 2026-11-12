@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Added
+- The launcher now works with a gamepad, the Steam Deck's controls included: the d-pad or left
+  stick moves between controls, A uses them, B goes back, the bumpers turn the pages, the right
+  stick moves the pointer and the triggers scroll. X opens a card's menu, Y the search, and View
+  the list of keys and buttons, which now shows the controller's too.
+- On Linux, `install.sh` also adds *TA Reborn (game only)* to the applications menu: added to
+  Steam in place of the launcher, it starts the game straight away with the launcher's settings.
 - The Steam Deck is recognised on the first start (by Steam's `SteamDeck=1`, the Deck's
   firmware, SteamOS or its graphics), and the game is set up for it: full screen at 1280 × 800
   with vertical sync, the interface at 125%, as large as the battle's panels allow on its
@@ -22,6 +28,8 @@
   close to Windows' Bahnschrift that comes with TA Reborn, instead of a thin fallback font. It
   has Cyrillic and Greek, so Russian and Ukrainian menus read in one typeface, in the letter
   forms those languages use.
+- In the game's menus and dialogs, a control the d-pad moves to is scrolled into view, and the
+  d-pad now leaves a text field (such as the options' search) instead of moving its cursor.
 - On Linux the first start no longer sets every computer to the Medium graphics level. The
   game now picks the level from the graphics card it opens: High on a dedicated card, Medium on
   recent integrated graphics and the Steam Deck, Low on older integrated graphics.
