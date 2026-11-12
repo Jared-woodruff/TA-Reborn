@@ -277,9 +277,13 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   must cover a metal deposit cell, except on metal worlds (plain ground of 100 metal or more,
   `World::metal_world`); the HUD says so while placing one, and the AI's metal spots follow
   the same rule. Mobile units standing where a building is laid (its builder too) step off
-  it (`Sim::step_aside`: a move to the nearest place they can stand, ahead of their orders;
-  from inside an obstacle a unit walks straight out); an enemy standing there blocks the
-  site. Units a falling wreck covers are thrown clear of it, a cell or two, their orders
+  it (`Sim::step_aside`: a move to the nearest place they can stand, clear of the builder's
+  next sites where there is one, ahead of their orders; from inside an obstacle a unit walks
+  straight out); an enemy standing there blocks the site. A ground unit left standing in a
+  building (a walk out that another building stopped) is put on the nearest free cell
+  (`Sim::step_out_of_building`, looked at every eight ticks while it stands still): from in
+  there no route leads anywhere, and a Commander building a block of solar collectors was
+  walled in by them. Units a falling wreck covers are thrown clear of it, a cell or two, their orders
   untouched (`Sim::throw_clear`: sending each off it and back made thousands of new routes
   in a big battle).
 * **Combat** (`combat.rs`): targets via a uniform grid; aiming through the unit's own
@@ -2605,7 +2609,9 @@ build menu by `Purpose` on tabs (`Hud::build_tab`).
   place): the simulation finds it in the queue as it stands when the command runs (the
   nearest of that kind, should a unit or a building have finished meanwhile) and, for a
   constructor, gives the rest of its orders again from there. (`QueueFront`, by index alone,
-  is kept for old replays.) Alt+drag while placing fills a rectangle; COMBAT, BUILDERS,
+  is kept for old replays.) Alt+drag while placing fills a rectangle, built from the side
+  farthest from where the builders will start (`far_side_first`): they stand in what is still
+  open and finish at its near edge; COMBAT, BUILDERS,
   DAMAGED and IDLE narrow a selection.
 * **Duties** (`game/duty.rs`, key `duty` Alt+D, the stance column's DUTY button and its menu, the
   radial menu's DUTY choice and ring: both read `game::duty::CHOICES` and `Game::duty_control`, so

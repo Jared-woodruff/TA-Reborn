@@ -243,6 +243,10 @@ const STALL_IDLE: u32 = 30;
 /// One held up head on by its own side's units this long slips past them for `SQUEEZE_TICKS`.
 const SQUEEZE_IDLE: u32 = 45;
 const SQUEEZE_TICKS: u64 = 90;
+/// An idle ground unit is looked at this often (ticks) for standing in a building, and placed
+/// on the nearest free cell within so many rings of cells (`Sim::step_out_of_building`).
+const BUILDING_CHECK_TICKS: u64 = 8;
+const BUILDING_ESCAPE_RINGS: i32 = 12;
 /// Within twice its turning circle's radius at its speed of its next waypoint (`LOOK_RADII`; at
 /// least `LOOK_MIN` px, at most `LOOK_MAX`), a unit on its way looks up to this many waypoints
 /// past it for one to steer for (`Sim::carrot`).
@@ -3683,8 +3687,27 @@ impl Sim {
         if let Some(u) = self.unit_mut(id) {
             u.build = Some(BuildJob { target, started: false });
         }
+        // (Off the site and off the builder's next ones too: a builder stepping onto the site it
+        // builds next was walled in by its own row of buildings.)
+        let next: Vec<(i32, i32, (u32, u32))> = self
+            .unit(id)
+            .map(|u| {
+                u.orders
+                    .iter()
+                    .skip(1)
+                    .filter_map(|o| match o {
+                        Order::Build { type_id, pos } => {
+                            let fp = types.get(*type_id).footprint;
+                            let (x, z) = World::footprint_origin(World::pos_to_anchor(*pos, fp), fp);
+                            Some((x, z, fp))
+                        }
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         for o in standing {
-            self.step_aside(o);
+            self.step_aside(o, &next);
         }
     }
 
@@ -3729,22 +3752,38 @@ impl Sim {
 
     /// The nearest place within `rings` cells a unit can stand (with a cell to spare round it
     /// where there is one: a unit stopping a pixel or two short of the spot still stands
-    /// clear).
-    fn clear_spot(&self, u: &Unit, rings: i32) -> Option<FxVec3> {
+    /// clear), off the footprints `avoid` (each its first cell and size) where it can be.
+    fn clear_spot(&self, u: &Unit, rings: i32, avoid: &[(i32, i32, (u32, u32))]) -> Option<FxVec3> {
         let t = self.types.get(u.type_id);
         let spec = self.move_specs[t.id];
         let here = World::pos_to_anchor(u.pos, t.footprint);
+        let off = |c: (i32, i32)| {
+            let (x0, z0) = World::footprint_origin(c, t.footprint);
+            let (x1, z1) = (x0 + t.footprint.0 as i32, z0 + t.footprint.1 as i32);
+            !avoid.iter().any(|&(ax, az, (w, h))| x0 < ax + w as i32 && ax < x1 && z0 < az + h as i32 && az < z1)
+        };
         let fits = |c: (i32, i32)| if t.locomotion == Locomotion::Air { self.world.in_bounds(c.0, c.1) && self.world.occupant(c.0, c.1) == Occupant::Free } else { self.world.passable(&spec, c, None) };
+        if !avoid.is_empty()
+            && let Some(spot) = self.clear_spot_where(here, rings, &|c| fits(c) && off(c))
+        {
+            return Some(self.world.anchor_to_pos(spot, t.footprint));
+        }
+        let spot = self.clear_spot_where(here, rings, &fits)?;
+        Some(self.world.anchor_to_pos(spot, t.footprint))
+    }
+
+    /// The nearest cell within `rings` of `here` that `fits` takes, one with fitting cells all
+    /// round it first.
+    fn clear_spot_where(&self, here: (i32, i32), rings: i32, fits: &dyn Fn((i32, i32)) -> bool) -> Option<(i32, i32)> {
         let roomy = |c: (i32, i32)| (-1..=1).all(|dz| (-1..=1).all(|dx| fits((c.0 + dx, c.1 + dz))));
         let ring = |r: i32| (-r..=r).flat_map(move |dz| (-r..=r).map(move |dx| (dx, dz))).filter(move |&(dx, dz)| dx.abs().max(dz.abs()) == r).map(move |(dx, dz)| (here.0 + dx, here.1 + dz));
-        let spot = (1..=rings).find_map(|r| ring(r).find(|&c| roomy(c))).or_else(|| (1..=rings).find_map(|r| ring(r).find(|&c| fits(c))))?;
-        Some(self.world.anchor_to_pos(spot, t.footprint))
+        (1..=rings).find_map(|r| ring(r).find(|&c| roomy(c))).or_else(|| (1..=rings).find_map(|r| ring(r).find(|&c| fits(c))))
     }
 
     /// A unit a wreck has fallen on is thrown clear of it, a cell or two, its orders and route
     /// untouched (none: it stays).
     pub(crate) fn throw_clear(&mut self, id: UnitId) {
-        let Some(spot) = self.unit(id).and_then(|u| self.clear_spot(u, 2)) else { return };
+        let Some(spot) = self.unit(id).and_then(|u| self.clear_spot(u, 2, &[])) else { return };
         let types = self.types.clone();
         let sea = self.world.sea_level;
         let ground = self.world.height_at(spot.x, spot.z);
@@ -3760,11 +3799,13 @@ impl Sim {
     }
 
     /// A unit standing where something is put down (a building being laid) or in a factory's
-    /// way (on its pad) walks off it, to the nearest place it can stand, then carries on with
-    /// what it was doing. (Out of an obstacle's cells it walks straight: from inside them no
-    /// route is planned, and the crowd's pushing can't move it.)
-    fn step_aside(&mut self, id: UnitId) {
-        let Some(spot) = self.unit(id).and_then(|u| self.clear_spot(u, 12)) else { return };
+    /// way (on its pad) walks off it, to the nearest place it can stand off the footprints
+    /// `avoid` (the builder's next sites) where there is one, then carries on with what it was
+    /// doing. (Out of an obstacle's cells it walks straight: from inside them no route is
+    /// planned, and the crowd's pushing can't move it. A walk another building stops leaves it
+    /// to `Sim::step_out_of_building`.)
+    fn step_aside(&mut self, id: UnitId, avoid: &[(i32, i32, (u32, u32))]) {
+        let Some(spot) = self.unit(id).and_then(|u| self.clear_spot(u, 12, avoid)) else { return };
         if let Some(u) = self.unit_mut(id) {
             u.orders.push_front(Order::Move(spot));
             u.path.clear();
@@ -4441,7 +4482,7 @@ impl Sim {
         if !on_pad.is_empty() {
             for o in on_pad {
                 if self.unit(o).is_some_and(|u| u.owner == owner && u.path_goal.is_none()) {
-                    self.step_aside(o);
+                    self.step_aside(o, &[]);
                 }
             }
             return;
@@ -4571,6 +4612,13 @@ impl Sim {
     /// to when the unit got stuck.
     fn ground_step(u: &mut Unit, t: &UnitType, spec: MoveSpec, world: &World, steer: crate::avoid::Steer, tick: u64) -> Option<FxVec3> {
         let Some(goal) = u.path_goal else {
+            // Standing in a building (a constructor left on a site as the building went up round
+            // it, its way off blocked; a unit pushed into one): onto the nearest free cell, as a
+            // unit stuck in a factory's walls is placed (below). From in there no route leads
+            // anywhere, so it would never move again.
+            if (tick + u.id.slot as u64).is_multiple_of(BUILDING_CHECK_TICKS) && u.speed.is_zero() {
+                Self::step_out_of_building(u, t, &spec, world);
+            }
             // Idle: brake to a halt.
             u.speed = u.speed.approach(Fx::ZERO, t.brake);
             if u.speed.is_zero() && u.moving {
@@ -4826,6 +4874,38 @@ impl Sim {
             return u.path_goal;
         }
         None
+    }
+
+    /// A ground unit standing on a building's cells (not one the terrain alone keeps it off) is
+    /// placed on the nearest cell it can stand on, within [`BUILDING_ESCAPE_RINGS`]: whether it
+    /// was.
+    fn step_out_of_building(u: &mut Unit, t: &UnitType, spec: &MoveSpec, world: &World) -> bool {
+        let here = World::pos_to_anchor(u.pos, t.footprint);
+        if world.passable(spec, here, None) {
+            return false;
+        }
+        let (x0, z0) = World::footprint_origin(here, t.footprint);
+        let in_building = (z0..z0 + t.footprint.1 as i32).any(|z| (x0..x0 + t.footprint.0 as i32).any(|x| matches!(world.occupant(x, z), Occupant::Unit(_))));
+        if !in_building {
+            return false;
+        }
+        for r in 1..=BUILDING_ESCAPE_RINGS {
+            for dz in -r..=r {
+                for dx in -r..=r {
+                    if dx.abs() != r && dz.abs() != r {
+                        continue;
+                    }
+                    let c = (here.0 + dx, here.1 + dz);
+                    if world.passable(spec, c, None) {
+                        let p = world.anchor_to_pos(c, t.footprint);
+                        u.pos.x = p.x;
+                        u.pos.z = p.z;
+                        return true;
+                    }
+                }
+            }
+        }
+        false
     }
 
     /// Where a unit on its way steers for: its next waypoint (`waypoint`, `dist` away), or, close
