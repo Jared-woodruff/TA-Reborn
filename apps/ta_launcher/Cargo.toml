@@ -23,6 +23,8 @@ ta_data.workspace = true
 ta_ui.workspace = true
 # TA's interface sounds from the install, played as the game plays them.
 ta_audio.workspace = true
+# Gamepads: a Steam Deck's controls work the pages (`pad.rs`).
+gilrs.workspace = true
 egui.workspace = true
 anyhow.workspace = true
 log.workspace = true

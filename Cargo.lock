@@ -3954,6 +3954,7 @@ dependencies = [
  "egui",
  "embed-resource",
  "env_logger",
+ "gilrs",
  "glam",
  "image",
  "log",

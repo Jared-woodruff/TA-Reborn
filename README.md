@@ -677,8 +677,10 @@ GOG's copy, or in the Proton prefix of GOG's installer run through Steam as a no
 otherwise choose the folder in the launcher. On its first start it recognises the Deck (Steam's
 `SteamDeck=1`, the Deck's firmware, SteamOS or its graphics) and sets itself up for it: full screen
 at 1280 × 800, the interface at 125%, the launcher maximised (in Game Mode it fills the screen), and
-the Medium graphics level. In the game the Deck's controls work as a gamepad, in battle and in
-every menu; in the launcher, tap the screen or use the right trackpad.
+the Medium graphics level. The Deck's controls work as a gamepad in the launcher (the d-pad or
+left stick moves between controls, A uses them, B goes back, the bumpers turn the pages, and View
+lists every button) and in the game, in battle and in every menu. To start the game without the
+launcher, add *TA Reborn (game only)*, which `install.sh` also puts in the menu, to Steam instead.
 
 </details>
 

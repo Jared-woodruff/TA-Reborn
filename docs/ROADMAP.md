@@ -157,7 +157,9 @@ each part works; this file tracks what is done and what is still open.
   Simplified and Traditional Chinese), machine-made; Chinese, Japanese and Korean in
   Windows' own fonts; the first start picks the computer's language.
 - Gamepads (the Steam Deck's controls included): sticks scroll and aim a cursor, A and B
-  click in battle and in every menu, triggers zoom, bumpers hold Shift and Ctrl.
+  click in battle and in every menu, triggers zoom, bumpers hold Shift and Ctrl. In the
+  launcher too: the d-pad and left stick move the focus, A and B use and go back, the bumpers
+  turn the pages; the focused control is scrolled into view in both.
 - Linux: released for x64 and ARM64 since 1.0.0, built natively on Ubuntu 22.04 by the
   release workflow (`.github/workflows/packages.yml`, `installer/build_linux.sh`) as an Ubuntu
   package, an Arch package and a portable archive with a per-user `install.sh` and menu

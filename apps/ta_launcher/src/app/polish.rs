@@ -50,6 +50,11 @@ impl LauncherApp {
             shortcut_row(ui, "Esc", n("Clear the focused search or close a dialog"));
             shortcut_row(ui, "Tab / Shift+Tab", n("Move keyboard focus"));
             shortcut_row(ui, "F1", "KEYBOARD SHORTCUTS");
+            ui.separator();
+            ui.label(widgets::caption("CONTROLLER"));
+            for (buttons, what) in controller_rows() {
+                shortcut_row(ui, &buttons, what);
+            }
             let here = self.page_keys();
             if !here.is_empty() {
                 ui.separator();
@@ -276,6 +281,21 @@ fn keycap(ui: &mut Ui, key: &str) -> egui::Response {
         widgets::focus_ring(ui, &response, rect);
     }
     response.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// A gamepad's buttons in the launcher, as the shortcuts list shows them (`crate::pad`).
+fn controller_rows() -> [(String, &'static str); 9] {
+    [
+        (format!("{} / {}", t("D-pad"), t("Left stick")), n("Move between controls")),
+        ("A".into(), n("Use the control with the focus")),
+        ("B / Start".into(), n("Go back, or close a dialog")),
+        ("LB / RB".into(), n("The previous or next page")),
+        (t("Right stick").to_string(), n("Move the pointer (A then clicks)")),
+        ("LT / RT".into(), n("Scroll")),
+        ("X".into(), n("Open the chosen one's menu")),
+        ("Y".into(), n("Search mods, maps, skins or settings")),
+        ("View".into(), n("Open this list")),
+    ]
 }
 
 fn shortcut_row(ui: &mut Ui, key: &str, label: &str) {

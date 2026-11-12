@@ -226,14 +226,52 @@ impl LauncherApp {
         self.modal_open(ctx) || (self.page == Page::Settings && self.settings_view.capturing())
     }
 
+    /// A gamepad's input for this frame ([`crate::pad`]): its moves as egui's events, its bumpers'
+    /// pages for [`Self::shortcuts`], the system's pointer where its right stick puts it. The pads
+    /// are read while the settings have them on, never in a capture, a film or a test; their
+    /// input is taken while the window has the focus and no game is running.
+    pub(super) fn pad_input(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        let wanted = self.config.gameplay.gamepad && self.capture.is_none() && self.film.is_none() && !cfg!(test);
+        if wanted != self.pad.is_some() {
+            self.pad = wanted.then(|| crate::pad::Pad::start(ctx));
+        }
+        let Some(pad) = &mut self.pad else { return };
+        pad.listen(raw.focused && !self.game.is_running());
+        let readings = pad.take();
+        let moved = crate::pad::mouse_moved(&raw.events);
+        let mouse = moved.or_else(|| ctx.input(|i| i.pointer.latest_pos()));
+        let screen = raw.screen_rect.map_or_else(|| ctx.content_rect().size(), |r| r.size());
+        let time = raw.time.unwrap_or_else(|| ctx.input(|i| i.time));
+        let focused = ctx.memory(|m| m.focused());
+        let frame = pad.state.frame(&readings, time, mouse, moved, screen, focused, ctx.text_edit_focused(), self.config.gameplay.gamepad_deadzone, self.config.gameplay.gamepad_sensitivity);
+        raw.events.extend(frame.events);
+        self.pad_pages += frame.pages;
+        if let Some(at) = frame.cursor {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CursorPosition(at));
+        }
+        if frame.busy {
+            ctx.request_repaint_after(Duration::from_millis(16));
+        }
+    }
+
     /// Keys: Ctrl+1 to Ctrl+8 the rail's pages in order, Enter plays (on the Play page), F5 looks
     /// again (the game, mods, skins, maps or profile of the page shown). Not while typing, while a dialog
     /// is open, a key is awaited for an action (Settings, Controls) or a control has the
     /// keyboard's focus.
     pub(super) fn shortcuts(&mut self, ctx: &egui::Context) {
         let setting_a_key = self.page == Page::Settings && self.settings_view.capturing();
+        // (A pad's bumpers, here as Ctrl+1 to Ctrl+8 are: not under a dialog.)
+        let pad_pages = std::mem::take(&mut self.pad_pages);
         if self.modal_open(ctx) || setting_a_key || self.film.is_some() {
             return;
+        }
+        if pad_pages != 0 {
+            let at = super::PAGES.iter().position(|&p| p == self.page).unwrap_or(0) as i32;
+            let page = super::PAGES[(at + pad_pages).clamp(0, super::PAGES.len() as i32 - 1) as usize];
+            if page != self.page {
+                ta_ui::sound::play(ctx, ta_ui::sound::UiSound::Tab);
+                self.open_page(page);
+            }
         }
         if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F1)) {
             self.show_shortcuts = true;

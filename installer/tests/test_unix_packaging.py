@@ -404,6 +404,11 @@ class PortableInstallTests(unittest.TestCase):
         self.assertTrue((installed / "ta-launcher").is_file())
         entry = self.data / "applications/ta-reborn-launcher.desktop"
         self.assertIn('Exec="', entry.read_text())
+        # The game alone, for Steam's "Add a Non-Steam Game".
+        game_entry = self.data / "applications/ta-reborn-game.desktop"
+        game = game_entry.read_text()
+        self.assertIn("Name=TA Reborn (game only)", game)
+        self.assertRegex(game, r'Exec="[^"\n]*/ta-reborn/ta-reborn"\n')
         (installed / "mods").mkdir()
         saved = installed / "mods/my-mod.txt"
         saved.write_text("keep my mod", encoding="utf-8")
@@ -414,6 +419,7 @@ class PortableInstallTests(unittest.TestCase):
         self.assertEqual(saved.read_text(), "keep my mod")
         self.assertFalse((installed / "ta-launcher").exists())
         self.assertFalse(entry.exists())
+        self.assertFalse(game_entry.exists())
 
     def test_unmarked_uninstall_does_not_delete_content(self):
         if os.name != "nt" and pkg.platform.system() != "Linux":
