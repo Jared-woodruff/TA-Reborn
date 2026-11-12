@@ -1,10 +1,11 @@
 //! What the computer is, for the first start: the graphics card and the memory of its own,
-//! the processor's threads, the memory, and the main screen. The first start (the
-//! launcher's or the game's, whichever comes first) sets the game up from it: the graphics
-//! level for the card, the screen's own size, full screen. After that the settings are the
-//! player's ([`crate::Graphics::preset`] is no longer Auto).
+//! the processor's threads, the memory, the main screen, and whether it is a handheld (a
+//! Steam Deck). The first start (the launcher's or the game's, whichever comes first) sets the
+//! game up from it ([`Config::set_up_for`]): the graphics level for the card, the screen's own
+//! size, full screen; on a handheld also the interface's scale and the launcher maximised.
+//! After that the settings are the player's ([`crate::Graphics::set_up`]).
 
-use crate::{GpuKind, Graphics, Preset, WindowMode};
+use crate::{Config, GpuKind, Graphics, Preset, WindowMode, limits};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Hardware {
@@ -23,22 +24,46 @@ pub struct Hardware {
     pub refresh_hz: u32,
     /// The processor, as Windows names it ("AMD Ryzen 9 7950X 16-Core Processor").
     pub cpu: String,
+    /// The handheld it is, if one ([`Handheld::detect`]).
+    pub handheld: Option<Handheld>,
+    /// The system it runs, as Rust names it ("windows", "macos", "linux"; empty when not
+    /// looked at).
+    pub os: &'static str,
 }
 
 impl Hardware {
-    /// Looks at this computer (on Windows; on Linux its memory and processor; on a Mac its
-    /// memory and processor, and on Apple's own chips their graphics; elsewhere only the
-    /// threads are known).
+    /// Looks at this computer (on Windows; on Linux its memory and processor and whether it is
+    /// a Steam Deck; on a Mac its memory and processor, and on Apple's own chips their graphics;
+    /// elsewhere only the threads are known).
     pub fn detect() -> Hardware {
-        #[cfg_attr(not(any(windows, target_os = "linux", target_os = "macos")), allow(unused_mut))]
-        let mut hw = Hardware { threads: std::thread::available_parallelism().map_or(0, |n| n.get()), ..Default::default() };
+        let mut hw = Hardware { threads: std::thread::available_parallelism().map_or(0, |n| n.get()), os: std::env::consts::OS, ..Default::default() };
         #[cfg(windows)]
         win::detect(&mut hw);
         #[cfg(target_os = "linux")]
         linux::detect(&mut hw);
         #[cfg(target_os = "macos")]
         mac::detect(&mut hw);
+        hw.handheld = Handheld::detect(&hw.gpu);
         hw
+    }
+
+    /// Linux: its look asks the graphics drivers nothing (the game picks the level from the card
+    /// it opens), and a handheld's system draws at the screen's own pixels (SteamOS), leaving
+    /// the interface's size to the game.
+    fn linux(&self) -> bool {
+        self.os == "linux"
+    }
+
+    /// The graphics level the first start sets ([`Hardware::preset`]); None on Linux while the
+    /// card is not known: the level stays Auto, for the game to pick from the card it opens.
+    /// (Elsewhere a card not found, an Intel Mac's, still gets [`Preset::for_gpu`]'s Medium.)
+    pub fn first_level(&self) -> Option<Preset> {
+        (self.gpu_kind.is_some() || !self.linux()).then(|| self.preset())
+    }
+
+    /// The main screen's size in pixels: as it is set now, else a handheld's own.
+    pub fn screen_size(&self) -> Option<(u32, u32)> {
+        self.screen.or(self.handheld.map(Handheld::screen))
     }
 
     /// The graphics level for this computer: the card's kind and name (see
@@ -71,10 +96,14 @@ impl Hardware {
         level
     }
 
-    /// A line for the launcher: "NVIDIA GeForce RTX 3050 (8 GB) · 8 threads · 32 GB".
+    /// A line for the launcher: "NVIDIA GeForce RTX 3050 (8 GB) · 8 threads · 32 GB" ("Steam
+    /// Deck · 8 threads · 15 GB" on one).
     pub fn summary(&self) -> String {
         let gb = |mb: u64| format!("{:.0} GB", mb as f64 / 1024.0);
         let mut parts = Vec::new();
+        if let Some(handheld) = self.handheld {
+            parts.push(handheld.name().to_string());
+        }
         if !self.gpu.is_empty() {
             parts.push(if self.vram_mb >= 1024 { format!("{} ({})", self.gpu, gb(self.vram_mb)) } else { self.gpu.clone() });
         }
@@ -235,6 +264,87 @@ fn cpuinfo_name(text: &str) -> Option<String> {
     (!name.is_empty()).then_some(name)
 }
 
+/// A handheld gaming computer: the first start sets the game up for its small screen, held
+/// close ([`Config::set_up_for`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Handheld {
+    /// Valve's Steam Deck: the LCD model ("Jupiter") or the OLED one ("Galileo").
+    SteamDeck,
+}
+
+/// Where Linux shows the firmware's maker and model.
+const DMI_VENDOR: &str = "/sys/devices/virtual/dmi/id/sys_vendor";
+const DMI_PRODUCT: &str = "/sys/devices/virtual/dmi/id/product_name";
+/// The system's name and version (the second where the first is missing).
+const OS_RELEASE: [&str; 2] = ["/etc/os-release", "/usr/lib/os-release"];
+
+impl Handheld {
+    pub fn name(self) -> &'static str {
+        match self {
+            Handheld::SteamDeck => "Steam Deck",
+        }
+    }
+
+    /// Its screen's own size in pixels, held level (both Steam Decks': 1280 × 800).
+    pub fn screen(self) -> (u32, u32) {
+        match self {
+            Handheld::SteamDeck => (1280, 800),
+        }
+    }
+
+    /// The handheld this computer is, if one: from its graphics' name (`gpu`, "" when not known;
+    /// Windows on a Deck names them), and on Linux from what the system says of itself
+    /// ([`Handheld::detect_with`]). Elsewhere nothing is read.
+    pub fn detect(gpu: &str) -> Option<Handheld> {
+        let linux = cfg!(target_os = "linux");
+        let env = |name: &str| if linux { std::env::var(name).ok() } else { None };
+        let read = |path: &str| if linux { std::fs::read_to_string(path).ok() } else { None };
+        Handheld::detect_with(env, read, gpu)
+    }
+
+    /// A Steam Deck is known by any one of: Steam's `SteamDeck=1` among the variables of what it
+    /// starts; the firmware's maker and model (Valve's "Jupiter" or "Galileo"); SteamOS's
+    /// os-release (`ID=steamos`); its graphics' name ([`steam_deck_gpu`]). `env` gives a variable,
+    /// `read` a file's text (None where there is none).
+    pub fn detect_with(env: impl Fn(&str) -> Option<String>, read: impl Fn(&str) -> Option<String>, gpu: &str) -> Option<Handheld> {
+        let by_steam = || env("SteamDeck").is_some_and(|v| v.trim() == "1");
+        let by_firmware = || {
+            read(DMI_VENDOR).is_some_and(|v| v.trim().eq_ignore_ascii_case("valve"))
+                && read(DMI_PRODUCT).is_some_and(|p| ["jupiter", "galileo"].iter().any(|model| p.trim().eq_ignore_ascii_case(model)))
+        };
+        let by_system = || OS_RELEASE.iter().find_map(|path| read(path)).is_some_and(|text| os_release_id(&text).is_some_and(|id| id.eq_ignore_ascii_case("steamos")));
+        (steam_deck_gpu(gpu) || by_steam() || by_firmware() || by_system()).then_some(Handheld::SteamDeck)
+    }
+}
+
+/// Whether a graphics adapter's name is the Steam Deck's (AMD's Van Gogh): "AMD Custom GPU 0405"
+/// on the LCD model and "AMD Custom GPU 0932" on the OLED one, as Windows and Mesa name them
+/// ("AMD Custom GPU 0405 (RADV VANGOGH)" on Vulkan), or Mesa's "vangogh" alone.
+pub fn steam_deck_gpu(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    ["custom gpu 0405", "custom gpu 0932", "vangogh"].iter().any(|key| name.contains(key))
+}
+
+/// The `ID` an os-release file's text gives ("steamos"), without its quotes.
+fn os_release_id(text: &str) -> Option<&str> {
+    text.lines().find_map(|line| line.trim().strip_prefix("ID=")).map(|id| id.trim().trim_matches(['"', '\'']))
+}
+
+/// Whether this runs inside gamescope, the compositor of SteamOS's Game Mode (and of other
+/// gaming sessions): it shows one program at a time, scaled to fill the screen, so a window
+/// should fill the screen itself to be drawn pixel for pixel. Read on Linux alone
+/// ([`gamescope_with`]); elsewhere never.
+pub fn gamescope() -> bool {
+    cfg!(target_os = "linux") && gamescope_with(|name| std::env::var(name).ok())
+}
+
+/// [`gamescope`] from what `env` gives of the variables gamescope sets for what runs in it
+/// (`GAMESCOPE_WAYLAND_DISPLAY`) and its session's desktop (`XDG_CURRENT_DESKTOP=gamescope`).
+pub fn gamescope_with(env: impl Fn(&str) -> Option<String>) -> bool {
+    env("GAMESCOPE_WAYLAND_DISPLAY").is_some_and(|display| !display.trim().is_empty())
+        || env("XDG_CURRENT_DESKTOP").is_some_and(|desktop| desktop.split(':').any(|d| d.eq_ignore_ascii_case("gamescope")))
+}
+
 /// The language of the computer's own interface, as a tag ("de-DE", "zh-CN", "pt-BR"): the
 /// first start shows the game in it when there is a translation. Windows' display
 /// language; elsewhere the locale's variables.
@@ -273,23 +383,64 @@ impl Preset {
 }
 
 impl Graphics {
-    /// The first start: the level for this computer, the screen's own size, full screen.
+    /// The first start's graphics ([`Config::set_up_for`]): the level for this computer
+    /// ([`Graphics::pick_level_for`]), the screen's own size (a handheld's, where the screen is
+    /// not known), full screen; vertical sync on a handheld.
     pub fn set_up_for(&mut self, hw: &Hardware) {
-        let level = hw.preset();
-        level.apply(self);
-        self.preset = level;
-        if let Some((w, h)) = hw.screen.filter(|&(w, h)| w >= 640 && h >= 480) {
+        self.pick_level_for(hw);
+        if let Some((w, h)) = hw.screen_size().filter(|&(w, h)| w >= 640 && h >= 480) {
             self.width = w;
             self.height = h;
         }
         self.window_mode = WindowMode::Fullscreen;
+        if hw.handheld.is_some() {
+            self.vsync = true;
+        }
+        self.set_up = true;
+    }
+
+    /// The graphics level for this computer where the first start can tell it
+    /// ([`Hardware::first_level`]), the card noted, and the render scale for the screen where
+    /// both are known (the game fits it to its window too when it first starts). Else the level
+    /// stays Auto, for the game to pick from the card it opens. Also for a level put back to
+    /// Auto in the options, as the game next starts.
+    pub fn pick_level_for(&mut self, hw: &Hardware) {
+        let Some(level) = hw.first_level() else { return };
+        level.apply(self);
+        self.preset = level;
         if !hw.gpu.is_empty() {
             self.gpu = hw.gpu.clone();
         }
-        // (The render scale for the screen, where both are known; the game fits it to its window
-        // too when it first starts.)
         if let (Some(kind), Some((w, h))) = (hw.gpu_kind, hw.screen) {
             self.fit_render_scale(kind, &hw.gpu, w as u64 * h as u64);
+        }
+    }
+}
+
+impl Config {
+    /// Whether these settings are yet to be set up for the computer ([`Config::set_up_for`]): a
+    /// new settings file, or one whose graphics were put back to how they came (RESET ALL
+    /// SETTINGS, the graphics' RESTORE DEFAULTS).
+    pub fn first_start(&self) -> bool {
+        self.graphics.preset == Preset::Auto && !self.graphics.set_up
+    }
+
+    /// The first start, the launcher's or the game's, whichever comes first: the game set up for
+    /// this computer, all of it here. The graphics ([`Graphics::set_up_for`]); on a handheld also
+    /// the launcher maximised (in SteamOS's Game Mode it fills the screen anyway: [`gamescope`])
+    /// and, under Linux (whose SteamOS draws at the screen's own pixels; Windows enlarges a small
+    /// screen's interface itself), the interface at the largest scale that leaves the screen room
+    /// for the battle and the launcher's pages, which share it (125% on a Steam Deck). After that
+    /// the settings are the player's.
+    pub fn set_up_for(&mut self, hw: &Hardware) {
+        self.graphics.set_up_for(hw);
+        if hw.handheld.is_none() {
+            return;
+        }
+        self.launcher.maximized = true;
+        if let Some(screen) = hw.screen_size().filter(|_| hw.linux()) {
+            let fit = |points| limits::ui_scale_to_fit(screen, points);
+            self.gameplay.ui_scale = fit(limits::GAME_POINTS).min(fit(limits::LAUNCHER_POINTS));
         }
     }
 }
@@ -455,6 +606,7 @@ mod tests {
         g.set_up_for(&pc("NVIDIA GeForce RTX 3050", GpuKind::Discrete, 8_000, (2560, 1440)));
         assert_eq!((g.preset, g.width, g.height, g.window_mode), (Preset::High, 2560, 1440, WindowMode::Fullscreen));
         assert_eq!(g.msaa, 4);
+        assert!(g.set_up);
     }
 
     #[test]
@@ -462,5 +614,196 @@ mod tests {
         let hw = Hardware::detect();
         println!("{hw:?} -> {:?}", hw.preset());
         assert!(hw.threads > 0);
+        assert_eq!(hw.os, std::env::consts::OS);
+    }
+
+    /// A Steam Deck under SteamOS, as its look finds it: Linux, no graphics card known before
+    /// the game opens one.
+    fn deck() -> Hardware {
+        Hardware { os: "linux", handheld: Some(Handheld::SteamDeck), threads: 8, ram_mb: 14_830, cpu: "AMD Custom APU 0405".into(), ..Default::default() }
+    }
+
+    /// Any one of what tells a Steam Deck is enough alone; none of them, no handheld.
+    #[test]
+    fn a_steam_deck_is_known_by_any_one_of_its_signs() {
+        use std::collections::HashMap;
+        let detect = |vars: &[(&str, &str)], files: &[(&str, &str)], gpu: &str| {
+            let vars: HashMap<String, String> = vars.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+            let files: HashMap<String, String> = files.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+            Handheld::detect_with(|name| vars.get(name).cloned(), |path| files.get(path).cloned(), gpu)
+        };
+        let deck = Some(Handheld::SteamDeck);
+        // None of them: an ordinary computer.
+        assert_eq!(detect(&[], &[], ""), None);
+        // Steam's variable, in what it starts on a Deck.
+        assert_eq!(detect(&[("SteamDeck", "1")], &[], ""), deck);
+        assert_eq!(detect(&[("SteamDeck", "0")], &[], ""), None);
+        assert_eq!(detect(&[("SteamOS", "1")], &[], ""), None);
+        // The firmware, as Linux shows it (a line each): Valve's Jupiter (LCD) or Galileo (OLED).
+        assert_eq!(detect(&[], &[(DMI_VENDOR, "Valve\n"), (DMI_PRODUCT, "Jupiter\n")], ""), deck);
+        assert_eq!(detect(&[], &[(DMI_VENDOR, "Valve\n"), (DMI_PRODUCT, "Galileo\n")], ""), deck);
+        assert_eq!(detect(&[], &[(DMI_VENDOR, "Valve\n"), (DMI_PRODUCT, "Index\n")], ""), None);
+        assert_eq!(detect(&[], &[(DMI_VENDOR, "LENOVO\n"), (DMI_PRODUCT, "Jupiter\n")], ""), None);
+        assert_eq!(detect(&[], &[(DMI_PRODUCT, "Jupiter\n")], ""), None);
+        // SteamOS, its ID with or without quotes; /usr/lib's where /etc has none.
+        let steamos = "NAME=\"SteamOS\"\nPRETTY_NAME=\"SteamOS\"\nVERSION_CODENAME=holo\nID=steamos\nID_LIKE=arch\n";
+        assert_eq!(detect(&[], &[("/etc/os-release", steamos)], ""), deck);
+        assert_eq!(detect(&[], &[("/usr/lib/os-release", "ID=\"steamos\"\n")], ""), deck);
+        assert_eq!(detect(&[], &[("/etc/os-release", "NAME=\"Arch Linux\"\nID=arch\n")], ""), None);
+        assert_eq!(detect(&[], &[("/etc/os-release", "ID=bazzite\nID_LIKE=\"steamos fedora\"\n")], ""), None, "only its own ID");
+        assert_eq!(detect(&[], &[("/etc/os-release", "ID=arch\n"), ("/usr/lib/os-release", "ID=steamos\n")], ""), None, "/etc's first");
+        // Its graphics, as Vulkan (Mesa's RADV), Windows and OpenGL name them.
+        for gpu in ["AMD Custom GPU 0405 (RADV VANGOGH)", "AMD Custom GPU 0932 (RADV VANGOGH)", "AMD Custom GPU 0405", "AMD Custom GPU 0405 (radeonsi, vangogh, LLVM 15.0.7, DRM 3.54)"] {
+            assert_eq!(detect(&[], &[], gpu), deck, "{gpu}");
+        }
+        assert_eq!(detect(&[], &[], "AMD Radeon 780M Graphics"), None);
+        assert_eq!(detect(&[], &[], "AMD Radeon RX 6800 XT (RADV NAVI21)"), None);
+        // Off Linux nothing is read: only the graphics' name tells there.
+        if !cfg!(target_os = "linux") {
+            assert_eq!(Handheld::detect(""), None);
+        }
+        assert_eq!(Handheld::detect("AMD Custom GPU 0405"), deck);
+        assert_eq!(Handheld::SteamDeck.screen(), (1280, 800));
+    }
+
+    /// Inside gamescope (SteamOS's Game Mode) by the variable it gives what it starts, or its
+    /// session's desktop; a desktop's own session is not. Nothing is read off Linux.
+    #[test]
+    fn game_mode_is_known_by_gamescope() {
+        let gamescope = |vars: &[(&str, &str)]| gamescope_with(|name| vars.iter().find(|(k, _)| *k == name).map(|(_, v)| v.to_string()));
+        assert!(gamescope(&[("GAMESCOPE_WAYLAND_DISPLAY", "gamescope-0")]));
+        assert!(gamescope(&[("XDG_CURRENT_DESKTOP", "gamescope")]));
+        assert!(!gamescope(&[("XDG_CURRENT_DESKTOP", "KDE")]));
+        assert!(!gamescope(&[("XDG_CURRENT_DESKTOP", "ubuntu:GNOME"), ("GAMESCOPE_WAYLAND_DISPLAY", "")]));
+        assert!(!gamescope(&[]));
+        if !cfg!(target_os = "linux") {
+            assert!(!super::gamescope());
+        }
+    }
+
+    /// A Steam Deck's first start under SteamOS: full screen at its screen's size, vertical sync,
+    /// the interface at 125% (the most the battle's 1024 × 600 points leave at 1280 × 800: the
+    /// launcher, sharing it, keeps more than its 940 × 600), the launcher maximised. The level
+    /// is left to the game, which picks Medium for the Deck's graphics and draws all its pixels.
+    #[test]
+    fn a_steam_deck_is_set_up_for_its_screen() {
+        let mut config = Config::default();
+        assert!(config.first_start());
+        let hw = deck();
+        assert_eq!(hw.first_level(), None);
+        config.set_up_for(&hw);
+        let g = &config.graphics;
+        assert_eq!((g.preset, g.width, g.height, g.window_mode, g.vsync), (Preset::Auto, 1280, 800, WindowMode::Fullscreen, true));
+        assert!(g.set_up && !config.first_start(), "once: the next start leaves the settings as they are");
+        assert_eq!(config.gameplay.ui_scale, 1.25);
+        assert!(config.launcher.maximized);
+        // From the battle's cap: the largest step that leaves it its room, and the launcher its own.
+        let room = |scale: f32, (w, h): (f32, f32)| 1280.0 / scale >= w && 800.0 / scale >= h;
+        assert!(room(1.25, limits::GAME_POINTS) && room(1.25, limits::LAUNCHER_POINTS));
+        assert!(!room(1.30, limits::GAME_POINTS));
+        assert!(hw.summary().starts_with("Steam Deck · 8 threads"), "{}", hw.summary());
+        // The game, on the Deck's graphics (Vulkan's name for them): Medium, at 100% of its pixels.
+        let radv = "AMD Custom GPU 0405 (RADV VANGOGH)";
+        let level = Preset::for_gpu(GpuKind::Integrated, radv);
+        assert_eq!(level, Preset::Medium);
+        let mut g = config.graphics.clone();
+        level.apply(&mut g);
+        g.preset = level;
+        assert!(g.fit_render_scale_once(GpuKind::Integrated, radv, g.picture_pixels(Some((1280, 800)))));
+        assert_eq!(g.render_scale, 1.0);
+    }
+
+    /// A Linux PC: the first start knows no graphics card, so the level stays Auto for the game
+    /// to pick from the card it opens (it was Medium on every one); full screen, the interface as
+    /// it comes.
+    #[test]
+    fn a_linux_pc_leaves_the_level_to_the_game() {
+        let hw = Hardware { os: "linux", threads: 16, ram_mb: 32_000, cpu: "AMD Ryzen 7 5800X 8-Core Processor".into(), ..Default::default() };
+        assert_eq!(hw.first_level(), None);
+        let mut config = Config::default();
+        config.set_up_for(&hw);
+        let g = &config.graphics;
+        assert_eq!((g.preset, (g.width, g.height), g.window_mode, g.gpu.as_str()), (Preset::Auto, (1600, 900), WindowMode::Fullscreen, ""));
+        assert!(!config.first_start());
+        assert_eq!((config.gameplay.ui_scale, config.launcher.maximized), (1.0, false));
+        // The game opens the card: its level, as for any computer.
+        assert_eq!(Preset::for_gpu(GpuKind::Discrete, "NVIDIA GeForce RTX 3070"), Preset::High);
+        assert_eq!(Preset::for_gpu(GpuKind::Integrated, "Intel(R) UHD Graphics 620 (KBL GT2)"), Preset::Low);
+    }
+
+    /// Windows and Macs keep their first start: the level for the card the computer names (an
+    /// Intel Mac, whose graphics are not known, Medium as before), and no handheld's settings.
+    #[test]
+    fn windows_and_macs_keep_their_first_start() {
+        let mut windows = pc("NVIDIA GeForce RTX 3050", GpuKind::Discrete, 8_000, (2560, 1440));
+        windows.os = "windows";
+        let mac = Hardware { gpu: "Apple M5".into(), gpu_kind: Some(GpuKind::Integrated), threads: 10, ram_mb: 24_576, os: "macos", ..Default::default() };
+        let intel_mac = Hardware { threads: 12, ram_mb: 16_384, os: "macos", cpu: "Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz".into(), ..Default::default() };
+        for (hw, level, size) in [(&windows, Preset::High, (2560, 1440)), (&mac, Preset::Medium, (1600, 900)), (&intel_mac, Preset::Medium, (1600, 900))] {
+            let mut config = Config::default();
+            config.set_up_for(hw);
+            let g = &config.graphics;
+            assert_eq!((g.preset, (g.width, g.height), g.window_mode), (level, size, WindowMode::Fullscreen), "{hw:?}");
+            assert!(g.set_up && !config.first_start());
+            assert_eq!((config.gameplay.ui_scale, config.launcher.maximized), (1.0, false));
+            // (Nothing but the graphics.)
+            let mut alone = Graphics::default();
+            alone.set_up_for(hw);
+            assert_eq!(alone, config.graphics);
+        }
+        assert_eq!(windows.handheld, None);
+    }
+
+    /// Windows on a Steam Deck: its graphics' name tells it (Windows gives them a gigabyte of
+    /// their own, as a dedicated card has): Medium, full screen, the launcher maximised; the
+    /// interface's size is left to Windows, which enlarges a small screen's itself.
+    #[test]
+    fn windows_on_a_steam_deck() {
+        let mut hw = pc("AMD Custom GPU 0405", GpuKind::Discrete, 1_024, (1280, 800));
+        hw.os = "windows";
+        hw.handheld = Handheld::detect(&hw.gpu);
+        assert_eq!(hw.handheld, Some(Handheld::SteamDeck));
+        assert_eq!(hw.preset(), Preset::Medium);
+        let mut config = Config::default();
+        config.set_up_for(&hw);
+        let g = &config.graphics;
+        assert_eq!((g.preset, (g.width, g.height), g.window_mode, g.vsync), (Preset::Medium, (1280, 800), WindowMode::Fullscreen, true));
+        assert!(config.launcher.maximized);
+        assert_eq!(config.gameplay.ui_scale, 1.0);
+    }
+
+    /// The first start comes once. Settings set up are the player's, and so are files from
+    /// before the mark (they have a level of their own); a level put back to Auto in the options
+    /// is picked again as the game starts, the window left as the player has it; graphics put
+    /// back to how they came (RESET ALL SETTINGS) are set up again.
+    #[test]
+    fn the_first_start_comes_once() {
+        let mut config = Config::default();
+        config.set_up_for(&deck());
+        config.graphics.window_mode = WindowMode::Windowed;
+        config.gameplay.ui_scale = 1.5;
+        config.launcher.maximized = false;
+        let kept: Config = toml::from_str(&toml::to_string(&config).unwrap()).unwrap();
+        assert!(!kept.first_start(), "the mark is kept in the file");
+        assert_eq!((kept.graphics.window_mode, kept.gameplay.ui_scale, kept.launcher.maximized), (WindowMode::Windowed, 1.5, false));
+        for old in ["[graphics]\npreset = \"High\"\n", "[graphics]\nmsaa = 8\n"] {
+            assert!(!toml::from_str::<Config>(old).unwrap().first_start(), "{old}");
+        }
+        // AUTO picked again on Windows: the level the computer tells, nothing else touched.
+        let mut windows = pc("NVIDIA GeForce RTX 4070", GpuKind::Discrete, 12_000, (2560, 1440));
+        windows.os = "windows";
+        let mut config = Config::default();
+        config.set_up_for(&windows);
+        config.graphics.window_mode = WindowMode::Windowed;
+        config.graphics.preset = Preset::Auto;
+        assert!(!config.first_start());
+        config.graphics.pick_level_for(&windows);
+        assert_eq!((config.graphics.preset, config.graphics.window_mode), (Preset::Ultra, WindowMode::Windowed));
+        // On Linux it waits for the game's card.
+        config.graphics.preset = Preset::Auto;
+        config.graphics.pick_level_for(&deck());
+        assert_eq!(config.graphics.preset, Preset::Auto);
+        config.graphics = Graphics::default();
+        assert!(config.first_start());
     }
 }

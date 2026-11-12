@@ -4088,6 +4088,7 @@ version = "1.0.3"
 dependencies = [
  "log",
  "serde",
+ "serde_json",
  "sha2",
  "ta_formats",
  "thiserror 2.0.21",

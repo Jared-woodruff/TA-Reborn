@@ -225,8 +225,13 @@ fn main() {
         store.config_path(&active.id).ok()
     }).unwrap_or_else(|| config_path.clone());
     let kept = ta_config::Config::try_load_from(&active_path).map(|c| c.launcher).unwrap_or_default();
-    let size = args.window_size.or(kept.window.filter(|size| !unattended && valid_size(*size))).map_or([1120.0, 720.0], |[w, h]| [w.max(940.0), h.max(600.0)]);
+    let (least_w, least_h) = ta_config::limits::LAUNCHER_POINTS;
+    let size = args.window_size.or(kept.window.filter(|size| !unattended && valid_size(*size))).map_or([1120.0, 720.0], |[w, h]| [w.max(least_w), h.max(least_h)]);
     let maximized = kept.maximized && args.window_size.is_none() && !unattended;
+    // Inside gamescope (SteamOS's Game Mode), which scales what it shows to fill the screen, the
+    // window fills it itself, pixel for pixel (Steam closes it there). Never kept: on the desktop
+    // it is the window it was.
+    let fullscreen = ta_config::hardware::gamescope() && args.window_size.is_none() && !unattended;
     let show = args.show.clone();
     let film = match args.film.as_deref().map(film::Film::open).transpose() {
         Ok(film) => film,
@@ -240,7 +245,8 @@ fn main() {
         .with_app_id("ta-reborn-launcher")
         .with_inner_size(size)
         .with_maximized(maximized)
-        .with_min_inner_size([940.0, 600.0])
+        .with_fullscreen(fullscreen)
+        .with_min_inner_size([least_w, least_h])
         .with_icon(icon::window_icon());
     if let Some(film) = &film {
         // (No frame round it: the film's size is the window's inside, as big as a screen.)

@@ -602,15 +602,17 @@ credits name everyone who made the game, read from your install.
    | **Windows** | the setup (`…-setup.exe`), or the portable ZIP |
    | **macOS** | the disk image (`.dmg`), or the app ZIP |
    | **Linux** | the Ubuntu package (`.deb`), the Arch package (`.pkg.tar.zst`), or the portable archive |
+   | **Steam Deck** | the portable archive (x64): run its `install.sh` in Desktop Mode, then add TA Reborn to Steam as a non-Steam game ([how](#steam-deck)) |
 
-3. **Start TA Reborn.** The launcher finds GOG and Steam installs by itself, checks what is there and
-   sets the graphics up for your computer. Create your commander profile (a name, a picture and an
+3. **Start TA Reborn.** The launcher finds GOG and Steam installs by itself (on Linux also Heroic's,
+   and copies in Wine and Proton prefixes), checks what is there and sets the graphics up for your
+   computer, a Steam Deck's screen included. Create your commander profile (a name, a picture and an
    allegiance) and press PLAY.
 4. **Run the benchmark** (optional) from the BENCHMARK page for the settings that suit your computer.
 
 | | Needs | Best with |
 | --- | --- | --- |
-| **Systems** | Windows 10+ x64 / Windows 11 ARM64; macOS 13+ Intel or Apple Silicon; Ubuntu 22.04+ / Arch Linux x64 / Arch Linux ARM | |
+| **Systems** | Windows 10+ x64 / Windows 11 ARM64; macOS 13+ Intel or Apple Silicon; Ubuntu 22.04+ / Arch Linux x64 / Arch Linux ARM; SteamOS 3 (Steam Deck) | |
 | **Graphics** | DirectX 12 or Vulkan on Windows, Vulkan on Linux, Metal on macOS; integrated graphics on Low | 6 GB of video memory for High, 10 GB for Ultra; a card that traces rays for ray tracing |
 | **The game** | Total Annihilation, legitimately owned | The Commander Pack, both expansions |
 
@@ -658,6 +660,25 @@ and from playing the game, without the original's code. It is free software unde
 No. It reads the game's files where they are. Its own settings, saved games, mods and downloads
 live in TA Reborn's folder (`%APPDATA%\TA Reborn` on Windows), and the original game goes on
 working as it did.
+
+</details>
+
+<a id="steam-deck"></a>
+
+<details>
+<summary><b>How do I play on a Steam Deck?</b></summary>
+
+<br>
+
+With the Linux build's portable archive (x64). In Desktop Mode, extract it and run its `install.sh`,
+then in Steam choose *Add a Non-Steam Game* and pick TA Reborn, so that it starts from Game Mode
+too. TA Reborn finds Total Annihilation in Steam's libraries (the SD card's too), where Heroic put
+GOG's copy, or in the Proton prefix of GOG's installer run through Steam as a non-Steam game;
+otherwise choose the folder in the launcher. On its first start it recognises the Deck (Steam's
+`SteamDeck=1`, the Deck's firmware, SteamOS or its graphics) and sets itself up for it: full screen
+at 1280 × 800, the interface at 125%, the launcher maximised (in Game Mode it fills the screen), and
+the Medium graphics level. In the game the Deck's controls work as a gamepad, in battle and in
+every menu; in the launcher, tap the screen or use the right trackpad.
 
 </details>
 

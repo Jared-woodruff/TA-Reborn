@@ -499,6 +499,9 @@ impl LauncherApp {
             if let Some((w, h)) = hw.screen {
                 lines.push(format!("Screen: {w}x{h}{}", if hw.refresh_hz > 0 { format!(" at {} Hz", hw.refresh_hz) } else { String::new() }));
             }
+            if let Some(handheld) = hw.handheld {
+                lines.push(format!("Handheld: {}", handheld.name()));
+            }
         }
         lines.push(match self.detection.install() {
             Some(i) => format!(
@@ -801,6 +804,10 @@ mod tests {
         for part in [format!("TA Reborn {}", crate::version_label()), "Graphics card: Test GPU (8 GB)".into(), "Processor: Test CPU (8 threads)".into(), "Memory: 16 GB".into(), "Game data: ".into(), "Mods: escalation".into()] {
             assert!(report.contains(&part), "{part:?} in {report}");
         }
+        assert!(!report.contains("Handheld"));
+        // A Steam Deck says so.
+        let deck = ta_config::hardware::Hardware { handheld: Some(ta_config::hardware::Handheld::SteamDeck), threads: 8, ..Default::default() };
+        assert!(app.system_report(Some(&deck)).contains("Handheld: Steam Deck"));
         drop(app);
         let _ = std::fs::remove_dir_all(dir);
     }
