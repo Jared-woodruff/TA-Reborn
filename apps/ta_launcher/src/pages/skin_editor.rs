@@ -475,7 +475,9 @@ fn slider_row(ui: &mut Ui, label: &str, tip: &str, value: &mut f32, kind: Kind) 
         }).inner;
         let room = ui.available_width();
         let response = ui.allocate_ui(vec2(room, widgets::CONTROL_HEIGHT), |ui| match kind {
-            Kind::Scale => widgets::value_slider(ui, egui::Slider::new(value, *ta_skins::SCALE.start()..=*ta_skins::SCALE.end()).logarithmic(true).fixed_decimals(2).suffix("×"), figure),
+            // (Clamped as edited only: always, egui rounds the value to two decimals every frame
+            // and calls that a change, marking a skin of a finer scale changed when opened.)
+            Kind::Scale => widgets::value_slider(ui, egui::Slider::new(value, *ta_skins::SCALE.start()..=*ta_skins::SCALE.end()).logarithmic(true).clamping(egui::SliderClamping::Edits).fixed_decimals(2).suffix("×"), figure),
             Kind::Share => {
                 let mut percent = (*value * 100.0).round();
                 let response = widgets::value_slider(ui, egui::Slider::new(&mut percent, 0.0..=100.0).fixed_decimals(0).suffix("%"), figure);

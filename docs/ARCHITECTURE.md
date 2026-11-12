@@ -1090,7 +1090,13 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   * **The launcher's skins** (`apps/ta_launcher`): `pages/skins.rs` is the library (the cards'
     pictures and the details' preview come from one worker with its own graphics device,
     `skin_preview.rs`: a replaceable request first, thumbnails queued behind it and kept as JPEGs
-    under `cache/pictures/skins/`); `pages/skin_editor.rs` draws the editor, `skin_editor.rs`
+    under `cache/pictures/skins/`). The device is the high-performance adapter, as the game's is
+    (`UnitStudio::new`, the adapter it took logged: low power took a computer's integrated
+    graphics beside its card), and a device that will not open, or whose driver fails as it
+    draws, is not opened again for every thumbnail: each picture fails at once until Retry
+    preview (or the worker, idle 20 s, starts afresh) (`State::broken`). The angle slider is
+    clamped as edited only (egui's default rounds the value to its whole degrees every frame and
+    calls that a change, which paused the turning preview). `pages/skin_editor.rs` draws the editor, `skin_editor.rs`
     holds its skin, undo and saving, and `skin_patterns.rs` draws the pattern tiles on the
     processor as `livery.wgsl` does. The editor's preview is `UnitStudio::set_skin_for_editing`
     plus `set_livery`, so a slider moves the paint without new models; `ta_skins::update` saves
@@ -1810,7 +1816,9 @@ build menu by `Purpose` on tabs (`Hud::build_tab`).
   (`logs\game.log`, `logs\launcher.log` beside the settings). A panic writes
   `logs\crash.txt` (the launcher `launcher-crash.txt`) and says so in a message box: the
   message, the thread, the address the executable was loaded at and every frame with its
-  address. Installed programs carry no symbols, so their frames read `<unknown>`; the
+  address. A native crash no panic hook sees (Windows: an access violation in a graphics
+  driver) is reported the same way by an unhandled-exception filter naming the module that
+  failed, the game's (`report_native_crashes`) and the launcher's (`native_crash.rs`). Installed programs carry no symbols, so their frames read `<unknown>`; the
   build script keeps each release's `.pdb` files in `TA-Reborn-<version>-symbols.zip`,
   and address minus load address is the offset to look up there.
 * **The title menu's film** (`backdrop.rs`; Settings · Interface · MENU BACKDROP, FILM or
