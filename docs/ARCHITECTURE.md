@@ -433,8 +433,11 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   the factory's pad (`QueryBuildInfo`'s piece, `Sim::follow_build_pad`), but a ship is built at
   the surface, where it floats once done (a shipyard's pad is under the water, the Core's yard
   22 px deep), and a hovercraft on a pad under the water on it too. Construction aircraft at work
-  drift round what they build, as TA's do (`Sim::drift_round`: a step of about 28 px round a
-  circle about it every 24 ticks, within their reach of it all the way round).
+  face what they build and sway round it, as TA's do (`Sim::drift_round`, `Unit::drift`): once
+  stopped and turned to it, 45 degrees round it sideways and back, smoothly (a cosine), no faster
+  round it than three quarters of their turn rate, so they keep facing it; at a distance that
+  keeps them within reach all the way round, eased in to over two seconds when they stopped
+  further out. The sway is set from the tick it began, so it keeps no speed of its own.
 * **Construction counts whole work**: a type's `build_work` is its `BuildTime` in
   worker-time ticks (× 30, raw 16.16) and a builder does its `work_rate` (`WorkerTime`, raw
   16.16) a tick, so any build takes exactly `BuildTime / WorkerTime` seconds (up to 2^40 and

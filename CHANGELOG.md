@@ -35,8 +35,9 @@
   plain move still bombs nothing.
 - The music, and the battle behind the menu, now fall silent while a campaign briefing is read
   out, and come back once it is over. The tutorial's spoken lines still only lower the music.
-- Construction aircraft now drift round what they build, as in TA, instead of hanging still
-  over it. They stay within reach, and the building goes up as fast as before.
+- Construction aircraft at work now face what they build and sway smoothly round it to one side
+  and back, as in TA, instead of hanging still over it. They turn to face it first, never fly
+  backwards, stay within reach, and the building goes up as fast as before.
 - Constructors on the ECONOMY duty now keep to a few plain jobs: metal extractors on free metal,
   power plants when power runs short (solar collectors, or wind generators where the wind pays
   better), and metal makers when there is power to spare, finishing buildings of those kinds
