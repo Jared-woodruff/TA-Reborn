@@ -359,7 +359,7 @@ impl Hud {
     fn clearance(&self, ctx: &egui::Context) -> Clearance {
         let screen = ctx.content_rect();
         if self.classic {
-            let view = crate::hud_classic::view_rect(screen);
+            let view = self.classic_hud.view_rect(screen);
             Clearance { left: view.left() - screen.left(), top: view.top() - screen.top(), bottom: screen.bottom() - view.bottom(), center: view.center().x - screen.center().x, view, right_top: 0.0 }
         } else {
             // Our resource bar and the command deck along the foot, the minimap at the top right;
@@ -2100,7 +2100,7 @@ impl Hud {
         if game.net.is_none() && game.paused && game.outcome.is_none() && !game.menu_open && game.playback.is_none() {
             let key = game.keys.text("pause");
             // (In the classic interface, under TA's own PAUSED title.)
-            let top = if self.classic { crate::hud_classic::paused_title_bottom(ctx.content_rect()) + 6.0 } else { clear.top + 76.0 };
+            let top = if self.classic { self.classic_hud.paused_title_bottom(ctx.content_rect()) + 6.0 } else { clear.top + 76.0 };
             ta_ui::panel::strip(ctx, "paused", egui::Align2::CENTER_TOP, EVec2::new(clear.center, top), |ui| {
                 ui.label(egui::RichText::new(tf("PAUSED · {key} TO RESUME", &[("key", &key.to_uppercase())])).font(crate::theme::strong(15.0)).color(ACCENT).extra_letter_spacing(ta_ui::i18n::tracking(1.4)));
             });

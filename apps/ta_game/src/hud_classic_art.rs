@@ -23,6 +23,12 @@ const MAX_PAGES: usize = 16;
 /// Sizes kept of a picture or a font at once (the art is drawn at one size; a logo at two).
 const KEPT: usize = 4;
 
+/// The height of TA's screen, which its side pages are laid out on (TA pixels).
+const TA_SCREEN_HEIGHT: f32 = 480.0;
+
+/// The tallest screen a side panel is laid out for (a mod's pages could ask for any).
+const TALLEST_SCREEN: f32 = 1536.0;
+
 /// One frame of interface art: TA's picture (`size` in TA pixels), and the textures made of
 /// it for the screen, each at the size it is drawn. A size is made on another thread the first
 /// time it is asked for (a panel takes a few milliseconds at 4K, a menu's pictures as many),
@@ -372,13 +378,17 @@ pub struct Gui {
     /// TA's 640×480 screen.
     pub panel: String,
     pub origin: Pos2,
+    /// The panel's size, as its header gives it (TA's side pages are 128×352).
+    pub size: Vec2,
     pub gadgets: Vec<Gadget>,
+    /// Where its build buttons go.
+    pub grid: Grid,
 }
 
 impl Gui {
     fn parse(bytes: &[u8]) -> Gui {
         let doc = tdf::parse_bytes(bytes);
-        let mut gui = Gui { panel: String::new(), origin: Pos2::ZERO, gadgets: Vec::new() };
+        let mut gui = Gui { panel: String::new(), origin: Pos2::ZERO, size: Vec2::ZERO, gadgets: Vec::new(), grid: Grid::TA };
         for s in &doc.sections {
             let Some(c) = s.section("COMMON") else { continue };
             let kind = c.get_i32_or("id", -1);
@@ -387,6 +397,7 @@ impl Gui {
             if kind == 0 {
                 gui.panel = s.get_str("panel", "").trim().to_ascii_uppercase();
                 gui.origin = at;
+                gui.size = rect.size();
                 continue;
             }
             gui.gadgets.push(Gadget {
@@ -398,7 +409,62 @@ impl Gui {
                 quickkey: quickkey(&s.get_str("quickkey", "")),
             });
         }
+        gui.grid = Grid::of(gui.gadgets.iter().filter(|g| g.is_build_place()).map(|g| g.rect));
         gui
+    }
+
+    /// How far down TA's screen the page reaches (TA pixels): the foot of its panel, or of its
+    /// lowest gadget.
+    pub fn bottom(&self) -> f32 {
+        let gadgets = self.gadgets.iter().filter(|g| g.kind == 1).map(|g| g.rect.max.y).fold(0.0, f32::max);
+        self.origin.y + self.size.y.max(gadgets)
+    }
+}
+
+impl Gadget {
+    /// A button of a build page's grid (a unit's, or the `IGPATCH` filling a place left empty).
+    pub fn is_build_place(&self) -> bool {
+        self.kind == 1 && self.attribs & 32 != 0
+    }
+}
+
+/// Where a build page's buttons go: two columns 64 pixels apart, and rows 64 pixels apart from
+/// `top` down (TA pixels, from the panel's corner).
+///
+/// TA's pages have three rows from 27 pixels down, under the ORDERS and BUILD tabs: six places.
+/// The pages of the mods made for the patched engines of later years (TA: Escalation's, Total
+/// Mayhem's) fill a side panel as tall as a 768-pixel screen, with the orders on the same page:
+/// six rows from the panel's top, twelve places. A page's own buttons say which it has.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Grid {
+    pub top: f32,
+    pub rows: usize,
+}
+
+impl Grid {
+    /// TA's own: three rows from 27 pixels down.
+    pub const TA: Grid = Grid { top: 27.0, rows: 3 };
+
+    /// The grid of a page's build buttons at `rects`: TA's, or as many rows from as high as
+    /// they go (never fewer than TA's three, nor starting lower than TA's first row).
+    fn of(rects: impl Iterator<Item = Rect> + Clone) -> Grid {
+        let Some(top) = rects.clone().map(|r| r.min.y).reduce(f32::min) else { return Grid::TA };
+        let top = top.min(Grid::TA.top);
+        // (At most a 4096-pixel panel's worth of rows.)
+        let last = rects.map(|r| ((r.min.y - top) / 64.0).round().clamp(0.0, 63.0) as usize).max().unwrap_or(0);
+        Grid { top, rows: (last + 1).max(Grid::TA.rows) }
+    }
+
+    /// How many places a page has.
+    pub fn places(&self) -> usize {
+        self.rows * 2
+    }
+
+    /// Which place a button at `rect` takes.
+    pub fn place_of(&self, rect: Rect) -> usize {
+        let col = (rect.min.x / 64.0).round().clamp(0.0, 1.0) as usize;
+        let row = ((rect.min.y - self.top) / 64.0).round().clamp(0.0, (self.rows - 1) as f32) as usize;
+        row * 2 + col
     }
 }
 
@@ -419,13 +485,6 @@ pub fn quickkey(raw: &str) -> Option<char> {
         }
     };
     c.is_ascii_alphabetic().then(|| c.to_ascii_uppercase())
-}
-
-/// Which of a build page's six button places (two columns, three rows) a gadget takes.
-pub fn slot_of(rect: Rect) -> usize {
-    let col = (rect.min.x / 64.0).round().clamp(0.0, 1.0) as usize;
-    let row = ((rect.min.y - 27.0) / 64.0).round().clamp(0.0, 2.0) as usize;
-    row * 2 + col
 }
 
 /// A side's on-screen furniture from `gamedata/sidedata.tdf`: fonts and the boxes where the
@@ -449,7 +508,8 @@ pub struct MenuPage {
     /// `guis/<gui>.gui`: the builder's own page, or another page's layout for pages made
     /// up from download entries and build lists.
     pub gui: String,
-    pub slots: [Option<usize>; 6],
+    /// One a place of the GUI's [`Grid`] (TA's six, or a mod's twelve).
+    pub slots: Vec<Option<usize>>,
 }
 
 /// A download TDF menu entry: builder, `MENU`, `BUTTON`, unit.
@@ -569,6 +629,21 @@ impl Art {
             .clone()
     }
 
+    /// How tall a screen a side's panel is laid out for (TA pixels): as far down as its orders
+    /// (`<prefix>gen`), main and Commander's first build (`template`) pages reach, TA's 480 at
+    /// least. The mods made for the patched engines of later years (TA: Escalation, Total
+    /// Mayhem) lay their pages out on a 768-pixel screen, the orders under twelve build places:
+    /// on TA's 480 their arrows and orders fell off the foot of the panel.
+    pub fn layout_height(&mut self, vfs: &Vfs, prefix: &str, template: &str) -> f32 {
+        let prefix = prefix.to_ascii_lowercase();
+        [format!("{prefix}gen"), format!("{prefix}main"), template.to_ascii_lowercase()]
+            .iter()
+            .filter_map(|page| self.gui(vfs, page))
+            .map(|gui| gui.bottom())
+            .fold(TA_SCREEN_HEIGHT, f32::max)
+            .min(TALLEST_SCREEN)
+    }
+
     /// `guis/<name>.gui`.
     pub fn gui(&mut self, vfs: &Vfs, name: &str) -> Option<Arc<Gui>> {
         let name = name.to_ascii_lowercase();
@@ -641,10 +716,10 @@ impl Art {
                 }
                 continue;
             };
-            let mut page = MenuPage { gui: gui_name.clone(), slots: [None; 6] };
+            let mut page = MenuPage { gui: gui_name.clone(), slots: vec![None; gui.grid.places()] };
             for g in gui.gadgets.iter().filter(|g| g.attribs & 32 != 0) {
                 let Some(id) = types.id(&g.name).filter(|id| options.contains(id) && !placed.contains(id)) else { continue };
-                let slot = slot_of(g.rect);
+                let slot = gui.grid.place_of(g.rect);
                 if page.slots[slot].is_none() {
                     page.slots[slot] = Some(id);
                     placed.push(id);
@@ -654,19 +729,25 @@ impl Art {
             pages.push(page);
         }
         let layout = own_layout.unwrap_or_else(|| template.to_string());
+        // (Pages made up here have as many places as that layout.)
+        let places = self.gui(vfs, &layout).map_or(Grid::TA.places(), |g| g.grid.places());
         let place = |pages: &mut Vec<MenuPage>, id: usize, page: usize, slot: usize| {
-            // The asked-for place, else the next free one after it.
-            let mut at = page * 6 + slot.min(5);
+            // The asked-for place (or its page's last), else the next free one after it.
+            let (mut p, mut s) = (page, None);
             loop {
-                while pages.len() <= at / 6 {
-                    pages.push(MenuPage { gui: layout.clone(), slots: [None; 6] });
+                while pages.len() <= p {
+                    pages.push(MenuPage { gui: layout.clone(), slots: vec![None; places] });
                 }
-                let s = &mut pages[at / 6].slots[at % 6];
-                if s.is_none() {
-                    *s = Some(id);
-                    return;
+                let slots = &mut pages[p].slots;
+                let mut at = s.unwrap_or_else(|| slot.min(slots.len().saturating_sub(1)));
+                while at < slots.len() {
+                    if slots[at].is_none() {
+                        slots[at] = Some(id);
+                        return;
+                    }
+                    at += 1;
                 }
-                at += 1;
+                (p, s) = (p + 1, Some(0));
             }
         };
         // Download entries count the orders menu as menu 1: MENU=2 is the first build page.
@@ -708,8 +789,40 @@ mod tests {
 
     #[test]
     fn build_places_run_two_across_three_down() {
-        let at = |x: f32, y: f32| slot_of(Rect::from_min_size(pos2(x, y), vec2(64.0, 64.0)));
+        let at = |x: f32, y: f32| Grid::TA.place_of(Rect::from_min_size(pos2(x, y), vec2(64.0, 64.0)));
         assert_eq!([at(0.0, 27.0), at(64.0, 27.0), at(0.0, 91.0), at(64.0, 91.0), at(0.0, 155.0), at(64.0, 155.0)], [0, 1, 2, 3, 4, 5]);
+    }
+
+    /// A build page as the patched engines' mods lay them out (TA: Escalation's `ARMCK1.gui`):
+    /// a panel as tall as a 768-pixel screen, twelve places from its top, the page arrows and
+    /// the orders under them.
+    const TALL_PAGE: &[u8] = b"[GADGET0]{[COMMON]{id=0;name=HEADER;xpos=0;ypos=128;width=128;height=640;}panel=ARMPAN;}\n\
+        [GADGET1]{[COMMON]{id=1;name=ARMSOLAR;xpos=0;ypos=0;width=64;height=64;attribs=32;}}\n\
+        [GADGET2]{[COMMON]{id=1;name=ARMWIN;xpos=64;ypos=0;width=64;height=64;attribs=32;}}\n\
+        [GADGET3]{[COMMON]{id=1;name=ARMLAB;ypos=256;width=64;height=64;attribs=32;}}\n\
+        [GADGET4]{[COMMON]{id=1;name=IGPATCH;xpos=64;ypos=320;width=64;height=64;attribs=32;}}\n\
+        [GADGET5]{[COMMON]{id=1;name=ARMPREV;xpos=8;ypos=388;width=44;height=16;attribs=2;}}\n\
+        [GADGET6]{[COMMON]{id=1;name=ARMSTOP;xpos=66;ypos=543;width=55;height=31;attribs=0;}}\n\
+        [GADGET7]{[COMMON]{id=1;name=ARMATTACK;xpos=7;ypos=607;width=55;height=31;attribs=64;}}";
+
+    #[test]
+    fn a_tall_page_has_the_places_its_buttons_take() {
+        let gui = Gui::parse(TALL_PAGE);
+        assert_eq!(gui.grid, Grid { top: 0.0, rows: 6 }, "six rows from the panel's top");
+        assert_eq!(gui.grid.places(), 12);
+        let place = |name: &str| gui.grid.place_of(gui.gadgets.iter().find(|g| g.name == name).unwrap().rect);
+        assert_eq!([place("ARMSOLAR"), place("ARMWIN"), place("ARMLAB"), place("IGPATCH")], [0, 1, 8, 11], "each in a place of its own");
+        assert_eq!(gui.bottom(), 768.0, "it reaches the foot of a 768-pixel screen");
+        // TA's own page stays as it was: six places from 27 pixels down, ending at TA's 480.
+        let ta = Gui::parse(
+            b"[GADGET0]{[COMMON]{id=0;name=HEADER;xpos=0;ypos=128;width=128;height=352;}panel=ARMPAN;}\n\
+              [GADGET1]{[COMMON]{id=1;name=ARMSOLAR;xpos=0;ypos=27;width=64;height=64;attribs=32;}}\n\
+              [GADGET2]{[COMMON]{id=1;name=ARMMEX;xpos=0;ypos=155;width=64;height=64;attribs=32;}}",
+        );
+        assert_eq!((ta.grid, ta.bottom()), (Grid::TA, 480.0));
+        // A page that fills only its lower rows keeps TA's grid, not one starting lower.
+        let low = Gui::parse(b"[GADGET0]{[COMMON]{id=0;name=HEADER;ypos=128;width=128;height=352;}}\n[GADGET1]{[COMMON]{id=1;name=X;xpos=64;ypos=155;width=64;height=64;attribs=32;}}");
+        assert_eq!(low.grid, Grid::TA);
     }
 
     #[test]
@@ -772,6 +885,52 @@ mod tests {
             want.sort_unstable();
             assert_eq!(shown, want, "{b}");
         }
+    }
+
+    /// A Commander's build menu as a mod made for the patched engines lays it out, over the
+    /// install: its own pages of twelve places hold its units where they put them, the side panel
+    /// is laid out on a 768-pixel screen, and everything the Commander builds is on a page once.
+    #[test]
+    fn a_mods_tall_pages_keep_their_twelve_places() {
+        let Some(mut vfs) = install() else {
+            eprintln!("TA install not found; skipping");
+            return;
+        };
+        let mut art = Art::default();
+        assert_eq!(art.layout_height(&vfs, "ARM", "armcom1"), 480.0, "TA's own pages: TA's screen");
+        let dir = std::env::temp_dir().join(format!("ta_classic_tall_{}", std::process::id()));
+        let guis = dir.join("guis");
+        std::fs::create_dir_all(&guis).unwrap();
+        let page = |units: &[&str]| {
+            let mut s = String::from("[GADGET0]{[COMMON]{id=0;name=HEADER;xpos=0;ypos=128;width=128;height=640;}panel=ARMPAN;}\n");
+            for i in 0..12 {
+                let name = units.get(i).copied().unwrap_or("IGPATCH");
+                s += &format!("[GADGET{}]{{[COMMON]{{id=1;name={name};xpos={};ypos={};width=64;height=64;attribs=32;commonattribs=4;}}}}\n", i + 1, (i % 2) * 64, (i / 2) * 64);
+            }
+            s + "[GADGET13]{[COMMON]{id=1;name=ARMNEXT;xpos=74;ypos=388;width=44;height=16;attribs=2;}}\n\
+                 [GADGET14]{[COMMON]{id=1;name=ARMATTACK;xpos=7;ypos=607;width=55;height=31;attribs=64;}}\n"
+        };
+        let first = ["ARMSOLAR", "ARMWIN", "ARMESTOR", "ARMMSTOR", "ARMMEX", "ARMMAKR", "ARMLLT", "ARMRAD", "ARMLAB", "ARMVP", "ARMAP", "ARMSY"];
+        let second = ["ARMSONAR", "ARMTIDE", "ARMUWES", "ARMUWMS", "ARMUWMEX", "ARMFMKR", "ARMTL"];
+        std::fs::write(guis.join("armcom1.gui"), page(&first)).unwrap();
+        std::fs::write(guis.join("armcom2.gui"), page(&second)).unwrap();
+        std::fs::write(guis.join("armgen.gui"), "[GADGET0]{[COMMON]{id=0;name=HEADER;xpos=0;ypos=128;width=128;height=640;}panel=ARMPAN2;}\n[GADGET1]{[COMMON]{id=1;name=ARMSTOP;xpos=66;ypos=543;width=55;height=31;}}").unwrap();
+        vfs.mount_mod_dir(&dir, "tall").unwrap();
+        let data = ta_data::GameData::load(&vfs);
+        let types = ta_sim::UnitTypes::compile(&data, &|p| vfs.read_opt(p));
+        let mut art = Art::default();
+        assert_eq!(art.layout_height(&vfs, "ARM", "armcom1"), 768.0, "the mod's pages: a 768-pixel screen");
+        let com = art.menu(&vfs, &types, types.id("ARMCOM").unwrap(), "armcom1");
+        let names = |page: &MenuPage| -> Vec<Option<String>> { page.slots.iter().map(|s| s.map(|id| types.get(id).name.clone())).collect() };
+        assert_eq!(com[0].slots.len(), 12);
+        assert_eq!(names(&com[0]), first.iter().map(|n| Some(n.to_string())).collect::<Vec<_>>(), "twelve units, each where its page puts it");
+        assert_eq!(names(&com[1])[..7], second.iter().map(|n| Some(n.to_string())).collect::<Vec<_>>()[..]);
+        let mut shown: Vec<usize> = com.iter().flat_map(|p| p.slots.iter().flatten().copied()).collect();
+        let mut want = types.get(types.id("ARMCOM").unwrap()).build_options.clone();
+        shown.sort_unstable();
+        want.sort_unstable();
+        assert_eq!(shown, want, "everything the Commander builds, once");
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

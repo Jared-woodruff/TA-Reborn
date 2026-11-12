@@ -241,7 +241,7 @@ fn sanitize(s: &str) -> String {
     s.chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' }).collect()
 }
 
-pub fn check_data(vfs: &Vfs, unit: Option<&str>) -> Result<()> {
+pub fn check_data(vfs: &Vfs, unit: Option<&str>, menus: bool) -> Result<()> {
     let data = ta_data::GameData::load(vfs);
     if let Some(name) = unit {
         let u = data.unit(name).context("unknown unit")?;
@@ -297,6 +297,11 @@ pub fn check_data(vfs: &Vfs, unit: Option<&str>) -> Result<()> {
         println!("  {p}");
     }
     let builders: Vec<&ta_data::UnitDef> = data.units.iter().filter(|u| u.builder).collect();
+    if menus {
+        for u in &builders {
+            println!("menu {} {}: {}", u.name, u.build_options.len(), u.build_options.join(" "));
+        }
+    }
     let empty: Vec<&str> = builders.iter().filter(|u| u.build_options.is_empty()).map(|u| u.name.as_str()).collect();
     println!("{} builders, {} without build options: {:?}", builders.len(), empty.len(), empty);
     for name in ["ARMCOM", "CORCOM", "ARMLAB", "CORVP"] {
@@ -304,6 +309,22 @@ pub fn check_data(vfs: &Vfs, unit: Option<&str>) -> Result<()> {
             println!("{name} builds {}: {:?}", u.build_options.len(), u.build_options);
         }
     }
+    // What each side's Commander reaches through the build menus, and what nobody reaches.
+    let mut anyone = std::collections::BTreeSet::new();
+    for side in &data.sides {
+        let mut seen = std::collections::BTreeSet::new();
+        let mut queue = vec![side.commander.clone()];
+        while let Some(name) = queue.pop() {
+            let Some(u) = data.unit(&name) else { continue };
+            if seen.insert(u.name.clone()) {
+                queue.extend(u.build_options.iter().cloned());
+            }
+        }
+        println!("{} reaches {} of {} units", side.name, seen.len(), data.units.len());
+        anyone.extend(seen);
+    }
+    let unreached: Vec<&str> = data.units.iter().map(|u| u.name.as_str()).filter(|n| !anyone.contains(*n)).collect();
+    println!("{} units no Commander reaches: {:?}", unreached.len(), unreached);
     let mut render: BTreeMap<i32, Vec<String>> = BTreeMap::new();
     for w in &data.weapons {
         render.entry(w.raw_render_type).or_default().push(w.name.clone());

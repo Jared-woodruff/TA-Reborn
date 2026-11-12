@@ -38,6 +38,13 @@
   at the screen's size too.
 
 ### Fixed
+- With the classic interface, TA: Escalation, Total Mayhem and the other mods made for the
+  patched engines of later years showed only four of a builder's buildings, the same two
+  repeated down the panel, with no page arrows and no orders: most of the tech tree could not
+  be reached. Their menus were made for a taller screen (768 pixels), with twelve buildings to
+  a page and the orders under them, and were squeezed onto TA's 480. The side panel is now laid
+  out on the screen a mod's menus were made for: every page with all twelve places, the arrows
+  to turn them and the orders, as in the mods' own engines. TA's own menus are unchanged.
 - On the Skins page, at some window widths and interface sizes, "Use the same skin for both
   sides" was squeezed into a column a letter wide, or the search and the skins below it went
   out of reach. It now goes on a line of its own when it does not fit beside the skins.
