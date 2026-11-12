@@ -239,6 +239,7 @@ fn repair_pads_accumulate_precise_healing_at_the_modified_work_rate() {
     let plane = put(&mut sim, "PLANE", 0, 300, true);
     sim.unit_mut(plane).unwrap().health = Fx::from_ratio(1, 2);
     sim.unit_mut(plane).unwrap().landed = true;
+    sim.unit_mut(plane).unwrap().air_pad = Some((pad, None));
     sim.grid.rebuild(sim.units.iter().flatten());
     sim.mutators.build_speed = 2;
     let t = sim.types.by_name("PAD").unwrap().clone();

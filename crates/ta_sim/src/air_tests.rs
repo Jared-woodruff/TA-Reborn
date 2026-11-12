@@ -147,6 +147,7 @@ fn repair_pads_mend_landed_gunships_and_unarmed_aircraft() {
         let aircraft = put(&mut sim, name, 0, 300);
         sim.unit_mut(aircraft).unwrap().health = Fx::from_int(500);
         sim.unit_mut(aircraft).unwrap().landed = true;
+        sim.unit_mut(aircraft).unwrap().air_pad = Some((pad, None));
         sim.grid.rebuild(sim.units.iter().flatten());
         let t = sim.types.by_name("PAD").unwrap().clone();
         sim.tick = 5;
@@ -281,7 +282,7 @@ fn air_checksums_include_flight_phase_and_transport_state() {
     let passenger = put(&mut sim, "TANK", 0, 350);
     let pad = put(&mut sim, "PAD", 0, 500);
     let expected = sim.checksum();
-    for field in 0..12 {
+    for field in 0..13 {
         let mut changed = sim.clone();
         let u = changed.unit_mut(aircraft).unwrap();
         match field {
@@ -296,7 +297,8 @@ fn air_checksums_include_flight_phase_and_transport_state() {
             8 => u.cargo.push(passenger),
             9 => u.transport_job = Some((passenger, 1)),
             10 => u.air_pad = Some((pad, None)),
-            _ => u.path_goal = Some(FxVec3::from_ints(700, 140, 300)),
+            11 => u.path_goal = Some(FxVec3::from_ints(700, 140, 300)),
+            _ => u.repair_trip = true,
         }
         assert_ne!(changed.checksum(), expected, "flight/cargo divergence must be detected (field {field})");
     }
@@ -626,4 +628,355 @@ fn a_group_of_planes_sent_at_one_target_fans_out() {
     // One sent alone: straight at it.
     sim.step(&[Command::Order { player: 0, units: vec![planes[3]], order: Order::Attack(Target::Unit(target)), queue: false }]);
     assert_eq!(sim.unit(planes[3]).unwrap().fan, 0, "sent alone, no place in a group");
+}
+
+// ---- Repair trips ---------------------------------------------------------------------------
+
+/// Pads and carriers that mend a fighter at a fifth of its health a second (three seconds from
+/// 400 of its 1000), so that who waits for whom shows.
+fn slow_repairs(sim: &mut Sim) {
+    let work = sim.types.by_name("FIGHTER").unwrap().build_work;
+    for name in ["PAD", "CARRIER"] {
+        let kind = sim.types.id(name).unwrap();
+        Arc::get_mut(&mut sim.types).unwrap().types[kind].work_rate = work / 150;
+    }
+}
+
+/// A fighter of player 0 in flight over (`x`, 300), worn down to `health` (of its 1000), sent on
+/// patrol from there to (`x`, 700) and back.
+fn on_patrol(sim: &mut Sim, x: i64, health: i64) -> UnitId {
+    let fighter = sim.spawn_airborne(sim.types.id("FIGHTER").unwrap(), 0, FxVec3::from_ints(x, 0, 300), 0, None).unwrap();
+    sim.unit_mut(fighter).unwrap().health = Fx::from_int(health);
+    sim.step(&[Command::Order { player: 0, units: vec![fighter], order: Order::Patrol(FxVec3::from_ints(x, 0, 700)), queue: false }]);
+    fighter
+}
+
+/// Steps until `id` sets off on a repair trip (it looks once a second).
+fn until_trip(sim: &mut Sim, id: UnitId) {
+    for _ in 0..30 {
+        if sim.unit(id).unwrap().repair_trip {
+            return;
+        }
+        sim.step(&[]);
+    }
+}
+
+/// Whether `id` has landed on `pad`'s deck.
+fn on_deck(sim: &Sim, id: UnitId, pad: UnitId) -> bool {
+    sim.unit(id).is_some_and(|u| u.landed && u.air_pad.is_some_and(|(p, _)| p == pad))
+}
+
+fn patrolling(u: &Unit) -> bool {
+    matches!(u.orders.front(), Some(Order::Patrol(_)))
+}
+
+fn mended(u: &Unit) -> bool {
+    u.health >= Fx::from_int(1000)
+}
+
+/// A fighter on patrol worn below two-thirds of its health breaks off for a repair pad 800 px
+/// away, its orders held (as TA's aircraft do), lands on the pad, is mended there and takes up
+/// its patrol again.
+#[test]
+fn a_worn_fighter_on_patrol_flies_to_a_far_pad_is_mended_and_patrols_on() {
+    let mut sim = airfield();
+    slow_repairs(&mut sim);
+    let pad = put(&mut sim, "PAD", 0, 100);
+    let fighter = on_patrol(&mut sim, 900, 400);
+    let (mut held, mut landed, mut done) = (None, None, None);
+    for tick in 0..900 {
+        sim.step(&[]);
+        let u = sim.unit(fighter).unwrap();
+        if held.is_none() && u.repair_trip {
+            assert!(tick < 30, "it breaks off within a second");
+            assert_eq!(u.air_pad, Some((pad, None)), "its deck taken as it sets off");
+            held = Some((tick, u.orders.clone()));
+        }
+        if landed.is_none() && on_deck(&sim, fighter, pad) {
+            landed = Some(tick);
+            assert!(u.repair_trip && held.as_ref().is_some_and(|(_, o)| *o == u.orders), "its patrol held on the way, not flown: {:?}", u.orders);
+        }
+        if mended(u) {
+            done = Some(tick);
+            break;
+        }
+    }
+    println!("off for the pad at tick {:?}, on its deck at {landed:?}, mended at {done:?}", held.map(|h| h.0));
+    assert!(landed.is_some() && done.is_some(), "it lands on the pad and is mended: {:?}", sim.unit(fighter).unwrap().pos);
+    for _ in 0..150 {
+        sim.step(&[]);
+    }
+    let (u, at) = (sim.unit(fighter).unwrap(), sim.unit(pad).unwrap().pos);
+    assert!(!u.repair_trip && u.air_pad.is_none() && !u.landed && patrolling(u), "mended, it takes off on its patrol: {:?}", u.orders);
+    assert!(!u.pos.within_xz(at, Fx::from_int(250)), "and flies off on it: {:?}", u.pos);
+}
+
+/// At two-thirds of its health or more a fighter keeps to its patrol; a point less, it goes.
+#[test]
+fn a_fighter_at_two_thirds_of_its_health_keeps_to_its_patrol() {
+    for (health, goes) in [(667, false), (666, true)] {
+        let mut sim = airfield();
+        put(&mut sim, "PAD", 0, 100);
+        let fighter = on_patrol(&mut sim, 900, health);
+        let mut went = false;
+        for _ in 0..300 {
+            sim.step(&[]);
+            let u = sim.unit(fighter).unwrap();
+            went |= u.repair_trip;
+            assert!(patrolling(u) && (u.repair_trip || u.air_pad.is_none() && !u.landed), "its patrol kept ({health}): {:?}", u.orders);
+        }
+        assert_eq!(went, goes, "at {health} of its 1000 it goes for the pad: {went}");
+    }
+}
+
+/// Two worn fighters and one pad: one takes it, and the other keeps to its patrol until the pad
+/// is free again, then is mended there too. Never are two on one deck.
+#[test]
+fn worn_fighters_take_turns_at_a_single_pad() {
+    let mut sim = airfield();
+    slow_repairs(&mut sim);
+    let pad = put(&mut sim, "PAD", 0, 100);
+    let fighters = [on_patrol(&mut sim, 900, 400), on_patrol(&mut sim, 700, 400)];
+    let (mut waited, mut decked, mut done) = (false, [false; 2], [None; 2]);
+    for tick in 0..1800 {
+        sim.step(&[]);
+        let [a, b] = fighters.map(|f| sim.unit(f).unwrap());
+        assert!(a.air_pad.is_none() || a.air_pad != b.air_pad, "one deck, one aircraft: {:?}", a.air_pad);
+        for (k, (x, y)) in [(a, b), (b, a)].into_iter().enumerate() {
+            decked[k] |= on_deck(&sim, x.id, pad);
+            // (One being mended on the deck while the other, worn too, goes on with its patrol.)
+            waited |= on_deck(&sim, x.id, pad) && !mended(x) && !mended(y) && !y.repair_trip && patrolling(y);
+            if done[k].is_none() && mended(x) {
+                done[k] = Some(tick);
+            }
+        }
+        if done.iter().all(Option::is_some) {
+            break;
+        }
+    }
+    println!("mended at ticks {done:?}");
+    assert!(waited, "the second keeps to its patrol while the first is mended");
+    assert!(decked == [true; 2] && done.iter().all(Option::is_some), "both are mended on the pad in turn: on its deck {decked:?}, mended {done:?}");
+}
+
+/// An idle fighter that needs no mending, parked on the only pad, gives it up to a worn one: it
+/// takes off and lands on the ground near by, and the worn one lands on the pad and is mended.
+#[test]
+fn an_idle_fighter_gives_up_the_only_pad_to_a_worn_one() {
+    let mut sim = airfield();
+    slow_repairs(&mut sim);
+    let pad = put(&mut sim, "PAD", 0, 100);
+    let idle = put(&mut sim, "FIGHTER", 0, 100);
+    sim.unit_mut(idle).unwrap().pos.y = Fx::from_int(140);
+    for _ in 0..300 {
+        sim.step(&[]);
+        if on_deck(&sim, idle, pad) {
+            break;
+        }
+    }
+    assert!(on_deck(&sim, idle, pad), "the idle fighter parks on the pad: {:?}", sim.unit(idle).unwrap().pos);
+    let worn = on_patrol(&mut sim, 900, 400);
+    until_trip(&mut sim, worn);
+    let (i, w) = (sim.unit(idle).unwrap(), sim.unit(worn).unwrap());
+    assert!(w.repair_trip && w.air_pad == Some((pad, None)), "the worn fighter takes the pad: {:?}", w.air_pad);
+    assert!(i.air_pad.is_none() && !i.landed, "the idle one gives it up and takes off: {:?}, landed {}", i.air_pad, i.landed);
+    let mut decked = false;
+    for _ in 0..900 {
+        sim.step(&[]);
+        decked |= on_deck(&sim, worn, pad);
+        assert!(sim.unit(idle).unwrap().air_pad.is_none(), "the idle one does not take the pad back");
+        if mended(sim.unit(worn).unwrap()) && sim.unit(idle).unwrap().landed {
+            break;
+        }
+    }
+    assert!(decked && mended(sim.unit(worn).unwrap()), "the worn one lands on the pad and is mended");
+    settle(&mut sim, idle, 300);
+    let at = sim.unit(pad).unwrap().pos;
+    assert!(rests_level(&sim, idle) && sim.unit(idle).unwrap().pos.within_xz(at, Fx::from_int(16 * 16 + 24)), "the idle one lands on the ground near by: {:?}", sim.unit(idle).unwrap().pos);
+}
+
+/// A damaged fighter sent onto the only pad (a right-click on it) takes it from an idle one that
+/// needs no mending, as one on a repair trip does: it lands on it and is mended, where it would
+/// otherwise have set down beside the pad and, mended only on its deck, never been.
+#[test]
+fn a_damaged_fighter_sent_onto_an_occupied_pad_takes_it_from_an_idle_one() {
+    let mut sim = airfield();
+    let pad = put(&mut sim, "PAD", 0, 300);
+    let idle = put(&mut sim, "FIGHTER", 0, 300);
+    sim.unit_mut(idle).unwrap().pos.y = Fx::from_int(140);
+    for _ in 0..300 {
+        sim.step(&[]);
+        if on_deck(&sim, idle, pad) {
+            break;
+        }
+    }
+    assert!(on_deck(&sim, idle, pad), "the idle fighter parks on the pad");
+    // Above two-thirds of its health: no repair trip, only the move.
+    let damaged = sim.spawn_airborne(sim.types.id("FIGHTER").unwrap(), 0, FxVec3::from_ints(700, 0, 300), 0, None).unwrap();
+    sim.unit_mut(damaged).unwrap().health = Fx::from_int(800);
+    let at = sim.unit(pad).unwrap().pos;
+    sim.step(&[Command::Order { player: 0, units: vec![damaged], order: Order::Move(at), queue: false }]);
+    let mut decked = false;
+    for _ in 0..600 {
+        sim.step(&[]);
+        assert!(!sim.unit(damaged).unwrap().repair_trip, "moved, not on a mission: no trip");
+        decked |= on_deck(&sim, damaged, pad);
+        if mended(sim.unit(damaged).unwrap()) {
+            break;
+        }
+    }
+    assert!(decked && mended(sim.unit(damaged).unwrap()), "it takes the pad and is mended: {:?}", sim.unit(damaged).unwrap().pos);
+    assert!(sim.unit(idle).unwrap().air_pad.is_none(), "the idle one gave it up");
+}
+
+/// A pad switched off takes no aircraft and mends none: a worn fighter on its way there when it
+/// is switched off takes up its patrol again, and goes to no pad while it is off.
+#[test]
+fn a_pad_switched_off_is_not_used_and_mends_nothing() {
+    let mut sim = airfield();
+    let kind = sim.types.id("PAD").unwrap();
+    {
+        let t = &mut Arc::get_mut(&mut sim.types).unwrap().types[kind];
+        t.def.on_offable = true;
+        t.def.activate_when_built = true;
+    }
+    let pad = put(&mut sim, "PAD", 0, 100);
+    assert!(sim.unit(pad).unwrap().activated, "switched on as it is finished");
+    let fighter = on_patrol(&mut sim, 900, 400);
+    until_trip(&mut sim, fighter);
+    assert!(sim.unit(fighter).unwrap().repair_trip, "off to the pad while it is on");
+    sim.step(&[Command::SetActive { player: 0, units: vec![pad], on: false }]);
+    let u = sim.unit(fighter).unwrap();
+    assert!(!u.repair_trip && u.air_pad.is_none() && patrolling(u), "the pad switched off, its patrol taken up again: {:?}, {:?}", u.air_pad, u.orders);
+    for _ in 0..300 {
+        sim.step(&[]);
+        let u = sim.unit(fighter).unwrap();
+        assert!(!u.repair_trip && u.air_pad.is_none() && !u.landed, "no trip to a pad switched off");
+    }
+    // Nor does it mend an aircraft on its deck; switched on again, it does.
+    let parked = put(&mut sim, "FIGHTER", 0, 100);
+    {
+        let u = sim.unit_mut(parked).unwrap();
+        u.health = Fx::from_int(500);
+        u.landed = true;
+        u.air_pad = Some((pad, None));
+    }
+    sim.grid.rebuild(sim.units.iter().flatten());
+    let t = sim.types.get(kind).clone();
+    for _ in 0..5 {
+        sim.tick += 1;
+        sim.update_air_base(pad, &t);
+    }
+    assert_eq!(sim.unit(parked).unwrap().health, Fx::from_int(500), "a pad switched off mends nothing");
+    sim.unit_mut(pad).unwrap().activated = true;
+    for _ in 0..5 {
+        sim.tick += 1;
+        sim.update_air_base(pad, &t);
+    }
+    assert!(sim.unit(parked).unwrap().health > Fx::from_int(500), "switched on, it mends");
+}
+
+/// A pad mends the aircraft on its deck, not one parked on the ground beside it (40 px from its
+/// middle, where pads used to mend them too).
+#[test]
+fn a_pad_mends_the_aircraft_on_its_deck_not_those_parked_beside_it() {
+    let mut sim = airfield();
+    let pad = put(&mut sim, "PAD", 0, 300);
+    let (beside, on) = (put(&mut sim, "FIGHTER", 0, 340), put(&mut sim, "FIGHTER", 0, 300));
+    for id in [beside, on] {
+        let u = sim.unit_mut(id).unwrap();
+        u.health = Fx::from_int(500);
+        u.landed = true;
+    }
+    sim.unit_mut(on).unwrap().air_pad = Some((pad, None));
+    sim.grid.rebuild(sim.units.iter().flatten());
+    let t = sim.types.by_name("PAD").unwrap().clone();
+    for _ in 0..5 {
+        sim.tick += 1;
+        sim.update_air_base(pad, &t);
+    }
+    assert!(sim.unit(on).unwrap().health > Fx::from_int(500), "the one on its deck is mended");
+    assert_eq!(sim.unit(beside).unwrap().health, Fx::from_int(500), "the one parked beside it is not");
+}
+
+/// A new order calls a repair trip off: the deck given up, the order carried out. An order
+/// queued after those it holds does not.
+#[test]
+fn a_new_order_calls_a_repair_trip_off_and_a_queued_one_does_not() {
+    let mut sim = airfield();
+    let pad = put(&mut sim, "PAD", 0, 100);
+    let fighter = on_patrol(&mut sim, 900, 400);
+    until_trip(&mut sim, fighter);
+    assert!(sim.unit(fighter).unwrap().repair_trip, "off to the pad");
+    let later = FxVec3::from_ints(600, 0, 800);
+    sim.step(&[Command::Order { player: 0, units: vec![fighter], order: Order::Move(later), queue: true }]);
+    let u = sim.unit(fighter).unwrap();
+    assert!(u.repair_trip && u.air_pad == Some((pad, None)) && u.orders.back() == Some(&Order::Move(later)), "queued, it goes on to the pad: {:?}", u.orders);
+    let there = FxVec3::from_ints(800, 0, 900);
+    sim.step(&[Command::Order { player: 0, units: vec![fighter], order: Order::Move(there), queue: false }]);
+    let u = sim.unit(fighter).unwrap();
+    assert!(!u.repair_trip && u.air_pad.is_none() && u.orders.front() == Some(&Order::Move(there)), "a new order calls the trip off: {:?}, {:?}", u.air_pad, u.orders);
+    for _ in 0..240 {
+        sim.step(&[]);
+        assert!(sim.unit(fighter).unwrap().air_pad.is_none(), "and it does not go to the pad");
+    }
+    assert!(sim.unit(fighter).unwrap().pos.within_xz(there, Fx::from_int(64)), "it goes where it was sent: {:?}", sim.unit(fighter).unwrap().pos);
+}
+
+/// A carrier takes a worn fighter on a repair trip as a pad does, out at sea.
+#[test]
+fn a_worn_fighter_on_patrol_over_the_sea_is_mended_on_a_carrier() {
+    let mut map = flat_map();
+    map.sea_level = 150;
+    let mut sim = airfield_on_map(&map);
+    slow_repairs(&mut sim);
+    let carrier = put(&mut sim, "CARRIER", 0, 200);
+    let fighter = on_patrol(&mut sim, 900, 400);
+    let mut decked = false;
+    for _ in 0..900 {
+        sim.step(&[]);
+        decked |= on_deck(&sim, fighter, carrier);
+        if mended(sim.unit(fighter).unwrap()) {
+            break;
+        }
+    }
+    assert!(decked && mended(sim.unit(fighter).unwrap()), "it lands on the carrier and is mended there: {:?}", sim.unit(fighter).unwrap().pos);
+    for _ in 0..150 {
+        sim.step(&[]);
+    }
+    let (u, at) = (sim.unit(fighter).unwrap(), sim.unit(carrier).unwrap().pos);
+    assert!(!u.landed && u.air_pad.is_none() && patrolling(u) && !u.pos.within_xz(at, Fx::from_int(250)), "then patrols on: {:?}, {:?}", u.pos, u.orders);
+}
+
+/// A plane that brakes slowly (as TA's Thunder: top speed 9, braking 0.4), sent onto a pad's
+/// middle, flies on past it as it stops, beyond the reach an idle aircraft looks for a pad in:
+/// it comes back to land on the pad and is mended there, not set down on the ground beyond.
+#[test]
+fn a_slow_braking_plane_sent_onto_a_pad_lands_on_it() {
+    let mut sim = airfield();
+    let kind = sim.types.id("FIGHTER").unwrap();
+    {
+        let t = &mut Arc::get_mut(&mut sim.types).unwrap().types[kind];
+        (t.max_speed, t.brake, t.acceleration) = (Fx::from_int(9), Fx::from_ratio(2, 5), Fx::from_ratio(2, 25));
+    }
+    let pad = put(&mut sim, "PAD", 0, 300);
+    let plane = sim.spawn_airborne(kind, 0, FxVec3::from_ints(900, 0, 300), 0, None).unwrap();
+    sim.unit_mut(plane).unwrap().health = Fx::from_int(500);
+    let at = sim.unit(pad).unwrap().pos;
+    sim.step(&[Command::Order { player: 0, units: vec![plane], order: Order::Move(at), queue: false }]);
+    let (mut beyond, mut decked) = (Fx::ZERO, false);
+    for _ in 0..900 {
+        sim.step(&[]);
+        let u = sim.unit(plane).unwrap();
+        if u.orders.is_empty() && u.air_pad.is_none() {
+            beyond = beyond.max((u.pos - at).length_xz());
+        }
+        decked |= on_deck(&sim, plane, pad);
+        if mended(u) {
+            break;
+        }
+    }
+    println!("it came to a stop {:.0} px past the pad's middle", beyond.to_f32());
+    assert!(beyond > Fx::from_int(32 + 24), "it stops beyond the reach of the pad an idle aircraft has: {beyond:?}");
+    assert!(decked && mended(sim.unit(plane).unwrap()), "it lands on the pad and is mended: {:?}", sim.unit(plane).unwrap().pos);
 }

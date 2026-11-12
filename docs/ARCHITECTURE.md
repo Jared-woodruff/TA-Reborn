@@ -503,7 +503,27 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   multiplayer game and doesn't come back within a minute (`ta_net::ABANDON_AFTER`), the
   host issues `Command::Abandon`, and the first surviving ally takes over that player's
   army.
-* **Air repair pads** (`IsAirBase`) mend landed friendly aircraft at their build pace.
+* **Air repair pads** (`IsAirBase`: pads and carriers) mend the friendly aircraft landed on
+  their decks at their build pace, shared between them (`Sim::update_air_base`): only those that
+  took a deck (`Unit::air_pad`), not those parked on the ground beside one, and none while the
+  pad is switched off (TA's are `OnOffable`; switched off, a pad takes no aircraft either, and
+  those on it or on their way there leave it). A deck is a model piece the pad's script names
+  (`QueryLandingPad`: the Air Repair Pads have one), or the top of its model; one aircraft holds
+  one. An idle aircraft takes a free deck within the pad's size and 24 px of it; a plane looks
+  that much further again, as far as it flies on from its top speed before it stops (v² / 2 ·
+  brake, at most 256 px: the Thunder and the Hurricane, sent onto a pad, stop 70 to 85 px past
+  its middle, out of the pad's own reach). An aircraft on a mission (its order a patrol, an
+  attack-move or an attack) worn below two-thirds of its health (`REPAIR_TRIP_HEALTH`, the only
+  figure given for TA's) goes on a repair trip (`Unit::repair_trip`, `Sim::start_repair_trip`,
+  looked at once a second): it takes the nearest free deck, however far (by distance, then the
+  pad's id), of an allied pad or carrier that is finished and switched on, and flies there and
+  lands as an idle aircraft does, its orders held (`unit_orders` leaves them; its weapons'
+  targets don't keep it up). A deck held by an idle aircraft that needs no mending counts as
+  free for a damaged one, on a trip or idle, which takes it: the other takes off and lands
+  elsewhere. One on a trip, or being mended, keeps its deck; the others carry on with their
+  missions and look again a second later. Mended, or its deck lost or switched off, it takes
+  off and carries on with its orders (`Sim::end_repair_trip`); a new order (not one queued)
+  calls the trip off. Idle aircraft, and those only moved somewhere, don't go looking for a pad.
 * **Cheats** (`cheats.rs`): `Command::Cheat { player, cheat }`, taken only when
   `Sim::cheats_allowed` (the client sets it for games with at most one human, so replays of
   them agree). Standing cheats live in `Player::cheats`: double or half damage from the

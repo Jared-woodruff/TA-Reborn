@@ -193,6 +193,10 @@ pub struct Unit {
     pub landed: bool,
     /// Reserved repair deck and model piece (None for an unscripted platform).
     pub air_pad: Option<(UnitId, Option<usize>)>,
+    /// Aircraft: broken off its patrol, attack-move or attack, worn down, for the deck it has
+    /// reserved (`air_pad`): its orders wait until it is mended there, or the deck is lost or
+    /// switched off (`Sim::start_repair_trip`).
+    pub repair_trip: bool,
     /// Aircraft: flying an attack pass (no braking at the pass goal).
     pub air_pass: bool,
     /// Aircraft: ticks without anything to do (landing starts after a short delay).
@@ -373,6 +377,7 @@ impl Unit {
             unreachable: Vec::new(),
             landed: false,
             air_pad: None,
+            repair_trip: false,
             air_pass: false,
             idle_ticks: 0,
             pass_ticks: 0,
