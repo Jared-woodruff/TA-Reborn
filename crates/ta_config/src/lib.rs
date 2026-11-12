@@ -122,8 +122,9 @@ pub const RECORD_VERSION: u32 = 46;
 /// come in on it across a front; 82, a bomber on patrol or attack-move with fire at will bombs
 /// what its side sees near its way by itself, keeping a building through its turn for the next run;
 /// 83, units stepping off a building's site step clear of the builder's next sites, and a unit
-/// standing in a building is put on the nearest free cell.
-pub const SIMULATION_VERSION: u32 = 83;
+/// standing in a building is put on the nearest free cell; 84, a ship is built at the surface (a
+/// shipyard's pad is under the water), and construction aircraft drift round what they build.
+pub const SIMULATION_VERSION: u32 = 84;
 /// Records shorter than one year of simulated time are supported. Shared with the
 /// launcher's metadata reader so impossible durations cannot start endless save catch-up.
 pub const MAX_RECORD_TICKS: u64 = 30 * 3600 * 24 * 365;

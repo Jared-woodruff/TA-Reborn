@@ -429,7 +429,12 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   its route, or has stopped inside it (given another order there: to guard the factory, say),
   and the pad is clear: their own side's units standing still on it are sent off it
   (`Sim::step_aside`) to carry on from there, others are waited for. Taking the unit in
-  production off the queue takes its frame apart, its metal back.
+  production off the queue takes its frame apart, its metal back. The unit in production rides
+  the factory's pad (`QueryBuildInfo`'s piece, `Sim::follow_build_pad`), but a ship is built at
+  the surface, where it floats once done (a shipyard's pad is under the water, the Core's yard
+  22 px deep), and a hovercraft on a pad under the water on it too. Construction aircraft at work
+  drift round what they build, as TA's do (`Sim::drift_round`: a step of about 28 px round a
+  circle about it every 24 ticks, within their reach of it all the way round).
 * **Construction counts whole work**: a type's `build_work` is its `BuildTime` in
   worker-time ticks (× 30, raw 16.16) and a builder does its `work_rate` (`WorkerTime`, raw
   16.16) a tick, so any build takes exactly `BuildTime / WorkerTime` seconds (up to 2^40 and
@@ -2584,7 +2589,9 @@ build menu by `Purpose` on tabs (`Hud::build_tab`).
   the queue, the rest kept; without, the new order replaces the queue anyway). A row dragged out
   with Shift keeps clear of them. A right-click ends the placing; with Shift it also gives the
   right-click's order, queued (a Commander told to build a plant, then sent on). While placing,
-  every constructor's queued buildings show as faint ghosts. Buildings stand on the highest
+  every constructor's queued buildings show as faint ghosts; the ghosts, and the one being
+  placed, are drawn where the building will stand (`Sim::resting_pos`, as `Sim::spawn_unit`
+  puts it: a shipyard at its waterline, not on the sea floor). Buildings stand on the highest
   ground under their footprint (`World::footprint_top`): TA drew them over a flat picture,
   so on the 3D ground a bump would poke through a pad; the drawn ground is levelled up to
   them once they are put down (see Terrain, `terrain_pads.rs`).

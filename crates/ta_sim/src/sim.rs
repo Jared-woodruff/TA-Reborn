@@ -246,6 +246,10 @@ const SQUEEZE_TICKS: u64 = 90;
 /// An idle ground unit is looked at this often (ticks) for standing in a building, and placed
 /// on the nearest free cell within so many rings of cells (`Sim::step_out_of_building`).
 const BUILDING_CHECK_TICKS: u64 = 8;
+/// A construction aircraft at work takes a step of about this many px round what it builds every
+/// so many ticks (`Sim::drift_round`): a slow drift, as TA's do.
+const AIR_BUILDER_DRIFT_TICKS: u64 = 24;
+const AIR_BUILDER_DRIFT_STEP: i64 = 28;
 const BUILDING_ESCAPE_RINGS: i32 = 12;
 /// Within twice its turning circle's radius at its speed of its next waypoint (`LOOK_RADII`; at
 /// least `LOOK_MIN` px, at most `LOOK_MAX`), a unit on its way looks up to this many waypoints
@@ -1091,6 +1095,23 @@ impl Sim {
             self.on_completed(id);
         }
         Some(id)
+    }
+
+    /// Where a unit of `type_id` put at `pos` stands, as [`Sim::spawn_unit`] puts it: a building
+    /// on its footprint's cells, on the highest ground under them, or at the surface when it
+    /// floats or is built in the water (a shipyard); others on the ground, or on the water when
+    /// they float. What a placement's ghost shows.
+    pub fn resting_pos(&self, type_id: usize, pos: FxVec3) -> FxVec3 {
+        let t = self.types.get(type_id);
+        let mut pos = pos;
+        pos.y = self.ground_level(t, pos);
+        if t.locomotion == Locomotion::Static {
+            let anchor = World::pos_to_anchor(pos, t.footprint);
+            let mut p = self.world.anchor_to_pos(anchor, t.footprint);
+            p.y = self.ground_level(t, p).max(p.y);
+            return p;
+        }
+        pos
     }
 
     fn ground_level(&self, t: &UnitType, pos: FxVec3) -> Fx {
@@ -4257,6 +4278,11 @@ impl Sim {
             self.move_to_work(id, t, target_pos, footprint);
             return;
         }
+        // TA's construction aircraft drift round what they build rather than hang still over it.
+        if t.locomotion == Locomotion::Air && !t.is_factory && (self.tick + id.slot as u64).is_multiple_of(AIR_BUILDER_DRIFT_TICKS) {
+            self.drift_round(id, t, target_pos, footprint);
+        }
+        let Some(u) = self.unit(id) else { return };
         let has_script = u.cob.as_ref().is_some_and(|c| c.has_function("StartBuilding"));
         if !job.started {
             let to = target_pos - u.pos;
@@ -4276,6 +4302,21 @@ impl Sim {
         if in_stance {
             self.apply_build_power(id, t, job.target);
         }
+    }
+
+    /// A construction aircraft at work: on a step round a circle about the footprint of what it
+    /// builds (`center`, `footprint`), within its reach of it all the way round (straight out
+    /// from a side is the farthest it gets from the footprint), anticlockwise seen from above.
+    fn drift_round(&mut self, id: UnitId, t: &UnitType, center: FxVec3, footprint: (u32, u32)) {
+        let Some(u) = self.unit(id) else { return };
+        let half = Fx::from_int(footprint.0.min(footprint.1) as i64 * CELL) / 2;
+        let radius = half + (t.build_distance + t.radius) * 3 / 4;
+        let from = (u.pos - center).xz();
+        let at = if from.length_xz() < Fx::ONE { wrap_angle(id.slot as i32 * 9973) } else { heading_of(from) };
+        // (A step of about `AIR_BUILDER_DRIFT_STEP` px along the circle: 65536 angle units a turn.)
+        let step = (AIR_BUILDER_DRIFT_STEP * 10430 / radius.to_int().max(1)) as i32;
+        let goal = center + heading_vector(wrap_angle(at + step.clamp(512, 8192))).scale(radius);
+        self.move_to(id, t, FxVec3::new(goal.x, u.pos.y, goal.z), 0);
     }
 
     fn finish_build_job(&mut self, id: UnitId) {
@@ -4589,8 +4630,18 @@ impl Sim {
         let t = types.get(f.type_id);
         let pad = self.call_script(factory, "QueryBuildInfo", &[0]).and_then(|p| p.first().copied()).unwrap_or(-1);
         let Some(f) = self.unit(factory) else { return };
-        if let Some(p) = self.cob_piece_position(f, t, pad) {
+        if let Some(mut p) = self.cob_piece_position(f, t, pad) {
             let heading = f.heading;
+            // A ship is built at the surface, where it floats once done: a shipyard's pad is under
+            // the water (the Core's yard stands 22 px deep). A hovercraft on a pad under the water
+            // (a floating hover plant's) is on the water too.
+            if let Some(ut) = self.unit(id).map(|u| types.get(u.type_id)) {
+                match ut.locomotion {
+                    Locomotion::Naval => p.y = self.ground_level(ut, p),
+                    Locomotion::Hover => p.y = p.y.max(self.ground_level(ut, p)),
+                    _ => {}
+                }
+            }
             if let Some(u) = self.unit_mut(id) {
                 u.pos = p;
                 u.heading = heading;

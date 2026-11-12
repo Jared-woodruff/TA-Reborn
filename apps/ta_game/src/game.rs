@@ -3816,14 +3816,14 @@ impl Game {
             if let Some(model) = model {
                 let t = sim.types.get(pl.type_id);
                 for (i, &(pos, ok)) in pl.row.iter().enumerate() {
-                    piece_matrices(&ghost_unit(pl.type_id, pos), t, Mat4::from_translation(pos), &mut pl.row_matrices[i]);
+                    piece_matrices(&ghost_unit(pl.type_id, pos), t, ghost_root(sim, pl.type_id, pos), &mut pl.row_matrices[i]);
                     row_ghosts.push((model, ta_render::model::FLAG_BUILDING | if ok { 0 } else { ta_render::model::FLAG_INVALID }));
                 }
             }
             if let (Some(pos), Some(model), true) = (pl.pos, model, pl.row.is_empty()) {
                 let t = sim.types.get(pl.type_id);
                 let dummy = ghost_unit(pl.type_id, pos);
-                piece_matrices(&dummy, t, Mat4::from_translation(pos), &mut pl.matrices);
+                piece_matrices(&dummy, t, ghost_root(sim, pl.type_id, pos), &mut pl.matrices);
                 let flags = ta_render::model::FLAG_BUILDING | if pl.valid { 0 } else { ta_render::model::FLAG_INVALID };
                 ghost = Some((model, flags));
             }
@@ -3839,7 +3839,7 @@ impl Game {
         let mut queued_models = Vec::new();
         for (i, &(type_id, pos)) in queued.iter().enumerate() {
             if let Some(model) = scene.model_for(type_id) {
-                piece_matrices(&ghost_unit(type_id, pos), sim.types.get(type_id), Mat4::from_translation(pos), &mut queued_ghosts[i]);
+                piece_matrices(&ghost_unit(type_id, pos), sim.types.get(type_id), ghost_root(sim, type_id, pos), &mut queued_ghosts[i]);
                 queued_models.push((i, model));
             }
         }
@@ -4171,6 +4171,15 @@ fn footprint_rect(t: &ta_sim::UnitType, pos: ta_sim::FxVec3) -> (i32, i32, i32, 
     use ta_sim::world::World;
     let (x0, z0) = World::footprint_origin(World::pos_to_anchor(pos, t.footprint), t.footprint);
     (x0, z0, x0 + t.footprint.0 as i32, z0 + t.footprint.1 as i32)
+}
+
+/// Where a building's ghost is drawn from: where the building will stand once put down there
+/// (`Sim::resting_pos`: a shipyard at the surface, not on the sea floor), its model as the
+/// scene draws a unit's (`Unit::model_pos`).
+fn ghost_root(sim: &Sim, type_id: usize, pos: Vec3) -> Mat4 {
+    let rest = sim.resting_pos(type_id, fx_vec(pos));
+    let y = (rest.y - sim.types.get(type_id).waterline).to_f32();
+    Mat4::from_translation(Vec3::new(rest.x.to_f32(), y, rest.z.to_f32()))
 }
 
 fn ghost_unit(type_id: usize, pos: Vec3) -> ta_sim::Unit {

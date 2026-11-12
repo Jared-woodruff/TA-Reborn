@@ -35,6 +35,8 @@
   plain move still bombs nothing.
 - The music, and the battle behind the menu, now fall silent while a campaign briefing is read
   out, and come back once it is over. The tutorial's spoken lines still only lower the music.
+- Construction aircraft now drift round what they build, as in TA, instead of hanging still
+  over it. They stay within reach, and the building goes up as fast as before.
 - Constructors on the ECONOMY duty now keep to a few plain jobs: metal extractors on free metal,
   power plants when power runs short (solar collectors, or wind generators where the wind pays
   better), and metal makers when there is power to spare, finishing buildings of those kinds
@@ -42,6 +44,10 @@
   extractors with better ones, reclaim, or help at the factories.
 
 ### Fixed
+- Ships were built under the water in their shipyards (most of all the Core's) and only rose to
+  the surface once finished. They are now built at the surface.
+- A shipyard's ghost, while placing it or queued, showed on the sea floor; it now shows where
+  the shipyard will stand.
 - A constructor building a block of buildings that touch (Alt+drag while placing) could be
   walled in by them, unable to move again. Units now step off a new building's site clear of
   the builder's next sites, a unit left standing in a building is put on the nearest free
