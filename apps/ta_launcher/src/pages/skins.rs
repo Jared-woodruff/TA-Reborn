@@ -202,6 +202,13 @@ impl LauncherApp {
                 ui.add_space(space::S);
             }
             let mut linked = self.config.graphics.enemy_unit_skin.is_empty();
+            // The box and its words go on together: on a line of their own when they do not fit
+            // after the skins (squeezed into what was left of the line, the words stood in a
+            // column a letter wide, and the page below them went out of reach).
+            let words = widgets::galley(ui, RichText::new(t("Use the same skin for both sides"))).size().x;
+            if ui.available_size_before_wrap().x < 20.0 + ui.spacing().item_spacing.x + words {
+                ui.end_row();
+            }
             let changed = ui.add_enabled_ui(!self.skins.busy(), |ui| {
                 let mut changed = widgets::check_box_named(ui, &mut linked, "Use the same skin for both sides").changed();
                 let label = ui.add(egui::Label::new(RichText::new(t("Use the same skin for both sides")).color(TEXT)).sense(Sense::click()));
@@ -668,6 +675,27 @@ mod tests {
         let mut labels = String::new();
         for shape in &output.shapes { text(&shape.shape, &mut labels); }
         labels
+    }
+
+    /// However wide the page, "Use the same skin for both sides" goes on whole, after the armies'
+    /// skins or on a line of its own, and the search and the cards stay below it, in reach. (At
+    /// some widths it was squeezed into what was left of the line: its words in a column a letter
+    /// wide, or out of sight with the page below it.)
+    #[test]
+    fn the_same_skin_box_never_pushes_the_page_out_of_reach() {
+        let (folder, ctx, mut app) = app("narrow_armies");
+        app.skins.catalog = ta_skins::list(&folder.join("skins"));
+        for width in (420..=760).step_by(10) {
+            let width = width as f32;
+            for _ in 0..2 {
+                render(&ctx, &mut app, width, 2400.0, Vec::new());
+            }
+            let search = ctx.read_response(skin_search_id()).unwrap_or_else(|| panic!("{width}: the search is laid out"));
+            assert!(search.rect.top() < 600.0, "{width}: the search is below the armies, in reach: {:?}", search.rect);
+            assert!(search.rect.right() <= width + 1.0, "{width}: the search is on the page: {:?}", search.rect);
+        }
+        drop(app);
+        let _ = std::fs::remove_dir_all(folder);
     }
 
     #[test]
