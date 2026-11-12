@@ -7,6 +7,9 @@
   the battlefield stands out, instead of land and sea carried on to the horizon. Zoomed out,
   that land filled most of the screen and shimmered. The map editor shows the clouds too; the
   menu's film, the credits and staged scenes keep the landscape.
+- The battle camera now zooms out only until the whole map is in view, and zoomed out that far
+  it keeps the map in view rather than the dark beyond it. On the largest maps it zooms out as
+  far as before, and now the same on every screen: a 4K screen used to see twice as far.
 - Fire at will: units now fire at their "bad targets" when nothing better is in range, rather
   than never. Missile towers fire on tanks when no aircraft are about, a destroyer's depth
   charges take on an amphibious tank under the water, and a scout ship's missiles a boat. A

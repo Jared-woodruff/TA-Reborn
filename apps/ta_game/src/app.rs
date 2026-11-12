@@ -1455,6 +1455,11 @@ const VEIL_DIM: u8 = 96;
 /// An all-AI match used as the living backdrop of the menu.
 /// Lowest camera pitch (radians above the horizon): low enough to see the horizon and sky.
 const MIN_PITCH: f32 = 0.1;
+/// The battle camera's closest zoom (pixels a world unit at its focus).
+const MAX_ZOOM: f32 = 8.0;
+/// The farthest it zooms out on the largest maps, on a window 1,080 pixels high (more pixels
+/// a unit on a higher one, so that every screen takes in as much of the map).
+const FARTHEST_ZOOM_1080: f32 = 0.08;
 /// A film's cinematic camera: how low it looks (as the highlights' does).
 const CINEMATIC_PITCH: f32 = 0.72;
 /// How far round the line from the eye to a unit followed in Perspective the 3D trees give way
@@ -4170,7 +4175,19 @@ impl State {
         // Photo mode frees the camera: nearly level with the ground, closer and farther (as near
         // and as far whatever its lens: a long one magnifies as much again).
         let lens = 15f32.to_radians().tan() / (self.camera.fov_y * 0.5).tan().max(1e-3);
-        let (min_pitch, max_pitch, zooms) = if self.photo.is_some() { (0.02, 1.55, (0.04 * lens, 24.0 * lens)) } else { (MIN_PITCH, 1.52, (0.08, 8.0)) };
+        let map = self.renderer.terrain.as_ref().map(|t| t.field.size_px());
+        let held = self.players_view();
+        let (min_pitch, max_pitch, zooms) = if self.photo.is_some() {
+            (0.02, 1.55, (0.04 * lens, 24.0 * lens))
+        } else if held {
+            (MIN_PITCH, 1.52, (zoom_out_limit(self.camera.viewport, map), MAX_ZOOM))
+        } else {
+            (MIN_PITCH, 1.52, (FARTHEST_ZOOM_1080, MAX_ZOOM))
+        };
+        // (Held there whatever moved it: a window made larger, another map.)
+        if held {
+            self.camera.zoom = self.camera.zoom.clamp(zooms.0, zooms.1);
+        }
         let input = &self.input;
         let keys = &self.game.keys;
         let cam = &mut self.camera;
@@ -4289,6 +4306,14 @@ impl State {
         }
     }
 
+    /// Whether the camera is the player's own in a battle, held to the map: zoomed out no further
+    /// than the whole of it (`zoom_out_limit`), kept to it when zoomed out (`view_margins`). Not a
+    /// staged scene's, a film's or the highlights' camera, which frame their own pictures, nor the
+    /// photographer's, which goes where it likes.
+    fn players_view(&self) -> bool {
+        self.screen == Screen::Playing && self.stage.is_none() && self.film.is_none() && self.reel.is_none() && self.photo.is_none()
+    }
+
     fn clamp_camera(&mut self, dt: f32) {
         // A jump to look at something (the Commander, an alert, the next unit) lets go of a
         // unit followed and of the action camera, which would pull the view back.
@@ -4397,14 +4422,17 @@ impl State {
         } else if !showroom {
             self.camera.view_offset = offset;
         }
+        let held = self.players_view();
         if let Some(t) = &self.renderer.terrain {
             let size = t.field.size_px();
             let cam = &mut self.camera;
             if cam.mode == CameraMode::Classic {
                 clamp_classic_view(cam, size, free);
             } else if !showroom {
-                cam.focus.x = cam.focus.x.clamp(0.0, size.x);
-                cam.focus.z = cam.focus.z.clamp(0.0, size.y);
+                // (Zoomed out over much of the map, the view keeps to it: see `view_margins`.)
+                let margins = if held { view_margins(cam, size) } else { Vec2::ZERO };
+                cam.focus.x = cam.focus.x.clamp(margins.x, size.x - margins.x);
+                cam.focus.z = cam.focus.z.clamp(margins.y, size.y - margins.y);
                 let ground = t.field.sample(cam.focus.x, cam.focus.z).max(t.field.sea_level);
                 cam.focus.y += (ground - cam.focus.y) * (1.0 - (-dt * 3.0).exp());
             }
@@ -8640,6 +8668,32 @@ fn apply_camera_spec(camera: &mut Camera, spec: &str) {
     }
 }
 
+/// The farthest the battle's camera zooms out on a `viewport` (pixels a world unit at its focus):
+/// until the whole map (`map`, world units) is in view, and no further, as nothing lies beyond it
+/// but the dark (`ta_render::Beyond::Clouds`); on the largest maps, as far as before
+/// ([`FARTHEST_ZOOM_1080`], scaled with the window's height).
+fn zoom_out_limit(viewport: Vec2, map: Option<Vec2>) -> f32 {
+    let farthest = FARTHEST_ZOOM_1080 * viewport.y.max(1.0) / 1080.0;
+    let whole = map.map_or(0.0, |m| (viewport.x / m.x.max(1.0)).min(viewport.y / m.y.max(1.0)));
+    farthest.max(whole).min(MAX_ZOOM)
+}
+
+/// How far from the map's edges (x, z) the perspective camera's focus keeps: nowhere while the
+/// view takes in less than half the map in that direction, its middle once it takes in all of it,
+/// easing between, so that zoomed out the map fills the view rather than the dark beyond it. (The
+/// view's extent at the focus, turned with the camera: not foreshortened by its pitch, or a view
+/// towards the horizon would be held to the middle of the map.)
+fn view_margins(camera: &Camera, map: Vec2) -> Vec2 {
+    let half = camera.viewport * 0.5 / camera.zoom.max(1e-3);
+    let (s, c) = camera.yaw.sin_cos();
+    let reach = Vec2::new(c.abs() * half.x + s.abs() * half.y, s.abs() * half.x + c.abs() * half.y);
+    let margin = |reach: f32, size: f32| {
+        let t = ((reach - size * 0.25) / (size * 0.25).max(1e-3)).clamp(0.0, 1.0);
+        size * 0.5 * t * t * (3.0 - 2.0 * t)
+    };
+    Vec2::new(margin(reach.x, map.x), margin(reach.y, map.y))
+}
+
 /// `TA_TIME=<hours>`: the time of day for captures, over anything else. Read once.
 fn forced_time() -> Option<f32> {
     static FORCED: std::sync::OnceLock<Option<f32>> = std::sync::OnceLock::new();
@@ -9091,6 +9145,42 @@ impl State {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Zooming out stops once the whole map is in view (nothing beyond it but the dark), on a
+    /// big map as far as before, and a larger window takes in no more of the map than a smaller.
+    #[test]
+    fn the_battle_camera_zooms_out_no_further_than_the_map() {
+        let hd = Vec2::new(1920.0, 1080.0);
+        // A 10 by 10 map, square: its height fills the window's at the limit.
+        let small = Vec2::new(5120.0, 5120.0);
+        let limit = zoom_out_limit(hd, Some(small));
+        assert!((hd.y / limit - small.y).abs() < 1.0, "the whole map in view at {limit}");
+        // Shore to Shore Reborn (48 by 20): as far as the old limit, on any window.
+        let wide = Vec2::new(24576.0, 10240.0);
+        assert_eq!(zoom_out_limit(hd, Some(wide)), FARTHEST_ZOOM_1080);
+        assert!((zoom_out_limit(Vec2::new(3840.0, 2160.0), Some(wide)) - 2.0 * FARTHEST_ZOOM_1080).abs() < 1e-6, "4K sees as much as 1080p");
+        assert_eq!(zoom_out_limit(hd, None), FARTHEST_ZOOM_1080);
+    }
+
+    /// Zoomed in, the focus goes anywhere on the map; zoomed out over all of it, to its middle;
+    /// turned a quarter round, the map's sides swap with the window's.
+    #[test]
+    fn zoomed_out_the_view_keeps_to_the_map() {
+        let map = Vec2::new(5120.0, 5120.0);
+        let mut camera = Camera::new(Vec2::new(1920.0, 1080.0));
+        camera.zoom = 1.5;
+        assert_eq!(view_margins(&camera, map), Vec2::ZERO);
+        camera.zoom = zoom_out_limit(camera.viewport, Some(map));
+        let at_limit = view_margins(&camera, map);
+        assert_eq!(at_limit, map * 0.5, "the map's middle, both ways (the window is wider than high)");
+        // Halfway out: some of the way in from the edges.
+        camera.zoom = camera.viewport.y / (map.y * 0.75);
+        let halfway = view_margins(&camera, map);
+        assert!(halfway.y > 0.0 && halfway.y < map.y * 0.5, "{halfway}");
+        camera.yaw = std::f32::consts::FRAC_PI_2;
+        let turned = view_margins(&camera, map);
+        assert!((turned.x - halfway.y).abs() < 1.0, "{turned} against {halfway}");
+    }
 
     /// The commander's card at the top right shows on the title screen alone: every other page
     /// has its way back there (BACK, Conquest's MAIN MENU), which the card covered and whose

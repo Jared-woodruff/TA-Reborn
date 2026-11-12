@@ -579,7 +579,14 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   the eye over the ground). `Camera::place` puts the perspective eye anywhere, looking any way
   (straight up and down included: the view's up is square to the yaw's right), with a near
   plane of its own (`Camera::near`) for an eye low over the ground; the view's bounds take in
-  what stands and flies round an eye that looks up (staged scenes' free camera).
+  what stands and flies round an eye that looks up (staged scenes' free camera). The player's
+  camera in a battle (`State::players_view`: not a staged scene's, a film's, the highlights' or
+  photo mode's) zooms out only until the whole map is in view (`zoom_out_limit`; on the largest
+  maps 0.08 pixels a unit on a window 1,080 high, scaled with the window's height, so every
+  screen takes in as much), and zoomed out over more than half the map in a direction its focus
+  keeps away from that direction's edges, at the middle once the view takes in all of it
+  (`view_margins`: the view's extent at the focus turned with the yaw, not foreshortened by the
+  pitch), so the map fills the view rather than the dark beyond it.
 * **Pass order**: (ray tracing: acceleration structures) →
   (the relief's shadows, when the light moved or heights changed) → (ray tracing: depth prepass, trace and blur) → shadow map → (ray tracing) the 3D features' shadow map → (perspective) cloud shadow map and contact occlusion map
   around the view → particle simulation (compute) → (perspective, water in view) the
