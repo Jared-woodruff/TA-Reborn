@@ -51,8 +51,12 @@ fn static_waterline_places_surface_structures_without_lifting_the_seabed_or_land
         ("SUBMARINE", Fx::from_int(100)),
     ].into_iter().enumerate() {
         let type_id = sim.types.id(name).unwrap();
-        let id = sim.spawn_unit(type_id, 0, FxVec3::from_ints(96 + index as i64 * 48, 999, 128), 0, true).unwrap();
+        let at = FxVec3::from_ints(96 + index as i64 * 48, 999, 128);
+        // (A placement's ghost is drawn where the unit will stand.)
+        let ghost = sim.resting_pos(type_id, at);
+        let id = sim.spawn_unit(type_id, 0, at, 0, true).unwrap();
         assert_eq!(sim.unit(id).unwrap().pos.y, expected, "{name}: waterline and original mobile rules");
+        assert_eq!(ghost, sim.unit(id).unwrap().pos, "{name}: the ghost stands where the unit does");
     }
     for (name, x) in [("LAND", 1120), ("SURFACE", 1216)] {
         let type_id = sim.types.id(name).unwrap();
@@ -111,8 +115,11 @@ fn installed_shipyards_produce_at_their_waterline_and_ships_leave_at_the_surface
         }
         let site = site.expect("a shipyard fits in deep water");
         let expected = sim.world.sea_level - Fx::from_f64(ty.def.water_line);
+        // (Where a placement's ghost shows it: where it will stand, not on the sea floor.)
+        assert_eq!(sim.resting_pos(type_id, site).y, expected, "{name}: the ghost's height");
         let factory = sim.spawn_unit(type_id, 0, site, 0, true).unwrap();
         assert_eq!(sim.unit(factory).unwrap().pos.y, expected, "{name}: spawn/anchor retains waterline");
+        assert_eq!(sim.resting_pos(type_id, site), sim.unit(factory).unwrap().pos, "{name}: the ghost stands where the building does");
         let product = ty.build_options.iter().copied().find(|&id| {
             let child = types.get(id);
             child.locomotion == Locomotion::Naval && child.def.water_line <= 0.0
@@ -127,7 +134,7 @@ fn installed_shipyards_produce_at_their_waterline_and_ships_leave_at_the_surface
             if let Some(child) = sim.units().find(|u| u.type_id == product) {
                 if !child.is_complete() {
                     saw_construction = true;
-                    assert!(child.pos.y > site.y + Fx::from_int(20), "{name}: construction pad sank to the seabed");
+                    assert_eq!(child.pos.y, sim.world.sea_level, "{name}: a ship is built at the surface, where it floats once done (the yard's pad is under the water)");
                 } else if !child.orders.is_empty() {
                     built = Some(child.id);
                     break;

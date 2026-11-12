@@ -13,7 +13,7 @@ use crate::fixed::{FULL_TURN, Fx, FxVec3, QUARTER_TURN, atan2, cos, heading_of, 
 use crate::host::{HostRequest, OtherUnit, UnitHost, script_angle};
 use crate::path::{FlowField, PathQuery, Pathfinder};
 use crate::rng::Rng;
-use crate::unit::{BuildJob, Economy, MAX_PLAYERS, Order, Player, PlayerSetup, Unit, UnitId, piece_world_position, player_bit};
+use crate::unit::{BuildJob, Drift, Economy, MAX_PLAYERS, Order, Player, PlayerSetup, Unit, UnitId, piece_world_position, player_bit};
 use crate::vision::{self, Seen, Sensor, Vision};
 use crate::world::{CELL, MoveSpec, Occupant, Region, World};
 
@@ -247,6 +247,17 @@ const SQUEEZE_TICKS: u64 = 90;
 /// on the nearest free cell within so many rings of cells (`Sim::step_out_of_building`).
 const BUILDING_CHECK_TICKS: u64 = 8;
 const BUILDING_ESCAPE_RINGS: i32 = 12;
+/// A construction aircraft at work faces what it builds and sways round it along an arc, out to
+/// one side and back, as TA's do (`Sim::drift_round`): this far round it (65536 angle units a
+/// turn: 45 degrees), there and back in no less than the first number of ticks and no more than
+/// the second, slow enough that it turns to keep facing what it builds.
+const AIR_BUILDER_SWEEP: i64 = 8192;
+const AIR_BUILDER_SWEEP_TICKS: (i64, i64) = (240, 1200);
+/// Starting further out than it keeps within reach of it all the way round, it comes in over
+/// this many ticks.
+const AIR_BUILDER_SETTLE_TICKS: u64 = 60;
+/// It sways once it faces what it builds to within this many angle units (2.8 degrees).
+const AIR_BUILDER_FACING: i32 = 512;
 /// Within twice its turning circle's radius at its speed of its next waypoint (`LOOK_RADII`; at
 /// least `LOOK_MIN` px, at most `LOOK_MAX`), a unit on its way looks up to this many waypoints
 /// past it for one to steer for (`Sim::carrot`).
@@ -1091,6 +1102,23 @@ impl Sim {
             self.on_completed(id);
         }
         Some(id)
+    }
+
+    /// Where a unit of `type_id` put at `pos` stands, as [`Sim::spawn_unit`] puts it: a building
+    /// on its footprint's cells, on the highest ground under them, or at the surface when it
+    /// floats or is built in the water (a shipyard); others on the ground, or on the water when
+    /// they float. What a placement's ghost shows.
+    pub fn resting_pos(&self, type_id: usize, pos: FxVec3) -> FxVec3 {
+        let t = self.types.get(type_id);
+        let mut pos = pos;
+        pos.y = self.ground_level(t, pos);
+        if t.locomotion == Locomotion::Static {
+            let anchor = World::pos_to_anchor(pos, t.footprint);
+            let mut p = self.world.anchor_to_pos(anchor, t.footprint);
+            p.y = self.ground_level(t, p).max(p.y);
+            return p;
+        }
+        pos
     }
 
     fn ground_level(&self, t: &UnitType, pos: FxVec3) -> Fx {
@@ -4257,6 +4285,12 @@ impl Sim {
             self.move_to_work(id, t, target_pos, footprint);
             return;
         }
+        // TA's construction aircraft face what they build and sway round it, rather than hang
+        // still over it.
+        if t.locomotion == Locomotion::Air && !t.is_factory {
+            self.drift_round(id, t, job.target, target_pos, footprint);
+        }
+        let Some(u) = self.unit(id) else { return };
         let has_script = u.cob.as_ref().is_some_and(|c| c.has_function("StartBuilding"));
         if !job.started {
             let to = target_pos - u.pos;
@@ -4278,9 +4312,66 @@ impl Sim {
         }
     }
 
+    /// A construction aircraft at work, a tick of it. It turns to face what it builds (`target`,
+    /// its footprint `footprint` about `center`) and, once it has come to a stop facing it,
+    /// sways round it sideways along an arc, as a hovering aircraft can: [`AIR_BUILDER_SWEEP`]
+    /// round to one side and back again, easing off at each end, slowly enough that it turns to
+    /// keep facing it all the way (its fastest turn round it is three quarters of its turn rate).
+    /// It sways at a distance that keeps it within reach of the footprint all the way round
+    /// (straight out from a side is the farthest it gets from it), easing in to that over
+    /// [`AIR_BUILDER_SETTLE_TICKS`] when it came to a stop further out; a step that would still
+    /// take it out of reach is not taken.
+    fn drift_round(&mut self, id: UnitId, t: &UnitType, target: UnitId, center: FxVec3, footprint: (u32, u32)) {
+        let tick = self.tick;
+        let Some(u) = self.unit(id) else { return };
+        let from = (u.pos - center).xz();
+        let dist = from.length_xz();
+        let facing_now = if dist < Fx::ONE { u.heading } else { heading_of(-from) };
+        let sway = u.drift.filter(|d| d.target == target && d.last + 1 == tick).or_else(|| {
+            // (Braking from its flight in, or turning to face it: it sways once it has stopped,
+            // facing it.)
+            let faces = wrap_angle(facing_now - u.heading).abs() <= AIR_BUILDER_FACING;
+            (u.speed.is_zero() && faces).then(|| Drift {
+                target,
+                since: tick,
+                last: tick,
+                angle: if dist < Fx::ONE { wrap_angle(u.heading + 32768) } else { heading_of(from) },
+                distance: dist,
+                side: if (id.slot as u64 + tick).is_multiple_of(2) { 1 } else { -1 },
+            })
+        });
+        let mut to = u.pos;
+        if let Some(d) = sway {
+            let half = Fx::from_int(footprint.0.min(footprint.1) as i64 * CELL) / 2;
+            let reach = t.build_distance + t.radius;
+            let most = half + reach * 3 / 4;
+            let tau = tick - d.since;
+            // (Round it and back: the sweep's fastest turn round it is pi * sweep / period.)
+            let period = (4 * 31416 * AIR_BUILDER_SWEEP / (3 * 10000 * t.turn_rate.max(1) as i64))
+                .clamp(AIR_BUILDER_SWEEP_TICKS.0, AIR_BUILDER_SWEEP_TICKS.1) as u64;
+            let phase = ((tau % period) * 65536 / period) as i32;
+            let round = ((Fx::ONE - crate::fixed::cos(phase)) * AIR_BUILDER_SWEEP / 2).to_int() as i32;
+            let settled = d.distance.min(most);
+            let settle = (tau.min(AIR_BUILDER_SETTLE_TICKS) * 32768 / AIR_BUILDER_SETTLE_TICKS) as i32;
+            let out = settled + (d.distance - settled) * (Fx::ONE + crate::fixed::cos(settle)) / 2;
+            let p = center + heading_vector(wrap_angle(d.angle + d.side as i32 * round)).scale(out);
+            if Self::distance_to_footprint(p, center, footprint) <= reach {
+                to = FxVec3::new(p.x, u.pos.y, p.z);
+            }
+        }
+        let facing = if (center - to).xz().length_xz() < Fx::ONE { u.heading } else { heading_of((center - to).xz()) };
+        if let Some(u) = self.unit_mut(id) {
+            u.drift = sway.map(|d| Drift { last: tick, ..d });
+            u.pos = to;
+            let diff = wrap_angle(facing - u.heading);
+            u.heading = wrap_angle(u.heading + diff.clamp(-t.turn_rate, t.turn_rate));
+        }
+    }
+
     fn finish_build_job(&mut self, id: UnitId) {
         let is_factory = self.unit(id).is_some_and(|u| self.unit_type(u).is_factory);
         let Some(u) = self.unit_mut(id) else { return };
+        u.drift = None;
         // A factory's stance is its activation readiness, shared by successive products.
         if !is_factory {
             u.in_build_stance = false;
@@ -4589,8 +4680,18 @@ impl Sim {
         let t = types.get(f.type_id);
         let pad = self.call_script(factory, "QueryBuildInfo", &[0]).and_then(|p| p.first().copied()).unwrap_or(-1);
         let Some(f) = self.unit(factory) else { return };
-        if let Some(p) = self.cob_piece_position(f, t, pad) {
+        if let Some(mut p) = self.cob_piece_position(f, t, pad) {
             let heading = f.heading;
+            // A ship is built at the surface, where it floats once done: a shipyard's pad is under
+            // the water (the Core's yard stands 22 px deep). A hovercraft on a pad under the water
+            // (a floating hover plant's) is on the water too.
+            if let Some(ut) = self.unit(id).map(|u| types.get(u.type_id)) {
+                match ut.locomotion {
+                    Locomotion::Naval => p.y = self.ground_level(ut, p),
+                    Locomotion::Hover => p.y = p.y.max(self.ground_level(ut, p)),
+                    _ => {}
+                }
+            }
             if let Some(u) = self.unit_mut(id) {
                 u.pos = p;
                 u.heading = heading;
@@ -5473,6 +5574,10 @@ impl Sim {
             mix(u.pass_runout as i64);
             mix(u.fan as i64);
             mix(u.orbit.map_or(-1, |o| o.x.0 ^ o.z.0.rotate_left(17)));
+            mix(u.drift.map_or(-1, |d| {
+                (d.target.slot as i64) ^ (d.since as i64).rotate_left(9) ^ (d.last as i64).rotate_left(23) ^ (d.angle as i64).rotate_left(37)
+                    ^ d.distance.0.rotate_left(45) ^ (d.side as i64).rotate_left(57)
+            }));
             mix(u.pass_ticks as i64);
             mix(u.idle_ticks as i64);
             mix(u.move_rate as i64);

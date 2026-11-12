@@ -109,6 +109,22 @@ pub enum Order {
     Stop,
 }
 
+/// A construction aircraft's sway round what it builds, facing it (`Sim::drift_round`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Drift {
+    /// What it sways round.
+    pub target: UnitId,
+    /// The tick the sway began.
+    pub since: u64,
+    /// The last tick it swayed: a sway not kept up begins again where the aircraft is.
+    pub last: u64,
+    /// Where round what it builds the sway began (a heading from it) and how far out.
+    pub angle: i32,
+    pub distance: Fx,
+    /// The way it sways first: 1 anticlockwise seen from above, -1 clockwise.
+    pub side: i8,
+}
+
 /// Progress of a builder's current job.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BuildJob {
@@ -192,6 +208,8 @@ pub struct Unit {
     /// Where an idle plane that cannot set down here (over the sea) circles round, as TA's do:
     /// where it came to rest in the air.
     pub orbit: Option<FxVec3>,
+    /// A construction aircraft at work: its sway round what it builds (`Sim::drift_round`).
+    pub drift: Option<Drift>,
     /// Capture progress 0..=1 accumulated by enemy capturers, and the work behind it (out of
     /// the cost a capture takes, see `Sim::update_capture_order`).
     pub capture_progress: Fx,
@@ -361,6 +379,7 @@ impl Unit {
             pass_runout: false,
             fan: 0,
             orbit: None,
+            drift: None,
             capture_progress: Fx::ZERO,
             capture_work: 0,
             cloak_on: false,

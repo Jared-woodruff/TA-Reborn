@@ -429,7 +429,15 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   its route, or has stopped inside it (given another order there: to guard the factory, say),
   and the pad is clear: their own side's units standing still on it are sent off it
   (`Sim::step_aside`) to carry on from there, others are waited for. Taking the unit in
-  production off the queue takes its frame apart, its metal back.
+  production off the queue takes its frame apart, its metal back. The unit in production rides
+  the factory's pad (`QueryBuildInfo`'s piece, `Sim::follow_build_pad`), but a ship is built at
+  the surface, where it floats once done (a shipyard's pad is under the water, the Core's yard
+  22 px deep), and a hovercraft on a pad under the water on it too. Construction aircraft at work
+  face what they build and sway round it, as TA's do (`Sim::drift_round`, `Unit::drift`): once
+  stopped and turned to it, 45 degrees round it sideways and back, smoothly (a cosine), no faster
+  round it than three quarters of their turn rate, so they keep facing it; at a distance that
+  keeps them within reach all the way round, eased in to over two seconds when they stopped
+  further out. The sway is set from the tick it began, so it keeps no speed of its own.
 * **Construction counts whole work**: a type's `build_work` is its `BuildTime` in
   worker-time ticks (× 30, raw 16.16) and a builder does its `work_rate` (`WorkerTime`, raw
   16.16) a tick, so any build takes exactly `BuildTime / WorkerTime` seconds (up to 2^40 and
@@ -701,8 +709,10 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   metal and urban worlds, `TerrainGpu::set_built`), pre-sharpened on steep ground, and taken
   at the vertices of a cubic B-spline through those points; vertices whose neighbours all lie
   on one side of the sea stay there. Lone spikes become low mounds, crests and notches round
-  off; the heightmap texture (half floats) carries these drawn heights to every shader, the
-  waterline's distances follow them, and `terrain::drawn_height` gives them to what stands on
+  off; the heightmap texture (half floats, each rounded down: a half holds a height to 0.12 at
+  worst, and rounded to the nearest the ground levelled under a building came up through its
+  runway, `terrain::halves`) carries these drawn heights to every shader, the waterline's
+  distances follow them, and `terrain::drawn_height` gives them to what stands on
   the ground (`ta_game::scene::drawn_ground`); the simulation keeps TA's.
   The map editor changes it in place: `TerrainGpu::update_heights` / `update_tiles` upload
   the changed region of every mip level (from CPU copies kept for this; the drawn heights
@@ -714,7 +724,10 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   or a dune its flat base hung over the drawn ground downhill (TA's camera never showed it; a
   3D camera low over the ground does). When a building on land is put down (a nanoframe yet),
   `ta_game::scene` hands the renderer its pad (footprint, base height, tick:
-  `Renderer::add_ground_pads`, once a frame): the footprint's vertices are drawn at its base,
+  `Renderer::add_ground_pads`, once a frame): the footprint's vertices are drawn at its base
+  (and the building's level faces at and just under its base, an air plant's runway, are lifted
+  0.15 over it, `model::lift_ground_pads`, so that the depth buffer tells them from the ground
+  however far out the camera is),
   and what that raised (or cut) at each edge vertex is carried out from it and eased away
   over an apron of 2 to 6 cells, wider the more there is to take up (a bank no steeper than
   about 25° more than the ground under it, falling steadily and easing out at its foot), added
@@ -2584,7 +2597,9 @@ build menu by `Purpose` on tabs (`Hud::build_tab`).
   the queue, the rest kept; without, the new order replaces the queue anyway). A row dragged out
   with Shift keeps clear of them. A right-click ends the placing; with Shift it also gives the
   right-click's order, queued (a Commander told to build a plant, then sent on). While placing,
-  every constructor's queued buildings show as faint ghosts. Buildings stand on the highest
+  every constructor's queued buildings show as faint ghosts; the ghosts, and the one being
+  placed, are drawn where the building will stand (`Sim::resting_pos`, as `Sim::spawn_unit`
+  puts it: a shipyard at its waterline, not on the sea floor). Buildings stand on the highest
   ground under their footprint (`World::footprint_top`): TA drew them over a flat picture,
   so on the 3D ground a bump would poke through a pad; the drawn ground is levelled up to
   them once they are put down (see Terrain, `terrain_pads.rs`).
