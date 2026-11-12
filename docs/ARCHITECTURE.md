@@ -2406,9 +2406,12 @@ build menu by `Purpose` on tabs (`Hud::build_tab`).
 * **Classic interface** (`hud_classic.rs`, its data in `hud_classic_art.rs`; setting
   `gameplay.classic_interface`, hidden `--classic-ui` for captures): TA's own panels in
   place of ours, built from its interface data and scaled from its 640×480 layout to the
-  window height. The side panel (PANELSIDE of the side's `intgaf`) holds the minimap and
+  window height (from the taller screen a mod's side pages reach, `Art::layout_height`:
+  TA: Escalation's and Total Mayhem's 768, where their twelve build places, page arrows and
+  orders fit). The side panel (PANELSIDE of the side's `intgaf`) holds the minimap and
   the selection's GUI page: the builder's build menu (`guis/<unit><page>.gui`, pages and
-  places rebuilt with download entries by `Art::menu`), the orders page
+  places rebuilt with download entries by `Art::menu`, as many places a page as its own
+  buttons lay out, `hud_classic_art::Grid`), the orders page
   (`guis/<side>gen.gui`) or, with nothing selected, the main page (score, ALLIES, SHARE,
   OPTIONS). The resource and unit bars put their readouts where `gamedata/sidedata.tdf`
   says, in TA's fonts (`ta_formats::fnt`). Buttons call the same `Game` methods as the

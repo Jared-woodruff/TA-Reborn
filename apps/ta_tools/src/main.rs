@@ -91,6 +91,9 @@ enum Cmd {
         /// Print one unit's parsed definition and build menu.
         #[arg(long)]
         unit: Option<String>,
+        /// Print every builder's build menu, one builder a line.
+        #[arg(long)]
+        menus: bool,
     },
     /// Write an original-art-free unit/texture reference for skin creators, including mods.
     SkinCatalogue { out: PathBuf },
@@ -516,7 +519,7 @@ fn main() -> Result<()> {
             }
         }
         Cmd::Cob { path } => inspect::dump_script(&open_vfs()?.1, &path)?,
-        Cmd::Data { unit } => inspect::check_data(&open_vfs()?.1, unit.as_deref())?,
+        Cmd::Data { unit, menus } => inspect::check_data(&open_vfs()?.1, unit.as_deref(), menus)?,
         Cmd::SkinCatalogue { out } => {
             let reference = ta_data::skin_catalogue(&open_vfs()?.1);
             // Author guides must not silently replace a file the player has edited.

@@ -20,7 +20,7 @@ use ta_vfs::Vfs;
 use winit::keyboard::KeyCode;
 
 use crate::game::{CommandMode, Game};
-use crate::hud_classic_art::{Art, Frames, Gadget, Gui, SideLayout, Sprite, TaFont, slot_of};
+use crate::hud_classic_art::{Art, Frames, Gadget, Gui, SideLayout, Sprite, TaFont};
 use crate::hud_classic_scale::Look;
 use crate::minimap::Minimap;
 
@@ -74,24 +74,26 @@ impl Ta {
     }
 }
 
-/// Points per TA pixel: the window height over TA's 480 (narrower than 4:3, the width).
-fn scale(screen: Rect) -> f32 {
-    (screen.height() / TA_HEIGHT).min(screen.width() / TA_WIDTH).max(0.1)
+/// Points per TA pixel: the window height over the layout's (`height`: TA's 480, or the taller
+/// screen a mod's pages were made for), narrower than 4:3 the width.
+fn scale(screen: Rect, height: f32) -> f32 {
+    (screen.height() / height).min(screen.width() / (height * TA_WIDTH / TA_HEIGHT)).max(0.1)
 }
 
 /// TA's PAUSED title: how far under the top bar it stands, and how tall it is (TA pixels).
 const PAUSED_AT: f32 = 24.0;
 const PAUSED_HEIGHT: f32 = 29.0;
 
-/// Where TA's PAUSED title ends, in points from the screen's top: what else says the game is
-/// paused goes under it.
-pub fn paused_title_bottom(screen: Rect) -> f32 {
-    (TOP_H + PAUSED_AT + PAUSED_HEIGHT) * scale(screen)
+/// Where TA's PAUSED title ends, in points from the screen's top, the layout `height` TA pixels
+/// tall: what else says the game is paused goes under it.
+fn paused_title_bottom(screen: Rect, height: f32) -> f32 {
+    (TOP_H + PAUSED_AT + PAUSED_HEIGHT) * scale(screen, height)
 }
 
-/// The part of the screen the classic panels leave to the battlefield.
-pub fn view_rect(screen: Rect) -> Rect {
-    let s = scale(screen);
+/// The part of the screen the classic panels leave to the battlefield, the layout `height` TA
+/// pixels tall.
+fn view_rect(screen: Rect, height: f32) -> Rect {
+    let s = scale(screen, height);
     Rect::from_min_max(screen.min + vec2(SIDE_W * s, TOP_H * s), screen.max - vec2(0.0, BOTTOM_H * s))
 }
 
@@ -178,6 +180,9 @@ struct Style {
     font_button: Option<Arc<TaFont>>,
     /// The commander's first build page, the layout of pages that have no GUI.
     template: String,
+    /// How tall a screen the side panel is laid out for (TA pixels): TA's 480, or as tall as
+    /// the side's pages reach (TA: Escalation's and Total Mayhem's, 768).
+    height: f32,
 }
 
 /// What a frame's drawing needs besides the HUD's own state.
@@ -270,6 +275,8 @@ pub struct ClassicHud {
     pub anchors: crate::hud::anchors::Anchors,
     /// How TA's art and lettering are enlarged (the setting `gameplay.classic_pixels`).
     pub look: Look,
+    /// The layout's height last drawn ([`Style::height`]; 0 before the first frame: TA's).
+    height: f32,
 }
 
 /// The selection's build menu: all of one type that builds something.
@@ -432,6 +439,8 @@ impl ClassicHud {
         let font = layout.as_ref().and_then(|l| self.art.font(ctx, vfs, &l.font));
         let font_gui = layout.as_ref().and_then(|l| self.art.font(ctx, vfs, &l.font_gui)).or_else(|| font.clone());
         let font_button = self.art.font(ctx, vfs, "hatt12").or_else(|| font_gui.clone());
+        let template = side.map_or("armcom1".to_string(), |s| format!("{}1", s.commander.to_ascii_lowercase()));
+        let height = self.art.layout_height(vfs, &prefix, &template);
         Style {
             prefixes: sides.iter().map(|s| s.name_prefix.to_ascii_uppercase()).filter(|p| !p.is_empty()).collect(),
             intgaf,
@@ -441,7 +450,8 @@ impl ClassicHud {
             font,
             font_gui,
             font_button,
-            template: side.map_or("armcom1".to_string(), |s| format!("{}1", s.commander.to_ascii_lowercase())),
+            template,
+            height,
             prefix,
         }
     }
@@ -469,14 +479,30 @@ impl ClassicHud {
         }
     }
 
+    /// The layout's height (TA pixels): TA's 480 until a frame has been drawn.
+    fn layout_height(&self) -> f32 {
+        self.height.max(TA_HEIGHT)
+    }
+
+    /// The part of the screen the panels leave to the battlefield.
+    pub fn view_rect(&self, screen: Rect) -> Rect {
+        view_rect(screen, self.layout_height())
+    }
+
+    /// Where TA's PAUSED title ends, in points from the screen's top.
+    pub fn paused_title_bottom(&self, screen: Rect) -> f32 {
+        paused_title_bottom(screen, self.layout_height())
+    }
+
     /// Draws the three panels, the pause title and the popups of the main page.
     pub fn draw(&mut self, root: &mut egui::Ui, vfs: &Vfs, game: &mut Game, camera: &mut Camera, minimap: &mut Minimap) {
         self.claiming.clear();
         self.anchors.clear(true);
         let ctx = root.ctx().clone();
         let screen = ctx.content_rect();
-        let s = scale(screen);
         let st = self.style(&ctx, vfs, game);
+        self.height = st.height;
+        let s = scale(screen, st.height);
         let (ppp, look) = (ctx.pixels_per_point(), self.look);
         let env = Env {
             ctx: ctx.clone(),
@@ -499,10 +525,10 @@ impl ClassicHud {
         panel(egui::Panel::top("classic_top"), TOP_H * s).show(root, |ui| self.top_bar(ui, &env, game));
         panel(egui::Panel::bottom("classic_bottom"), BOTTOM_H * s).show(root, |ui| self.bottom_bar(ui, &env, game));
         if game.paused {
-            self.paused(&env, view_rect(screen));
+            self.paused(&env, self.view_rect(screen));
         }
         if self.allies && !game.show_players {
-            crate::hud::players_panel(&ctx, game, [view_rect(screen).center().x - screen.center().x, TOP_H * s + 36.0], &[]);
+            crate::hud::players_panel(&ctx, game, [self.view_rect(screen).center().x - screen.center().x, TOP_H * s + 36.0], &[]);
         }
         if self.share {
             self.share_menu(&env, game);
@@ -586,7 +612,7 @@ impl ClassicHud {
                 let pages = self.art.menu(env.vfs, &game.sim.types, b, &env.st.template);
                 let p = self.build_page.get(&b).copied().unwrap_or(0).min(pages.len().saturating_sub(1));
                 self.anchors.pages(pages.iter().enumerate().flat_map(|(k, pg)| pg.slots.iter().flatten().map(move |&o| (o, k))), p);
-                let page = pages.get(p).map(|pg| (pg.gui.clone(), pg.slots));
+                let page = pages.get(p).map(|pg| (pg.gui.clone(), pg.slots.clone()));
                 match page {
                     Some((gui, slots)) => (gui, Some(MenuAt { builder: b, page: p, pages: pages.len() }), Some(slots)),
                     None => (format!("{}gen", env.st.prefix.to_ascii_lowercase()), None, None),
@@ -595,11 +621,11 @@ impl ClassicHud {
             None => (format!("{}gen", env.st.prefix.to_ascii_lowercase()), None, None),
         };
         let Some(gui) = self.art.gui(env.vfs, &gui_name).or_else(|| self.side_gui(env, "gen")) else { return };
-        self.page(ui, env, game, &gui, &gui_name, menu_at.zip(page));
+        self.page(ui, env, game, &gui, &gui_name, menu_at.zip(page.as_deref()));
     }
 
     /// A GUI page: its panel, its gadgets, and extra buttons in the places left free.
-    fn page(&mut self, ui: &egui::Ui, env: &Env, game: &mut Game, gui: &Gui, gui_name: &str, menu: Option<(MenuAt, [Option<usize>; 6])>) {
+    fn page(&mut self, ui: &egui::Ui, env: &Env, game: &mut Game, gui: &Gui, gui_name: &str, menu: Option<(MenuAt, &[Option<usize>])>) {
         let painter = ui.painter().clone();
         if let Some(f) = self.art(env, "commongui", &gui.panel) {
             blit(&painter, &f[0], env.ta, gui.origin, Color32::WHITE);
@@ -615,7 +641,7 @@ impl ClassicHud {
             let id = ui.id().with(("gadget", i));
             if g.attribs & 32 != 0 {
                 if let Some((_, slots)) = menu {
-                    self.build_button(ui, env, game, rect, id, slots[slot_of(g.rect)], gui_name, &queue);
+                    self.build_button(ui, env, game, rect, id, slots.get(gui.grid.place_of(g.rect)).copied().flatten(), gui_name, &queue);
                 }
                 continue;
             }

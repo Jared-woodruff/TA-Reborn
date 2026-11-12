@@ -670,6 +670,16 @@ Escalation also replaces `fx.gaf`'s Explode2-Explode4 and Nuke1 with shield bubb
   menu entries (`download/*.tdf`) count the orders menu as menu 1: `MENU=2` is the first
   build page (every `MENU-1` place is an empty `IGPATCH` of that page or on a new page);
   their buttons are `anims/<unit>_gadget.gaf`.
+* The mods made for the patched engines of later years lay their side pages out on a
+  768-pixel screen (Total Mayhem's engine refuses a shorter one: `DisplayModeMinHeight768`):
+  TA: Escalation's and Total Mayhem's headers are 128×640 at (0,128), their build pages twelve
+  places (two across, six down from y 0), the page arrows at y 388, and on the same page the
+  state buttons (`CLOAK` 409, `FIREORD` 432, `MOVEORD` 455) and the orders (55×31, rows at
+  479 to 607). There are no ORDERS and BUILD tabs on their build pages: their own
+  `commongui.gaf` (which replaces TA's) has no art for them. Their panel art stays TA's size
+  or a little more (`ARMPAN` 128×352, Total Mayhem's 128×472; `PANELSIDE` 128×480): the
+  engines filled the rest of the taller panel. A download entry's `BUTTON` counts that page's
+  places. TA: Enhanced keeps TA's six.
 * `gamedata/sidedata.tdf` `[SIDEn]`: `intgaf` (PANELSIDE 129×480; PANELTOP ~512×32 from
   x 127; PANELBOT from (128,447)), `font` (bars) and `fontgui`, the bar palette ramps
   `metalcolor`/`energycolor`, and boxes on the 640×480 screen for the resource readouts
