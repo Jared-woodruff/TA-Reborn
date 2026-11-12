@@ -52,6 +52,10 @@
   extractors with better ones, reclaim, or help at the factories.
 
 ### Fixed
+- Scouts, construction aircraft and transports with nothing to do over the sea, such as new
+  aircraft sent to a rally point on the water, hung still there on top of each other. They now
+  circle it as fighters and bombers do, each round its own circle, so they keep apart; slow
+  construction aircraft loiter slowly. Gunships still hover.
 - Ships were built under the water in their shipyards (most of all the Core's) and only rose to
   the surface once finished. They are now built at the surface.
 - A shipyard's ghost, while placing it or queued, showed on the sea floor; it now shows where

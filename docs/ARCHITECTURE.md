@@ -560,10 +560,16 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   then the westernmost), clear of the places the others have taken (`Sim::parking_spot`:
   landed, flying to one, or over one past its idle delay; of two over one place, the lower
   keeps it, then the first). Finding none it stays in the air, hovering, and looks again
-  every second. A plane (armed, without `HoverAttack`) idle over the sea, where it cannot set
-  down, does not look: it circles round where it came to rest (`Unit::orbit`, kept a radius
-  inside the map), as TA's do, unless it is over a friendly carrier's deck, which it waits over
-  to set down on. Flying to its place (or a repair deck) it keeps over the highest
+  every second. An aircraft idle over the sea, where it cannot set down, does not look: it
+  circles round where it came to rest (`Unit::orbit`, kept a radius inside the map), as TA's
+  planes do, unless it is over a friendly carrier's deck, which it waits over to set down on;
+  but a gunship (`HoverAttack`) hovers (`Sim::circles_at_sea`). A plane (armed, without
+  `HoverAttack`) circles at three quarters of its top speed, a little wider than it turns at
+  that; a hovering one (a scout, a builder, a transport) loiters round a small circle, of radius
+  128 px and 32 more for each of the next three slots, centred half its radius to a side of
+  where it came to rest (the side its slot's, golden angles apart), so that several sent to one
+  place keep apart, as fast as it turns round it (a construction aircraft, turning slowly,
+  slowly). Flying to its place (or a repair deck) it keeps over the highest
   ground on the straight way there, climbing first where it stands, and planes move as they
   hover when idle (sliding round to face it: a place nearer than their turning circle they
   circled for ever); it comes straight down at the place. `landing_ground_survey` (ignored,
