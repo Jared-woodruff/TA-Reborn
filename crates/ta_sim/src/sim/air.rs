@@ -9,6 +9,14 @@ const IDLE_BEFORE_LANDING: u32 = 60;
 /// and looks again every [`LANDING_SEARCH_EVERY`] ticks.
 const LANDING_SEARCH: i32 = 16;
 const LANDING_SEARCH_EVERY: u32 = 30;
+/// A hovering aircraft idle over the sea (a scout, a builder, a transport) loiters round a circle
+/// of this radius (px), larger by a step for each of the next three slots (see `update_air`), so
+/// that several sent to one place keep apart.
+const LOITER_RADIUS: i64 = 128;
+const LOITER_STEP: i64 = 32;
+/// ...its circle lying to a side of where it came to rest, turned by this angle (the golden
+/// angle, 65536 a turn) from one slot to the next.
+const LOITER_SIDE: i32 = 25033;
 
 impl Sim {
     /// Where it may set down with its footprint about `pos` (see `World::air_landing_height`),
@@ -158,6 +166,13 @@ impl Sim {
     /// Aircraft flight: climb to cruise altitude, fly towards the goal (banking into
     /// turns), land when idle over land and take off again when given something to do.
     /// Attack passes keep full speed through the goal.
+    /// Whether an aircraft of this type with nothing to do over the sea, where it cannot set
+    /// down, circles round where it came to rest (as TA's planes do): any but a gunship
+    /// (`HoverAttack`), which hovers where it is.
+    pub(super) fn circles_at_sea(t: &UnitType) -> bool {
+        t.locomotion == Locomotion::Air && !t.hover_attack
+    }
+
     pub(super) fn update_air(&mut self, id: UnitId, t: &UnitType) {
         // The factory that released it, if still around: where its yard is.
         let yard = self.unit(id).and_then(|u| u.factory).map(|f| self.unit(f).map(|f| (f.pos, self.types.get(f.type_id).footprint)));
@@ -188,9 +203,9 @@ impl Sim {
                 // coming down over it already (the lower first: the one coming down goes on, the
                 // one that has just come is the one to go elsewhere; of two as low, the first).
                 let first = |o: &Unit| (o.pos.y, o.id.slot) < (pos.y, id.slot);
-                // (Over the sea a plane circles where it is, as TA's do, rather than fly off to
-                // the nearest land: see `update_air`'s circling.)
-                let circles_here = t.is_plane() && ground_landing.is_none() && self.world.depth_at(pos.x, pos.z) > Fx::ZERO;
+                // (Over the sea an aircraft circles where it is, as TA's planes do, rather than
+                // fly off to the nearest land: see `update_air`'s circling.)
+                let circles_here = Self::circles_at_sea(t) && ground_landing.is_none() && self.world.depth_at(pos.x, pos.z) > Fx::ZERO;
                 if ground_landing.is_some() && Self::spot_taken(&self.parked_near(id, pos, t.radius + self.types.target_reach + Fx::from_int(CELL), first), t, pos) {
                     ground_landing = None;
                 }
@@ -205,9 +220,10 @@ impl Sim {
         }
         let Some(current) = self.unit(id) else { return };
         let pad = current.air_pad.and_then(|pad| self.air_pad_point(current.owner, pad));
-        // (A plane idle over a friendly carrier's deck waits there to set down on it, as one over
-        // land waits for its place: it does not circle away from it.)
-        let over_airbase = t.is_plane() && current.air_pad.is_none() && !external && self.types.airbase_reach > Fx::ZERO && {
+        // (An aircraft idle over a friendly carrier's deck waits there to set down on it, as one
+        // over land waits for its place: it does not circle away from it.)
+        let circles = Self::circles_at_sea(t);
+        let over_airbase = circles && current.air_pad.is_none() && !external && self.types.airbase_reach > Fx::ZERO && {
             let mut near = Vec::new();
             self.grid.query(current.pos, self.types.airbase_reach, &mut near);
             near.into_iter().filter_map(|slot| self.units.get(slot as usize)?.as_ref()).any(|p| {
@@ -313,17 +329,32 @@ impl Sim {
                     }
                 }
             }
-            // A plane with nothing to do over the sea, where it cannot set down, circles round
-            // where it came to rest, as TA's do, rather than hang there. (Over land it waits for
-            // a place to land, as below.)
-            _ if t.is_plane() && !u.landed && !busy && !can_land && !over_airbase && airborne && world.depth_at(u.pos.x, u.pos.z) > Fx::ZERO => {
-                let speed = t.max_speed * 3 / 4;
-                // (A little wider than it can turn at that speed: radius = speed / turn rate.)
-                let radius = (speed * 10430 / t.turn_rate.max(1) as i64 * 5 / 4).max(Fx::from_int(64));
+            // An aircraft with nothing to do over the sea, where it cannot set down, circles round
+            // where it came to rest, as TA's planes do, rather than hang there (several sent to
+            // one place hung there on top of each other); a gunship hovers. (Over land it waits
+            // for a place to land, as below.)
+            _ if circles && !u.landed && !busy && !can_land && !over_airbase && airborne && world.depth_at(u.pos.x, u.pos.z) > Fx::ZERO => {
+                let (speed, radius) = if t.is_plane() {
+                    let speed = t.max_speed * 3 / 4;
+                    // (A little wider than it can turn at that speed: radius = speed / turn rate.)
+                    (speed, (speed * 10430 / t.turn_rate.max(1) as i64 * 5 / 4).max(Fx::from_int(64)))
+                } else {
+                    // A hovering one (a scout, a builder, a transport) loiters round a small
+                    // circle, its own size of it, as fast as it turns round that (at most three
+                    // quarters of its top speed): a slow-turning builder slowly, not round a circle
+                    // hundreds of px across at speed.
+                    let radius = Fx::from_int(LOITER_RADIUS + (id.slot % 4) as i64 * LOITER_STEP);
+                    let fastest = (t.max_speed * 3 / 4).max(Fx::from_ratio(1, 4));
+                    (((radius * t.turn_rate.max(1) as i64) / 10430 * 4 / 5).clamp(Fx::from_ratio(1, 4), fastest), radius)
+                };
                 // (Its circle on the map: the map's edge would hold it there.)
                 let (w, h) = world.size_px();
                 let inside = |v: Fx, size: Fx| if size > radius * 2 { v.clamp(radius, size - radius) } else { size / 2 };
-                let center = *u.orbit.get_or_insert(FxVec3::new(inside(u.pos.x, w), u.pos.y, inside(u.pos.z, h)));
+                // (A hovering one's circle lies half its radius to a side of where it came to rest,
+                // the side its slot's, golden angles apart: two that came to rest together, of a
+                // size, do not share one.)
+                let rest = if t.is_plane() { u.pos } else { u.pos + heading_vector(wrap_angle(id.slot as i32 * LOITER_SIDE)).scale(radius / 2) };
+                let center = *u.orbit.get_or_insert(FxVec3::new(inside(rest.x, w), u.pos.y, inside(rest.z, h)));
                 let to = (center - u.pos).xz();
                 let dist = to.length_xz();
                 let desired = if dist < Fx::ONE {

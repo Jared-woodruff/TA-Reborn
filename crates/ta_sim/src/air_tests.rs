@@ -20,6 +20,8 @@ fn airfield_on_map(map: &TntMap) -> Sim {
         unit("SEAPLANE", "CanFly=1; CanMove=1; MaxVelocity=5; Acceleration=1; BrakeRate=1; TurnRate=2048; CruiseAlt=80; FootprintX=2; FootprintZ=2; MaxWaterDepth=0; maxwaterdepth=255; amphibious=1;"),
         // A plane turning slowly: at its slowest it turns round a circle 35 px across.
         unit("GLIDER", "CanFly=1; CanMove=1; MaxVelocity=5; Acceleration=1; BrakeRate=1; TurnRate=150; CruiseAlt=80; Weapon1=GUN; FootprintX=1; FootprintZ=1;"),
+        // A construction aircraft turning as slowly as TA's (ARMCA's 90).
+        unit("AIRCON", "CanFly=1; CanMove=1; Builder=1; WorkerTime=60; BuildDistance=40; MaxVelocity=6.9; Acceleration=0.06; BrakeRate=1.5; TurnRate=90; CruiseAlt=70; FootprintX=1; FootprintZ=1;"),
         weapon_file("GUN", "range=300; reloadtime=0.2; weaponvelocity=300; turret=1;"),
         weapon_file("FIXED", "range=300; reloadtime=0.2; weaponvelocity=300; tolerance=1000;"),
     ]);
@@ -539,6 +541,59 @@ fn planes_with_nowhere_to_set_down_circle_where_they_came_to_rest() {
     sim.give_orders(fighter, [Order::Move(there)]);
     for _ in 0..300 { sim.step(&[]); }
     assert!(sim.unit(fighter).unwrap().pos.within_xz(there, Fx::from_int(200)), "and goes where it is sent");
+}
+
+/// Hovering aircraft other than gunships (scouts, builders, transports) with nothing to do over
+/// the sea circle where they came to rest, as planes do, rather than hang there on top of each
+/// other: several sent to one place keep apart, each round its own size of circle, and a
+/// slow-turning builder loiters slowly. A gunship hovers where it is.
+#[test]
+fn hovering_aircraft_with_nowhere_to_set_down_circle_apart() {
+    let mut map = flat_map();
+    map.sea_level = 150;
+    let mut sim = airfield_on_map(&map);
+    let spot = FxVec3::from_ints(700, 0, 700);
+    let fleet: Vec<UnitId> = ["TRANSPORT", "TRANSPORT", "AIRCON", "AIRCON", "GUNSHIP"].iter().map(|name| {
+        let id = put(&mut sim, name, 0, 300);
+        let u = sim.unit_mut(id).unwrap();
+        u.landed = false;
+        u.pos.y = Fx::from_int(150 + 80);
+        id
+    }).collect();
+    for &id in &fleet {
+        sim.give_orders(id, [Order::Move(spot)]);
+    }
+    for _ in 0..900 { sim.step(&[]); }
+    let (circling, gunship) = (&fleet[..4], fleet[4]);
+    let mut moved = [Fx::ZERO; 5];
+    let mut last: Vec<FxVec3> = fleet.iter().map(|&id| sim.unit(id).unwrap().pos).collect();
+    // (Ticks each pair spends within 24 px of each other: passing, a moment; stacked, all.)
+    let mut together = [0u32; 6];
+    for _ in 0..600 {
+        sim.step(&[]);
+        for (k, &id) in fleet.iter().enumerate() {
+            let u = sim.unit(id).unwrap();
+            assert!(u.orders.is_empty() && !u.landed, "idle and in the air");
+            assert!((u.pos - spot).length_xz() < Fx::from_int(450), "aircraft {k} round the spot it was sent to: {:?}", u.pos);
+            moved[k] += (u.pos - last[k]).length_xz();
+            last[k] = u.pos;
+        }
+        let mut pair = 0;
+        for (a, &p) in circling.iter().enumerate() {
+            for &q in &circling[a + 1..] {
+                together[pair] += u32::from((sim.unit(p).unwrap().pos - sim.unit(q).unwrap().pos).length_xz() < Fx::from_int(24));
+                pair += 1;
+            }
+        }
+    }
+    for (k, &id) in circling.iter().enumerate() {
+        assert!(moved[k] > Fx::from_int(300), "aircraft {k} keeps flying: {:?} in twenty seconds", moved[k]);
+        assert!(sim.unit(id).unwrap().orbit.is_some(), "aircraft {k} circling");
+    }
+    assert!(together.iter().all(|&t| t < 60), "none stays on top of another: ticks together {together:?}");
+    // (The slow builders loiter: slower than the transports.)
+    assert!(moved[2] < moved[0] && moved[3] < moved[1], "{moved:?}");
+    assert!(moved[4] < Fx::from_int(20) && sim.unit(gunship).unwrap().orbit.is_none(), "the gunship hovers: {:?}", moved[4]);
 }
 
 /// Planes sent at one target together come in on it across a front, each from its place in the

@@ -77,7 +77,7 @@ pub use transport::{Client, Host, HostEvent};
 /// next ones, out of buildings; 88: ships built at the surface, construction aircraft drift.)
 /// [`Msg::Hello`] and [`Refusal::Version`] keep their layout, so builds of other protocols are
 /// still told why they cannot meet.
-pub const PROTOCOL: u32 = 88;
+pub const PROTOCOL: u32 = 89;
 pub const DEFAULT_PORT: u16 = 7890;
 /// Ticks between state hash reports (which double as progress reports).
 pub const HASH_INTERVAL: u64 = 15;
