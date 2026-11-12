@@ -74,10 +74,12 @@ pub use transport::{Client, Host, HostEvent};
 /// 85: bad targets taken on last, `Command::SetShootAll` (`+shootall`), abandoned construction
 /// un-builds, reclaim by metal, planes circle over the sea and fan out on attack runs; 86: bombers
 /// on patrol or attack-move bomb what they come upon; 87: off a new site clear of the builder's
-/// next ones, out of buildings; 88: ships built at the surface, construction aircraft drift.)
+/// next ones, out of buildings; 88: ships built at the surface, construction aircraft drift;
+/// 89: hovering aircraft circle over the sea too; 90: damaged aircraft on a mission go to a free
+/// repair deck, pads switched off unused, pads mend only the aircraft on their decks.)
 /// [`Msg::Hello`] and [`Refusal::Version`] keep their layout, so builds of other protocols are
 /// still told why they cannot meet.
-pub const PROTOCOL: u32 = 89;
+pub const PROTOCOL: u32 = 90;
 pub const DEFAULT_PORT: u16 = 7890;
 /// Ticks between state hash reports (which double as progress reports).
 pub const HASH_INTERVAL: u64 = 15;

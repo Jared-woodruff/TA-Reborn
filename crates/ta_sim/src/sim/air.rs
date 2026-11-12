@@ -17,6 +17,27 @@ const LOITER_STEP: i64 = 32;
 /// ...its circle lying to a side of where it came to rest, turned by this angle (the golden
 /// angle, 65536 a turn) from one slot to the next.
 const LOITER_SIDE: i32 = 25033;
+/// An aircraft on a mission (a patrol, an attack-move or an attack) worn below this share of
+/// its health (numerator, denominator: under two-thirds) breaks off for a repair pad, as TA's
+/// do: the only figure TA's makers and its guides give for it. See [`Sim::start_repair_trip`].
+const REPAIR_TRIP_HEALTH: (i64, i64) = (2, 3);
+/// How often (ticks; each aircraft on a tick of its own, by its slot) an aircraft on a mission
+/// looks at whether it is due a repair trip, and for a free deck when it is.
+const REPAIR_TRIP_EVERY: u64 = 30;
+/// The furthest past where a plane was sent that it looks for a repair deck to land on (px):
+/// as far as it takes to stop from its top speed, but no more than this (a mod's plane that
+/// hardly brakes looks no further).
+const DECK_OVERSHOOT_MAX: i64 = 256;
+
+/// How far an aircraft of `t` flies on from its top speed before it stops (v² / 2 · brake, px):
+/// a plane sent somewhere slows down only once it is there.
+fn stopping_distance(t: &UnitType) -> Fx {
+    (t.max_speed * t.max_speed / (t.brake * 2)).clamp(Fx::ZERO, Fx::from_int(DECK_OVERSHOOT_MAX))
+}
+
+/// A repair deck: a pad or carrier, and the model piece its script names (None for one with no
+/// script, or naming none: over its model).
+type Deck = (UnitId, Option<usize>);
 
 impl Sim {
     /// Where it may set down with its footprint about `pos` (see `World::air_landing_height`),
@@ -115,43 +136,161 @@ impl Sim {
             .fold(world.sea_level, Fx::max)
     }
 
+    /// Whether `p` is a repair deck for `owner`'s aircraft: an allied pad or carrier
+    /// (`IsAirBase`), finished, not carried, and switched on (TA's are `OnOffable`: switched off,
+    /// one takes no aircraft and mends none).
+    pub(super) fn usable_air_base(&self, owner: u8, p: &Unit) -> bool {
+        let t = self.unit_type(p);
+        t.def.is_airbase && !p.dead && p.is_complete() && p.carried_by.is_none() && self.allied(owner, p.owner) && (p.activated || !t.def.on_offable)
+    }
+
     /// Deck geometry follows the model hierarchy and the platform's current position.
-    fn air_pad_point(&self, owner: u8, (id, piece): (UnitId, Option<usize>)) -> Option<FxVec3> {
-        let pad = self.unit(id).filter(|u| !u.dead && u.is_complete() && u.carried_by.is_none() && self.allied(owner, u.owner))?;
+    fn air_pad_point(&self, owner: u8, (id, piece): Deck) -> Option<FxVec3> {
+        let pad = self.unit(id).filter(|u| self.usable_air_base(owner, u))?;
         let t = self.unit_type(pad);
-        if !t.def.is_airbase { return None; }
         Some(match piece {
             Some(piece) => piece_world_position(pad, t, pad.cob.as_ref(), piece) + FxVec3::new(Fx::ZERO, t.model.pieces.get(piece)?.top, Fx::ZERO),
             None => pad.pos + FxVec3::new(Fx::ZERO, t.model.height, Fx::ZERO),
         })
     }
 
-    /// Query authored pads once when reserving one. Platforms without a script have
-    /// one slot over their model; distinct aircraft cannot reserve the same piece.
-    fn reserve_air_pad(&mut self, id: UnitId) -> Option<(UnitId, Option<usize>)> {
-        if self.types.airbase_reach <= Fx::ZERO { return None; }
-        let u = self.unit(id)?;
-        let (pos, owner) = (u.pos, u.owner);
-        let mut near = Vec::new();
-        self.grid.query(pos, self.types.airbase_reach, &mut near);
-        let mut pads: Vec<_> = near.into_iter().filter_map(|slot| self.units.get(slot as usize)?.as_ref())
-            .filter(|p| p.id != id && !p.dead && p.is_complete() && p.carried_by.is_none() && self.allied(owner, p.owner)
-                && self.unit_type(p).def.is_airbase && p.pos.within_xz(pos, self.unit_type(p).radius + Fx::from_int(24)))
-            .map(|p| ((p.pos - pos).xz().length_sq_raw(), p.id)).collect();
-        pads.sort_unstable();
-        for (_, pad) in pads {
-            let params = self.call_script(pad, "QueryLandingPad", &[0, 0]);
-            let mut pieces: Vec<_> = params.map(|p| p.into_iter().filter_map(|p| self.cob_to_model_piece(pad, p)).map(Some).collect()).unwrap_or_default();
-            if pieces.is_empty() { pieces.push(None); }
-            pieces.dedup();
-            for piece in pieces {
-                let slot = (pad, piece);
-                if self.air_pad_point(owner, slot).is_some() && !self.units.iter().flatten().any(|u| !u.dead && u.id != id && u.air_pad == Some(slot)) {
-                    return Some(slot);
+    /// A platform's decks: the model pieces its script names (`QueryLandingPad`), in its order;
+    /// a platform without a script, or naming none, has one over its model.
+    fn deck_pieces(&mut self, pad: UnitId) -> Vec<Option<usize>> {
+        let params = self.call_script(pad, "QueryLandingPad", &[0, 0]);
+        let mut pieces: Vec<_> = params.map(|p| p.into_iter().filter_map(|p| self.cob_to_model_piece(pad, p)).map(Some).collect()).unwrap_or_default();
+        if pieces.is_empty() { pieces.push(None); }
+        pieces.dedup();
+        pieces
+    }
+
+    /// The first deck of `pads` (in the order given; a platform's in its script's order) free
+    /// for aircraft `id` of `owner`, and the aircraft holding it that gives it up, if one does:
+    /// distinct aircraft never hold one deck, but with `takes` (a damaged aircraft looking) a deck
+    /// held by an idle aircraft that needs no mending counts as free (see [`Sim::take_deck`]).
+    /// One on a repair trip, or being mended, keeps its deck.
+    fn free_deck(&mut self, id: UnitId, owner: u8, pads: &[UnitId], takes: bool) -> Option<(Deck, Option<UnitId>)> {
+        if pads.is_empty() {
+            return None;
+        }
+        // (Who holds which deck, and whether it would give it up. Any order but a repair trip's
+        // releases a deck, so one holding a deck off a trip has nothing else to do.)
+        let holders: Vec<(Deck, UnitId, bool)> = self.units.iter().flatten()
+            .filter(|u| !u.dead && u.id != id)
+            .filter_map(|u| Some((u.air_pad?, u.id, !u.repair_trip && u.health >= self.unit_type(u).max_health)))
+            .collect();
+        for &pad in pads {
+            for piece in self.deck_pieces(pad) {
+                let deck = (pad, piece);
+                if self.air_pad_point(owner, deck).is_none() {
+                    continue;
+                }
+                match holders.iter().find(|h| h.0 == deck) {
+                    None => return Some((deck, None)),
+                    Some(&(_, holder, gives_up)) if takes && gives_up => return Some((deck, Some(holder))),
+                    Some(_) => {}
                 }
             }
         }
         None
+    }
+
+    /// Aircraft `id` takes `deck`. The idle aircraft that held it (`holder`, see
+    /// [`Sim::free_deck`]) gives it up: it takes off if it had landed there, and lands elsewhere
+    /// as an idle aircraft does.
+    fn take_deck(&mut self, id: UnitId, deck: Deck, holder: Option<UnitId>) {
+        if let Some(h) = holder {
+            let took_off = self.unit_mut(h).is_some_and(|o| {
+                o.air_pad = None;
+                if o.orders.is_empty() {
+                    o.path_goal = None;
+                    o.move_request = None;
+                }
+                std::mem::take(&mut o.landed)
+            });
+            if took_off {
+                self.set_active(h, true);
+            }
+        }
+        if let Some(u) = self.unit_mut(id) {
+            u.air_pad = Some(deck);
+        }
+    }
+
+    /// Query authored pads once when reserving one. Platforms without a script have
+    /// one slot over their model; distinct aircraft cannot reserve the same piece.
+    /// The pads within reach: their size and 24 px, and for a plane as far again as it flies on
+    /// past where it was sent until it stops ([`stopping_distance`]: TA's Thunder and Hurricane,
+    /// sent to a pad's middle, come to a stop 70 to 85 px beyond it, out of that reach). A
+    /// damaged aircraft takes a deck from an idle one that needs no mending ([`Sim::free_deck`]).
+    fn reserve_air_pad(&mut self, id: UnitId, t: &UnitType) -> Option<(Deck, Option<UnitId>)> {
+        if self.types.airbase_reach <= Fx::ZERO { return None; }
+        let u = self.unit(id)?;
+        let (pos, owner, damaged) = (u.pos, u.owner, u.health < t.max_health);
+        let further = if t.is_plane() { stopping_distance(t) } else { Fx::ZERO };
+        let mut near = Vec::new();
+        self.grid.query(pos, self.types.airbase_reach + further, &mut near);
+        let mut pads: Vec<_> = near.into_iter().filter_map(|slot| self.units.get(slot as usize)?.as_ref())
+            .filter(|p| p.id != id && self.usable_air_base(owner, p) && p.pos.within_xz(pos, self.unit_type(p).radius + Fx::from_int(24) + further))
+            .map(|p| ((p.pos - pos).xz().length_sq_raw(), p.id)).collect();
+        pads.sort_unstable();
+        let pads: Vec<UnitId> = pads.into_iter().map(|(_, p)| p).collect();
+        self.free_deck(id, owner, &pads, damaged)
+    }
+
+    /// Repair trips: an aircraft on a mission (patrol, attack-move or attack, its order now)
+    /// worn below [`REPAIR_TRIP_HEALTH`] of its health, in the air with no deck, cargo or build
+    /// of its own, breaks off for the nearest free deck (by distance, then the platform's id) of
+    /// an allied repair pad or carrier that is finished and switched on, however far: a deck
+    /// held by an idle aircraft that needs no mending counts as free ([`Sim::free_deck`]). Its
+    /// orders wait (`unit_orders`) while it flies there and lands as an aircraft with nothing to
+    /// do does (`update_air`); mended, it carries on ([`Sim::end_repair_trip`]). Every
+    /// [`REPAIR_TRIP_EVERY`] ticks: none free, it carries on with its mission and looks again.
+    fn start_repair_trip(&mut self, id: UnitId, t: &UnitType) {
+        if self.types.airbase_reach <= Fx::ZERO || !(self.tick + id.slot as u64).is_multiple_of(REPAIR_TRIP_EVERY) {
+            return;
+        }
+        let Some(u) = self.unit(id) else { return };
+        let on_mission = matches!(u.orders.front(), Some(Order::Patrol(_) | Order::Fight(_) | Order::Attack(_)));
+        let worn = u.health * REPAIR_TRIP_HEALTH.1 < t.max_health * REPAIR_TRIP_HEALTH.0;
+        if !on_mission || !worn || u.repair_trip || u.landed || u.air_pad.is_some() || u.carried_by.is_some() || !u.cargo.is_empty() || u.build.is_some() {
+            return;
+        }
+        let (pos, owner) = (u.pos, u.owner);
+        let mut pads: Vec<(i128, UnitId)> = self.units.iter().flatten()
+            .filter(|p| p.id != id && self.usable_air_base(owner, p))
+            .map(|p| ((p.pos - pos).xz().length_sq_raw(), p.id))
+            .collect();
+        pads.sort_unstable();
+        let pads: Vec<UnitId> = pads.into_iter().map(|(_, p)| p).collect();
+        let Some((deck, holder)) = self.free_deck(id, owner, &pads, true) else { return };
+        self.take_deck(id, deck, holder);
+        if let Some(u) = self.unit_mut(id) {
+            u.repair_trip = true;
+            // (Off its attack run and its way: to the deck from where it is.)
+            u.air_pass = false;
+            u.pass_runout = false;
+            u.path.clear();
+            u.path_goal = None;
+            u.move_request = None;
+        }
+    }
+
+    /// A repair trip ends once the aircraft is mended, or its deck is lost (destroyed, taken,
+    /// switched off): it gives the deck up, takes off and carries on with the orders it held.
+    /// Whether it was landed (it takes off).
+    fn end_repair_trip(&mut self, id: UnitId, t: &UnitType) -> bool {
+        let Some(u) = self.unit(id).filter(|u| u.repair_trip) else { return false };
+        let lost = u.air_pad.is_none_or(|deck| self.air_pad_point(u.owner, deck).is_none());
+        if !lost && u.health < t.max_health {
+            return false;
+        }
+        let Some(u) = self.unit_mut(id) else { return false };
+        u.repair_trip = false;
+        u.air_pad = None;
+        u.path_goal = None;
+        u.move_request = None;
+        std::mem::take(&mut u.landed)
     }
 
     /// A parked aircraft rides a moving carrier after the ground-motion phase.
@@ -176,14 +315,19 @@ impl Sim {
     pub(super) fn update_air(&mut self, id: UnitId, t: &UnitType) {
         // The factory that released it, if still around: where its yard is.
         let yard = self.unit(id).and_then(|u| u.factory).map(|f| self.unit(f).map(|f| (f.pos, self.types.get(f.type_id).footprint)));
+        // A repair trip ends (mended, or its deck lost), or one begins.
+        let mut released = self.end_repair_trip(id, t);
+        self.start_repair_trip(id, t);
         let Some(current) = self.unit(id) else { return };
-        let external = !current.orders.is_empty() || current.build.is_some() || !current.cargo.is_empty() || current.weapons.iter().any(|w| w.target.is_some());
+        // (On a repair trip its orders wait, and what its weapons aim at does not keep it off its
+        // deck: it flies there and lands as an aircraft with nothing to do does.)
+        let trip = current.repair_trip;
+        let external = !trip && (!current.orders.is_empty() || current.build.is_some() || !current.cargo.is_empty() || current.weapons.iter().any(|w| w.target.is_some()));
         let old_pad = current.air_pad;
         let lost_pad = old_pad.is_some_and(|pad| self.air_pad_point(current.owner, pad).is_none());
-        let mut released = false;
         if old_pad.is_some() && (external || lost_pad) && let Some(u) = self.unit_mut(id) {
             u.air_pad = None;
-            released = u.landed;
+            released |= u.landed;
             u.landed = false;
             if lost_pad && u.orders.is_empty() { u.path_goal = None; u.move_request = None; }
         }
@@ -196,8 +340,8 @@ impl Sim {
         let Some(current) = self.unit(id) else { return };
         if !external && !current.landed && current.air_pad.is_none() && current.path_goal.is_none() && current.idle_ticks >= IDLE_BEFORE_LANDING {
             let (pos, idle) = (current.pos, current.idle_ticks);
-            if let Some(pad) = self.reserve_air_pad(id) {
-                if let Some(u) = self.unit_mut(id) { u.air_pad = Some(pad); }
+            if let Some((deck, holder)) = self.reserve_air_pad(id, t) {
+                self.take_deck(id, deck, holder);
             } else {
                 // Not on a place another aircraft has taken: landed there, flying there, or
                 // coming down over it already (the lower first: the one coming down goes on, the
@@ -227,15 +371,14 @@ impl Sim {
             let mut near = Vec::new();
             self.grid.query(current.pos, self.types.airbase_reach, &mut near);
             near.into_iter().filter_map(|slot| self.units.get(slot as usize)?.as_ref()).any(|p| {
-                p.id != id && !p.dead && p.is_complete() && self.allied(current.owner, p.owner) && self.unit_type(p).def.is_airbase
-                    && p.pos.within_xz(current.pos, self.unit_type(p).radius + Fx::from_int(24))
+                p.id != id && self.usable_air_base(current.owner, p) && p.pos.within_xz(current.pos, self.unit_type(p).radius + Fx::from_int(24))
             })
         };
         // Flying to a place of its own to land on (or a deck): over the highest ground on its way
         // there, so that neither the flight nor the way down meets a hill (it climbs first,
         // standing).
         let parking = (!external).then_some(current.path_goal).flatten().map(|goal| Self::highest_on_way(&self.world, current.pos, goal));
-        let aim = (!t.is_plane()).then(|| {
+        let aim = (!t.is_plane() && !trip).then(|| {
             let target = match current.orders.front() {
                 Some(Order::Attack(t) | Order::ManualFire(t)) => Some(*t),
                 _ => current.weapons.iter().find_map(|w| w.target),
@@ -262,8 +405,9 @@ impl Sim {
             u.air_pass = false;
         }
         // Carrying a passenger keeps the aircraft in flight even after Move or Stop.
-        // Landing would drag the unit hanging below it through the terrain.
-        let busy = u.path_goal.is_some() || !u.orders.is_empty() || u.build.is_some() || !u.cargo.is_empty() || u.weapons.iter().any(|w| w.target.is_some());
+        // Landing would drag the unit hanging below it through the terrain. (On a repair trip
+        // only its way to the deck keeps it up.)
+        let busy = u.path_goal.is_some() || !trip && (!u.orders.is_empty() || u.build.is_some() || !u.cargo.is_empty() || u.weapons.iter().any(|w| w.target.is_some()));
         // A self-chosen parking approach is part of landing, not a new external
         // task that restarts the idle delay after reaching the clear footprint.
         u.idle_ticks = if external { 0 } else { u.idle_ticks.saturating_add(1) };
