@@ -19,11 +19,11 @@ Vulkan drivers are required. macOS uses Metal. The launcher uses OpenGL.
 ## Making a release
 
 1. Set `[workspace.package].version` in `Cargo.toml`, update the lockfile and changelog,
-   and merge the release changes. Create a matching Git tag, such as `v2.2.0` for `2.2.0`.
-2. Run **Actions → Release → Run workflow** against that tag for a rehearsal. This runs
-   tests and packaging and produces a `release-files` artifact; a manual run never uploads
-   to a GitHub release. **Quality → release_packages** provides the same rehearsal from a
-   branch, including before the new release workflow has reached the default branch.
+   and merge the release changes. Do not push the release tag yet: pushing it publishes.
+2. Run **Actions → Release → Run workflow** on the default branch, at the release commit, for
+   a rehearsal. This runs tests and packaging and produces a `release-files` artifact; a
+   manual run never uploads to a GitHub release. **Quality → release_packages** provides the
+   same rehearsal from any branch.
 3. Inspect the packages on the target systems, including original-game discovery, audio,
    a real match, launcher skin previews, and installation/removal. Hosted compile and
    synthetic-data tests do not establish graphics-driver or gameplay compatibility.
@@ -33,7 +33,8 @@ Vulkan drivers are required. macOS uses Metal. The launcher uses OpenGL.
 
    ```bash
    gh release create v2.2.0 --draft --target <commit> --title "TA Reborn 2.2.0" --notes-file notes.md
-   git tag v2.2.0 <commit> && git push origin v2.2.0
+   git tag v2.2.0 <commit>
+   git push origin v2.2.0
    ```
 
    The tag starts the **Release** workflow. It requires the tag's draft, with nothing attached
@@ -42,8 +43,12 @@ Vulkan drivers are required. macOS uses Metal. The launcher uses OpenGL.
    Then it publishes the draft as the latest release, once it holds exactly the set, each file
    at its full size, and only then deletes the release that was the latest before it, keeping
    its tag. A failure in any target, or in the upload, leaves the draft unpublished and the
-   previous release as it was. A tag/version mismatch fails early. Publishing a release by
-   hand no longer starts the workflow.
+   previous release as it was, as does a latest release that is not older than this one (an
+   older version's build finishing after a newer one's never replaces it; publications run
+   one at a time). A tag/version mismatch fails early. Publishing a release by hand no longer
+   starts the workflow. A tag pushed before its draft existed fails at the draft check:
+   create the draft, then re-run that workflow run (`gh run rerun <run id>`; pushing the
+   same tag again starts nothing).
 
 The workflow uses GitHub's [native x64 and ARM64 hosted runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
 Private repositories consume the account's Actions allowance; exhausted allowance or disabled

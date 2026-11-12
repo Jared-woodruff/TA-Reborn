@@ -45,6 +45,10 @@ jobs:
     name: Attach the packages to the draft, publish it, retire the previous release
     if: github.event_name == 'push'
     needs: packages
+    # (Two tags' publications one after the other: the second sees the first's latest release.)
+    concurrency:
+      group: release-publication
+      cancel-in-progress: false
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     permissions:

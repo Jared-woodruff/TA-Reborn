@@ -248,6 +248,27 @@ class ReleaseTests(unittest.TestCase):
                     release.promote(folder, self.ver, 'owner/repo', 'v2.1.0')
                 run.assert_not_called()
 
+    def test_an_older_build_never_replaces_a_newer_latest_release(self):
+        self.fixtures()
+        folder = self.root / 'publish'
+        release.assemble(self.source, folder, self.ver, self.revision)
+        draft = json.dumps(dict(isDraft=True, assets=self.uploaded(folder)))
+        # (Newer; a tag naming no version; the same version under another tag.)
+        for latest in ('v2.2.0', 'nightly', 'v2.1.0+rebuilt'):
+            listed = json.dumps([dict(tagName=latest, isLatest=True), dict(tagName='v2.0.9', isLatest=False)])
+            with patch.object(release.subprocess, 'check_output', side_effect=[draft, listed]),                  patch.object(release.subprocess, 'run') as run:
+                with self.assertRaisesRegex(ValueError, 'stays a draft'):
+                    release.promote(folder, self.ver, 'owner/repo', 'v2.1.0')
+                run.assert_not_called()
+
+    def test_versions_order_by_number_and_a_prerelease_comes_first(self):
+        key = release.version_key
+        self.assertLess(key('v2.1.0'), key('v2.1.1'))
+        self.assertLess(key('v2.9.0'), key('v2.10.0'))
+        self.assertLess(key('v2.1.0-rc.1'), key('v2.1.0'))
+        self.assertEqual(key('2.1.0'), key('v2.1.0'))
+        self.assertIsNone(key('nightly'))
+
     def test_the_first_release_has_no_previous_one_to_delete(self):
         self.fixtures()
         folder = self.root / 'publish'

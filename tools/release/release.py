@@ -201,6 +201,16 @@ def publish(folder, ver, repository, tag):
     subprocess.run(command + remaining, check=True)
 
 
+def version_key(tag):
+    """A release tag's version, for ordering ('v2.1.0' < 'v2.1.1'; a pre-release before its
+    release), or None for a tag that names no version."""
+    match = re.fullmatch(r'v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?', tag)
+    if not match:
+        return None
+    major, minor, patch, pre = match.groups()
+    return (int(major), int(minor), int(patch), 0 if pre else 1, pre or '')
+
+
 def promote(folder, ver, repository, tag):
     """Publishes the tag's draft as the latest release once it holds exactly the assembled set,
     each file at its full size, and only then deletes the release that was the latest before it
@@ -226,6 +236,12 @@ def promote(folder, ver, repository, tag):
     releases = json.loads(subprocess.check_output(
         ['gh', 'release', 'list', '--repo', repository, '--exclude-drafts', '--json', 'tagName,isLatest', '--limit', '100'], text=True))
     previous = [r['tagName'] for r in releases if r.get('isLatest') and r.get('tagName') != tag]
+    # (A build of an older version finishing after a newer one's must not take its place as the
+    # latest, nor delete it: the draft then stays a draft, for a person to decide.)
+    for old in previous:
+        theirs, mine = version_key(old), version_key(tag)
+        if theirs is None or mine is None or theirs >= mine:
+            raise ValueError(f'The latest release, {old}, is not older than {tag}: {tag} stays a draft, and {old} stays published')
     subprocess.run(['gh', 'release', 'edit', tag, '--repo', repository, '--draft=false', '--latest'], check=True)
     if release_state(repository, tag, 'isDraft').get('isDraft'):
         raise ValueError(f'The release for {tag} is still a draft after publishing it')
