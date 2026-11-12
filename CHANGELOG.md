@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## 1.0.3 — 2026-11-12
+
+Battles now end in dark clouds at the map's edge, and the camera zooms out no further than the
+whole map. Units fire at lesser targets when nothing better is in range, bombers bomb on patrol,
+ships are built at the surface, construction aircraft sway as in TA, and aircraft circle over
+the sea instead of stacking up.
 
 ### Changed
 - In battles, the world beyond the map's edges is now a sea of dark clouds below the map, so
