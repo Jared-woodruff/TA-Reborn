@@ -413,6 +413,21 @@ impl Gui {
         gui
     }
 
+    /// Which of its places show a unit put there (one more of a builder's options, a download
+    /// entry): those a build button of a place's size stands on. A place a share or a big
+    /// button covers shows those buttons' units, and one without a button shows nothing.
+    /// (All of them on a page with no such button.)
+    pub fn shown_places(&self) -> Vec<bool> {
+        let mut shown = vec![false; self.grid.places()];
+        for g in self.gadgets.iter().filter(|g| g.is_build_place() && self.grid.is_place(g.rect)) {
+            shown[self.grid.place_of(g.rect)] = true;
+        }
+        if !shown.contains(&true) {
+            shown.fill(true);
+        }
+        shown
+    }
+
     /// How far down TA's screen the page reaches (TA pixels): the foot of its panel, or of its
     /// lowest gadget.
     pub fn bottom(&self) -> f32 {
@@ -850,6 +865,8 @@ impl Art {
         let options = t.build_options.clone();
         let name = t.name.to_ascii_lowercase();
         let mut pages: Vec<MenuPage> = Vec::new();
+        // (By page, which of its places show a unit put there: `Gui::shown_places`.)
+        let mut shown: Vec<Vec<bool>> = Vec::new();
         let mut placed: Vec<usize> = Vec::new();
         let mut own_layout: Option<String> = None;
         // Like `ta_data`: the pages run from 1 until one is missing.
@@ -885,22 +902,27 @@ impl Art {
                 }
             }
             own_layout.get_or_insert(gui_name);
+            shown.push(gui.shown_places());
             pages.push(page);
         }
         let layout = own_layout.unwrap_or_else(|| template.to_string());
-        // (Pages made up here have as many places as that layout.)
-        let places = self.gui(vfs, &layout).map_or(Grid::TA.places(), |g| g.grid.places());
-        let place = |pages: &mut Vec<MenuPage>, id: usize, page: usize, slot: usize| {
-            // The asked-for place (or its page's last), else the next free one after it.
+        // (Pages made up here have as many places as that layout, and show what it shows: a
+        // Total Mayhem constructor's first page lays out a place for the variants of a gun,
+        // where another unit would not be seen.)
+        let layout_shown = self.gui(vfs, &layout).map_or_else(|| vec![true; Grid::TA.places()], |g| g.shown_places());
+        let place = |pages: &mut Vec<MenuPage>, shown: &mut Vec<Vec<bool>>, id: usize, page: usize, slot: usize| {
+            // The asked-for place (or its page's last), else the next free one after it, of the
+            // places that show it.
             let (mut p, mut s) = (page, None);
             loop {
                 while pages.len() <= p {
-                    pages.push(MenuPage { gui: layout.clone(), slots: vec![None; places], odd: Vec::new() });
+                    pages.push(MenuPage { gui: layout.clone(), slots: vec![None; layout_shown.len()], odd: Vec::new() });
+                    shown.push(layout_shown.clone());
                 }
                 let slots = &mut pages[p].slots;
                 let mut at = s.unwrap_or_else(|| slot.min(slots.len().saturating_sub(1)));
                 while at < slots.len() {
-                    if slots[at].is_none() {
+                    if slots[at].is_none() && shown[p].get(at).copied().unwrap_or(true) {
                         slots[at] = Some(id);
                         return;
                     }
@@ -913,12 +935,12 @@ impl Art {
         let entries: Vec<MenuEntry> = self.downloads(vfs).iter().filter(|(b, ..)| b.eq_ignore_ascii_case(&t.name)).cloned().collect();
         for (_, menu, button, unit) in entries {
             let Some(id) = types.id(&unit).filter(|id| options.contains(id) && !placed.contains(id)) else { continue };
-            place(&mut pages, id, menu.saturating_sub(2) as usize, button as usize);
+            place(&mut pages, &mut shown, id, menu.saturating_sub(2) as usize, button as usize);
             placed.push(id);
         }
         for &id in &options {
             if !placed.contains(&id) {
-                place(&mut pages, id, 0, 0);
+                place(&mut pages, &mut shown, id, 0, 0);
                 placed.push(id);
             }
         }
@@ -1124,8 +1146,10 @@ mod tests {
 
     /// A Total Mayhem build page over the install: the Advanced Construction Kbot's first page with
     /// a Big Bertha in four variants round one place, as the mod lays it out. Each keeps its own
-    /// zone, the place is taken (the metal maker keeps its own, below), nothing is on two pages,
-    /// and the modern panel shows the four as one picture, the plain Bertha's.
+    /// zone, the place is taken (the metal maker keeps its own, below), and everything it builds
+    /// is shown once by a button: also a download entry asking for that place on a page made up
+    /// in that layout, where nothing would show it. The modern panel shows the four as one
+    /// picture, the plain Bertha's.
     #[test]
     fn a_place_four_variants_share_keeps_them_round_one_picture() {
         let Some(mut vfs) = install() else {
@@ -1150,22 +1174,42 @@ mod tests {
             + &button(7, "ARMMOHO", 0, 128, 64, 64)
             + &button(8, "ARMMMKR", 64, 128, 64, 64);
         std::fs::write(dir.join("guis").join("armack1.gui"), page).unwrap();
+        // (MENU 4: the third build page, made up in the first's layout; BUTTON 3: the place the
+        // Berthas share there.)
+        std::fs::create_dir_all(dir.join("download")).unwrap();
+        std::fs::write(dir.join("download").join("compass.tdf"), "[MENUENTRY1]\n{\nUNITMENU=ARMACK;\nMENU=4;\nBUTTON=3;\nUNITNAME=ARMGUARD;\n}\n").unwrap();
         vfs.mount_mod_dir(&dir, "compass").unwrap();
         let data = ta_data::GameData::load(&vfs);
         let types = ta_sim::UnitTypes::compile(&data, &|p| vfs.read_opt(p));
         let id = |name: &str| types.id(name).unwrap();
         let ack = types.get(id("ARMACK"));
-        let pages = Art::default().menu(&vfs, &types, ack.id, "armcom1");
+        let mut art = Art::default();
+        let pages = art.menu(&vfs, &types, ack.id, "armcom1");
         let first = &pages[0];
         let berthas = ["ARMBRTHAE", "ARMBRTHA", "ARMBRTHAW", "ARMBRTHAN"].map(id);
         // (By index among the gadgets, the header not one of them.)
         assert_eq!(first.odd, (2..=5).zip(berthas).collect::<Vec<_>>(), "each in its own zone");
         assert_eq!((first.slots[2], first.slots[3], first.slots[5]), (Some(id("ARMARAD")), Some(berthas[0]), Some(id("ARMMMKR"))), "the place taken; the metal maker's its own");
-        let mut shown: Vec<usize> = pages.iter().flat_map(|p| p.units().collect::<Vec<_>>()).collect();
+        // What the page's buttons show (a share's own unit; a place's, its slot's).
+        let mut drawn: Vec<(usize, usize)> = Vec::new();
+        for (k, page) in pages.iter().enumerate() {
+            let gui = art.gui(&vfs, &page.gui).unwrap();
+            for (i, g) in gui.gadgets.iter().enumerate().filter(|(_, g)| g.is_build_place()) {
+                if let Some(unit) = page.unit_at(&gui.grid, i, g.rect) {
+                    drawn.push((k, unit));
+                }
+            }
+        }
+        let mut shown: Vec<usize> = drawn.iter().map(|&(_, unit)| unit).collect();
         let mut want = ack.build_options.clone();
         shown.sort_unstable();
         want.sort_unstable();
-        assert_eq!(shown, want, "everything it builds, once");
+        assert_eq!(shown, want, "everything it builds, shown once by a button");
+        let guard = drawn.iter().find(|&&(_, unit)| unit == id("ARMGUARD")).map(|&(k, _)| k);
+        // (This page's layout shows four places: the entry goes to the next one free there, or a page after.)
+        assert_eq!(pages[2].gui, "armack1", "pages made up in the first's layout");
+        assert!(guard.is_some_and(|k| k >= 2), "the download entry on a page made up after the builder's own: {guard:?}");
+        assert!(pages.iter().skip(2).all(|p| p.slots[3].is_none()), "never in the place the Berthas share, where nothing shows it");
         let places = shared_places(&vfs, &types, ack);
         assert_eq!(places.len(), 1);
         let place = &places[0];
