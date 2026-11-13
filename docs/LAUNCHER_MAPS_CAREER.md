@@ -63,15 +63,22 @@ those on show first, and kept in `cache/pictures/maps/` beside the settings with
 terrain's size, keyed by the terrain file, its palette and how pictures are drawn. Search
 by map name, description, world or source (every word must match); filter by availability,
 players, size, world, source and favourites; order by name, players, size, when the profile
-last played it, or source. The arrow keys move between cards, choosing each; Enter opens
-the details on a narrow page.
+last played it, or source. A map's source is what it comes with, by name: the game's own maps
+by where they come from (**Total Annihilation**, **Core Contingency**, **Battle Tactics**;
+`ta_data::map::Origin`), an archive a player put in the game's folder by its file's name,
+**TA Reborn**, or the mod or map pack (the SOURCE filter goes by these names). The arrow keys
+move between cards, choosing each; Enter opens the details on a narrow page.
 
 Whatever the search, filters and order, the library comes in sections, each under its heading
 with how many it holds (`library::sections`; one section alone has none): **Your
 Favourites** first, then **TA Reborn Maps** (TA Reborn's own maps, `assets/reborn/maps`:
 made for its engine and fair to every start), then **More Maps**, each in the order chosen
 (`Entry::group`). TA Reborn's maps carry a brass **REBORN** ribbon on their cards (a tag after
-the name in the list) and a brass frame, and their details a TA Reborn banner. The page opens
+the name in the list) and a brass frame, and their details a TA Reborn banner; maps made from
+Supreme Commander's (docs/SUPCOM_MAPS.md) a **SUPREME COMMANDER** ribbon (`Entry::ribbon`) and a
+note in their details. In the game, skirmish's and the lobby's map lists tag every map with its
+origin (TA, CC, BT, REBORN, SUPCOM, MOD), show one origin or the expansions together, and order
+by name, origin or players (`apps/ta_game/src/map_list.rs`). The page opens
 on the first of them all. A card's star, over its picture's corner (always on a favourite's,
 under the pointer on the others'), marks a favourite at once; **F** marks or unmarks the chosen
 map.
