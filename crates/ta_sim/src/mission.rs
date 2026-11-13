@@ -993,7 +993,7 @@ fn compile_script(sim: &Sim, id: UnitId, script: &[MissionCommand], names: &Miss
             },
             MissionCommand::Stop => orders.push(Order::Stop),
             MissionCommand::Build { unit, count, at: spot } => {
-                let Some(b) = sim.types.id(unit).filter(|b| t.build_options.contains(b)) else { continue };
+                let Some(b) = sim.types.id(unit).filter(|b| t.ai_build_options.contains(b)) else { continue };
                 if factory {
                     flush(&mut steps, &mut orders);
                     steps.push_back(Step::Produce { type_id: b, count: *count });

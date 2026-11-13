@@ -2598,3 +2598,37 @@ fn a_script_cloaks_its_own_unit() {
     }
     assert!(!sim.unit(mine).unwrap().cloaked, "and uncloaked");
 }
+
+/// A factory's menu is what its player is offered; the computer players' list (the 3.1 patch's
+/// `[CANBUILD]`) adds units of the mod's AI, which an order may still name, as the computer players'
+/// do: TA: The Final Frontier's command cruiser builds its AI's `AAILAB` for them, never on its menu.
+#[test]
+fn units_of_the_computer_players_lists_are_built_but_not_offered() {
+    let side = "[SIDE0]{name=ARM;commander=CRUISER;} [CANBUILD]{[YARD]{canbuild1=SHIP;canbuild2=AISHIP;}}";
+    let data = data_of(&[
+        unit("YARD", "Builder=1; WorkerTime=300; BuildDistance=200;"),
+        unit("SHIP", "CanMove=1; MaxVelocity=1; BuildTime=30; BuildCostMetal=10; FootprintX=1; FootprintZ=1;"),
+        unit("AISHIP", "CanMove=1; MaxVelocity=1; BuildTime=30; BuildCostMetal=10; FootprintX=1; FootprintZ=1;"),
+        ("guis/yard1.gui".to_string(), "[A]{[COMMON]{id=1;name=SHIP;attribs=32;commonattribs=4;}}".to_string()),
+        ("gamedata/sidedata.tdf".to_string(), side.to_string()),
+    ]);
+    let mut sim = sim_of(data, 1);
+    sim.set_starting_resources(0, Fx::from_int(10000), Fx::from_int(100000));
+    let (yard, ship, ai_ship) = (sim.types.id("YARD").unwrap(), sim.types.id("SHIP").unwrap(), sim.types.id("AISHIP").unwrap());
+    let t = sim.types.get(yard);
+    assert_eq!((t.build_options.clone(), t.ai_build_options.clone()), (vec![ship], vec![ship, ai_ship]), "its menu, and all it builds");
+    assert!(t.is_factory, "a factory by all it builds");
+    // (Ready to build as it opens up, as TA's factories' scripts make it.)
+    use crate::cob::CobProgram;
+    use ta_formats::cob::{CobFunction, CobScript, op};
+    let mut script = CobScript::default();
+    script.functions.push(CobFunction { name: "Activate".into(), offset: 0 });
+    script.code.extend([op::PUSH_CONSTANT, crate::host::value::IN_BUILD_STANCE as u32, op::PUSH_CONSTANT, 1, op::SET_VALUE, op::PUSH_CONSTANT, 0, op::RETURN]);
+    Arc::get_mut(&mut sim.types).unwrap().types[yard].script = Some(Arc::new(CobProgram::new(script, &[])));
+    let factory = sim.spawn_unit(yard, 0, FxVec3::from_ints(400, 60, 400), 0, true).unwrap();
+    sim.step(&[Command::Produce { player: 0, factory, type_id: ai_ship, count: 1 }]);
+    assert!((0..300).any(|_| {
+        sim.step(&[]);
+        sim.units().any(|u| u.type_id == ai_ship && u.is_complete())
+    }), "made when an order names it, as a computer player's");
+}

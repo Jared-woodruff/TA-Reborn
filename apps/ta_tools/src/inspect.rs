@@ -298,9 +298,13 @@ pub fn check_data(vfs: &Vfs, unit: Option<&str>, menus: bool) -> Result<()> {
     }
     let builders: Vec<&ta_data::UnitDef> = data.units.iter().filter(|u| u.builder).collect();
     if menus {
-        // (Every unit with a menu: one with build power and no Builder flag has one too.)
-        for u in data.units.iter().filter(|u| u.builder || !u.build_options.is_empty()) {
+        // (Every unit with a menu: one with build power and no Builder flag has one too. Then
+        // what the computer players' lists add to it, `[CANBUILD]`.)
+        for u in data.units.iter().filter(|u| u.builder || !u.build_options.is_empty() || !u.ai_build_options.is_empty()) {
             println!("menu {} {}: {}", u.name, u.build_options.len(), u.build_options.join(" "));
+            if !u.ai_build_options.is_empty() {
+                println!("ai menu {} {}: {}", u.name, u.ai_build_options.len(), u.ai_build_options.join(" "));
+            }
         }
     }
     let empty: Vec<&str> = builders.iter().filter(|u| u.build_options.is_empty()).map(|u| u.name.as_str()).collect();
@@ -318,7 +322,7 @@ pub fn check_data(vfs: &Vfs, unit: Option<&str>, menus: bool) -> Result<()> {
         while let Some(name) = queue.pop() {
             let Some(u) = data.unit(&name) else { continue };
             if seen.insert(u.name.clone()) {
-                queue.extend(u.build_options.iter().cloned());
+                queue.extend(u.build_options.iter().chain(&u.ai_build_options).cloned());
             }
         }
         println!("{} reaches {} of {} units", side.name, seen.len(), data.units.len());
@@ -399,7 +403,8 @@ pub fn check_missions(vfs: &ta_vfs::Vfs) -> anyhow::Result<()> {
                     }
                     scripts += u.script.iter().filter(|c| !matches!(c, MissionCommand::Load(_))).count();
                     skipped.extend(u.unknown.iter().cloned());
-                    let options = data.unit(&u.name).map(|d| d.build_options.clone()).unwrap_or_default();
+                    // (As a mission's computer player builds: its menu and its `[CANBUILD]` list.)
+                    let options = data.unit(&u.name).map(|d| d.build_options.iter().chain(&d.ai_build_options).cloned().collect::<Vec<_>>()).unwrap_or_default();
                     for c in &u.script {
                         if let MissionCommand::Build { unit, .. } = c
                             && !options.iter().any(|o| o.eq_ignore_ascii_case(unit))

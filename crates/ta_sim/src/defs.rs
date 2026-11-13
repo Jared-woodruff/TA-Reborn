@@ -216,7 +216,12 @@ pub struct UnitType {
     pub metal_storage: Fx,
     pub wind_generator: Fx,
     pub tidal_generator: Fx,
+    /// What it offers a player to build, in menu order (`UnitDef::build_options`).
     pub build_options: Vec<usize>,
+    /// Everything it can build: its menu, then what the computer players' lists add to it (the
+    /// 3.1 patch's `[CANBUILD]`, `UnitDef::ai_build_options`: mods' units for their AI alone).
+    /// What a build order may name, and what the computer players build.
+    pub ai_build_options: Vec<usize>,
     /// Per footprint cell, whether the building blocks movement with its yard closed.
     pub blocking_cells: Vec<bool>,
     /// Blocking cells while the script has opened its yard (c/i cells swap).
@@ -409,8 +414,11 @@ impl UnitTypes {
             // `MAKENUKEARM` for its computer players) is no build option.
             let can_build = u.worker_time > 0.0;
             let build_options: Vec<_> = if can_build { u.build_options.iter().filter_map(|b| data.unit_id(b)).collect() } else { Vec::new() };
-            let is_builder = can_build && (u.builder || !build_options.is_empty());
-            let is_factory = is_builder && locomotion == Locomotion::Static && !build_options.is_empty();
+            let ai_build_options: Vec<_> = if can_build { build_options.iter().copied().chain(u.ai_build_options.iter().filter_map(|b| data.unit_id(b))).collect() } else { Vec::new() };
+            // (A builder and a factory by all it builds: a mod's units for its AI alone, such as
+            // TA: The Final Frontier's `AAILAB`, have nothing on a menu.)
+            let is_builder = can_build && (u.builder || !ai_build_options.is_empty());
+            let is_factory = is_builder && locomotion == Locomotion::Static && !ai_build_options.is_empty();
             types.push(UnitType {
                 id,
                 name: u.name.clone(),
@@ -450,6 +458,7 @@ impl UnitTypes {
                 wind_generator: Fx::from_f64(u.wind_generator),
                 tidal_generator: Fx::from_f64(u.tidal_generator),
                 build_options,
+                ai_build_options,
                 blocking_cells,
                 open_yard_cells,
                 is_builder,
@@ -487,7 +496,7 @@ impl UnitTypes {
     /// its own upgrade module (a mod's geothermal plant or tower), which is no factory to the
     /// player (its idle factories) nor to the computer players.
     pub fn makes_units(&self, t: &UnitType) -> bool {
-        t.is_factory && t.build_options.iter().any(|&o| self.get(o).locomotion != Locomotion::Static)
+        t.is_factory && t.ai_build_options.iter().any(|&o| self.get(o).locomotion != Locomotion::Static)
     }
 
     /// The set of the `Category` tokens in `list` (a unit's `Category` or `BadTargetCategory`
@@ -677,7 +686,7 @@ fn fieldable(types: &[UnitType], data: &GameData) -> Vec<bool> {
         if std::mem::replace(&mut seen[i], true) {
             continue;
         }
-        queue.extend(types[i].build_options.iter().copied().filter(|&o| !seen[o]));
+        queue.extend(types[i].ai_build_options.iter().copied().filter(|&o| !seen[o]));
     }
     seen
 }

@@ -730,7 +730,11 @@ Escalation also replaces `fx.gaf`'s Explode2-Explode4 and Nuke1 with shield bubb
   two cells wide through its middle, north to south, with walls either side: a unit built on
   the pad walks out through the factory's front wall (the engine lets it, until it is clear
   of the footprint).
-* Build menus: `guis/<BUILDER><page>.gui` + `[CANBUILD]` in sidedata + `download/*.tdf`.
+* Build menus: `guis/<BUILDER><page>.gui` + `download/*.tdf`. The 3.1 patch's `[CANBUILD]` in
+  sidedata is the computer players' list, never a player's menu: mods list units of their AI
+  there (TA: The Final Frontier's AI Boost: `AAISOLAR` beside the `ARMSOLAR` a player builds,
+  `AAILAB`, and ground labs its command cruiser builds only for the AI; Total Mayhem's
+  `AIAMEXC`).
 
 ## In-game interface (GUI, fonts, side data)
 

@@ -136,8 +136,15 @@ pub struct UnitDef {
     pub pitch_scale: f64,
     pub steering_mode: u32,
     pub unit_number: u32,
-    /// Units this builder can build, in menu order (filled from CANBUILD/GUI/download data).
+    /// Units this builder offers a player, in menu order: its GUI pages' and the download
+    /// entries naming it (`GameData::build_menus`).
     pub build_options: Vec<String>,
+    /// What the computer players build with it besides: the 3.1 patch's `[CANBUILD]` list for it
+    /// (`gamedata/sidedata.tdf`), its entries not on its menu. TA's computer players went by
+    /// these lists, its players by the menus: mods list units of their AI there that players are
+    /// never offered (TA: The Final Frontier's and Total Mayhem's AI Boost: `AAISOLAR` beside the
+    /// `ARMSOLAR` a player builds, its own factories, the space mod's ground labs).
+    pub ai_build_options: Vec<String>,
 }
 
 impl UnitDef {
@@ -287,6 +294,7 @@ impl UnitDef {
             steering_mode: s.get_i64_or("SteeringMode", 1).clamp(0, u32::MAX as i64) as u32,
             unit_number: count("UnitNumber", 0),
             build_options: Vec::new(),
+            ai_build_options: Vec::new(),
             name,
         })
     }

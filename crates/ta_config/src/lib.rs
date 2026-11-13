@@ -147,8 +147,10 @@ pub const RECORD_VERSION: u32 = 46;
 /// TA's ferns, fronds, small stones and scars); 90, a builder's build stance is its script's, as in
 /// TA, also between jobs (Total Mayhem's construction kbots build a job that comes while their
 /// arm is still out from the last), and a job has begun once it is the builder's, whatever the
-/// stance.
-pub const SIMULATION_VERSION: u32 = 90;
+/// stance; 91, a builder's menu is its GUI pages and download entries, the 3.1 patch's
+/// `[CANBUILD]` lists the computer players' (`UnitType::ai_build_options`): a player's
+/// constructors on a duty build what their menus offer.
+pub const SIMULATION_VERSION: u32 = 91;
 /// Records shorter than one year of simulated time are supported. Shared with the
 /// launcher's metadata reader so impossible durations cannot start endless save catch-up.
 pub const MAX_RECORD_TICKS: u64 = 30 * 3600 * 24 * 365;

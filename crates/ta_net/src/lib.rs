@@ -80,10 +80,11 @@ pub use transport::{Client, Host, HostEvent};
 /// scripts' questions about units by id answered, as TA 3.1 did; 92: mods' buildings make and
 /// take on their own upgrade modules, EnergyUse only while switched on, mines start cloaked; 93:
 /// a building clears its footprint of the loose features under it; 94: a builder's build stance
-/// is its script's, also between jobs.)
+/// is its script's, also between jobs; 95: the 3.1 patch's `[CANBUILD]` lists are the computer
+/// players', not the builders' menus.)
 /// [`Msg::Hello`] and [`Refusal::Version`] keep their layout, so builds of other protocols are
 /// still told why they cannot meet.
-pub const PROTOCOL: u32 = 94;
+pub const PROTOCOL: u32 = 95;
 pub const DEFAULT_PORT: u16 = 7890;
 /// Ticks between state hash reports (which double as progress reports).
 pub const HASH_INTERVAL: u64 = 15;
