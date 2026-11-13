@@ -545,3 +545,25 @@ lines in the nominative (KTOKOLWIEK TO CZYTA, NADAWCA NIEUSTALONY).
 | blacked-out lines | zaczernienia |
 | chronicle / PLAY THE CHRONICLE / FIGHT IT (before the campaign buttons) | kronika / ODTWÓRZ KRONIKĘ / DO BOJU |
 | datelines BEFORE THE WAR / AFTER | PRZED WOJNĄ / PO WOJNIE |
+
+## Mod check: the report's OVERVIEW and how TA Reborn handles a mod (`mod_report.rs`, `validation.rs`)
+
+"Plays" (what TA Reborn does with what a mod uses) is obsługuje. A sentence names a tab as
+„zakładka USTALENIA” (as „zakładka ZASOBY”).
+
+| English | Polski |
+|---|---|
+| FINDINGS (the report's tab) / SEE ALL {n} FINDINGS | USTALENIA / WSZYSTKIE USTALENIA ({n}) |
+| FIX FIRST / IN THIS MOD (OVERVIEW's headings) | NAJPIERW NAPRAW / W TYM MODZIE |
+| HOW TA REBORN PLAYS IT / tags PLAYED, NOT USED | JAK TA REBORN OBSŁUGUJE MOD / OBSŁUGIWANE, NIEUŻYWANE („Nieużywane: …” opening a line) |
+| as made (played as in the engine it was made for) | zgodnie z zamysłem („zgodnie z zamysłem – {played}, nieużywane – {unused}”: count-safe) |
+| {n} OF ONE KIND (a card of one check's findings with one fix) / SHOW FEWER | {n} JEDNEGO RODZAJU / POKAŻ MNIEJ |
+| Seen in play (the project review's verdict) / READ THE REVIEW | Sprawdzono w grze / PRZECZYTAJ OCENĘ |
+| COMPATIBILITY (caption in a mod's details) | ZGODNOŚĆ |
+| build list (TA 3.1's [CANBUILD], the computer players') | lista budowy („listy budowy dla graczy komputerowych”) |
+| a place on the build pages (TA's grid of 64-pixel places) / build button / page arrows | pole („siatka 64-pikselowych pól”) / przycisk budowy / strzałki stron |
+| the modern interface / side panel | nowoczesny interfejs (as nowoczesna kamera) / panel boczny |
+| ID (a weapon's) | ID, not declined („ID broni”, „najwyższe ID”) |
+| TA's later engines / the patched engines of later years | późniejsze silniki TA / załatane silniki z późniejszych lat |
+| a pixel count from a placeholder | px („o wysokości {height} px”: no plural form to choose) |
+| the campaign screen | ekran kampanii (as ekran potyczki) |

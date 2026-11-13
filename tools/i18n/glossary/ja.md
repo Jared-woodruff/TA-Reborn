@@ -238,6 +238,18 @@ counts read "label：{n}" joined by " · " (ファイル：{files} · ユニッ�
 | THE CHECK / PACKAGING (report groups) | 確認処理 / パッケージ構成 |
 | line {n} / in {archive} (where a finding is) | {n}行目 / {archive}内 |
 | {checked} of {total} files (progress) | {checked}/{total}ファイル |
+| FINDINGS (the report's tab, beside OVERVIEW 概要; in sentences 「指摘」タブ) | 指摘 |
+| Errors to put right / Warnings to look at (the verdict's titles) | 修正すべきエラー / 確認すべき警告 |
+| IN THIS MOD / FIX FIRST / SEE ALL {n} FINDINGS / SHOW FEWER | このMODの内容 / 優先して修正 / 全{n}件の指摘を表示 / 表示を減らす |
+| {n} OF ONE KIND (a card of findings of one check with one fix) | 同種{n}件 |
+| HOW TA REBORN PLAYS IT / PLAYED / NOT USED (tags; a sentence's "Not used:" 不使用：) | TA Rebornでの扱い / 再現 / 不使用 (as made {played}: 再現{played}件) |
+| TA's later engines / the patched engines of later years / a later patch | 後年のTAエンジン / 後年のパッチ版エンジン / 後年のパッチ |
+| TA's own (engine, campaigns, computer players) | TA本来の |
+| build list (TA 3.1's [CANBUILD]) / for the computer players | 建設リスト / コンピューター用 |
+| menu pages / download lists (what build menus offer) | メニューページ / ダウンロードリスト |
+| classic interface / modern interface / side panel | クラシックUI / モダンUI / サイドパネル |
+| a place (a build button's, TA's grid of 64-pixel places) / page arrows / orders | 枠 / ページ送りの矢印 / 命令ボタン |
+| Seen in play (project review) / READ THE REVIEW / COMPATIBILITY (library caption) | プレイで確認済み / 評価を読む / 互換性 |
 
 ## Conquest
 

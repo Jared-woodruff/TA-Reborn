@@ -27,8 +27,9 @@ use crate::words::{en, enf, Fill, Words};
 /// no unknown opcode; 10: a unit's script is its own, `scripts/<UnitName>.cob`, before its
 /// model's; 11: as the game reads mods, every name a finding lists named; 12: each finding's words
 /// kept for the launcher to show in the player's language, `Issue::words`, a file's reading
-/// error told in words of the check's own around the reader's).
-pub const SCHEMA_VERSION: u32 = 12;
+/// error told in words of the check's own around the reader's; 13: what a mod uses of TA's later
+/// engines and how the game plays it, `Report::engine`).
+pub const SCHEMA_VERSION: u32 = 13;
 
 /// The keys of `gamedata/sound.tdf`'s categories the game plays (`ta_audio`'s sound events), each
 /// with or without a variant number (`select1`, `select2`…), with `count0` to `count9`; the
@@ -53,6 +54,11 @@ fn played_sound_key(key: &str) -> bool {
 /// another reads 0, and one setting another sets nothing (`script.value`). (A test in `ta_sim`
 /// holds this list to the host's.)
 pub const ANSWERED_VALUES: &[i32] = &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 32, 69, 70, 71, 72, 73, 74, 75, 111];
+
+/// Of [`ANSWERED_VALUES`], those of TA's later patches: TA 3.1's questions about units by id (69
+/// to 75) and a later patch's cloak (111). A mod's scripts asking them are told
+/// (`engine.script_values`): the engine it was made for, and how the game plays them.
+const PATCH_VALUES: [i32; 8] = [69, 70, 71, 72, 73, 74, 75, 111];
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -174,6 +180,32 @@ pub struct Own {
     pub sounds: u64,
 }
 
+/// How the game plays something a mod uses ([`EngineUse`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Support {
+    /// Played as in the engine the mod was made for.
+    Played,
+    /// Not used: what it did in TA is not there.
+    Unused,
+}
+
+/// Something a mod uses of TA's later patched engines, or of what TA's own engine left to
+/// itself, and how TA Reborn plays it ([`Report::engine`]). Not a finding, and it never counts:
+/// what a player, and the mod's makers, want to know of how the mod plays here. Of the mod's own
+/// files only.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EngineUse {
+    /// What it is (`engine.ai_lists`, `engine.tall_panels`...), the same in every language.
+    pub code: String,
+    pub support: Support,
+    /// What the mod has, in English, and in words the launcher shows in the player's language.
+    pub message: String,
+    pub words: Words,
+    /// How TA Reborn plays it, in English: a key of the languages' files (marked [`en`]).
+    pub how: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Report {
     pub schema_version: u32,
@@ -184,11 +216,15 @@ pub struct Report {
     pub empty: bool,
     pub counts: Counts,
     pub issues: Vec<Issue>,
+    /// What the mod checked uses of TA's later engines, and how the game plays it (none in a
+    /// check of the whole content, nor in a report kept by an older version).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub engine: Vec<EngineUse>,
 }
 
 impl Default for Report {
     fn default() -> Self {
-        Self { schema_version: SCHEMA_VERSION, target_layer: None, complete: false, empty: false, counts: Counts::default(), issues: Vec::new() }
+        Self { schema_version: SCHEMA_VERSION, target_layer: None, complete: false, empty: false, counts: Counts::default(), issues: Vec::new(), engine: Vec::new() }
     }
 }
 
@@ -215,6 +251,14 @@ impl Report {
             let _ = writeln!(out, "Checked with what it plays over: {}/{} files ({} not read); {} units, {} weapons, {} features, {} maps, {} sounds.", self.counts.files_checked, self.counts.files_total, self.counts.files_failed, self.counts.units, self.counts.weapons, self.counts.features, self.counts.maps, self.counts.sounds);
         } else {
             let _ = writeln!(out, "Checked {}/{} files; {} parse/read failures; {} units, {} weapons, {} features, {} maps, {} sounds.", self.counts.files_checked, self.counts.files_total, self.counts.files_failed, self.counts.units, self.counts.weapons, self.counts.features, self.counts.maps, self.counts.sounds);
+        }
+        if !self.engine.is_empty() {
+            out.push_str("\nHow TA Reborn plays what it uses:\n");
+            for (n, used) in self.engine.iter().enumerate() {
+                let support = match used.support { Support::Played => "Played", Support::Unused => "Not used" };
+                let _ = writeln!(out, "{}. {support} [{}]\n   {}\n   {}", n + 1, used.code, used.message, used.how);
+            }
+            out.push('\n');
         }
         out.push_str("Static checks cannot prove gameplay, balance, performance, multiplayer compatibility or rendering on a particular GPU.\n");
         for (n, issue) in self.issues.iter().enumerate() {
@@ -319,6 +363,7 @@ pub fn validate(vfs: &Vfs, options: &Options, mut progress: impl FnMut(Progress<
         }
         scan.report.counts.own = Some(Own { files: own.iter().filter(|p| read_by_game(p)).count() as u64, ..Own::default() });
         scan.packaging(&own);
+        scan.own_files = own.iter().filter(|p| p.starts_with("ai/") || p.starts_with("camps/") || is_program(p)).map(|p| p.to_string()).collect();
         if !own.iter().any(|p| known(p)) {
             // Music, documents or pictures only: nothing of the game's data to check, and
             // nothing the mod changes in it.
@@ -357,6 +402,7 @@ pub fn validate(vfs: &Vfs, options: &Options, mut progress: impl FnMut(Progress<
     }
     if !scan.halted { scan.blank_notes(); }
     if !scan.halted { scan.references(); }
+    if !scan.halted && options.target_layer.is_some() { scan.engine_uses(); }
     scan.finish_scope();
     scan.report.sort();
     // CANBUILD commonly repeats an option to weight the original AI's choice. The
@@ -630,7 +676,8 @@ struct Parsed { bytes: u64, content: Result<Content, Failure> }
 enum Failure { Read(String), Invalid(String), TooLarge }
 enum Content {
     Model { pieces: BTreeSet<String>, textures: BTreeSet<String> },
-    Script { pieces: BTreeSet<String>, functions: BTreeSet<String>, problems: Vec<Problem> },
+    /// `patch_values`: those of [`PATCH_VALUES`] it asks or sets.
+    Script { pieces: BTreeSet<String>, functions: BTreeSet<String>, problems: Vec<Problem>, patch_values: BTreeSet<i32> },
     /// A GAF's entries; `whole`: the game could decode it all at once (as it does every GAF but
     /// the weapons' explosions, which it reads a frame at a time: `gaf_content`).
     Gaf { entries: Vec<GafEntry>, whole: bool },
@@ -667,10 +714,13 @@ fn parse(vfs: &Vfs, path: &str, options: &Options) -> Parsed {
             // Selection plates and line primitives are not textured geometry.
             textures: model.pieces.iter().flat_map(|p| p.primitives.iter().enumerate().filter(|(i, r)| Some(*i) != p.selection_primitive && r.indices.len() >= 3).filter_map(|(_, r)| r.texture.clone())).collect(),
         }).map_err(|e| Failure::Invalid(e.to_string())),
-        "cob" => CobScript::parse(&bytes).map(|script| Content::Script {
-            pieces: script.pieces.iter().map(|s| s.to_ascii_lowercase()).collect(),
-            functions: script.functions.iter().map(|f| f.name.to_ascii_lowercase()).collect(),
-            problems: script_problems(&script),
+        "cob" => CobScript::parse(&bytes).map(|script| {
+            let (problems, patch_values) = script_problems(&script);
+            Content::Script {
+                pieces: script.pieces.iter().map(|s| s.to_ascii_lowercase()).collect(),
+                functions: script.functions.iter().map(|f| f.name.to_ascii_lowercase()).collect(),
+                problems, patch_values,
+            }
         }).map_err(|e| Failure::Invalid(e.to_string())),
         "gaf" => gaf_content(&bytes),
         "tnt" => ta_formats::tnt::TntMap::parse(&bytes).map(|map| Content::Map {
@@ -707,14 +757,15 @@ fn gaf_content(bytes: &[u8]) -> Result<Content, Failure> {
 /// a compiler leaves between functions (Scriptor's "COB BLER" puts its signature after a
 /// function's last `return`, in TA: Enhanced's and Total Mayhem's scripts) are no unknown opcode.
 /// A function's code ends at the next function's entry (that one is checked from its own).
-fn script_problems(script: &CobScript) -> Vec<Problem> {
+/// And the values of TA's later patches it asks or sets ([`PATCH_VALUES`]).
+fn script_problems(script: &CobScript) -> (Vec<Problem>, BTreeSet<i32>) {
     use cob::op::*;
     let mut problems = Vec::new();
     let entries: BTreeSet<usize> = script.functions.iter().map(|f| f.offset as usize).collect();
     let len = script.code.len();
     let mut decoded = vec![false; len];
     // The unit values it asks for and sets that the engine does not answer (see `asked`).
-    let (mut unanswered_get, mut unanswered_set) = (BTreeSet::new(), BTreeSet::new());
+    let (mut unanswered_get, mut unanswered_set, mut patch_values) = (BTreeSet::new(), BTreeSet::new(), BTreeSet::new());
     // (The places to decode from, lowest first: the entries, then where their jumps lead.)
     let mut pending = entries.clone();
     while let Some(mut pc) = pending.pop_first() {
@@ -754,6 +805,7 @@ fn script_problems(script: &CobScript) -> Vec<Problem> {
             match asked(opcode, &recent) {
                 Some((false, value)) if !ANSWERED_VALUES.contains(&value) => { unanswered_get.insert(value); }
                 Some((true, value)) if !ANSWERED_VALUES.contains(&value) => { unanswered_set.insert(value); }
+                Some((_, value)) if PATCH_VALUES.contains(&value) => { patch_values.insert(value); }
                 _ => {}
             }
             recent.push((opcode, arg));
@@ -780,7 +832,7 @@ fn script_problems(script: &CobScript) -> Vec<Problem> {
         let message = enf("This script sets unit value {values}, which Reborn does not answer: setting it does nothing, so what the script means by it does not happen as in the engine it was made for.", [("values", values(&unanswered_set))]);
         problems.push(Problem { severity: Severity::Warning, code: "script.value", message, suggestion: en("A later patch of TA's engine defines these values: report them, and what the mod does with them, to Reborn's maintainers.") });
     }
-    problems
+    (problems, patch_values)
 }
 
 /// The unit value an instruction asks for or sets, where the code names it outright, as a BOS
@@ -824,6 +876,38 @@ struct UnitFacts { name: String, object: String, script: String, builds: bool, t
 #[derive(Default)]
 struct Animation { frames: usize, size: AnimSize }
 
+/// What the mod checked uses of TA's later engines, gathered from its own files as they are read
+/// (told in `Scan::engine_uses`).
+#[derive(Default)]
+struct EngineFacts {
+    /// `[CANBUILD]`'s builders and their entries.
+    ai_builders: usize,
+    ai_entries: usize,
+    /// Side panel pages laid out for a screen taller than TA's 480 pixels, and the tallest.
+    tall_pages: usize,
+    tallest: i64,
+    /// Build pages with buttons off TA's grid of 64-pixel places, and those buttons.
+    shared_pages: usize,
+    shared_buttons: usize,
+    /// Scripts asking the patched engines' values, and the values.
+    patch_scripts: usize,
+    patch_values: BTreeSet<i32>,
+    /// Every weapon that gives an ID (the mod's and those it plays over): its name, the ID, and
+    /// whether it is the mod's.
+    weapon_ids: Vec<(String, i64, bool)>,
+    /// Sides of its own (not TA's ARM and CORE).
+    sides: Vec<String>,
+}
+
+/// A program or a library of one (a patched `TotalA.exe`, a DLL).
+fn is_program(path: &str) -> bool { path.ends_with(".exe") || path.ends_with(".dll") }
+
+/// TA's screen and its build places: a side panel taller than its 480 pixels was laid out for
+/// a patched engine's taller screen, and a build button other than a 64-pixel square shares a
+/// place or takes several (docs/FORMATS.md).
+const TA_SCREEN_HEIGHT: i64 = 480;
+const TA_PLACE: i64 = 64;
+
 struct Scan<'a> {
     vfs: &'a Vfs,
     options: &'a Options,
@@ -849,11 +933,13 @@ struct Scan<'a> {
     blank_paths: BTreeSet<String>,
     /// Production pages (`guis/<builder><page>.gui`): the units their buttons name.
     gui_pages: BTreeMap<String, Vec<Reference>>,
-    /// Units some builder with build power offers (CANBUILD, download menus, production pages).
+    /// Units some builder with build power offers a player (download menus, production pages;
+    /// not CANBUILD, the computer players' lists, which no menu shows).
     buildable: BTreeSet<String>,
-    /// CANBUILD's and the download menus' entries, builder and unit (settled in `references`,
-    /// once the builders' build power is known).
-    menu_entries: Vec<(String, String)>,
+    /// CANBUILD's and the download menus' entries, builder and unit, and whether on a player's
+    /// menu (a download menu's: CANBUILD's are the computer players'). Settled in `references`,
+    /// once the builders' build power is known.
+    menu_entries: Vec<(String, String, bool)>,
     /// Builders whose every option is a module of their own (a mod's upgradeable building).
     module_builders: BTreeSet<String>,
     /// The target's definitions an inherited one of the same name comes after, by the
@@ -871,6 +957,10 @@ struct Scan<'a> {
     /// Essential inherited launch inputs. Only errors here affect an unrelated mod;
     /// their optional art/menu warnings are still baseline context.
     required: BTreeSet<String>,
+    /// What the mod uses of TA's later engines, and its own files the game does not read that
+    /// tell of it (`ai/`, `camps/`, programs).
+    engine: EngineFacts,
+    own_files: Vec<String>,
 }
 
 impl<'a> Scan<'a> {
@@ -880,6 +970,7 @@ impl<'a> Scan<'a> {
             records: BTreeMap::new(), pieces: BTreeMap::new(), functions: BTreeMap::new(), animations: BTreeMap::new(), too_big: BTreeMap::new(), texture_names: BTreeSet::new(), texture_entries: Vec::new(), model_textures: BTreeSet::new(), blanks: Vec::new(), blank_paths: BTreeSet::new(),
             gui_pages: BTreeMap::new(), buildable: BTreeSet::new(), menu_entries: Vec::new(), module_builders: BTreeSet::new(), shadowed: BTreeMap::new(), uses: BTreeMap::new(), record_paths: BTreeMap::new(),
             file_records: BTreeMap::new(), attributed: BTreeMap::new(), relevant: BTreeSet::new(), required: BTreeSet::new(),
+            engine: EngineFacts::default(), own_files: Vec::new(),
         }
     }
 
@@ -1044,8 +1135,12 @@ impl<'a> Scan<'a> {
                 let refs = textures.into_iter().map(|t| Reference::new("texture", &t, Words::text(en("Model texture")), Severity::Warning)).collect();
                 self.record(key("file", path), Record { path: path.into(), refs, ..Default::default() });
             }
-            Content::Script { pieces, functions, problems } => {
+            Content::Script { pieces, functions, problems, patch_values } => {
                 self.report.counts.scripts += 1;
+                if !patch_values.is_empty() && self.own(path) {
+                    self.engine.patch_scripts += 1;
+                    self.engine.patch_values.extend(patch_values);
+                }
                 for p in problems {
                     self.issue(p.severity, p.code, path, p.message, p.suggestion);
                     if self.halted { return; }
@@ -1150,9 +1245,14 @@ impl<'a> Scan<'a> {
             let facts = UnitFacts { name: unit.name.clone(), object: unit.object.clone(), script, builds: unit.worker_time > 0.0, takes_no_ground: unit.takes_no_ground, weapons: unit.weapons.clone().map(|w| w.is_some_and(|w| !w.trim().is_empty())) };
             self.record(key("unit", &unit.name), Record { path: path.into(), refs, unit: Some(facts) });
         } else if direct(path, "weapons", "tdf") {
+            let own = self.own(path);
             for s in &doc.sections {
                 let first = self.report.issues.len();
                 let weapon = crate::WeaponDef::from_tdf(s);
+                // (An ID of 0, or none, is no number of its own: TA's own leave it so.)
+                if let Some(id) = s.get_i64("id").filter(|&id| id > 0) && self.retain(64 + weapon.name.len(), path) {
+                    self.engine.weapon_ids.push((weapon.name.to_ascii_uppercase(), id, own));
+                }
                 let mut refs = Vec::new();
                 if !weapon.model.is_empty() && matches!(weapon.render_type, crate::RenderType::Model | crate::RenderType::Bomb) { refs.push(Reference::new("file", &asset("objects3d", &weapon.model, "3do"), part(en("{name} projectile model"), &weapon.name), Severity::Warning)); }
                 for (gaf, entry, label) in [(&weapon.explosion_gaf, &weapon.explosion_art, en("{name} explosion")), (&weapon.water_explosion_gaf, &weapon.water_explosion_art, en("{name} water explosion")), (&weapon.lava_explosion_gaf, &weapon.lava_explosion_art, en("{name} lava explosion"))] { animation_ref(&mut refs, gaf, entry, part(label, &weapon.name)); }
@@ -1211,10 +1311,18 @@ impl<'a> Scan<'a> {
                 if self.halted { break; }
             }
         } else if path == "gamedata/sidedata.tdf" {
+            let own = self.own(path);
+            if own && let Some(can_build) = doc.section("CANBUILD") {
+                self.engine.ai_builders += can_build.sections.len();
+                self.engine.ai_entries += can_build.sections.iter().map(|b| b.entries.iter().filter(|(_, unit)| !unit.trim().is_empty()).count()).sum::<usize>();
+            }
             for s in &doc.sections {
                 if s.name.to_ascii_lowercase().starts_with("side") {
                     let name = s.get("name").unwrap_or("");
                     let commander = s.get("commander").unwrap_or("");
+                    if own && !name.trim().is_empty() && !["arm", "core"].contains(&name.trim().to_ascii_lowercase().as_str()) && !self.engine.sides.iter().any(|n| n.eq_ignore_ascii_case(name.trim())) {
+                        self.engine.sides.push(name.trim().to_string());
+                    }
                     if name.trim().is_empty() || commander.trim().is_empty() { self.issue(Severity::Error, "side.definition", path, enf("[{section}] needs a faction name and starting commander.", [("section", Fill::name(&s.name))]), en("Set name and commander to a valid faction and UnitName.")); }
                     let refs = vec![Reference::new("unit", commander, part(en("{name} starting commander"), name), Severity::Error)];
                     self.record(key("side", name), Record { path: path.into(), refs, ..Default::default() });
@@ -1224,10 +1332,11 @@ impl<'a> Scan<'a> {
             if let Some(can_build) = doc.section("CANBUILD") {
                 for builder in &can_build.sections {
                     // (A note: the game skips a list whose builder is missing.)
-                    refs.push(Reference::new("unit", &builder.name, Words::text(en("Build-menu owner")), Severity::Info));
+                    refs.push(Reference::new("unit", &builder.name, Words::text(en("Owner of a build list for the computer players")), Severity::Info));
                     for (_, unit) in &builder.entries {
-                        optional(&mut refs, "unit", unit, part(en("{name} build option"), &builder.name), Severity::Warning);
-                        if !unit.trim().is_empty() { self.menu_entries.push((key("unit", &builder.name), key("unit", unit))); }
+                        optional(&mut refs, "unit", unit, part(en("{name} build option for the computer players"), &builder.name), Severity::Warning);
+                        // (The computer players' list, TA 3.1's: no player's menu.)
+                        if !unit.trim().is_empty() { self.menu_entries.push((key("unit", &builder.name), key("unit", unit), false)); }
                     }
                 }
             }
@@ -1240,7 +1349,7 @@ impl<'a> Scan<'a> {
                     // BLANK to disable that menu entry while preserving the source.
                     if builder.trim().eq_ignore_ascii_case("blank") { continue; }
                     refs.push(Reference::new("unit", builder, Words::text(en("Download build-menu owner")), Severity::Warning)); refs.push(Reference::new("unit", unit, part(en("{name} build option"), builder), Severity::Warning));
-                    self.menu_entries.push((key("unit", builder), key("unit", unit)));
+                    self.menu_entries.push((key("unit", builder), key("unit", unit), true));
                 }
             }
             self.record(key("file", path), Record { path: path.into(), refs, ..Default::default() });
@@ -1259,14 +1368,39 @@ impl<'a> Scan<'a> {
             // Unit production buttons (which pages the game reads is settled in
             // `references`, from its builders): generic command buttons are not units.
             let mut refs = Vec::new();
+            // (The page's header, its first gadget 0: where it is on the screen and how tall; the
+            // buttons' lowest edge, from the header's top; its unit buttons off TA's grid.)
+            let (mut header, mut lowest, mut off_grid) = (None, 0, 0);
             for s in &doc.sections {
-                if let Some(common) = s.section("COMMON") && common.get_i32_or("id", -1) == 1 {
-                    let n = common.get("name").unwrap_or("");
-                    // commonattribs bit4 marks unit production. attribs bit32 also
-                    // appears on empty IGPATCH slots (IGPATCH, IGPATCH2…) and stockpile
-                    // buttons (commonattribs bit8), which are not missing unit names.
-                    // (Its builder named once the pages are settled: `references`.)
-                    if !n.is_empty() && !n.to_ascii_uppercase().starts_with("IGPATCH") && production(common) { refs.push(Reference::new("unit", n, Words::default(), Severity::Warning)); }
+                let Some(common) = s.section("COMMON") else { continue };
+                let (y, height) = (common.get_i64_or("ypos", 0), common.get_i64_or("height", 0));
+                match common.get_i32_or("id", -1) {
+                    0 if header.is_none() => header = Some((y, height)),
+                    1 => {
+                        lowest = lowest.max(y.saturating_add(height));
+                        let n = common.get("name").unwrap_or("");
+                        // commonattribs bit4 marks unit production. attribs bit32 also
+                        // appears on empty IGPATCH slots (IGPATCH, IGPATCH2…) and stockpile
+                        // buttons (commonattribs bit8), which are not missing unit names.
+                        // (Its builder named once the pages are settled: `references`.)
+                        if !n.is_empty() && !n.to_ascii_uppercase().starts_with("IGPATCH") && production(common) {
+                            refs.push(Reference::new("unit", n, Words::default(), Severity::Warning));
+                            if (common.get_i64_or("width", 0), height) != (TA_PLACE, TA_PLACE) { off_grid += 1; }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if self.own(path) {
+                // (Past a 4096-pixel screen: no layout of a screen, but numbers gone wrong.)
+                let bottom = header.map(|(y, height): (i64, i64)| y.saturating_add(height.max(lowest)));
+                if let Some(bottom) = bottom.filter(|b| (TA_SCREEN_HEIGHT + 1..=4096).contains(b)) {
+                    self.engine.tall_pages += 1;
+                    self.engine.tallest = self.engine.tallest.max(bottom);
+                }
+                if off_grid > 0 {
+                    self.engine.shared_pages += 1;
+                    self.engine.shared_buttons += off_grid;
                 }
             }
             if self.retain(96 + path.len() + refs.iter().map(|r| 128 + r.key.len()).sum::<usize>(), path) { self.gui_pages.insert(path.into(), refs); }
@@ -1309,17 +1443,18 @@ impl<'a> Scan<'a> {
                     continue;
                 };
                 options.entry(key("unit", builder)).or_default().extend(refs.iter().map(|r| r.key.clone()));
+                self.buildable.extend(refs.iter().map(|r| r.key.clone()));
                 let refs = refs.into_iter().map(|r| Reference { what: part(en("{name} production button"), &builder.to_ascii_uppercase()), ..r }).collect();
                 records.insert(key("gui", &path), Record { path, refs, ..Default::default() });
             }
         }
-        for (builder, unit) in std::mem::take(&mut self.menu_entries) {
+        for (builder, unit, menu) in std::mem::take(&mut self.menu_entries) {
             if records.get(&builder).and_then(|r| r.unit.as_ref()).is_some_and(|u| u.builds) {
+                if menu { self.buildable.insert(unit.clone()); }
                 options.entry(builder).or_default().push(unit);
             }
         }
         for (builder, offered) in &options {
-            self.buildable.extend(offered.iter().cloned());
             // (A building whose every option is a module it makes for itself, out of its build
             // stance: no nano spray, so no nano-lathe to ask of its script.)
             let mut known = offered.iter().filter_map(|o| records.get(o).and_then(|r| r.unit.as_ref())).peekable();
@@ -1464,6 +1599,85 @@ impl<'a> Scan<'a> {
             }
             if self.halted { return; }
         }
+    }
+
+    /// What the mod uses of TA's later engines, and of what TA left to its own engine, and how
+    /// the game plays it (`Report::engine`), in a fixed order: from its own files, as they were
+    /// read, and those of its files the game does not read that tell of it.
+    fn engine_uses(&mut self) {
+        let facts = std::mem::take(&mut self.engine);
+        let files = std::mem::take(&mut self.own_files);
+        let mut uses: Vec<EngineUse> = Vec::new();
+        let mut add = |code: &str, support: Support, words: Words, how: &str| uses.push(EngineUse { code: code.into(), support, message: words.english(), words, how: how.into() });
+        // (The first three named, and how many more.)
+        let named = |names: &[String]| {
+            let mut named: Vec<Fill> = names.iter().take(3).map(|n| Fill::name(n.as_str())).collect();
+            if names.len() > 3 { named.push(enf("{n} more", [("n", Fill::number(names.len() - 3))]).into()); }
+            Fill::List(named)
+        };
+        if facts.ai_builders > 0 {
+            add("engine.ai_lists", Support::Played,
+                enf("Build lists for the computer players (TA 3.1's [CANBUILD]). Builders: {builders}; entries: {entries}.", [("builders", Fill::number(facts.ai_builders)), ("entries", Fill::number(facts.ai_entries))]),
+                en("Computer players build from them. Build menus offer what the mod's menu pages and download lists put on them, as TA's did: what only these lists name is the computer players' alone."));
+        }
+        if facts.tall_pages > 0 {
+            add("engine.tall_panels", Support::Played,
+                enf("Side panels laid out for a screen {height} pixels tall, as the patched engines of later years drew them (TA's are 480). Pages: {pages}.", [("height", Fill::number(facts.tallest)), ("pages", Fill::number(facts.tall_pages))]),
+                en("The classic interface lays them out as the mod does: its build places, page arrows and orders where the mod puts them."));
+        }
+        if facts.shared_buttons > 0 {
+            add("engine.shared_places", Support::Played,
+                enf("Build buttons off TA's grid of 64-pixel places: several sharing a place, or one taking several. Buttons: {buttons}; pages: {pages}.", [("buttons", Fill::number(facts.shared_buttons)), ("pages", Fill::number(facts.shared_pages))]),
+                en("The classic interface lays them out as the mod does, and a click builds the unit of the button under it. The modern interface shows a place several buttons share as one picture, its parts marked."));
+        }
+        if facts.patch_scripts > 0 {
+            let values = Fill::List(facts.patch_values.iter().map(|&v| Fill::number(v)).collect());
+            add("engine.script_values", Support::Played,
+                enf("Scripts asking the engine for unit values of TA's later patches ({values}). Scripts: {scripts}.", [("values", values), ("scripts", Fill::number(facts.patch_scripts))]),
+                en("TA Reborn answers them as those engines did: TA 3.1's questions about units by their IDs (69 to 75), a later patch's cloak (111)."));
+        }
+        // (The mod's weapons numbered past what TA's own engine numbered, and those numbered as
+        // another weapon is, the mod's or one it plays over.)
+        let mut by_id: BTreeMap<i64, BTreeSet<&str>> = BTreeMap::new();
+        for (name, id, _) in &facts.weapon_ids { by_id.entry(*id).or_default().insert(name.as_str()); }
+        let mine: BTreeSet<(&str, i64)> = facts.weapon_ids.iter().filter(|(_, _, own)| *own).map(|(name, id, _)| (name.as_str(), *id)).collect();
+        let high: Vec<i64> = mine.iter().map(|&(_, id)| id).filter(|&id| id > 255).collect();
+        const BY_NAME: &str = en("TA Reborn finds a weapon by its name and never reads its ID: IDs make no difference here.");
+        if let Some(&max) = high.iter().max() {
+            add("engine.weapon_ids", Support::Played,
+                enf("Weapon IDs past 255, the highest TA's own engine numbered (the weapon patches of later years went further). Weapons: {n}; the highest ID: {max}.", [("n", Fill::number(high.len())), ("max", Fill::number(max))]),
+                BY_NAME);
+        }
+        let shared: Vec<String> = mine.iter().filter(|&&(_, id)| by_id.get(&id).is_some_and(|names| names.len() > 1)).map(|&(name, _)| name.to_string()).collect();
+        if !shared.is_empty() {
+            add("engine.weapon_ids_shared", Support::Played,
+                enf("Weapons sharing an ID with another weapon: {names}.", [("names", named(&shared))]),
+                BY_NAME);
+        }
+        if !facts.sides.is_empty() {
+            add("engine.sides", Support::Played,
+                enf("Sides of its own: {names}.", [("names", named(&facts.sides))]),
+                en("Offered with the others when a skirmish or a multiplayer battle is set up."));
+        }
+        let campaigns = files.iter().filter(|p| direct(p, "camps", "tdf") && !p.eq_ignore_ascii_case("camps/example.tdf")).count();
+        if campaigns > 0 {
+            add("engine.campaigns", Support::Played,
+                enf("Campaigns of its own: {n}.", [("n", Fill::number(campaigns))]),
+                en("Played from the campaign screen, with TA's own."));
+        }
+        let profiles = files.iter().filter(|p| p.starts_with("ai/")).count();
+        if profiles > 0 {
+            add("engine.ai_profiles", Support::Unused,
+                enf("Files for TA's own computer players (ai/): {n}.", [("n", Fill::number(profiles))]),
+                en("Not used: TA Reborn's computer players are its own. They build from the mod's build lists and menus."));
+        }
+        let programs: Vec<String> = files.iter().filter(|p| is_program(p)).map(|p| p.rsplit('/').next().unwrap_or(p).to_string()).collect();
+        if !programs.is_empty() {
+            add("engine.programs", Support::Unused,
+                enf("Programs and engine patches: {names}.", [("names", named(&programs))]),
+                en("Not used: TA Reborn runs no program a mod brings. What a patch changed in TA's engine is there only where TA Reborn plays it itself, as told here."));
+        }
+        self.report.engine = uses;
     }
 
     /// The empty files, a note for each folder of each layer: TA's way of taking a file out of the
@@ -1690,6 +1904,13 @@ mod tests {
                 assert!(marked(text), "{}: {text:?} is not marked for translation", issue.code);
             }
             assert!(issue.suggestion.is_empty() || marked(&issue.suggestion), "{}: what to do, {:?}, is not marked for translation", issue.code, issue.suggestion);
+        }
+        for used in &report.engine {
+            assert_eq!(used.words.english(), used.message, "{}", used.code);
+            for text in used.words.texts() {
+                assert!(marked(text), "{}: {text:?} is not marked for translation", used.code);
+            }
+            assert!(marked(&used.how) || sources.contains(&format!("const BY_NAME: &str = en(\"{}\")", used.how)), "{}: how it plays, {:?}, is not marked for translation", used.code, used.how);
         }
     }
 
@@ -2488,6 +2709,86 @@ mod tests {
         assert_eq!(told.len(), 2, "{}", report.to_text());
         assert!(told[0].contains("asks the engine for unit value 87 and 99,"), "{}", told[0]);
         assert!(told[1].contains("sets unit value 90,"), "{}", told[1]);
+    }
+
+    /// What a mod uses of TA's later engines is told with how the game plays it, from the mod's
+    /// own files only: the computer players' lists, side panels for a taller screen, buttons
+    /// sharing places, the patched engines' script values, weapon IDs past TA's 255 or shared with
+    /// another weapon (the one it plays over too), sides and campaigns of its own (not the engine's
+    /// example), TA's AI profiles and programs, which are not used. A check of everything, or of a
+    /// mod with none of it, tells none.
+    #[test]
+    fn what_a_mod_uses_of_the_later_engines_is_told_with_how_it_plays() {
+        use cob::op::*;
+        let f = Fixture::new();
+        f.valid("base");
+        f.put("base", "weapons/base.tdf", b"[BASEGUN]{id=5;} [UNNUMBERED]{range=10;}");
+        f.valid("mod");
+        f.put("mod", "gamedata/sidedata.tdf", b"[SIDE0]{name=ARM;commander=EXAMPLE;} [SIDE1]{name=Talon;commander=EXAMPLE;} [CANBUILD]{[EXAMPLE]{canbuild1=EXAMPLE;canbuild2=EXAMPLE;canbuild3=;} [OTHER]{canbuild1=EXAMPLE;}}");
+        let button = |name: &str, x: u32, y: u32, w: u32, h: u32| format!("[GADGET]{{[COMMON]{{id=1;name={name};xpos={x};ypos={y};width={w};height={h};attribs=32;commonattribs=4;}}}}");
+        let page = format!("[GADGET0]{{[COMMON]{{id=0;name=HEADER;xpos=0;ypos=128;width=128;height=640;}}}} {} {} {}", button("EXAMPLE", 0, 0, 64, 64), button("EXAMPLE", 0, 64, 18, 64), button("EXAMPLE", 46, 64, 18, 64));
+        f.put("mod", "guis/example1.gui", page);
+        f.put("mod", "guis/menu.gui", b"[GADGET0]{[COMMON]{id=0;name=HEADER;xpos=0;ypos=0;width=640;height=480;}}");
+        f.put("mod", "scripts/example.cob", script("base", &[PUSH_CONSTANT, 71, GET_UNIT_VALUE, PUSH_CONSTANT, 111, PUSH_CONSTANT, 1, SET_VALUE, PUSH_CONSTANT, 5, GET_UNIT_VALUE, RETURN]));
+        f.put("mod", "weapons/guns.tdf", b"[GUN1]{id=300;} [GUN2]{id=5;} [GUN3]{id=0;} [GUN4]{id=301;}");
+        f.put("mod", "ai/profile.txt", b"AIBOOST");
+        f.put("mod", "camps/talon.tdf", b"[HEADER]{campaignside=Talon;}");
+        f.put("mod", "camps/example.tdf", b"[HEADER]{}");
+        f.put("mod", "TotalA.exe", b"MZ");
+        f.put("mod", "TAESC.dll", b"MZ");
+        let vfs = f.vfs(&["base", "mod"]);
+        let options = Options { target_layer: Some("mod".into()), ..Default::default() };
+        let report = validate(&vfs, &options, |_| true);
+        let codes: Vec<&str> = report.engine.iter().map(|e| e.code.as_str()).collect();
+        assert_eq!(codes, ["engine.ai_lists", "engine.tall_panels", "engine.shared_places", "engine.script_values", "engine.weapon_ids", "engine.weapon_ids_shared", "engine.sides", "engine.campaigns", "engine.ai_profiles", "engine.programs"], "{}", report.to_text());
+        let told = |code: &str| report.engine.iter().find(|e| e.code == code).unwrap();
+        assert!(told("engine.ai_lists").message.contains("Builders: 2; entries: 3."), "{}", told("engine.ai_lists").message);
+        assert!(told("engine.tall_panels").message.contains("768 pixels tall") && told("engine.tall_panels").message.ends_with("Pages: 1."), "{}", told("engine.tall_panels").message);
+        assert!(told("engine.shared_places").message.contains("Buttons: 2; pages: 1."), "{}", told("engine.shared_places").message);
+        assert!(told("engine.script_values").message.contains("(71 and 111). Scripts: 1."), "{}", told("engine.script_values").message);
+        assert!(told("engine.weapon_ids").message.contains("Weapons: 2; the highest ID: 301."), "{}", told("engine.weapon_ids").message);
+        assert!(told("engine.weapon_ids_shared").message.ends_with("another weapon: GUN2."), "BASEGUN's 5, not the unnumbered: {}", told("engine.weapon_ids_shared").message);
+        assert!(told("engine.sides").message.contains("Talon") && !told("engine.sides").message.contains("ARM"), "{}", told("engine.sides").message);
+        assert!(told("engine.campaigns").message.ends_with(": 1."), "the engine's example is no campaign: {}", told("engine.campaigns").message);
+        assert!(told("engine.programs").message.contains("TotalA.exe") || told("engine.programs").message.to_lowercase().contains("totala.exe"), "{}", told("engine.programs").message);
+        assert_eq!(told("engine.ai_profiles").support, Support::Unused);
+        assert_eq!(told("engine.programs").support, Support::Unused);
+        assert_eq!(told("engine.sides").support, Support::Played);
+        assert!(report.engine.iter().all(|e| !report.issues.iter().any(|i| i.code == e.code)), "never findings");
+        assert!(report.to_text().contains("How TA Reborn plays what it uses") && report.to_text().contains("[engine.ai_lists]"), "{}", report.to_text());
+        // (Kept and read back as it was.)
+        let kept: Report = serde_json::from_str(&serde_json::to_string(&report).unwrap()).unwrap();
+        assert_eq!(kept.engine, report.engine);
+        // The whole content checked: no mod's.
+        assert!(validate_all(&vfs).engine.is_empty());
+        // A mod with none of it, over the same: nothing told.
+        let g = Fixture::new();
+        g.valid("base");
+        g.valid("plain");
+        let plain = validate(&g.vfs(&["base", "plain"]), &Options { target_layer: Some("plain".into()), ..Default::default() }, |_| true);
+        assert!(plain.engine.is_empty(), "{:?}", plain.engine);
+        // A report kept before there were any reads as one with none.
+        let old: Report = serde_json::from_str(r#"{"schema_version":12,"target_layer":"mod","complete":true,"counts":{"files_total":0,"files_checked":0,"files_failed":0,"units":0,"weapons":0,"features":0,"maps":0,"models":0,"scripts":0,"gafs":0,"pcx":0,"textures":0,"frames":0},"issues":[]}"#).unwrap();
+        assert!(old.engine.is_empty());
+    }
+
+    /// TA 3.1's [CANBUILD] is the computer players' build list: a unit only it names is on no
+    /// player's menu, so no panel misses its picture, and a missing one is told as the computer
+    /// players' option. A download menu's unit is a player's, and its picture is missed.
+    #[test]
+    fn the_computer_players_lists_are_told_as_theirs() {
+        let f = Fixture::new();
+        f.valid("mod");
+        f.put("mod", "units/aionly.fbi", b"[UNITINFO]{UnitName=AIONLY;ObjectName=example;Side=ARM;}");
+        f.put("mod", "units/menuunit.fbi", b"[UNITINFO]{UnitName=MENUUNIT;ObjectName=example;Side=ARM;}");
+        f.put("mod", "scripts/aionly.cob", script("base", &[cob::op::RETURN]));
+        f.put("mod", "scripts/menuunit.cob", script("base", &[cob::op::RETURN]));
+        f.put("mod", "gamedata/sidedata.tdf", b"[SIDE0]{name=ARM;commander=EXAMPLE;} [CANBUILD]{[EXAMPLE]{canbuild1=AIONLY;canbuild2=GONE;}}");
+        f.put("mod", "download/menu.tdf", b"[MENUENTRY1]{UNITMENU=EXAMPLE;MENU=2;BUTTON=1;UNITNAME=MENUUNIT;}");
+        let report = validate_all(&f.vfs(&["mod"]));
+        let pictures: Vec<&str> = report.issues.iter().filter(|i| i.code == "unit.picture").map(|i| i.path.as_str()).collect();
+        assert_eq!(pictures, ["units/menuunit.fbi"], "{}", report.to_text());
+        assert!(report.issues.iter().any(|i| i.code == "reference.missing" && i.message.contains("EXAMPLE build option for the computer players")), "{}", report.to_text());
     }
 
     /// The mods' upgrades as the game reads them (Total Mayhem's geothermal plant, TA:

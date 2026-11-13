@@ -492,3 +492,27 @@ The memory fragment's speaker has no gender (nacqui, ho trovato la morte, mi è 
 | build option (mod report) | opzione di costruzione |
 | wreckage (mod report) | relitto |
 | mod check findings: noun phrases | lowercase with article ("l'unità {name}", "modello di {name}"); whose: "del gioco originale", "di Reborn", "della mod {mod}" |
+
+## The mod report: OVERVIEW, FINDINGS, HOW TA REBORN PLAYS IT (`pages/mod_report.rs`, `validation.rs`)
+
+What a mod uses of TA's later patched engines (TA 3.1, Escalation's, Total Mayhem's) and how TA
+Reborn plays it. "Play" stays giocare, as "TA Reborn gioca il gioco originale"; the mod is
+feminine (COME LA GIOCA). Straight apostrophes, as the validator's other strings.
+
+| English | Italiano |
+|---|---|
+| the report's tabs OVERVIEW / FINDINGS / PROJECT REVIEW | PANORAMICA / RISULTATI / VERIFICA DEL PROGETTO |
+| HOW TA REBORN PLAYS IT (section) | COME LA GIOCA TA REBORN |
+| tags PLAYED / NOT USED (played as in the engine the mod was made for / not used) | COMPATIBILE / NON USATO (sentences open "Non usati: …", agreeing with file, programmi) |
+| as made {played}, not used {unused} (the library's summary) | fedele all'originale {played}, non usato {unused} |
+| verdicts Errors to put right / Warnings to look at / Nothing for the data checks | Errori da correggere / Avvisi da esaminare / Nessun dato da controllare |
+| IN THIS MOD / FIX FIRST / SEE ALL {n} FINDINGS / SHOW FEWER | IN QUESTA MOD / DA CORREGGERE PRIMA / VEDI TUTTI I RISULTATI ({n}) / MOSTRA MENO |
+| {n} OF ONE KIND (a card of one check's findings with one fix) | {n} DELLO STESSO TIPO |
+| COMPATIBILITY (the library's caption) / READ THE REVIEW / known gaps / Seen in play | COMPATIBILITÀ / LEGGI LA VERIFICA / problemi noti (as PROBLEMI NOTI) / Visto in partita |
+| build list (TA 3.1's [CANBUILD], the computer players') | lista di costruzione |
+| menu pages / download lists (TA's download TDFs) | pagine dei menu / liste di download |
+| side panel / page arrows / orders / build place (a slot of TA's 64-pixel grid) | pannello laterale / frecce di pagina / ordini / casella (di costruzione) |
+| classic / modern interface | interfaccia classica / interfaccia moderna |
+| patch / the patched engines of later years / engine | patch (la patch, le patch) / i motori con le patch degli anni successivi / motore |
+| weapon ID / unit value (a script's) / cloak (unit value 111) | ID dell'arma (gli ID) / valore di unità / occultamento |
+| sides / campaigns of its own; TA's own computer players | fazioni / campagne proprie della mod; giocatori computer originali di TA |

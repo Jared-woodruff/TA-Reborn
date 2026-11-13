@@ -541,3 +541,27 @@ has no gender ("J'ai péri", "la ville de ma naissance"). The field manual and r
 | feature / faction / build option / wreckage | élément de décor / camp / option de construction / épave |
 | "{whats}: {what} is missing." | "{whats} : {what} manque." (labels as "modèle de {name}", descriptions with their article: "l’unité {name}") |
 | {list} and/or {item}; ({count} times); {n} more | et / ou; ({count} fois); {n} de plus |
+
+## The mod report: OVERVIEW, FINDINGS, HOW TA REBORN PLAYS IT (`pages/mod_report.rs`, `validation.rs`)
+
+What a mod uses of TA's later patched engines (TA 3.1, Escalation's, Total Mayhem's) and how TA
+Reborn plays it. "Play" stays jouer, as "TA Reborn joue le jeu original". Curly ’ and no-break
+spaces, as the report's other strings.
+
+| English | fr |
+|---|---|
+| the report's tabs OVERVIEW / FINDINGS / PROJECT REVIEW | VUE D’ENSEMBLE / RÉSULTATS / EXAMEN DU PROJET |
+| HOW TA REBORN PLAYS IT (section) / plays (the engine plays a feature) | COMMENT TA REBORN LE JOUE / jouer |
+| tags PLAYED / NOT USED (played as in the engine the mod was made for / not used) | COMPATIBLE / NON UTILISÉ (sentences open "Non utilisés : …", agreeing with fichiers, programmes) |
+| as made {played}, not used {unused} (the library's summary) | tel que conçu {played}, non utilisé {unused} |
+| verdicts Errors to put right / Warnings to look at / Nothing for the data checks | Erreurs à corriger / Avertissements à examiner / Aucune donnée à vérifier |
+| IN THIS MOD / FIX FIRST / SEE ALL {n} FINDINGS / SHOW FEWER | DANS CE MOD / À CORRIGER D’ABORD / VOIR TOUS LES RÉSULTATS ({n}) / AFFICHER MOINS |
+| {n} OF ONE KIND (a card of one check's findings with one fix) | {n} DU MÊME TYPE |
+| COMPATIBILITY (the library's caption) / READ THE REVIEW / known gaps / Seen in play | COMPATIBILITÉ / LIRE L’EXAMEN / problèmes connus (as PROBLÈMES CONNUS) / Constaté en jeu |
+| build list (TA 3.1's [CANBUILD], the computer players') | liste de construction |
+| menu pages / download lists (TA's download TDFs) | pages de menu / listes de téléchargement |
+| side panel / page arrows / orders / build place (a slot of TA's 64-pixel grid) | panneau latéral / flèches de page / ordres / emplacement (de construction) |
+| classic / modern interface | interface classique / interface moderne |
+| patch / the patched engines of later years / engine | correctif / les versions modifiées du moteur des années suivantes / moteur |
+| weapon ID / unit value (a script's) / cloak (unit value 111) | ID d’arme (les ID) / valeur d’unité / camouflage |
+| sides / campaigns of its own; TA's own computer players | camps / campagnes propres au mod; joueurs ordinateur d’origine de TA |

@@ -1,9 +1,11 @@
 # Mod validation and compatibility reports
 
-The launcher checks installed mods in the background. Open **Mods**, then the mod's **MOD
-INFO** control to read the result or run the check again. **COPY FULL REPORT** copies the
-whole report (every finding, inherited ones included) to share with a mod author or attach to
-a Reborn bug report. Modders can run the same check from the command line:
+The launcher checks installed mods in the background. Open **Mods**: a mod's details show its
+check in brief under **COMPATIBILITY** (its errors, warnings and notes, and how TA Reborn plays
+what it uses), and its **MOD INFO** control opens the report or runs the check again. **COPY
+FULL REPORT** copies the whole report (every finding, inherited ones included, and how the game
+plays what the mod uses) to share with a mod author or attach to a Reborn bug report. Modders can
+run the same check from the command line:
 
 ```
 ta-tools validate-mod "<the mod's folder or archive>" [--mod <dependency>]... [--json] [--fail-on error|warning|never] [--inherited]
@@ -99,13 +101,54 @@ gameplay gaps stay visible even when the automated checks pass.
 
 ## The report
 
-The filters at the top show what counts (**ERRORS**, **WARNINGS**, **NOTES**, each with its
-count) and, when asked, what is **INHERITED**; the search finds findings by their words, file,
-archive or code. Findings are grouped by what they concern (packaging, files, units, weapons,
-features, maps, scripts, models and textures, animations and effects, sounds, menus and sides)
-and each gives its file, its line where it has one, the archive it came from, its code, and
-**HOW TO FIX** a click away. Notes never count: they are worth knowing (a unit with no build
-picture, a weapon with no muzzle in its script).
+The report has three tabs.
+
+**OVERVIEW** is what a player wants to know first:
+
+- what the check found, in a word and a sentence (errors to put right, warnings to look at, no
+  problems found...), with the errors, warnings and notes that count, each a way into
+  **FINDINGS** showing only those;
+- what the mod holds of its own (units, weapons, features, maps, sounds, files);
+- **HOW TA REBORN PLAYS IT**: what the mod uses of TA's later patched engines, and of what TA
+  left to its own engine, with how the game plays it (below);
+- the findings to fix first (its gravest that count), and the way to all of them;
+- what the project saw of the mod in play (its review, below), and which version was checked,
+  when, with which TA Reborn and over what.
+
+**FINDINGS** is what a mod's makers want. The filters at the top show what counts (**ERRORS**,
+**WARNINGS**, **NOTES**, each with its count) and, when asked, what is **INHERITED**; the search
+finds findings by their words, file, archive or code. Findings are grouped by what they concern
+(packaging, files, units, weapons, features, maps, scripts, models and textures, animations and
+effects, sounds, menus and sides). In a group, three or more findings of one check with one fix
+are one card (**N OF ONE KIND**): the first three, **SHOW ALL** for the rest, and the fix they
+share. Each finding gives its file, its line where it has one, the archive it came from, its
+code, and **HOW TO FIX** a click away. Notes never count: they are worth knowing (a unit with no
+build picture, a weapon with no muzzle in its script).
+
+**PROJECT REVIEW**, for the catalogue's mods: what the project saw of the release in play.
+
+### How TA Reborn plays it
+
+Many mods were made for patched versions of TA's engine (TA 3.1, and the engines of TA:
+Escalation and Total Mayhem), or brought programs and files of their own. The check notes what
+a mod's own files use of them, and tells how TA Reborn plays each: **PLAYED** (as in the engine
+the mod was made for) or **NOT USED** (what it did in TA is not there). These never count
+against the mod. A report kept before the check told them has none: CHECK AGAIN.
+
+| Code | What the mod has | How TA Reborn plays it |
+| --- | --- | --- |
+| `engine.ai_lists` | Build lists for the computer players, TA 3.1's `[CANBUILD]` in `gamedata/sidedata.tdf` | Played: the computer players build from them; build menus offer what the mod's menu pages and download lists put there, as TA's did |
+| `engine.tall_panels` | Side panels laid out for a screen taller than TA's 480 pixels (Total Mayhem's and TA: Escalation's, 768) | Played: the classic interface lays them out as the mod does |
+| `engine.shared_places` | Build buttons off TA's grid of 64-pixel places: several sharing a place (Total Mayhem's long-range guns, a button for each way they face), or one taking several (big buttons) | Played: a click builds the unit of the button under it; the modern interface shows a shared place as one picture, its parts marked |
+| `engine.script_values` | Scripts asking TA 3.1's questions about units by their IDs (unit values 69 to 75), or a later patch's cloak (111) | Played: answered as those engines did |
+| `engine.weapon_ids` | Weapon IDs past 255, the highest TA's own engine numbered | Played: TA Reborn finds a weapon by its name and never reads its ID |
+| `engine.weapon_ids_shared` | Weapons sharing an ID with another weapon | Played, as above |
+| `engine.sides` | Sides of its own, beside TA's Arm and Core | Played: offered when a skirmish or a multiplayer battle is set up |
+| `engine.campaigns` | Campaigns of its own (`camps/*.tdf`) | Played from the campaign screen |
+| `engine.ai_profiles` | Files for TA's own computer players (`ai/`) | Not used: TA Reborn's computer players are its own |
+| `engine.programs` | Programs and engine patches (a patched `TotalA.exe`, DLLs) | Not used: TA Reborn runs no program a mod brings |
+
+A script value TA Reborn does not answer is a finding of its own (`script.value`, below).
 
 Findings and what to do about them are shown in the interface's language. The check keeps each
 finding's words as an English text with placeholders and what fills them: names, which are
@@ -116,9 +159,9 @@ what a finding is compared by, and what the copied report and `ta-tools validate
 a report shared with a mod's author reads the same in any language. A file reader's own error
 (a damaged archive's, a model's) is shown as the reader gives it, inside a translated sentence.
 
-Under the findings, the report gives the mod's own files, units, maps and sounds, then how many
-files it was checked with (its own and those of what it plays over, most of them the original
-game's).
+At the foot of OVERVIEW, the report gives the mod's own files, units, maps and sounds, then how
+many files it was checked with (its own and those of what it plays over, most of them the
+original game's).
 
 ## What is checked
 
@@ -137,10 +180,12 @@ game's).
   sounds; features to their models, the animations the game draws (the animation, the burning
   one and the shadow; not TA's burn shadow, death and reclaim animations, which it never reads)
   and replacements; sound categories to their sounds, by the keys the game plays (`select1`,
-  `ok2`… `count0` to `count9`; a repeated key's last value; not `load` and the like); build menus (side data's CANBUILD, `download/` menus, and the production pages the
+  `ok2`… `count0` to `count9`; a repeated key's last value; not `load` and the like); build menus (`download/` menus, and the production pages the
   game reads: a builder's `guis/<name>1.gui`, 2, 3… to the first missing page; a builder being a
   unit with build power, `WorkerTime`, whatever its Builder flag, as the game has it: the mods'
-  silos list missile buttons for their computer players, which build nothing); maps to their
+  silos list missile buttons for their computer players, which build nothing) and the computer
+  players' build lists (side data's CANBUILD, told as theirs: a unit only they name is on no
+  menu, so no panel misses its picture); maps to their
   terrain (without it the map is left out of the lists: a warning), meteors, placed units and
   features. A file naming the same missing thing several times is told it once, with all that
   name it, and a model's missing textures are one finding. A unit's faction missing from the
@@ -182,7 +227,7 @@ dependencies, fingerprints inputs and keeps the reports under `cache/mod-validat
 - the fingerprint covers only the files the game reads (archives and the kinds the checks
   decode), with their digests kept between launches by size and times (`digests.json`), and
   what each mod replaces of the original game; an explicit rescan reads every file again, and
-  RUN AGAIN reads its mod's;
+  CHECK AGAIN reads its mod's;
 - the checks' version, not the launcher's build, keys the cache, so a rebuild keeps reports;
 - baselines are kept by their own fingerprint (`baseline-*.json`, the newest eight);
 - after an install or a removal the changed mods are checked again, and every mod depending

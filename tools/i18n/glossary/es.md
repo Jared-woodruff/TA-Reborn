@@ -534,3 +534,27 @@ líneas TO van sin «A» delante, pues siguen a la etiqueta (QUIEN LEA ESTO).
 | wreckage | restos |
 | faction (sidedata.tdf) | facción (side en otros textos: bando) |
 | the original game's / Reborn's own / {mod}'s | del juego original / propio de Reborn / de {mod} |
+
+## El informe del mod: RESUMEN, RESULTADOS, CÓMO LO JUEGA TA REBORN (`pages/mod_report.rs`, `validation.rs`)
+
+Lo que un mod usa de los motores parcheados posteriores de TA (TA 3.1, los de Escalation y Total
+Mayhem) y cómo lo juega TA Reborn. «Play» sigue siendo jugar, como «TA Reborn juega el juego
+original». Las etiquetas sin concordancia de género (compatible, sin uso).
+
+| English | Español |
+|---|---|
+| the report's tabs OVERVIEW / FINDINGS / PROJECT REVIEW | RESUMEN / RESULTADOS / REVISIÓN DEL PROYECTO |
+| HOW TA REBORN PLAYS IT (section) | CÓMO LO JUEGA TA REBORN |
+| tags PLAYED / NOT USED (played as in the engine the mod was made for / not used) | COMPATIBLE / SIN USO (las frases empiezan por "Sin uso: …") |
+| as made {played}, not used {unused} (the library's summary) | tal cual {played}, sin uso {unused} |
+| verdicts Errors to put right / Warnings to look at / Nothing for the data checks | Errores que corregir / Advertencias que revisar / Ningún dato que comprobar |
+| IN THIS MOD / FIX FIRST / SEE ALL {n} FINDINGS / SHOW FEWER | EN ESTE MOD / CORREGIR PRIMERO / VER TODOS LOS RESULTADOS ({n}) / VER MENOS |
+| {n} OF ONE KIND (a card of one check's findings with one fix) | {n} DEL MISMO TIPO |
+| COMPATIBILITY (the library's caption) / READ THE REVIEW / known gaps / Seen in play | COMPATIBILIDAD / LEER LA REVISIÓN / problemas conocidos (como PROBLEMAS CONOCIDOS) / Visto en partida |
+| build list (TA 3.1's [CANBUILD], the computer players') | lista de construcción |
+| menu pages / download lists (TA's download TDFs) | páginas de menú / listas de descargas (como "menú de construcción de descargas") |
+| side panel / page arrows / orders / build place (a slot of TA's 64-pixel grid) | panel lateral / flechas de página / órdenes / casilla (de construcción) |
+| classic / modern interface | interfaz clásica / interfaz moderna |
+| patch / the patched engines of later years / engine | parche / los motores parcheados de años posteriores / motor |
+| weapon ID / unit value (a script's) / cloak (unit value 111) | ID de arma (los ID) / valor de unidad / camuflaje |
+| sides / campaigns of its own; TA's own computer players | bandos / campañas propios del mod; jugadores IA del propio TA |
