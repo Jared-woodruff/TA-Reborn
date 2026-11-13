@@ -7,11 +7,13 @@ TA Reborn or kept in this repository.
 
 - **Players:** the launcher's Maps page, **SUPREME COMMANDER…**. The dialog finds the game,
   lists its skirmish maps and the player's own (downloaded maps and Forged Alliance Forever's
-  vault) with the game's own pictures of them, and makes the chosen ones, one after another.
-  The largest take about half a minute each; all 54 of the game's take about 15 minutes and
-  1.2 GB. They become the map pack **Supreme Commander maps** (`map-pack-supreme-commander`),
-  turned on, in the map library and in skirmish. Importing again makes the maps chosen again
-  and keeps the others; REMOVE MAP PACK removes them all.
+  vault) with the game's own pictures of them, and makes the chosen ones, one after another:
+  most in seconds, the largest in up to about three minutes; all 54 of the game's take about 20
+  minutes and 1.2 GB. STOP AFTER THIS MAP ends it once the map in hand is made; closing the
+  launcher asks first, then ends it at once, the map in hand left out. Either way the maps made
+  become the map pack **Supreme Commander maps** (`map-pack-supreme-commander`), turned on, in
+  the map library and in skirmish. Importing again makes the maps chosen again and keeps the
+  others; REMOVE MAP PACK removes them all.
 - **Developers:** `cargo build --release -p ta_tools`, then `target/release/ta-tools supcom
   <out> [--only scmp_009,x1mp_001] [--preview <dir>] [--game <folder>] [--budget n]
   [--max-cells n]` makes the maps into `<out>/maps` (mount it as a mod to play them), with

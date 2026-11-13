@@ -1727,7 +1727,7 @@ impl LauncherApp {
             risks.push(n("Maps are still being imported."));
         }
         if self.supcom.importing() {
-            risks.push(n("Supreme Commander maps are still being made: the launcher would close once the map in hand is done, keeping the maps made."));
+            risks.push(n("Supreme Commander maps are still being made: closing keeps the maps made so far, and leaves out the one in hand."));
         }
         if self.pretend_at_risk && risks.is_empty() {
             risks.push(n("A mod is still downloading or installing: it would start over."));
@@ -1802,14 +1802,14 @@ impl LauncherApp {
         }
     }
 
-    /// CLOSE ANYWAY: the launcher closes; during a Supreme Commander import, once the map in hand
-    /// is done and the maps made are installed (on_exit would wait for it with the window frozen).
+    /// CLOSE ANYWAY: the launcher closes; during a Supreme Commander import, once the maps made
+    /// are installed (the one in hand left out), the window answering meanwhile.
     fn close_anyway(&mut self, ctx: &egui::Context) {
         self.confirm_close = false;
         if self.supcom.importing() {
-            self.supcom.stop();
+            self.supcom.abandon();
             self.close_after_import = true;
-            self.notify("The launcher closes once the Supreme Commander map being made is done.", AMBER);
+            self.notify("Closing once the Supreme Commander maps made so far are installed.", AMBER);
         } else {
             self.close_confirmed = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -3940,8 +3940,8 @@ name = \"{}\"
         let _ = std::fs::remove_dir_all(dir);
     }
 
-    /// Closing during a Supreme Commander import: asked first; CLOSE ANYWAY stops it after the map
-    /// in hand and closes once it has (not in on_exit, with the window frozen), its maps turned on.
+    /// Closing during a Supreme Commander import: asked first; CLOSE ANYWAY ends it (the map in
+    /// hand left out) and closes once it has, its maps turned on, the window answering meanwhile.
     #[test]
     fn closing_during_a_supreme_commander_import_closes_once_it_has_stopped() {
         let dir = temp_dir("close_supcom_import");
@@ -3959,7 +3959,7 @@ name = \"{}\"
         let output = frame(&ctx, &mut app, close());
         assert!(sent(&output, &egui::ViewportCommand::CancelClose) && app.confirm_close, "the close waits for an answer");
         app.close_anyway(&ctx);
-        assert!(!app.close_confirmed && app.close_after_import, "not closed while the map in hand is made");
+        assert!(!app.close_confirmed && app.close_after_import, "not closed before the maps made are installed");
         let deadline = Instant::now() + Duration::from_secs(10);
         let mut output = frame(&ctx, &mut app, RawInput::default());
         while !sent(&output, &egui::ViewportCommand::Close) && Instant::now() < deadline {

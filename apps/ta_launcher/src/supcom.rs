@@ -90,7 +90,15 @@ pub struct Outcome {
 
 struct Job {
     handle: JoinHandle<Outcome>,
-    stop: Arc<AtomicBool>,
+    ending: Arc<Ending>,
+}
+
+/// How an import is asked to end: after the map in hand (`stop`: the player's STOP), or at once,
+/// the maps made installed and the one in hand left out (`abandon`: the launcher closing).
+#[derive(Default)]
+struct Ending {
+    stop: AtomicBool,
+    abandon: AtomicBool,
 }
 
 #[derive(Default)]
@@ -164,16 +172,16 @@ impl Import {
             return;
         }
         let own = found.own_folders.clone();
-        let stop = Arc::new(AtomicBool::new(false));
+        let ending = Arc::new(Ending::default());
         *self.progress.lock().unwrap() = Progress { total: maps.len(), ..Default::default() };
         let progress = self.progress.clone();
-        let stopping = stop.clone();
+        let asked = ending.clone();
         self.outcome = None;
         let handle = std::thread::Builder::new().name("supcom import".into()).spawn(move || {
-            import(&game, &own, &maps, &ta_root, &store_dir, &progress, &stopping).unwrap_or_else(|e| Outcome { error: Some(format!("{e:#}")), ..Default::default() })
+            import(&game, &own, &maps, &ta_root, &store_dir, &progress, &asked).unwrap_or_else(|e| Outcome { error: Some(format!("{e:#}")), ..Default::default() })
         });
         match handle {
-            Ok(handle) => self.job = Some(Job { handle, stop }),
+            Ok(handle) => self.job = Some(Job { handle, ending }),
             Err(e) => self.outcome = Some(Outcome { error: Some(e.to_string()), ..Default::default() }),
         }
     }
@@ -200,7 +208,16 @@ impl Import {
     /// Stops the import after the map being made.
     pub fn stop(&self) {
         if let Some(job) = &self.job {
-            job.stop.store(true, Ordering::Relaxed);
+            job.ending.stop.store(true, Ordering::Relaxed);
+        }
+    }
+
+    /// Ends the import at once (the launcher closing): the maps made are installed, the one being
+    /// made is left out.
+    pub fn abandon(&self) {
+        if let Some(job) = &self.job {
+            job.ending.abandon.store(true, Ordering::Relaxed);
+            job.ending.stop.store(true, Ordering::Relaxed);
         }
     }
 
@@ -241,11 +258,12 @@ impl Import {
         None
     }
 
-    /// Stops an import under way at shutdown after the map being made, and waits for it (the pack
-    /// is installed whole or not at all): its outcome, the maps made to be turned on.
+    /// Ends an import under way at shutdown and waits for it: the maps made are installed (the
+    /// pack whole or not at all), the one being made left out. Its outcome, the maps made to be
+    /// turned on.
     pub fn finish_on_exit(&mut self) -> Option<Outcome> {
+        self.abandon();
         let job = self.job.take()?;
-        job.stop.store(true, Ordering::Relaxed);
         job.handle.join().ok()
     }
 
@@ -253,16 +271,16 @@ impl Import {
     /// folders `made`: for tests.
     #[cfg(test)]
     pub fn pretend_importing(&mut self, made: &[&str]) {
-        let stop = Arc::new(AtomicBool::new(false));
-        let stopping = stop.clone();
+        let ending = Arc::new(Ending::default());
+        let asked = ending.clone();
         let made: Vec<String> = made.iter().map(|m| m.to_string()).collect();
         let handle = std::thread::spawn(move || {
-            while !stopping.load(Ordering::Relaxed) {
+            while !asked.stop.load(Ordering::Relaxed) {
                 std::thread::sleep(std::time::Duration::from_millis(2));
             }
             Outcome { imported: made.clone(), made, stopped: true, ..Default::default() }
         });
-        self.job = Some(Job { handle, stop });
+        self.job = Some(Job { handle, ending });
     }
 }
 
@@ -328,13 +346,13 @@ fn scmap_of(folder: &Path) -> Option<PathBuf> {
 
 /// Makes `maps` (folder, the player's own, name) into TA maps and installs the pack: the maps
 /// already in it kept, those made again replaced.
-fn import(game: &Install, own: &[PathBuf], maps: &[(PathBuf, bool, String)], ta_root: &Path, store_dir: &Path, progress: &Mutex<Progress>, stop: &AtomicBool) -> Result<Outcome> {
+fn import(game: &Install, own: &[PathBuf], maps: &[(PathBuf, bool, String)], ta_root: &Path, store_dir: &Path, progress: &Arc<Mutex<Progress>>, ending: &Ending) -> Result<Outcome> {
     // TA's own features and palette: from the original game alone, as every player has it.
     let mut vfs = ta_vfs::Vfs::new();
     vfs.mount_game_dir(ta_root, "base").context(t("Total Annihilation's own data could not be read."))?;
-    let palette = Palette::parse(&vfs.read("palettes/palette.pal")?)?;
-    let templates = Templates::load(&vfs);
-    let files = Files::open(game, own)?;
+    let palette = Arc::new(Palette::parse(&vfs.read("palettes/palette.pal")?)?);
+    let templates = Arc::new(Templates::load(&vfs));
+    let files = Arc::new(Files::open(game, own)?);
     let mods_dir = store_dir.join("mods");
     let work = crate::maps::Workspace::new(&store_dir.join("cache").join("map-imports"))?;
     let payload = work.0.join("payload");
@@ -349,9 +367,8 @@ fn import(game: &Install, own: &[PathBuf], maps: &[(PathBuf, bool, String)], ta_
         }
     }
     let mut outcome = Outcome::default();
-    let options = Options::default();
     for (i, (folder, players_own, name)) in maps.iter().enumerate() {
-        if stop.load(Ordering::Relaxed) {
+        if ending.stop.load(Ordering::Relaxed) {
             outcome.stopped = true;
             break;
         }
@@ -361,13 +378,11 @@ fn import(game: &Install, own: &[PathBuf], maps: &[(PathBuf, bool, String)], ta_
             p.current = name.clone();
             p.share = 0.0;
         }
-        let made = Map::read(&files, folder).map_err(anyhow::Error::from).and_then(|m| {
-            Ok(convert::convert(&m, &files, &templates, &palette, *players_own, &options, &|s| {
-                if let Stage::Painting(share) = s {
-                    progress.lock().unwrap().share = share;
-                }
-            })?)
-        });
+        let Some(made) = convert_one(&files, &templates, &palette, folder, *players_own, progress, ending) else {
+            // (Abandoned, the launcher closing: the maps made are installed now.)
+            outcome.stopped = true;
+            break;
+        };
         match made {
             Ok(c) => {
                 // (An older version of this map, under another name, goes.)
@@ -406,6 +421,36 @@ fn import(game: &Install, own: &[PathBuf], maps: &[(PathBuf, bool, String)], ta_
     };
     ta_vfs::package::install(&ta_vfs::package::plan(&payload)?, &manifest, &mods_dir)?;
     Ok(outcome)
+}
+
+/// Makes the map in `folder` into a TA map on a thread of its own, the import waiting for it:
+/// `None` when the import is abandoned meanwhile (the thread is left to the launcher's closing:
+/// a large map takes minutes, and it writes nothing).
+fn convert_one(files: &Arc<Files>, templates: &Arc<Templates>, palette: &Arc<Palette>, folder: &Path, players_own: bool, progress: &Arc<Mutex<Progress>>, ending: &Ending) -> Option<Result<convert::Converted>> {
+    let (send, receive) = mpsc::channel();
+    let (files, templates, palette, folder, progress) = (files.clone(), templates.clone(), palette.clone(), folder.to_path_buf(), progress.clone());
+    let spawned = std::thread::Builder::new().name("supcom map".into()).spawn(move || {
+        let made = Map::read(&files, &folder).map_err(anyhow::Error::from).and_then(|m| {
+            Ok(convert::convert(&m, &files, &templates, &palette, players_own, &Options::default(), &|s| {
+                if let Stage::Painting(share) = s {
+                    progress.lock().unwrap().share = share;
+                }
+            })?)
+        });
+        let _ = send.send(made);
+    });
+    if let Err(e) = spawned {
+        return Some(Err(e.into()));
+    }
+    loop {
+        match receive.recv_timeout(std::time::Duration::from_millis(50)) {
+            Ok(made) => return Some(made),
+            Err(mpsc::RecvTimeoutError::Timeout) if ending.abandon.load(Ordering::Relaxed) => return None,
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            // (Its thread ended without a word: it failed.)
+            Err(mpsc::RecvTimeoutError::Disconnected) => return Some(Err(anyhow::anyhow!(t("The map's conversion stopped unexpectedly.").to_string()))),
+        }
+    }
 }
 
 /// The source folder's name as a converted map's OTA records it (`supcommap`).
