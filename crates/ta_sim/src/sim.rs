@@ -2588,7 +2588,9 @@ impl Sim {
             sim.stop(id);
             if let Some(u) = sim.unit_mut(id) {
                 u.orders.pop_front();
-                u.in_build_stance = false;
+                if !u.stance_is_scripted() {
+                    u.in_build_stance = false;
+                }
             }
         };
         let owner = self.unit(id).map_or(0, |u| u.owner);
@@ -2625,7 +2627,8 @@ impl Sim {
             return;
         }
         self.stop(id);
-        let started = self.unit(id).is_some_and(|u| u.build.is_some() || u.in_build_stance);
+        // (Begun once its job is: a script may have left the stance raised from the last.)
+        let started = self.unit(id).is_some_and(|u| u.build.is_some());
         if !started {
             let u = self.unit(id).unwrap();
             let to = target_pos - u.pos;
@@ -3891,7 +3894,9 @@ impl Sim {
             sim.stop(id);
             if let Some(u) = sim.unit_mut(id) {
                 u.orders.pop_front();
-                u.in_build_stance = false;
+                if !u.stance_is_scripted() {
+                    u.in_build_stance = false;
+                }
             }
         };
         let Some(f) = self.features.get(index).filter(|f| f.alive).cloned() else {
@@ -3922,7 +3927,8 @@ impl Sim {
             return;
         }
         self.stop(id);
-        let started = self.unit(id).is_some_and(|u| u.build.is_some() || u.in_build_stance);
+        // (Begun once its job is: a script may have left the stance raised from the last.)
+        let started = self.unit(id).is_some_and(|u| u.build.is_some());
         if !started {
             let u = self.unit(id).unwrap();
             let to = f.pos - u.pos;
@@ -3978,7 +3984,9 @@ impl Sim {
             sim.stop(id);
             if let Some(u) = sim.unit_mut(id) {
                 u.orders.pop_front();
-                u.in_build_stance = false;
+                if !u.stance_is_scripted() {
+                    u.in_build_stance = false;
+                }
             }
         };
         let owner = self.unit(id).map_or(0, |u| u.owner);
@@ -4005,7 +4013,8 @@ impl Sim {
             return;
         }
         self.stop(id);
-        let started = self.unit(id).is_some_and(|u| u.build.is_some() || u.in_build_stance);
+        // (Begun once its job is: a script may have left the stance raised from the last.)
+        let started = self.unit(id).is_some_and(|u| u.build.is_some());
         if !started {
             let u = self.unit(id).unwrap();
             let to = target_pos - u.pos;
@@ -4134,7 +4143,9 @@ impl Sim {
             sim.stop(id);
             if let Some(u) = sim.unit_mut(id) {
                 u.orders.pop_front();
-                u.in_build_stance = false;
+                if !u.stance_is_scripted() {
+                    u.in_build_stance = false;
+                }
             }
         };
         let Some(type_id) = self.wreck_type(index).filter(|&type_id| t.def.can_resurrect && self.is_allowed(type_id)) else {
@@ -4160,7 +4171,8 @@ impl Sim {
             return;
         }
         self.stop(id);
-        let started = self.unit(id).is_some_and(|u| u.build.is_some() || u.in_build_stance);
+        // (Begun once its job is: a script may have left the stance raised from the last.)
+        let started = self.unit(id).is_some_and(|u| u.build.is_some());
         if !started {
             let u = self.unit(id).unwrap();
             let to = f.pos - u.pos;
@@ -4439,8 +4451,10 @@ impl Sim {
         let is_factory = self.unit(id).is_some_and(|u| self.unit_type(u).is_factory);
         let Some(u) = self.unit_mut(id) else { return };
         u.drift = None;
-        // A factory's stance is its activation readiness, shared by successive products.
-        if !is_factory {
+        // A factory's stance is its activation readiness, shared by successive products. A
+        // builder's with a `StartBuilding` script is its script's, as in TA: it drops it in
+        // `StopBuilding`, or keeps it while its arm stays out (`Unit::stance_is_scripted`).
+        if !is_factory && !u.stance_is_scripted() {
             u.in_build_stance = false;
         }
         if u.build.take().is_some() {
