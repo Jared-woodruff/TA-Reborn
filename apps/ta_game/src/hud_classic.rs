@@ -20,7 +20,7 @@ use ta_vfs::Vfs;
 use winit::keyboard::KeyCode;
 
 use crate::game::{CommandMode, Game};
-use crate::hud_classic_art::{Art, Frames, Gadget, Gui, SideLayout, Sprite, TaFont};
+use crate::hud_classic_art::{Art, Frames, Gadget, Gui, MenuPage, SideLayout, Sprite, TaFont};
 use crate::hud_classic_scale::Look;
 use crate::minimap::Minimap;
 
@@ -297,6 +297,27 @@ fn inclusive(r: Rect) -> Rect {
 }
 
 /// Art over `r` (TA pixels), made for the screen pixels it covers there.
+/// A place several build buttons share on a page: the place, and each button's index among
+/// the GUI's gadgets, zone (TA pixels, on the screen's panel) and unit, in the page's order.
+type SharedButtons = (usize, Vec<(usize, Rect, usize)>);
+
+/// What a click on a build button for `unit` does: a factory makes one more (Shift: five), or
+/// fewer with the right button; a constructor starts placing it.
+fn build_click(game: &mut Game, resp: &egui::Response, unit: usize, queue: &Queue) {
+    if resp.clicked() {
+        let shift = ta_ui::widgets::click_modifiers(resp, egui::PointerButton::Primary).shift;
+        if queue.factory {
+            game.produce(unit, if shift { 5 } else { 1 });
+        } else {
+            game.begin_placement(unit);
+        }
+    }
+    if resp.secondary_clicked() && queue.factory {
+        let shift = ta_ui::widgets::click_modifiers(resp, egui::PointerButton::Secondary).shift;
+        game.produce(unit, if shift { -5 } else { -1 });
+    }
+}
+
 fn fill(painter: &egui::Painter, sprite: &Sprite, ta: Ta, r: Rect, tint: Color32) {
     let texture = sprite.texture(painter.ctx(), ta.pixels(r.size()), ta.look);
     painter.image(texture, ta.snap(r), full_uv(), tint);
@@ -611,27 +632,49 @@ impl ClassicHud {
             Some(b) => {
                 let pages = self.art.menu(env.vfs, &game.sim.types, b, &env.st.template);
                 let p = self.build_page.get(&b).copied().unwrap_or(0).min(pages.len().saturating_sub(1));
-                self.anchors.pages(pages.iter().enumerate().flat_map(|(k, pg)| pg.slots.iter().flatten().map(move |&o| (o, k))), p);
-                let page = pages.get(p).map(|pg| (pg.gui.clone(), pg.slots.clone()));
+                self.anchors.pages(pages.iter().enumerate().flat_map(|(k, pg)| pg.units().map(move |o| (o, k))), p);
+                let page = pages.get(p).cloned();
                 match page {
-                    Some((gui, slots)) => (gui, Some(MenuAt { builder: b, page: p, pages: pages.len() }), Some(slots)),
+                    Some(page) => (page.gui.clone(), Some(MenuAt { builder: b, page: p, pages: pages.len() }), Some(page)),
                     None => (format!("{}gen", env.st.prefix.to_ascii_lowercase()), None, None),
                 }
             }
             None => (format!("{}gen", env.st.prefix.to_ascii_lowercase()), None, None),
         };
         let Some(gui) = self.art.gui(env.vfs, &gui_name).or_else(|| self.side_gui(env, "gen")) else { return };
-        self.page(ui, env, game, &gui, &gui_name, menu_at.zip(page.as_deref()));
+        self.page(ui, env, game, &gui, &gui_name, menu_at.zip(page.as_ref()));
     }
 
     /// A GUI page: its panel, its gadgets, and extra buttons in the places left free.
-    fn page(&mut self, ui: &egui::Ui, env: &Env, game: &mut Game, gui: &Gui, gui_name: &str, menu: Option<(MenuAt, &[Option<usize>])>) {
+    fn page(&mut self, ui: &egui::Ui, env: &Env, game: &mut Game, gui: &Gui, gui_name: &str, menu: Option<(MenuAt, &MenuPage)>) {
         let painter = ui.painter().clone();
         if let Some(f) = self.art(env, "commongui", &gui.panel) {
             blit(&painter, &f[0], env.ta, gui.origin, Color32::WHITE);
         }
         let sel = Selection::of(game);
         let queue = self.queue(game);
+        // Places several build buttons share (Total Mayhem's): the shares of each, and the place's
+        // own button with them, in the page's order (`Grid::share_of`).
+        let mut shared: Vec<SharedButtons> = Vec::new();
+        if let Some((_, page)) = menu {
+            for (i, g) in gui.gadgets.iter().enumerate().filter(|(_, g)| g.kind == 1 && g.attribs & 32 != 0) {
+                let Some(place) = gui.grid.share_of(g.rect) else { continue };
+                let Some(unit) = page.unit_at(&gui.grid, i, g.rect) else { continue };
+                let zone = g.rect.intersect(gui.grid.square(place)).translate(gui.origin.to_vec2());
+                match shared.iter_mut().find(|(p, _)| *p == place) {
+                    Some((_, zones)) => zones.push((i, zone, unit)),
+                    None => shared.push((place, vec![(i, zone, unit)])),
+                }
+            }
+            for (i, g) in gui.gadgets.iter().enumerate().filter(|(_, g)| g.kind == 1 && g.attribs & 32 != 0 && gui.grid.is_place(g.rect)) {
+                let place = gui.grid.place_of(g.rect);
+                if let Some((_, zones)) = shared.iter_mut().find(|(p, _)| *p == place)
+                    && let Some(unit) = page.unit_at(&gui.grid, i, g.rect)
+                {
+                    zones.push((i, g.rect.translate(gui.origin.to_vec2()), unit));
+                }
+            }
+        }
         let (mut shown, mut small, mut wide) = (Vec::new(), Vec::new(), Vec::new());
         for (i, g) in gui.gadgets.iter().enumerate() {
             if g.kind != 1 {
@@ -640,8 +683,10 @@ impl ClassicHud {
             let rect = g.rect.translate(gui.origin.to_vec2());
             let id = ui.id().with(("gadget", i));
             if g.attribs & 32 != 0 {
-                if let Some((_, slots)) = menu {
-                    self.build_button(ui, env, game, rect, id, slots.get(gui.grid.place_of(g.rect)).copied().flatten(), gui_name, &queue);
+                if let Some((_, page)) = menu
+                    && !shared.iter().any(|(_, zones)| zones.iter().any(|&(index, ..)| index == i))
+                {
+                    self.build_button(ui, env, game, rect, id, page.unit_at(&gui.grid, i, g.rect), gui_name, &queue);
                 }
                 continue;
             }
@@ -658,6 +703,11 @@ impl ClassicHud {
         // Places of hidden gadgets another gadget doesn't cover.
         small.retain(|r| !shown.iter().any(|s| s.intersects(r.shrink(1.0))));
         wide.retain(|r| !shown.iter().any(|s| s.intersects(r.shrink(1.0))));
+        for (place, zones) in &shared {
+            let square = gui.grid.square(*place).translate(gui.origin.to_vec2());
+            let zones: Vec<(Rect, usize)> = zones.iter().map(|&(_, zone, unit)| (zone, unit)).collect();
+            self.shared_build_place(ui, env, game, square, &zones, ui.id().with(("shared", *place)), gui_name, &queue);
+        }
         self.extras(ui, env, game, &sel, small, wide);
     }
 
@@ -843,20 +893,66 @@ impl ClassicHud {
         }
         let facts = crate::hud::unit_facts(&game.sim, game.sim.types.get(unit));
         let resp = if facts.is_empty() { resp } else { resp.on_hover_text(facts.join("\n")) };
-        if !allowed {
-            return;
+        if allowed {
+            build_click(game, &resp, unit, queue);
         }
-        if resp.clicked() {
-            let shift = ta_ui::widgets::click_modifiers(&resp, egui::PointerButton::Primary).shift;
-            if queue.factory {
-                game.produce(unit, if shift { 5 } else { 1 });
-            } else {
-                game.begin_placement(unit);
+    }
+
+    /// A place several build buttons share ([`crate::hud_classic_art::Grid::share_of`]: Total
+    /// Mayhem's long-range guns, a variant for each way they face round one picture, the side
+    /// clicked the way the gun faces; its plants' halves, land and sea), as TA laid it out: each
+    /// unit's picture over its zone (`zones`, TA pixels, in the page's order; a build picture
+    /// shown as its part of the place's), and the zone pointed at is the button, the first
+    /// holding the pointer: lit, its unit's facts shown, its unit built by a click.
+    #[allow(clippy::too_many_arguments)]
+    fn shared_build_place(&mut self, ui: &egui::Ui, env: &Env, game: &mut Game, square: Rect, zones: &[(Rect, usize)], id: egui::Id, gui_name: &str, queue: &Queue) {
+        let painter = ui.painter().clone();
+        let ta = env.ta;
+        let resp = ui.interact(ta.rect(square), id, Sense::click());
+        for &(_, unit) in zones {
+            self.anchors.picture(unit, resp.rect);
+        }
+        let zone_of = |p: Pos2| zones.iter().position(|&(zone, _)| ta.rect(zone).contains(p));
+        let pointed = resp.hover_pos().and_then(zone_of);
+        // (The last first: the first is over the others where they overlap, as it takes the
+        // pointer there.)
+        for (k, &(zone, unit)) in zones.iter().enumerate().rev() {
+            let name = game.sim.types.get(unit).name.clone();
+            let frames = self.art.unit_button(env.vfs, &env.data.palette, gui_name, &name);
+            let allowed = game.sim.is_allowed(unit);
+            let placing = game.placement.as_ref().is_some_and(|p| p.type_id == unit);
+            let down = allowed && ((pointed == Some(k) && resp.is_pointer_button_down_on()) || placing);
+            let clip = painter.with_clip_rect(ta.rect(zone).intersect(painter.clip_rect()));
+            match &frames {
+                // (Its own art, as its button was laid out.)
+                Some(f) if f.len() >= 3 => blit(&clip, &f[if !allowed { 2 } else if down { 1 } else { 0 }], ta, zone.min, Color32::WHITE),
+                Some(f) => fill(&clip, &f[0], ta, square, if allowed { Color32::WHITE } else { Color32::from_gray(90) }),
+                None => {
+                    clip.rect_filled(ta.snap(zone), 0.0, Color32::from_gray(34));
+                }
+            }
+            if down {
+                clip.rect_filled(ta.snap(zone), 0.0, Color32::from_white_alpha(36));
             }
         }
-        if resp.secondary_clicked() && queue.factory {
-            let shift = ta_ui::widgets::click_modifiers(&resp, egui::PointerButton::Secondary).shift;
-            game.produce(unit, if shift { -5 } else { -1 });
+        let Some(k) = pointed else { return };
+        // The zone pointed at stands out: the rest of the place dimmed, where the zone does not
+        // take the pointer (in eighths of the place).
+        let cell = square.width() / 8.0;
+        for row in 0..8 {
+            for col in 0..8 {
+                let r = Rect::from_min_size(square.min + vec2(col as f32, row as f32) * cell, vec2(cell, cell));
+                if zone_of(ta.rect(r).center()) != Some(k) {
+                    painter.rect_filled(ta.snap(r), 0.0, Color32::from_black_alpha(110));
+                }
+            }
+        }
+        let unit = zones[k].1;
+        self.tip = Some(Tip::Unit(unit));
+        let facts = crate::hud::unit_facts(&game.sim, game.sim.types.get(unit));
+        let resp = if facts.is_empty() { resp } else { resp.on_hover_text(facts.join("\n")) };
+        if game.sim.is_allowed(unit) {
+            build_click(game, &resp, unit, queue);
         }
     }
 

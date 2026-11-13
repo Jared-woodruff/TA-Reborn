@@ -1270,7 +1270,18 @@ impl Hud {
     /// click.
     #[allow(clippy::too_many_arguments)]
     fn build_menu(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, vfs: &Vfs, game: &Game, builder: &UnitType, queued: &HashMap<usize, usize>, producing: Option<(usize, f32)>) -> Option<BuildClick> {
-        let options: Vec<usize> = builder.build_options.iter().copied().filter(|&o| game.sim.is_allowed(o)).collect();
+        let allowed = |o: usize| game.sim.is_allowed(o);
+        // The units of a place several share on the builder's own page (Total Mayhem's long-range
+        // guns, a variant for each way they face round one picture; its plants' halves, land and
+        // sea) go as one picture, the plain one's, with the place's zones (`build_tile`).
+        let shared = self.shared_places.entry(builder.id).or_insert_with(|| std::sync::Arc::new(crate::hud_classic_art::shared_places(vfs, &game.sim.types, builder))).clone();
+        let place_of = |o: usize| shared.iter().find(|place| place.iter().any(|&(u, _)| u == o)).filter(|place| place.iter().filter(|&&(u, _)| allowed(u)).count() > 1);
+        let options: Vec<usize> = builder
+            .build_options
+            .iter()
+            .copied()
+            .filter(|&o| allowed(o) && place_of(o).is_none_or(|place| crate::hud_classic_art::plain_of(&game.sim.types, place, allowed) == Some(o)))
+            .collect();
         let groups: Vec<(Option<Purpose>, Vec<usize>)> = if builder.is_factory {
             vec![(None, options)]
         } else {
@@ -1348,8 +1359,7 @@ impl Hud {
                 ui.horizontal(|ui| {
                     ui.add_space(indent);
                     for &opt in row {
-                        let on_pad = producing.filter(|&(q, _)| q == opt).map(|(_, p)| p);
-                        if let Some(c) = self.build_tile(ui, ctx, vfs, game, builder, opt, queued.get(&opt).copied(), on_pad, placing == Some(opt), grid.tile, cost_size) {
+                        if let Some(c) = self.build_tile(ui, ctx, vfs, game, builder, opt, place_of(opt).map(Vec::as_slice), queued, producing, placing, grid.tile, cost_size) {
                             click = Some(c);
                         }
                     }
@@ -1392,20 +1402,59 @@ impl Hud {
     }
 
     /// One picture in the build menu: costs along its foot (lettered `cost_size`), how many are
-    /// queued, the progress of the one on the pad, brass while it is being placed.
+    /// queued, the progress of the one on the pad, brass while it is being placed. A place
+    /// several units share (`place`, its zones in shares of the picture) shows the unit whose
+    /// zone is pointed at (the plain one, `opt`, else), lit, and dots where its zones are; a
+    /// click builds the unit pointed at.
     #[allow(clippy::too_many_arguments)]
-    fn build_tile(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, vfs: &Vfs, game: &Game, builder: &UnitType, opt: usize, queued: Option<usize>, on_pad: Option<f32>, placing: bool, tile: f32, cost_size: f32) -> Option<BuildClick> {
-        let kind = game.sim.types.get(opt);
-        let label = crate::chat::unit_label(&game.sim, opt);
+    fn build_tile(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, vfs: &Vfs, game: &Game, builder: &UnitType, opt: usize, place: Option<&[(usize, Rect)]>, queued: &HashMap<usize, usize>, producing: Option<(usize, f32)>, placing: Option<usize>, tile: f32, cost_size: f32) -> Option<BuildClick> {
         let size = EVec2::splat(tile);
         let resp = match self.unit_pic(ctx, vfs, game, opt, tile) {
             Some(p) => pic_button(ui, &p, size),
-            None => ui.add_sized(size, egui::Button::new(RichText::new(&label).size(10.0)).wrap()),
+            None => ui.add_sized(size, egui::Button::new(RichText::new(crate::chat::unit_label(&game.sim, opt)).size(10.0)).wrap()),
         };
         let rect = resp.rect;
+        let zones = place.unwrap_or_default();
+        let share = |p: Pos2| Pos2::new((p.x - rect.min.x) / rect.width(), (p.y - rect.min.y) / rect.height());
+        let pointed = resp.hover_pos().and_then(|p| crate::hud_classic_art::zone_at(zones, share(p))).filter(|&k| game.sim.is_allowed(zones[k].0));
+        let opt = pointed.map_or(opt, |k| zones[k].0);
+        for &(unit, _) in zones {
+            self.anchors.picture(unit, rect);
+            // (Each one's picture drawn by the time it is pointed at.)
+            let _ = self.unit_pic(ctx, vfs, game, unit, tile);
+        }
+        let kind = game.sim.types.get(opt);
+        let label = crate::chat::unit_label(&game.sim, opt);
+        let (queued, on_pad) = (queued.get(&opt).copied(), producing.filter(|&(q, _)| q == opt).map(|(_, p)| p));
+        let placing = placing.is_some_and(|p| p == opt || zones.iter().any(|&(u, _)| u == p));
         self.anchors.picture(opt, rect);
         if ui.is_rect_visible(rect) {
             let painter = ui.painter();
+            if !zones.is_empty() {
+                // The unit pointed at in the picture, its zone standing out (the rest dimmed, in
+                // eighths of the picture, where the zone does not take the pointer); a dot in
+                // each zone.
+                if let Some(k) = pointed {
+                    if let Some(p) = self.unit_pic(ctx, vfs, game, opt, tile) {
+                        p.paint(painter, rect, Color32::WHITE);
+                        painter.add(pic_frame(rect, true));
+                    }
+                    let cell = rect.size() / 8.0;
+                    for row in 0..8 {
+                        for col in 0..8 {
+                            let r = Rect::from_min_size(rect.min + EVec2::new(col as f32 * cell.x, row as f32 * cell.y), cell);
+                            if crate::hud_classic_art::zone_at(zones, share(r.center())) != Some(k) {
+                                painter.rect_filled(r, CornerRadius::ZERO, Color32::from_black_alpha(90));
+                            }
+                        }
+                    }
+                }
+                for (k, (_, zone)) in zones.iter().enumerate() {
+                    let at = Pos2::new(rect.min.x + zone.center().x * rect.width(), rect.min.y + zone.center().y * rect.height());
+                    let lit = pointed == Some(k);
+                    painter.circle_filled(at, if lit { 2.5 } else { 1.8 }, if lit { AMBER_BRIGHT } else { Color32::from_white_alpha(150) });
+                }
+            }
             cost_strip(painter, rect, kind.cost_metal.to_f32(), kind.cost_energy.to_f32(), cost_size);
             if let Some(done) = on_pad {
                 let bar = Rect::from_min_size(rect.min + EVec2::new(1.0, 1.0), EVec2::new(rect.width() - 2.0, 4.0));
