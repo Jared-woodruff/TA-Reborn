@@ -1690,7 +1690,7 @@ impl Sim {
         }
         if let Order::Build { type_id: product, pos } = order {
             let t = self.types.get(type_id);
-            if !t.is_builder || !self.is_allowed(*product) || !t.build_options.contains(product) {
+            if !t.is_builder || !self.is_allowed(*product) || !t.ai_build_options.contains(product) {
                 return;
             }
             if self.ceasefire_bars(player, *pos) {
@@ -1838,7 +1838,7 @@ impl Sim {
             Command::Produce { player, factory, type_id, count } => {
                 let types = self.types.clone();
                 let Some(f) = self.unit_mut(*factory) else { return };
-                if f.owner != *player || f.dead || !types.get(f.type_id).is_factory || !types.get(f.type_id).build_options.contains(type_id) {
+                if f.owner != *player || f.dead || !types.get(f.type_id).is_factory || !types.get(f.type_id).ai_build_options.contains(type_id) {
                     return;
                 }
                 if !self.is_allowed(*type_id) {
@@ -3669,7 +3669,7 @@ impl Sim {
 
     fn update_build_order(&mut self, id: UnitId, t: &UnitType, type_id: usize, pos: FxVec3) {
         // Orders may also come from mission scripts or a previously queued job.
-        if !t.is_builder || !self.is_allowed(type_id) || !t.build_options.contains(&type_id) {
+        if !t.is_builder || !self.is_allowed(type_id) || !t.ai_build_options.contains(&type_id) {
             self.finish_build_job(id);
             self.stop(id);
             if let Some(u) = self.unit_mut(id) {

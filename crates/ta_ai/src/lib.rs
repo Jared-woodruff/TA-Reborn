@@ -1052,7 +1052,7 @@ impl SkirmishAi {
     /// plant tagged LEVEL2).
     fn advanced_factory(&self, sim: &Sim, type_id: usize) -> bool {
         self.info[type_id].role == Role::Factory
-            && sim.types.get(type_id).build_options.iter().any(|&o| {
+            && sim.types.get(type_id).ai_build_options.iter().any(|&o| {
                 let i = &self.info[o];
                 i.role == Role::Builder && i.tech >= 2 && (i.builds_energy || i.builds_mex)
             })
@@ -1488,7 +1488,7 @@ impl SkirmishAi {
             return false;
         }
         // The biggest unit it makes must be able to drive a few cells straight out.
-        let Some(spec) = t.build_options.iter().filter_map(|&o| self.info[o].spec).max_by_key(|sp| (sp.footprint.0 * sp.footprint.1, sp.max_slope, sp.max_depth)) else {
+        let Some(spec) = t.ai_build_options.iter().filter_map(|&o| self.info[o].spec).max_by_key(|sp| (sp.footprint.0 * sp.footprint.1, sp.max_slope, sp.max_depth)) else {
             return true;
         };
         let fp = t.footprint;

@@ -52,7 +52,7 @@ impl SkirmishAi {
     fn naval_post(&self, sim: &Sim, yard: usize, site: FxVec3) -> Option<FxVec3> {
         let t = sim.types.get(yard);
         let mut specs = Vec::new();
-        for &o in t.build_options.iter().filter(|&&o| sim.is_allowed(o) && self.info[o].kind == Locomotion::Naval) {
+        for &o in t.ai_build_options.iter().filter(|&&o| sim.is_allowed(o) && self.info[o].kind == Locomotion::Naval) {
             let Some(spec) = self.info[o].spec else { continue };
             let region = map::region_at(&sim.world, &spec, site);
             if region != 0 && !specs.contains(&(spec, region)) { specs.push((spec, region)); }
@@ -81,7 +81,7 @@ impl SkirmishAi {
     /// Whether any warship this yard builds can get within gun range of an enemy base.
     pub(crate) fn yard_reaches(&self, sim: &Sim, yard: usize, site: FxVec3) -> bool {
         let mut specs: Vec<(MoveSpec, i64, i64)> = Vec::new();
-        for &o in sim.types.get(yard).build_options.iter().filter(|&&o| sim.is_allowed(o)) {
+        for &o in sim.types.get(yard).ai_build_options.iter().filter(|&&o| sim.is_allowed(o)) {
             let i = &self.info[o];
             if let (Role::Combat, Some(sp)) = (i.role, i.spec) {
                 let t = sim.types.get(o);
@@ -156,7 +156,7 @@ impl SkirmishAi {
         let Some(b) = s.commander.or_else(|| s.builders.iter().copied().find(|b| self.info[b.type_id].builds_factory)) else { return };
         let Some(yard) = sim
             .unit_type(b)
-            .build_options
+            .ai_build_options
             .iter()
             .copied()
             .filter(|&o| self.info[o].role == Role::Factory && self.info[o].kind == Locomotion::Naval && !self.advanced_factory(sim, o) && sim.is_allowed(o))
@@ -181,7 +181,7 @@ impl SkirmishAi {
     pub(crate) fn shipyard_task(&mut self, sim: &Sim, s: &Survey, b: &Unit, plan: &Plan) -> Option<Task> {
         let n = self.naval.clone()?;
         let yards = s.kinds.iter().filter(|&&k| k == Locomotion::Naval).count();
-        if !n.reaches || yards >= 3 || plan.pending[Role::Factory as usize] > 0 || !sim.unit_type(b).build_options.contains(&n.yard) {
+        if !n.reaches || yards >= 3 || plan.pending[Role::Factory as usize] > 0 || !sim.unit_type(b).ai_build_options.contains(&n.yard) {
             return None;
         }
         let types = s.factory_types.clone();

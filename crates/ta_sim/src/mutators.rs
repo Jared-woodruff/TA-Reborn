@@ -122,7 +122,7 @@ impl Sim {
         // building.)
         let mobile = |o: usize| types.types.get(o).is_some_and(|p| p.locomotion != Locomotion::Static);
         for (i, t) in types.types.iter().enumerate() {
-            let mut units = t.build_options.iter().copied().filter(|&o| mobile(o)).peekable();
+            let mut units = t.ai_build_options.iter().copied().filter(|&o| mobile(o)).peekable();
             if t.is_factory && units.peek().is_some() && units.all(|o| !allowed[o]) {
                 allowed[i] = false;
             }

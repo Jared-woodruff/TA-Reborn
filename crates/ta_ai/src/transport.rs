@@ -109,14 +109,14 @@ impl SkirmishAi {
         // What needs carrying: our stranded units, else what our land factories make.
         let mut cargo: Vec<usize> = s.army.iter().filter(|u| self.stranded(u)).map(|u| u.type_id).collect();
         if cargo.is_empty() {
-            cargo = s.factories.iter().flat_map(|f| sim.unit_type(f).build_options.iter().copied()).filter(|&o| self.info[o].role == Role::Combat && !self.crosses[o]).collect();
+            cargo = s.factories.iter().flat_map(|f| sim.unit_type(f).ai_build_options.iter().copied()).filter(|&o| self.info[o].role == Role::Combat && !self.crosses[o]).collect();
         }
         cargo.sort_unstable();
         cargo.dedup();
         let is_lift = |o: usize| self.info[o].transport > 0 && sim.is_allowed(o) && cargo.iter().any(|&c| sim.types.get(o).can_carry(sim.types.get(c)));
         // Air transports within reach: from a factory we have or one our builders can put up.
-        let air_from = |f: usize| sim.types.get(f).build_options.iter().any(|&o| is_lift(o) && self.info[o].kind == Locomotion::Air);
-        let air_on_offer = s.factory_types.iter().any(|&f| air_from(f)) || s.builders.iter().any(|b| sim.unit_type(b).build_options.iter().any(|&f| sim.is_allowed(f) && air_from(f)));
+        let air_from = |f: usize| sim.types.get(f).ai_build_options.iter().any(|&o| is_lift(o) && self.info[o].kind == Locomotion::Air);
+        let air_on_offer = s.factory_types.iter().any(|&f| air_from(f)) || s.builders.iter().any(|b| sim.unit_type(b).ai_build_options.iter().any(|&f| sim.is_allowed(f) && air_from(f)));
         let surface = !air_on_offer || s.now < self.air_lift_failed + AIR_WARY;
         let suits = |o: usize| match self.info[o].kind {
             Locomotion::Air => true,

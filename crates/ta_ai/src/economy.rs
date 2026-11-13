@@ -445,7 +445,7 @@ impl SkirmishAi {
         // Buildings for where the builder works (land, or water for ships); extractors and
         // power may be either, whichever suits the site (underwater deposits, tides).
         let naval = bi.kind == Locomotion::Naval;
-        let all_opts: Vec<usize> = sim.unit_type(b).build_options.iter().copied().filter(|&o| sim.is_allowed(o)).collect();
+        let all_opts: Vec<usize> = sim.unit_type(b).ai_build_options.iter().copied().filter(|&o| sim.is_allowed(o)).collect();
         let opts: Vec<usize> = all_opts.iter().copied().filter(|&o| self.info[o].land != naval).collect();
         let commander = bi.commander;
         let t2 = bi.tech >= 2;
@@ -525,7 +525,7 @@ impl SkirmishAi {
         // Metal on other islands and nothing that makes constructors able to get there: a
         // plant for them (planes, usually).
         if s.minutes >= 4 && s.m_inc >= fx(6) && pending(Role::Factory) == 0 && !commander && s.count[Role::Factory as usize] < self.p.max_factories && self.p.expanders > 0 {
-            let makes = s.factory_types.iter().any(|&f| sim.types.get(f).build_options.iter().any(|&o| self.expander(o)));
+            let makes = s.factory_types.iter().any(|&f| sim.types.get(f).ai_build_options.iter().any(|&o| self.expander(o)));
             if !makes && self.far_deposits(s) >= 4 && let Some(t) = self.cheapest_factory_task(sim, s, b, &opts, plan, |ai, list| list.iter().any(|&o| ai.expander(o))) {
                 return Some(t);
             }
@@ -533,7 +533,7 @@ impl SkirmishAi {
         // Land units stranded and nothing to carry them across: a factory that makes
         // transports.
         if s.minutes >= 6 && s.m_inc >= fx(8) && pending(Role::Factory) == 0 && !commander && s.count[Role::Factory as usize] <= self.p.max_factories && self.want_transports(sim, s) > 0 {
-            let makes = s.factory_types.iter().any(|&f| self.pick_transport(sim, s, &sim.types.get(f).build_options).is_some());
+            let makes = s.factory_types.iter().any(|&f| self.pick_transport(sim, s, &sim.types.get(f).ai_build_options).is_some());
             if !makes && let Some(t) = self.transport_factory_task(sim, s, b, &opts, plan) {
                 return Some(t);
             }
@@ -825,7 +825,7 @@ impl SkirmishAi {
                 continue;
             }
             let Some(sp) = i.spec else { continue };
-            let ext = sim.unit_type(b).build_options.iter().copied().find(|&o| self.info[o].role == Role::Extractor && self.info[o].land && !sim.types.get(o).needs_geo);
+            let ext = sim.unit_type(b).ai_build_options.iter().copied().find(|&o| self.info[o].role == Role::Extractor && self.info[o].land && !sim.types.get(o).needs_geo);
             let Some(ext) = ext else { continue };
             let w = (sp, map::region_at(&sim.world, &sp, b.pos), Self::build_slack(sim, b, ext));
             if !walkers.contains(&w) {
@@ -936,7 +936,7 @@ impl SkirmishAi {
         if s.count[Role::Defense as usize] + plan.pending[Role::Defense as usize] >= 2 + s.minutes as usize / 2 {
             return None;
         }
-        let opts: Vec<usize> = sim.unit_type(b).build_options.iter().copied().filter(|&o| self.info[o].land && sim.is_allowed(o)).collect();
+        let opts: Vec<usize> = sim.unit_type(b).ai_build_options.iter().copied().filter(|&o| self.info[o].land && sim.is_allowed(o)).collect();
         let tower = opts.iter().copied().filter(|&o| self.info[o].role == Role::Defense && self.info[o].cost <= 800).max_by_key(|&o| (self.info[o].value, Reverse(o)))?;
         let toward = self.nearest_enemy_base(mex).map_or(FxVec3::ZERO, |e| (e - mex).xz().normalize());
         let site = self.find_site(sim, tower, mex + toward.scale(fx(56)), 5, &|_| true)?;
@@ -1055,7 +1055,7 @@ impl SkirmishAi {
         }
         let r = match self.nearest_enemy_base(self.base) {
             None => true,
-            Some(enemy) => sim.types.get(f).build_options.iter().any(|&o| {
+            Some(enemy) => sim.types.get(f).ai_build_options.iter().any(|&o| {
                 let i = &self.info[o];
                 i.role == Role::Combat
                     && match i.spec {
@@ -1076,7 +1076,7 @@ impl SkirmishAi {
         for o in cands {
             let i = self.info[o].clone();
             // The first factory must turn out constructors, and cheaply.
-            let makes_builders = sim.types.get(o).build_options.iter().any(|&u| self.info[u].role == Role::Builder && self.info[u].builds_mex);
+            let makes_builders = sim.types.get(o).ai_build_options.iter().any(|&u| self.info[u].role == Role::Builder && self.info[u].builds_mex);
             if first && !makes_builders {
                 continue;
             }
@@ -1118,7 +1118,7 @@ impl SkirmishAi {
         let f = opts
             .iter()
             .copied()
-            .filter(|&o| self.info[o].role == Role::Factory && !self.advanced_factory(sim, o) && makes(self, &sim.types.get(o).build_options))
+            .filter(|&o| self.info[o].role == Role::Factory && !self.advanced_factory(sim, o) && makes(self, &sim.types.get(o).ai_build_options))
             .min_by_key(|&o| (self.info[o].cost, o))?;
         let site = self.place(sim, b, f, Zone::Ring, 170 + 40 * s.count[Role::Factory as usize] as i64, plan)?;
         Some(Task::Build(f, site))
@@ -1161,11 +1161,11 @@ impl SkirmishAi {
         }
         let mut best: Option<(u32, usize)> = None;
         for &f in &s.factory_types {
-            for &b in &sim.types.get(f).build_options {
+            for &b in &sim.types.get(f).ai_build_options {
                 if self.info[b].role != Role::Builder {
                     continue;
                 }
-                for &o in &sim.types.get(b).build_options {
+                for &o in &sim.types.get(b).ai_build_options {
                     if self.info[o].kind != Locomotion::Air && self.info[o].land && self.advanced_factory(sim, o) {
                         let fp = sim.types.get(o).footprint;
                         let size = fp.0.max(fp.1);
@@ -1636,7 +1636,7 @@ impl SkirmishAi {
                 continue;
             }
             let fi = self.info[f.type_id].clone();
-            let opts: Vec<usize> = sim.unit_type(f).build_options.iter().copied().filter(|&o| sim.is_allowed(o)).collect();
+            let opts: Vec<usize> = sim.unit_type(f).ai_build_options.iter().copied().filter(|&o| sim.is_allowed(o)).collect();
             // Constructors: the fastest worker that builds extractors and power.
             let builder = |tech: u8| {
                 opts.iter()

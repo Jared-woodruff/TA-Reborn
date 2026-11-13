@@ -855,7 +855,7 @@ impl Art {
 
     /// The pages of a builder's build menu as TA laid them out: the units of its own GUI
     /// pages where those put them, download entries in the place they ask for, then the rest
-    /// of what it can build (`build_options`, e.g. 3.1's CANBUILD lists) in free places.
+    /// of its menu (`build_options`) in free places.
     /// Pages without a GUI of their own use `template`'s layout.
     pub fn menu(&mut self, vfs: &Vfs, types: &ta_sim::UnitTypes, builder: usize, template: &str) -> Arc<Vec<MenuPage>> {
         if let Some(m) = self.menus.get(&builder) {
@@ -1219,6 +1219,48 @@ mod tests {
         assert_eq!(plain_of(&types, place, |_| true), Some(id("ARMBRTHA")), "the one the others are named after");
         assert_eq!(plain_of(&types, place, |u| u != id("ARMBRTHA")).map(|u| types.get(u).name.clone()).as_deref(), Some("ARMBRTHAE"), "else the largest zone's");
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Every builder's menu, over the install and the mod `TA_TEST_MOD=<mod folder>` (`TA_UNITS=a,b`
+    /// for some): each unit it offers shown once by a button of the classic interface, as TA
+    /// laid its pages out (`cargo test --release -p ta_game --bin ta-reborn
+    /// every_menu_shows_each_unit_once -- --ignored --nocapture`).
+    #[test]
+    #[ignore = "reads the install"]
+    fn every_menu_shows_each_unit_once() {
+        let Ok(install) = ta_vfs::install::discover(None) else { return };
+        let module = std::env::var("TA_TEST_MOD").ok().map(|dir| ta_vfs::mods::read_mod(std::path::Path::new(&dir)).unwrap().expect("a mod's folder"));
+        let mounted = ta_vfs::mods::mount(Some(&install.root), ta_vfs::builtin_dir().as_deref(), &module.iter().collect::<Vec<_>>(), &|m| m.manifest.id.clone());
+        let vfs = mounted.vfs;
+        let only: Option<Vec<String>> = std::env::var("TA_UNITS").ok().map(|v| v.split(',').map(|s| s.trim().to_ascii_uppercase()).collect());
+        let data = ta_data::GameData::load(&vfs);
+        let types = ta_sim::UnitTypes::compile(&data, &|p| vfs.read_opt(p));
+        let template = data.sides.first().map_or("armcom".to_string(), |s| s.commander.to_ascii_lowercase()) + "1";
+        let mut art = Art::default();
+        let (mut builders, mut wrong) = (0, Vec::new());
+        for t in types.types.iter().filter(|t| !t.build_options.is_empty() && only.as_ref().is_none_or(|o| o.contains(&t.name))) {
+            builders += 1;
+            let pages = art.menu(&vfs, &types, t.id, &template);
+            let mut shown = Vec::new();
+            for page in pages.iter() {
+                let Some(gui) = art.gui(&vfs, &page.gui) else { continue };
+                for (i, g) in gui.gadgets.iter().enumerate().filter(|(_, g)| g.is_build_place()) {
+                    shown.extend(page.unit_at(&gui.grid, i, g.rect));
+                }
+            }
+            let mut offered = t.build_options.clone();
+            shown.sort_unstable();
+            offered.sort_unstable();
+            if shown != offered {
+                let name = |list: &[usize]| list.iter().map(|&u| types.get(u).name.clone()).collect::<Vec<_>>().join(" ");
+                let unseen: Vec<usize> = offered.iter().copied().filter(|u| !shown.contains(u)).collect();
+                let twice: Vec<usize> = shown.iter().copied().filter(|u| shown.iter().filter(|v| *v == u).count() > 1).collect();
+                println!("{}: not shown {} / shown more than once {}", t.name, name(&unseen), name(&twice));
+                wrong.push(t.name.clone());
+            }
+        }
+        println!("{builders} builders, {} with a menu not shown as offered", wrong.len());
+        assert!(wrong.is_empty(), "{wrong:?}");
     }
 
     #[test]

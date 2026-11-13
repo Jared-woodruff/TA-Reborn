@@ -127,7 +127,7 @@ pub(crate) fn factory_kind(sim: &Sim, t: &UnitType) -> Locomotion {
         Locomotion::Naval => 3,
         Locomotion::Air => 4,
     };
-    for &o in &t.build_options {
+    for &o in &t.ai_build_options {
         counts[index(sim.types.get(o).locomotion)] += 1;
     }
     let best = (0..5).max_by_key(|&i| (counts[i], std::cmp::Reverse(i))).unwrap_or(1);
@@ -201,7 +201,7 @@ pub(crate) fn classify(sim: &Sim) -> Vec<TypeInfo> {
                 0
             };
             let bomber = t.locomotion == Locomotion::Air && weapons.iter().any(|w| w.trajectory == Trajectory::Dropped && hits_ground(w));
-            let options = |r: Role| t.build_options.iter().any(|&o| roles[o] == r && sim.types.get(o).def.min_water_depth <= 0.0);
+            let options = |r: Role| t.ai_build_options.iter().any(|&o| roles[o] == r && sim.types.get(o).def.min_water_depth <= 0.0);
             let kind = if role == Role::Factory { factory_kind(sim, t) } else { t.locomotion };
             let spec = matches!(t.locomotion, Locomotion::Ground | Locomotion::Hover | Locomotion::Naval).then(|| MoveSpec::for_type(t, &sim.data.move_classes));
             let coverage = weapons.iter().map(|w| w.interceptor_coverage()).max().filter(|&r| r > Fx::ZERO);

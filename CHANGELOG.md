@@ -32,6 +32,18 @@
   mod's own engine: the zone pointed at stands out, the picture in the modern interface turns
   to show that variant (its gun facing that way), and a click builds it. The classic
   interface also keeps the mod's big buttons over several places (a Krogoth's) as they are.
+- Mods' build menus offered units made for their computer players alone, beside the ones they
+  stand for. TA: The Final Frontier's command cruiser offered 26 buildings for its 11: an AI
+  solar collector, extractor, labs and plants beside each of its own, and ground labs the space
+  mod gives only its AI; Total Mayhem's and TA: Escalation's menus had such units too (95 and
+  27 in all). These lists (the 3.1 patch's `[CANBUILD]` in `sidedata.tdf`) were TA's computer
+  players', never on a player's menu: a menu is now the builder's own pages and the units the
+  mod adds to them, as in TA, and the computer players still build their own units. A
+  player's constructors on a duty build only what their menus offer.
+- TA: Escalation's minelayer submarines and spies did not offer their mines, and its decoy
+  commander lacked the floating hover plant: their pages mark those buttons as build buttons
+  but not as production, the other way to mark one. A build button marked either way is now
+  on the menu.
 
 ## 1.0.4 — 2026-11-13
 

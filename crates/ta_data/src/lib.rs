@@ -243,10 +243,11 @@ impl GameData {
         data
     }
 
-    /// Build options come from three places, merged in menu order:
-    /// 1. the per-builder GUI menus `guis/<BUILDER><page>.gui` (button order = menu order),
-    /// 2. `[CANBUILD]` in sidedata.tdf (3.1 patch),
-    /// 3. `download/*.tdf` `[MENUENTRYn]` records (Core Contingency, Battle Tactics, UFOs).
+    /// A builder's menu, what TA offered its player, comes from two places, merged in menu
+    /// order: the per-builder GUI menus `guis/<BUILDER><page>.gui` (button order = menu order),
+    /// and `download/*.tdf` `[MENUENTRYn]` records (Core Contingency, Battle Tactics, UFOs). The
+    /// 3.1 patch's `[CANBUILD]` in sidedata.tdf is the computer players' list: what is on it and
+    /// not on the menu is `ai_build_options`.
     fn build_menus(&mut self, vfs: &Vfs, side_doc: Option<&TdfDocument>) {
         let mut menus: FxHashMap<String, Vec<(u32, u32, String)>> = FxHashMap::default();
         let add = |menus: &mut FxHashMap<String, Vec<(u32, u32, String)>>, builder: &str, page: u32, slot: u32, unit: &str| {
@@ -274,12 +275,16 @@ impl GameData {
                 let mut slot = 0;
                 for g in &doc.sections {
                     let Some(common) = g.section("COMMON") else { continue };
-                    // Build buttons are gadgets of type 1 whose name is a unit, marked as unit
-                    // production (commonattribs bit 4). The panel's own tab and order buttons
+                    // Build buttons are gadgets of type 1 whose name is a unit, marked as build
+                    // buttons (`attribs` 32, as the interface lays them out) or as unit
+                    // production (`commonattribs` bit 4). The panel's own tab and order buttons
                     // aren't: Core's BUILD tab is named CORBUILD, which is also a campaign
                     // unit's name (the Hydration Plant), so every Core builder offered it. A
-                    // hand-made page without the attribute keeps the old reading.
-                    if common.get_i32_or("id", -1) != 1 || common.get_i32_or("commonattribs", 4) & 4 == 0 {
+                    // hand-made page with neither attribute keeps the old reading. (TA:
+                    // Escalation's decoy commander's page has its floating hover plant marked
+                    // only as a build button.)
+                    let (attribs, production) = (common.get_i32_or("attribs", 0), common.get_i32_or("commonattribs", 4));
+                    if common.get_i32_or("id", -1) != 1 || (attribs & 32 == 0 && (production & 4 == 0 || attribs & 16 != 0)) {
                         continue;
                     }
                     let name = common.get("name").unwrap_or("");
@@ -290,10 +295,12 @@ impl GameData {
                 }
             }
         }
+        // (The computer players' lists, apart from the menus.)
+        let mut ai: FxHashMap<String, Vec<(u32, u32, String)>> = FxHashMap::default();
         if let Some(cb) = side_doc.and_then(|d| d.section("CANBUILD")) {
             for builder in &cb.sections {
                 for (i, (_, unit)) in builder.entries.iter().enumerate() {
-                    add(&mut menus, &builder.name, 100, i as u32, unit);
+                    add(&mut ai, &builder.name, 0, i as u32, unit);
                 }
             }
         }
@@ -306,7 +313,8 @@ impl GameData {
                 add(&mut menus, builder, page, slot, unit);
             }
         }
-        for (builder, mut list) in menus {
+        let builders: Vec<String> = menus.keys().chain(ai.keys()).cloned().collect::<std::collections::BTreeSet<_>>().into_iter().collect();
+        for builder in builders {
             let Some(&i) = self.unit_index.get(&builder) else { continue };
             // (Without build power a unit builds nothing, whatever its pages and lists name: Total
             // Mayhem's and TA: Escalation's silos list missile pseudo-units for their computer
@@ -314,9 +322,13 @@ impl GameData {
             if self.units[i].worker_time <= 0.0 {
                 continue;
             }
+            let mut list = menus.remove(&builder).unwrap_or_default();
             list.sort_by_key(|(page, slot, _)| (*page, *slot));
-            self.units[i].build_options =
-                list.into_iter().map(|(_, _, u)| u).filter(|u| self.unit_index.contains_key(u)).collect();
+            let known = |u: &String| self.unit_index.contains_key(u);
+            let options: Vec<String> = list.into_iter().map(|(_, _, u)| u).filter(known).collect();
+            let others: Vec<String> = ai.remove(&builder).unwrap_or_default().into_iter().map(|(_, _, u)| u).filter(|u| known(u) && !options.contains(u)).collect();
+            self.units[i].build_options = options;
+            self.units[i].ai_build_options = others;
         }
     }
 
@@ -365,6 +377,9 @@ mod compatibility_tests {
             ("guis/coraap1.gui", "[A]{[COMMON]{id=1;name=CORBUILD;attribs=16;commonattribs=0;}} [B]{[COMMON]{id=1;name=CORACA;attribs=32;commonattribs=4;}}"),
             // A hand-made page without the attribute still reads its buttons.
             ("guis/corhand1.gui", "[A]{[COMMON]{id=1;name=CORACA;}}"),
+            // A build button not marked as production (TA: Escalation's decoy commander's page).
+            ("units/armdecom.fbi", "[UNITINFO]{UnitName=ARMDECOM;Builder=1;WorkerTime=200;}"),
+            ("guis/armdecom1.gui", "[A]{[COMMON]{id=1;name=CORACA;attribs=32;commonattribs=0;}}"),
         ];
         for (path, text) in files {
             let p = root.join(path);
@@ -377,6 +392,42 @@ mod compatibility_tests {
         std::fs::remove_dir_all(&root).ok();
         assert_eq!(data.unit("CORAAP").unwrap().build_options, ["CORACA"]);
         assert_eq!(data.unit("CORHAND").unwrap().build_options, ["CORACA"]);
+        assert_eq!(data.unit("ARMDECOM").unwrap().build_options, ["CORACA"]);
+    }
+
+    /// The 3.1 patch's `[CANBUILD]` lists are the computer players': a mod lists units of its AI
+    /// there that its players are never offered (TA: The Final Frontier's command cruiser: an
+    /// `AAISOLAR` beside its `ARMSOLAR`, labs it builds only for the AI). A builder's menu is
+    /// its GUI pages and the download entries naming it; the list adds the rest for the AI.
+    #[test]
+    fn the_computer_players_lists_are_no_menu() {
+        let root = std::env::temp_dir().join(format!("ta_data_canbuild_{}", std::process::id()));
+        let files = [
+            ("units/armccrus.fbi", "[UNITINFO]{UnitName=ARMCCRUS;Builder=1;WorkerTime=300;}"),
+            ("units/armsolar.fbi", "[UNITINFO]{UnitName=ARMSOLAR;}"),
+            ("units/aaisolar.fbi", "[UNITINFO]{UnitName=AAISOLAR;}"),
+            ("units/armlab.fbi", "[UNITINFO]{UnitName=ARMLAB;}"),
+            ("units/sport.fbi", "[UNITINFO]{UnitName=SPORT;}"),
+            ("units/aailab.fbi", "[UNITINFO]{UnitName=AAILAB;Builder=1;WorkerTime=100;}"),
+            ("units/aaick.fbi", "[UNITINFO]{UnitName=AAICK;}"),
+            ("guis/armccrus1.gui", "[A]{[COMMON]{id=1;name=ARMSOLAR;attribs=32;commonattribs=4;}}"),
+            ("download/sport.tdf", "[MENUENTRY1]{UNITMENU=ARMCCRUS;MENU=2;BUTTON=1;UNITNAME=sport;}"),
+            ("gamedata/sidedata.tdf", "[SIDE0]{name=ARM;commander=ARMCCRUS;} [CANBUILD]{[ARMCCRUS]{canbuild1=ARMSOLAR;canbuild2=AAISOLAR;canbuild3=ARMLAB;canbuild4=nothing;} [AAILAB]{canbuild1=AAICK;}}"),
+        ];
+        for (path, text) in files {
+            let p = root.join(path);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, text).unwrap();
+        }
+        let mut vfs = Vfs::new();
+        vfs.mount_mod_dir(&root, "test").unwrap();
+        let data = GameData::load(&vfs);
+        std::fs::remove_dir_all(&root).ok();
+        let cruiser = data.unit("ARMCCRUS").unwrap();
+        assert_eq!(cruiser.build_options, ["ARMSOLAR", "SPORT"], "its pages and download entries");
+        assert_eq!(cruiser.ai_build_options, ["AAISOLAR", "ARMLAB"], "the rest of its list, units the data has");
+        let lab = data.unit("AAILAB").unwrap();
+        assert!(lab.build_options.is_empty() && lab.ai_build_options == ["AAICK"], "a unit for the AI alone builds for it");
     }
 
     #[test]
