@@ -220,6 +220,9 @@ pub(crate) fn install_work_directory(path: &Path) -> bool {
     // created by the installer. Other dotted or hidden mod folders stay usable.
     #[cfg(windows)]
     let name = name.to_ascii_lowercase();
+    // (A version an install discards on its way out, whatever is left of it: never a mod, nor a
+    // folder an install takes.)
+    if name.starts_with(crate::package::TRASH_PREFIX) { return true; }
     name.strip_prefix('.')
         .and_then(|name| name.strip_suffix(".installing").or_else(|| name.strip_suffix(".old")))
         .is_some_and(crate::package::safe_component)
@@ -854,7 +857,12 @@ fn read_by_game(relative: &str, renames: &BTreeMap<String, String>) -> bool {
     if ["thumbs.db", "desktop.ini", ".ds_store"].contains(&name) { return false; }
     match relative.split_once('/') {
         None => relative.rsplit_once('.').is_some_and(|(_, extension)| ARCHIVE_EXTENSIONS.contains(&extension)),
-        Some((top, _)) => crate::package::TA_FOLDERS.contains(&top) || renames.keys().any(|from| crate::normalize(from).trim_end_matches('/') == top),
+        // (A renamed folder may be one in another, `Roster/Army/`: its whole path, to a folder's end.)
+        Some((top, _)) => crate::package::TA_FOLDERS.contains(&top) || renames.keys().any(|from| {
+            let from = crate::normalize(from);
+            let from = from.trim_end_matches('/');
+            !from.is_empty() && relative.starts_with(&format!("{from}/"))
+        }),
     }
 }
 
@@ -1003,6 +1011,17 @@ mod tests {
         std::fs::create_dir_all(a.path.join("unitsm")).unwrap();
         std::fs::write(a.path.join("unitsm/extra.fbi"), b"[UNITINFO]{}").unwrap();
         assert_eq!(more, content_digest(&a).unwrap(), "in a folder of its own, not read");
+        // (A folder in another renamed to one of TA's is read, and counted.)
+        let mut nested = a.clone();
+        nested.manifest.rename.insert("Roster/Army/".into(), "units/".into());
+        std::fs::create_dir_all(a.path.join("Roster/Army")).unwrap();
+        std::fs::write(a.path.join("Roster/Army/tank.fbi"), b"[UNITINFO]{MaxDamage=1;}").unwrap();
+        let army = content_digest(&nested).unwrap();
+        std::fs::write(a.path.join("Roster/Army/tank.fbi"), b"[UNITINFO]{MaxDamage=2;}").unwrap();
+        let edited = content_digest(&nested).unwrap();
+        assert_ne!(army, edited, "a unit edited in a nested renamed folder");
+        std::fs::write(a.path.join("Roster/notes.fbi"), b"beside it, not read").unwrap();
+        assert_eq!(edited, content_digest(&nested).unwrap(), "beside the renamed folder: not read");
         let mut renamed = a.clone();
         renamed.manifest.rename.insert("unitsm".into(), "units".into());
         assert_ne!(more, content_digest(&renamed).unwrap(), "its folders seen as others");

@@ -129,12 +129,22 @@ fn own_manifest(dir: &Path) -> Result<Option<ta_vfs::mods::ModManifest>, String>
     }
     let manifest: ta_vfs::mods::ModManifest = toml::from_str(&text).map_err(|error| invalid(&error))?;
     if !ta_vfs::mods::valid_id(&manifest.id) {
-        return Err(invalid(&t("invalid mod id")));
+        return Err(invalid(&refused_id(&manifest.id)));
     }
     if manifest.rename.iter().any(|(from, to)| !ta_vfs::mods::valid_rename(from, to)) {
         return Err(invalid(&t("a renamed folder may stand only for one of TA's own")));
     }
     Ok(Some(manifest))
+}
+
+/// Why a mod cannot be installed as `id`: one the original game's or TA Reborn's own content goes
+/// by (`ta_vfs::mods::RESERVED_IDS`) said so, with what to do; any other, no name it can take.
+fn refused_id(id: &str) -> String {
+    if ta_vfs::mods::reserved_id(id) {
+        ta_ui::i18n::tf("{id} is the name of the original game's or TA Reborn's own content: give the mod another name, then install it again.", &[("id", &id)])
+    } else {
+        ta_ui::i18n::t("invalid mod id").to_string()
+    }
 }
 
 /// Why an install did not finish.
@@ -380,6 +390,8 @@ fn install(
     use ta_ui::i18n::{t, tf};
     let (path, manifest) = match source {
         Source::Classic { path, id, name } => {
+            // (Refused before it is copied: installed, it could not be found as a mod.)
+            if !ta_vfs::mods::valid_id(id) { return Err(refused_id(id).into()); }
             let destination = archive_destination(path, mods_dir).map_err(|error| error.to_string())?;
             game_holds(game, &destination, name)?;
             ta_formats::hpi::HpiArchive::open(path).map_err(|error| error.to_string())?;
@@ -411,7 +423,7 @@ fn install(
     }
     send(Stage::Unpacking);
     if !ta_vfs::mods::valid_id(&manifest.id) {
-        return Err(t("invalid mod id").to_string().into());
+        return Err(refused_id(&manifest.id).into());
     }
     let legacy_temp = cache.join("unpack").join(&manifest.id);
     // A recovered old staging folder may contain unfinished files. Preserve it and
@@ -2034,6 +2046,24 @@ version = \"1.1\"
         installer.start(Source::Package { path: zip.clone(), id: "mymod".into(), name: "My Mod".into() });
         assert!(matches!(wait(&mut installer, "mymod"), Stage::Done { .. }));
         assert!(!installed.join("units").join("old.fbi").exists() && installed.join("units").join("a.fbi").is_file());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// An archive named like the original game's or TA Reborn's own content (`base`, `reborn`) is
+    /// refused before it is copied, saying what to do: installed, it could not be found as a mod.
+    #[test]
+    fn an_archive_named_like_the_games_own_content_is_refused_before_it_is_copied() {
+        let dir = temp_dir("reserved_archive");
+        let mods = dir.join("mods");
+        for name in ["Base.ufo", "reborn.hpi"] {
+            let archive = dir.join(name);
+            std::fs::write(&archive, b"HAPI").unwrap();
+            let source = Source::package(&archive).unwrap();
+            assert!(matches!(&source, Source::Classic { .. }));
+            let result = install(&source, &mods, &dir.join("cache"), &|_| {}, &|| false, &Mutex::default(), &AtomicBool::new(false), &Mutex::default());
+            assert!(matches!(&result, Err(Failure::Error(why)) if why.contains(source.id()) && why.contains("another name")), "{name}: {result:?}");
+            assert!(std::fs::read_dir(&mods).map_or(true, |mut entries| entries.next().is_none()), "nothing is copied for {name}");
+        }
         let _ = std::fs::remove_dir_all(dir);
     }
 

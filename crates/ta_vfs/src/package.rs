@@ -908,7 +908,7 @@ fn in_use(error: &std::io::Error) -> bool {
 
 /// The folders of `mods_dir` being discarded (`.trash-<n>`): what is left of one is swept away
 /// by [`recover`].
-const TRASH_PREFIX: &str = ".trash-";
+pub(crate) const TRASH_PREFIX: &str = ".trash-";
 
 /// Removes a version replaced (`path`, in `mods_dir`): renamed out of its reserved name first,
 /// in one step, then deleted. Stopped half way (the launcher closed, the power cut), what is
@@ -1791,6 +1791,33 @@ mod tests {
         std::fs::create_dir_all(&old).unwrap();
         std::fs::write(old.join("mod.toml"), toml::to_string(&manifest("other", "1")).unwrap()).unwrap();
         assert!(matches!(install(&plan(&content("three", b"third")).unwrap(), &manifest("testmod", "3"), &mods), Err(PackageError::Unsafe(_))));
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    /// What is left of a version being discarded (its deletion failed, its manifest still there)
+    /// is no mod: discovery passes it over, and no install takes it for the mod's folder, where
+    /// the next start's sweep would delete what was published into it.
+    #[test]
+    fn a_discarded_version_left_behind_is_no_mod() {
+        let base = std::env::temp_dir().join(format!("ta_package_trash_left_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let mods = base.join("mods");
+        let source = base.join("one");
+        std::fs::create_dir_all(source.join("units")).unwrap();
+        std::fs::write(source.join("units/NEW.FBI"), b"first").unwrap();
+        let live = install(&plan(&source).unwrap(), &manifest("testmod", "1"), &mods).unwrap();
+        let left = mods.join(format!("{TRASH_PREFIX}1-2-3"));
+        std::fs::create_dir_all(left.join("units")).unwrap();
+        std::fs::write(left.join("mod.toml"), toml::to_string(&manifest("testmod", "0")).unwrap()).unwrap();
+        let (found, errors) = crate::mods::scan(&mods);
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(found.iter().map(|m| m.path.as_path()).collect::<Vec<_>>(), [live.as_path()], "only the live copy");
+        assert_eq!(install_target(&mods, "testmod"), Some(live.clone()));
+        let source = base.join("two");
+        std::fs::create_dir_all(source.join("units")).unwrap();
+        std::fs::write(source.join("units/NEW.FBI"), b"second").unwrap();
+        assert_eq!(install(&plan(&source).unwrap(), &manifest("testmod", "2"), &mods).unwrap(), live);
+        assert!(install_target(&mods, "other").is_some_and(|target| !target.file_name().unwrap().to_string_lossy().starts_with(TRASH_PREFIX)));
         std::fs::remove_dir_all(base).unwrap();
     }
 
