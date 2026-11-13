@@ -35,8 +35,10 @@ case). Looked for, in order:
 
 - GOG: product 1444785261 (Forged Alliance; GOG's Gold Edition installs it under the same id),
   its registry key's `path`; off Windows, Heroic's record of its GOG installs.
-- Steam: app 9420, its uninstall key, then `steamapps/common/Supreme Commander Forged Alliance`
-  (or the folder its app manifest names) in every library of every Steam there is.
+- Steam: app 9420, its uninstall key (Steam writes none for it), then `steamapps/common/Supreme
+  Commander Forged Alliance` (or the folder its app manifest names) in every library of every
+  Steam there is. Steam records its own folder as `c:/program files (x86)/steam`: the folders
+  found in it are spelt as Windows spells them (`ta_vfs::install`), as the dialog shows them.
 - The boxed copy: THQ's key `SOFTWARE\[WOW6432Node\]THQ\Gas Powered Games\Supreme Commander -
   Forged Alliance`.
 - The usual folders on C: to F:, and off Windows the same in Wine's, Lutris', Bottles', Heroic's,
@@ -49,7 +51,16 @@ under `ProgramData\FAForever\user`, and on Linux the same in the game's Proton p
 home folder.
 
 Steam's and GOG's copies are laid out alike (`bin/SupremeCommander.exe`, `gamedata/*.scd`,
-`maps/`); FAF's client runs the same files.
+`maps/`); FAF's client runs the same files. Both read whole, and make the same maps byte for
+byte (checked with both installed: Steam's build 2845). With more than one copy found, the
+dialog shows each as a switch (GOG, Steam), to choose the one it reads; a folder picked that is
+one of them keeps its name. `cargo test --release -p ta_supcom --test installed every_copy_found
+-- --ignored --nocapture` lists the copies found.
+
+Where a map comes from is shown wherever maps are chosen (`ta_data::map::Origin`): its OTA's
+`supcommap` makes it one made from Supreme Commander's, whatever folder it is in. Skirmish's and
+the lobby's lists tag it SUPCOM (and can show those alone); the launcher's map library puts a
+SUPREME COMMANDER ribbon on its card and a note in its details.
 
 ## Reading the game
 

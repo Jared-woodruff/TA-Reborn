@@ -57,7 +57,10 @@ impl State {
 /// What a look for the game found.
 #[derive(Clone, Default)]
 pub struct Found {
+    /// The copy of the game in use: the player's choice, else the first found.
     pub install: Option<Install>,
+    /// Every copy of the game found (GOG's, Steam's...), in the order looked for.
+    pub copies: Vec<Install>,
     /// The folders of the player's own maps there are.
     pub own_folders: Vec<PathBuf>,
     pub maps: Vec<Entry>,
@@ -287,12 +290,10 @@ impl Import {
 /// The game, the player's own map folders and every map that can be imported, with which are in
 /// the pack (`pack`, its folder) already.
 fn find(picked: Option<&Path>, pack: &Path) -> Found {
-    let install = match picked {
-        Some(root) => Some(Install { root: root.to_path_buf(), store: install::Store::Folder }),
-        None => install::discover().into_iter().next(),
-    };
+    let copies = install::discover();
+    let install = in_use(&copies, picked);
     let own_folders = install::user_map_folders();
-    let mut found = Found { install: install.clone(), own_folders: own_folders.clone(), ..Default::default() };
+    let mut found = Found { install: install.clone(), copies, own_folders: own_folders.clone(), ..Default::default() };
     let Some(game) = install else { return found };
     // What the pack holds: each map's source folder and the converter that made it.
     let mut made: BTreeMap<String, u32> = BTreeMap::new();
@@ -335,6 +336,15 @@ fn find(picked: Option<&Path>, pack: &Path) -> Found {
     }
     found.maps.sort_by(|a, b| a.scenario.name.to_lowercase().cmp(&b.scenario.name.to_lowercase()).then(a.folder.cmp(&b.folder)));
     found
+}
+
+/// The copy of the game in use: the folder picked (named by its store when it is one of the
+/// `copies` found, GOG's or Steam's), else the first found.
+fn in_use(copies: &[Install], picked: Option<&Path>) -> Option<Install> {
+    match picked {
+        Some(root) => Some(copies.iter().find(|copy| install::same_folder(&copy.root, root)).cloned().unwrap_or_else(|| Install { root: root.to_path_buf(), store: install::Store::Folder })),
+        None => copies.first().cloned(),
+    }
 }
 
 /// A map folder's map file (its own `<name>.scmap`, any case; else the first there).
@@ -553,6 +563,21 @@ mod tests {
         let none = find(Some(&dir.join("elsewhere")), &pack);
         assert!(none.maps.is_empty());
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// With GOG's and Steam's copies both found: the first in use unless one is picked, a copy
+    /// picked keeping its store's name, any other folder picked used as a folder.
+    #[test]
+    fn the_copy_in_use_is_the_one_picked_with_its_stores_name() {
+        use ta_supcom::install::Store;
+        let gog = Install { root: PathBuf::from("C:/GOG Games/Supreme Commander Forged Alliance"), store: Store::Gog };
+        let steam = Install { root: PathBuf::from("C:/Program Files (x86)/Steam/steamapps/common/Supreme Commander Forged Alliance"), store: Store::Steam };
+        let copies = [gog.clone(), steam.clone()];
+        assert_eq!(in_use(&copies, None), Some(gog));
+        assert_eq!(in_use(&copies, Some(&steam.root)), Some(steam));
+        let elsewhere = PathBuf::from("D:/Games/Forged Alliance");
+        assert_eq!(in_use(&copies, Some(&elsewhere)), Some(Install { root: elsewhere, store: Store::Folder }));
+        assert_eq!(in_use(&[], None), None);
     }
 
     #[test]

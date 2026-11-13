@@ -3,7 +3,7 @@ use crate::setup::MapEntry;
 
 fn entries(n: usize, starts: impl Fn(usize) -> usize) -> Vec<MapEntry> {
     (0..n).map(|i| MapEntry { name: format!("map{i}"), title: format!("Battlefield {i}"),
-        description: String::new(), planet: "Green Planet".into(), size: "10 x 10".into(), start_positions: starts(i), info: Default::default() }).collect()
+        description: String::new(), planet: "Green Planet".into(), size: "10 x 10".into(), start_positions: starts(i), origin: Default::default(), info: Default::default() }).collect()
 }
 
 fn test_assets(maps: Vec<MapEntry>) -> Assets {
@@ -186,6 +186,7 @@ fn layouts(size: Size, screen: Vec2) -> Vec<Layout> {
             planet: "Green Planet".into(),
             size: "10 x 10".into(),
             start_positions: 2 + i % 3,
+            origin: Default::default(),
             info: Default::default(),
         })
         .collect();

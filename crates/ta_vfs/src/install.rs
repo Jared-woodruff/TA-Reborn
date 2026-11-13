@@ -347,11 +347,11 @@ pub fn steam_roots() -> Vec<PathBuf> {
         use winreg::{HKCU, HKLM};
         let mut roots: Vec<PathBuf> = Vec::new();
         if let Ok(p) = HKCU.open_subkey(r"Software\Valve\Steam").and_then(|k| k.get_value::<String, _>("SteamPath")) {
-            roots.push(PathBuf::from(p));
+            roots.push(windows_spelling(&p));
         }
         for key in [r"SOFTWARE\WOW6432Node\Valve\Steam", r"SOFTWARE\Valve\Steam"] {
             if let Ok(p) = HKLM.open_subkey(key).and_then(|k| k.get_value::<String, _>("InstallPath")) {
-                roots.push(PathBuf::from(p));
+                roots.push(windows_spelling(&p));
             }
         }
         roots.push(PathBuf::from(r"C:\Program Files (x86)\Steam"));
@@ -364,6 +364,21 @@ pub fn steam_roots() -> Vec<PathBuf> {
 }
 
 /// Whether two paths name one folder (on Windows whatever their case and slashes).
+/// A folder as Windows spells it, where it is (`C:\Program Files (x86)\Steam`): Steam records
+/// its own as `c:/program files (x86)/steam`, which the games' folders found in it, shown to the
+/// player, would carry. Else its slashes made Windows' own.
+#[cfg(windows)]
+fn windows_spelling(path: &str) -> PathBuf {
+    let path = PathBuf::from(path.replace('/', "\\"));
+    let Ok(real) = std::fs::canonicalize(&path) else { return path };
+    // (Canonical paths come as `\\?\C:\...`: a drive's, without the prefix.)
+    let real = real.to_string_lossy().into_owned();
+    match real.strip_prefix(r"\\?\") {
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
+        _ => path,
+    }
+}
+
 fn same_place(a: &Path, b: &Path) -> bool {
     if cfg!(windows) {
         let key = |p: &Path| p.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_ascii_lowercase();

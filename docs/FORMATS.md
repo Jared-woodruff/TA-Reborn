@@ -218,7 +218,14 @@ recognises; TA's own files never begin with one.
   bushes and rocks there (`SC1_Green_T1`).
 * **OTA keys TA Reborn reads besides TA's**: `rebornart=1` (the art was painted by TA Reborn's
   own tools: the renderer cleans no TA painter's hatching from it); a converted map's
-  `supcommap` (its Supreme Commander folder) and `supcomversion` (the converter's version).
+  `supcommap` (its Supreme Commander folder, which also makes its origin Supreme Commander's in
+  the menus) and `supcomversion` (the converter's version).
+* **Where a map comes from** (`ta_data::map::Origin`, shown in the menus): the layer and file its
+  TNT is read from. Of the install's (layer `base`): `cc*.ccx` Core Contingency's, `bt*.ccx` and
+  `tactics*.hpi` Battle Tactics', `totala*.hpi`, `worlds.hpi`, the 3.1 patch's `rev31.gp3` and
+  Cavedog's eleven `.ufo` downloads Total Annihilation's; any other archive in the game's folder (a
+  map pack a player put there) and loose files a map pack's; TA Reborn's layer its own; any other
+  layer a mod's or a map pack's.
 
 * **Minimap**: declared 252×252 even for maps that are not square (some campaign maps
   declare, and store, 252×256). It shows the art of all but the last 2 columns and the last

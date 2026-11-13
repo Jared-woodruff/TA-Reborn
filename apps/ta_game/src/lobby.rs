@@ -76,7 +76,8 @@ pub struct NetLobby {
     me: u8,
     name: String,
     chat: chat::Chat,
-    filter: String,
+    /// The maps the host's list shows: words, origins, order.
+    map_choice: crate::map_list::Choice,
     seed: u64,
     /// Mark ourselves ready as soon as we have a slot (testing).
     pub auto_ready: bool,
@@ -246,7 +247,7 @@ impl NetLobby {
             me: 0,
             name: name.to_string(),
             chat: chat::Chat::default(),
-            filter: String::new(),
+            map_choice: Default::default(),
             seed: 0,
             auto_ready: false,
             auto_watch: false,
@@ -1031,7 +1032,7 @@ mod tests {
         let vfs = std::sync::Arc::new(ta_vfs::Vfs::new());
         let data = std::sync::Arc::new(ta_data::GameData::load(&vfs));
         let types = std::sync::Arc::new(ta_sim::UnitTypes::compile(&data, &|_| None));
-        let map = crate::setup::MapEntry { name: "ten-starts".into(), title: "Ten starts".into(), description: String::new(), planet: String::new(), size: String::new(), start_positions: 10, info: Default::default() };
+        let map = crate::setup::MapEntry { name: "ten-starts".into(), title: "Ten starts".into(), description: String::new(), planet: String::new(), size: String::new(), start_positions: 10, origin: Default::default(), info: Default::default() };
         let host = Assets { vfs, data, types, maps: vec![map.clone()], selectable_maps: vec![map], campaigns: Vec::new(), data_hash: 7, compatibility: Default::default(), mods: Default::default() };
         let mut client = host.clone();
         client.selectable_maps.clear(); // this client deactivated the host's chosen map

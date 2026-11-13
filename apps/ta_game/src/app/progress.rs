@@ -187,7 +187,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("ta_progress_retry_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("conquest.toml");
-        let maps: Vec<_> = (0..16).map(|i| MapEntry { name: format!("map{i}"), title: format!("Map {i}"), description: String::new(), planet: "Green Planet".into(), size: "10 x 10".into(), start_positions: 2, info: Default::default() }).collect();
+        let maps: Vec<_> = (0..16).map(|i| MapEntry { name: format!("map{i}"), title: format!("Map {i}"), description: String::new(), planet: "Green Planet".into(), size: "10 x 10".into(), start_positions: 2, origin: Default::default(), info: Default::default() }).collect();
         let initial = Conquest::new(&maps, "ARM", Level::Standard, Size::Small, 123).unwrap();
         let target = (0..initial.systems.len()).find(|&i| initial.attackable(i)).unwrap();
         ta_config::write_atomic(&path, &toml::to_string(&initial).unwrap()).unwrap();

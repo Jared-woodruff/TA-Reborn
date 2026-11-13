@@ -914,16 +914,22 @@ pub const LIST_ROW: f32 = 28.0;
 /// A full-width selectable row: `label` on the left, `detail` right-aligned. Selected rows
 /// get a brass lead and tint; disabled ones are dimmed and inert.
 pub fn list_row(ui: &mut Ui, selected: bool, enabled: bool, label: RichText, detail: Option<RichText>) -> Response {
-    row(ui, selected, enabled, None, label, detail)
+    row(ui, selected, enabled, None, label, None, detail)
 }
 
 /// [`list_row`] numbered `n` of `count`: the numbers in a column of figures, right-aligned,
 /// the names after them all starting at one place.
 pub fn numbered_row(ui: &mut Ui, selected: bool, enabled: bool, n: usize, count: usize, label: RichText, detail: Option<RichText>) -> Response {
-    row(ui, selected, enabled, Some((n, count)), label, detail)
+    row(ui, selected, enabled, Some((n, count)), label, None, detail)
 }
 
-fn row(ui: &mut Ui, selected: bool, enabled: bool, number: Option<(usize, usize)>, label: RichText, detail: Option<RichText>) -> Response {
+/// [`list_row`] with a tag before its detail: a few letters, already translated, in a small dark
+/// slot of their colour (where a map comes from: "CC").
+pub fn tagged_row(ui: &mut Ui, selected: bool, enabled: bool, label: RichText, tag: Option<(&str, Color32)>, detail: Option<RichText>) -> Response {
+    row(ui, selected, enabled, None, label, tag, detail)
+}
+
+fn row(ui: &mut Ui, selected: bool, enabled: bool, number: Option<(usize, usize)>, label: RichText, tag: Option<(&str, Color32)>, detail: Option<RichText>) -> Response {
     let height = LIST_ROW;
     let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), height), if enabled { Sense::click() } else { Sense::hover() });
     let text = match number {
@@ -961,9 +967,25 @@ fn row(ui: &mut Ui, selected: bool, enabled: bool, number: Option<(usize, usize)
         }
         None => 0.0,
     };
-    let room = rect.width() - 24.0 - lead - right.as_ref().map_or(0.0, |g| g.size().x + 12.0);
+    // The tag's lettering and its slot's width (its letters and 5 a side).
+    let tag = tag.map(|(text, tint)| {
+        let tint = if enabled { tint } else { STEEL_DIM };
+        let text = galley(ui, RichText::new(text).font(strong(9.5)).color(tint).extra_letter_spacing(crate::i18n::tracking(0.8)));
+        let width = text.size().x + 10.0;
+        (text, tint, width)
+    });
+    let right_width = right.as_ref().map_or(0.0, |g| g.size().x + 12.0);
+    let tag_width = tag.as_ref().map_or(0.0, |(_, _, width)| width + 8.0);
+    let room = rect.width() - 24.0 - lead - right_width - tag_width;
     let label = egui::WidgetText::from(label).into_galley(ui, Some(egui::TextWrapMode::Truncate), room, egui::TextStyle::Body);
     painter.galley(pos2(rect.min.x + 12.0 + lead, rect.center().y - label.size().y / 2.0), label, color);
+    if let Some((text, tint, width)) = tag {
+        // (Its right end 8 before the detail, or at the row's margin.)
+        let end = rect.max.x - 10.0 - right.as_ref().map_or(0.0, |g| g.size().x + 8.0);
+        let slot = Rect::from_min_max(pos2(end - width, rect.center().y - 8.0), pos2(end, rect.center().y + 8.0));
+        painter.rect(slot, CornerRadius::same(2), Color32::from_black_alpha(90), Stroke::new(1.0, tint.gamma_multiply(0.45)), egui::StrokeKind::Inside);
+        painter.galley((slot.center() - text.size() / 2.0).round(), text, tint);
+    }
     if let Some(right) = right {
         painter.galley(pos2(rect.max.x - 10.0 - right.size().x, rect.center().y - right.size().y / 2.0), right, if enabled { STEEL } else { STEEL_DIM });
     }

@@ -403,7 +403,8 @@ pub struct Menu {
     scenario_selected: usize,
     scenario_difficulty: ta_ai::Difficulty,
     selected_map: usize,
-    filter: String,
+    /// The maps the list shows: words, origins, order.
+    map_choice: crate::map_list::Choice,
     slots: Vec<Slot>,
     seed: u64,
     pub rules: ta_sim::GameRules,
@@ -660,7 +661,7 @@ impl Menu {
             scenario_selected: 0,
             scenario_difficulty: ta_ai::Difficulty::Normal,
             selected_map: default_map,
-            filter: String::new(),
+            map_choice: Default::default(),
             slots: vec![
                 Slot { kind: SlotKind::Human, side: 0, color: 0, team: 0 },
                 Slot { kind: SlotKind::AiNormal, side: 1, color: 1, team: 1 },
@@ -1017,6 +1018,10 @@ impl Menu {
         if let Some(index) = assets.selectable_maps.iter().position(|m| m.name.eq_ignore_ascii_case(map.trim())) {
             self.selected_map = index;
             self.reveal = true;
+            // (The list shows it: all of them, if it did not.)
+            if !self.map_choice.accepts(&assets.selectable_maps[index]) {
+                self.map_choice.clear();
+            }
         }
     }
 
@@ -1593,23 +1598,29 @@ impl Menu {
                 ui.vertical(|ui| {
                     ui.set_width(300.0);
                     ui.spacing_mut().item_spacing.x = 8.0;
-                    let wanted = self.filter.to_ascii_lowercase();
-                    let matching = assets.selectable_maps.iter().filter(|m| wanted.is_empty() || m.title.to_ascii_lowercase().contains(&wanted) || m.planet.to_ascii_lowercase().contains(&wanted)).count();
-                    let title = if wanted.is_empty() {
-                        tf("MAPS · {n}", &[("n", &assets.selectable_maps.len())])
+                    let maps = &assets.selectable_maps;
+                    let shown = self.map_choice.shown(maps);
+                    let title = if self.map_choice.narrowed() {
+                        tf("MAPS · {shown} OF {n}", &[("shown", &shown.len()), ("n", &maps.len())])
                     } else {
-                        tf("MAPS · {shown} OF {n}", &[("shown", &matching), ("n", &assets.selectable_maps.len())])
+                        tf("MAPS · {n}", &[("n", &maps.len())])
                     };
                     panel::section(ui, &title);
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 6.0;
-                        let search = w::search_field(ui, &mut self.filter, t("Search maps and planets…"), 300.0 - 6.0 - 32.0, None);
+                        let search = w::search_field(ui, &mut self.map_choice.words, t("Search maps and planets…"), 300.0 - 6.0 - 32.0, None);
                         // (A map at random, of those with room for the players.)
                         let size = vec2(32.0, search.rect.height());
-                        if w::glyph_button(ui, w::Glyph::Shuffle, size, w::Tone::Secondary, assets.selectable_maps.len() > 1).on_hover_text(t("A map at random, with room for these players")).clicked() {
+                        if w::glyph_button(ui, w::Glyph::Shuffle, size, w::Tone::Secondary, maps.len() > 1).on_hover_text(t("A map at random, with room for these players")).clicked() {
                             self.random_map(assets);
                         }
                     });
+                    ui.add_space(4.0);
+                    // Where the maps come from, and their order (the map chosen brought into
+                    // view after a change, where the list shows it).
+                    if self.map_choice.controls(ui, "skirmish_maps", maps, 300.0) {
+                        self.reveal = true;
+                    }
                     ui.add_space(4.0);
                     panel::well(ui, |ui| {
                         // Down to the foot (the well's margin under it), in whole rows; the
@@ -1620,20 +1631,26 @@ impl Menu {
                         let area = egui::ScrollArea::vertical().max_height(height).min_scrolled_height(height).auto_shrink([false, false]);
                         scroll::show(ui, area, Behind::Well, |ui| {
                             ui.spacing_mut().item_spacing.y = 1.0;
-                            let f = self.filter.to_ascii_lowercase();
-                            if matching == 0 && !f.is_empty() {
+                            // (As chosen this frame.)
+                            let shown = self.map_choice.shown(maps);
+                            if shown.is_empty() && self.map_choice.narrowed() {
                                 ui.add_space(8.0);
                                 ui.add(egui::Label::new(RichText::new(t("No map matches. Try another word, or clear the search.")).color(STEEL)).wrap());
                                 if ui.add(ActionButton::secondary("CLEAR")).clicked() {
-                                    self.filter.clear();
+                                    self.map_choice.clear();
                                 }
                             }
-                            for (i, m) in assets.selectable_maps.iter().enumerate() {
-                                if !f.is_empty() && !m.title.to_ascii_lowercase().contains(&f) && !m.planet.to_ascii_lowercase().contains(&f) {
-                                    continue;
+                            let by_origin = self.map_choice.order == crate::map_list::Order::Origin;
+                            let mut origin = None;
+                            for &i in &shown {
+                                let m = &maps[i];
+                                // (Put in order by origin: each origin's name over its maps.)
+                                if by_origin && origin != Some(m.origin) {
+                                    origin = Some(m.origin);
+                                    crate::map_list::heading(ui, m.origin, shown.iter().filter(|&&j| maps[j].origin == m.origin).count());
                                 }
                                 let players = RichText::new(format!("{}P", m.start_positions)).font(strong(11.5));
-                                let row = panel::list_row(ui, i == self.selected_map, true, RichText::new(&m.title), Some(players));
+                                let row = crate::map_list::row(ui, m, i == self.selected_map, players);
                                 if reveal && i == self.selected_map {
                                     row.scroll_to_me(Some(egui::Align::Center));
                                 }
@@ -1840,14 +1857,25 @@ impl Menu {
     /// A map at random (not the one chosen) with a start for each player set up, or for two.
     fn random_map(&mut self, assets: &Assets) {
         let players = self.slots.iter().filter(|s| s.kind != SlotKind::Closed).count().max(2);
-        let fits: Vec<usize> = (0..assets.selectable_maps.len()).filter(|&i| i != self.selected_map && assets.selectable_maps[i].start_positions >= players).collect();
-        let fits = if fits.is_empty() { (0..assets.selectable_maps.len()).filter(|&i| i != self.selected_map).collect() } else { fits };
-        if fits.is_empty() {
+        let maps = &assets.selectable_maps;
+        // (Of the maps the list shows, those with room for the players; else of them all.)
+        let fits = |pool: Vec<usize>| -> Vec<usize> { pool.into_iter().filter(|&i| i != self.selected_map && maps[i].start_positions >= players).collect() };
+        let mut pool = fits(self.map_choice.shown(maps));
+        if pool.is_empty() {
+            pool = fits((0..maps.len()).collect());
+        }
+        if pool.is_empty() {
+            pool = (0..maps.len()).filter(|&i| i != self.selected_map).collect();
+        }
+        if pool.is_empty() {
             return;
         }
         self.seed = self.seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-        self.selected_map = fits[((self.seed >> 33) % fits.len() as u64) as usize];
-        self.filter.clear();
+        self.selected_map = pool[((self.seed >> 33) % pool.len() as u64) as usize];
+        // (One the list does not show: all of them shown again.)
+        if !self.map_choice.accepts(&maps[self.selected_map]) {
+            self.map_choice.clear();
+        }
         self.reveal = true;
     }
 

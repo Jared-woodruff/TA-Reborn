@@ -111,7 +111,17 @@ impl LauncherApp {
         let found = self.supcom.found.clone().unwrap_or_default();
         ui.horizontal_wrapped(|ui| {
             ui.label(widgets::caption("FORGED ALLIANCE"));
-            if let Some(store) = found.install.as_ref().and_then(|game| game.store.name()) {
+            if found.copies.len() > 1 {
+                // (More than one copy found: each a switch, the one in use lit. Their maps make
+                // the same TA maps.)
+                for copy in &found.copies {
+                    let on = found.install.as_ref().is_some_and(|game| ta_supcom::install::same_folder(&game.root, &copy.root));
+                    let chip = ui.add_enabled_ui(!importing, |ui| widgets::chip(ui, store_label(copy.store), on)).inner;
+                    if chip.hover_tip(copy.root.display().to_string()).clicked() && !on {
+                        actions.push(Action::SupcomUse(copy.root.clone()));
+                    }
+                }
+            } else if let Some(store) = found.install.as_ref().and_then(|game| game.store.name()) {
                 widgets::tag(ui, store, GREEN);
             }
             let label = if found.install.is_some() { n("CHANGE FOLDER…") } else { n("CHOOSE FOLDER…") };
@@ -233,7 +243,7 @@ impl LauncherApp {
             ui.spacing_mut().item_spacing.x = 10.0;
             let label = tf("IMPORT {n} MAPS", &[("n", &chosen)]);
             let can = chosen > 0 && blocked.is_none();
-            if ui.add_enabled(can, ActionButton::primary(&label)).hover_tip(t("Makes the chosen maps into TA Reborn maps, in a map pack of their own. The largest take a minute each.")).disabled_tip(blocked.unwrap_or_else(|| t("Choose the maps to import."))).clicked() {
+            if ui.add_enabled(can, ActionButton::primary(&label)).hover_tip(t("Makes the chosen maps into TA Reborn maps, in a map pack of their own. Most take seconds, the largest a few minutes.")).disabled_tip(blocked.unwrap_or_else(|| t("Choose the maps to import."))).clicked() {
                 actions.push(Action::SupcomImport);
             }
             if ui.add(ActionButton::secondary("CLOSE")).clicked() {
@@ -241,4 +251,12 @@ impl LauncherApp {
             }
         });
     }
+}
+
+/// What a copy of the game is called on its switch: its store's name, or what it is.
+fn store_label(store: ta_supcom::install::Store) -> &'static str {
+    store.name().unwrap_or(match store {
+        ta_supcom::install::Store::Retail => n("Boxed copy"),
+        _ => n("Folder"),
+    })
 }

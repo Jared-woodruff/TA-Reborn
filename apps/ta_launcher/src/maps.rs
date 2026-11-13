@@ -9,6 +9,7 @@ use anyhow::{Context, Result, bail, ensure};
 use sha2::{Digest, Sha256};
 use ta_formats::{image::Palette, tdf, tnt::TntMap};
 use ta_vfs::{Vfs, mods::{ModInfo, ModKind, ModManifest}, package};
+use ta_data::map::Origin;
 use ta_ui::i18n::n;
 use crate::library::{self, Picture, Pictures};
 
@@ -74,7 +75,11 @@ pub struct Entry {
     pub players: usize,
     /// Where the players start, in world pixels, slot by slot.
     pub starts: Vec<(f32, f32)>,
+    /// What it comes with, as the library names it: the game's own maps by where they come from
+    /// (Total Annihilation, Core Contingency, Battle Tactics), TA Reborn, or the mod or map pack.
     pub source: String,
+    /// Where it comes from (TA's own, an expansion's, TA Reborn's, Supreme Commander's, a mod's).
+    pub origin: Origin,
     pub layer: String,
     pub path: PathBuf,
     pub active: bool,
@@ -112,6 +117,14 @@ impl Entry {
     pub fn pack(&self) -> bool { self.layer.starts_with("map-pack-") }
     /// One of TA Reborn's own maps (`assets/reborn/maps`, mounted over the game).
     pub fn reborn(&self) -> bool { self.layer == ta_vfs::BUILTIN_LAYER }
+    /// The ribbon over its card: TA Reborn's own maps', and those made from Supreme Commander's.
+    pub fn ribbon(&self) -> Option<&'static str> {
+        match self.origin {
+            Origin::Reborn => Some(n("REBORN")),
+            Origin::SupremeCommander => Some(n("SUPREME COMMANDER")),
+            _ => None,
+        }
+    }
     /// Where the map stands in the library: the player's favourites first, then TA Reborn's own
     /// maps, then the rest.
     pub fn group(&self, preferences: &ta_config::maps::Maps) -> Group {
@@ -310,7 +323,7 @@ impl Library {
                 self.details.forget_failures();
                 self.generation += 1;
                 self.visible = None;
-                if !self.catalogue.entries.iter().any(|entry| entry.layer == self.source) { self.source.clear(); }
+                if !self.catalogue.entries.iter().any(|entry| entry.source == self.source) { self.source.clear(); }
                 if !self.catalogue.entries.iter().any(|entry| entry.planet == self.world) { self.world.clear(); }
                 if !self.catalogue.entries.iter().any(|entry| entry.key == self.selected) {
                     // The page reconciles this against the profile's preferences and
@@ -541,7 +554,7 @@ fn make_picture(entry: &Entry, cache: Option<PathBuf>, side: u32) -> impl FnOnce
 }
 
 fn accepts(entry: &Entry, preferences: &ta_config::maps::Maps, query: &str, filter: Filter, source: &str) -> bool {
-    if !source.is_empty() && entry.layer != source { return false; }
+    if !source.is_empty() && entry.source != source { return false; }
     let available = entry.available(preferences);
     let shown = match filter {
         Filter::All => true,
@@ -670,13 +683,24 @@ pub fn scan(request: Request) -> Result<Catalogue> {
             let (palette, palette_id) = if active && !shadowed { shared.clone() } else { own.clone().unwrap_or_else(|| shared.clone()) };
             let picture = format!("{}|{stem}|{}|{}|{palette_id}|v{PICTURE_VERSION}", origin.layer, origin.path.display(), file_stamp(&origin.path, &path));
             let starts = info.schemas.first().map_or_else(Vec::new, |schema| schema.start_positions.iter().take(players).map(|(_, x, z)| (*x, *z)).collect());
-            let search = [&title, &info.description, &info.planet, &source, &stem].map(|text| text.to_lowercase()).join("\n");
+            // Where it comes from; the game's own maps named by it (an expansion's by the
+            // expansion), the others by the mod or map pack they come with.
+            let map_origin = Origin::of(&origin.layer, &origin.path, &info);
+            let source = match (origin.layer.as_str(), map_origin) {
+                // (A map pack a player put in the game's folder: its archive's name; maps loose
+                // there, the folder.)
+                ("base", Origin::Mod) if origin.path.extension().is_some() => origin.path.file_name().map_or_else(String::new, |name| name.to_string_lossy().into_owned()),
+                ("base", Origin::Mod) => ta_ui::i18n::t("In the game's folder").to_string(),
+                ("base", _) => ta_ui::i18n::t(map_origin.name()).to_string(),
+                _ => source.clone(),
+            };
+            let search = [title.as_str(), info.description.as_str(), info.planet.as_str(), source.as_str(), stem.as_str(), ta_ui::i18n::t(map_origin.name()), map_origin.name()].map(|text| text.to_lowercase()).join("\n");
             out.entries.push(Entry {
                 key: ta_config::maps::Maps::key(&origin.layer, &stem),
                 typed: typed_size(&info.size).or_else(|| typed_size(&info.description)),
                 blurb: ta_data::map::blurb(&info.description),
                 title, stem, planet: info.planet, size: info.size, starts,
-                players, source: source.clone(), layer: origin.layer.clone(), path: origin.path.clone(),
+                players, source, origin: map_origin, layer: origin.layer.clone(), path: origin.path.clone(),
                 active, shadowed, campaign, min_wind: info.min_wind, max_wind: info.max_wind, tidal: info.tidal_strength,
                 gravity: info.gravity, lava: info.lava_world, water_damage: if info.water_does_damage { info.water_damage.max(0.0) } else { 0.0 },
                 picture, palette, search, vfs: assets.clone(),
@@ -949,6 +973,33 @@ pub(crate) mod tests {
         } }
     }
 
+    /// The game's own maps named by where they come from (TA's archives, Core Contingency's,
+    /// Battle Tactics'), a map pack a player put in the game's folder by its archive, and a map
+    /// made from Supreme Commander's ribboned, whatever its folder.
+    #[test]
+    fn the_games_maps_are_named_by_where_they_come_from() {
+        let temp = Temp::new();
+        let base = temp.0.join("base");
+        std::fs::create_dir_all(&base).unwrap();
+        for (archive, stem) in [("totala2.hpi", "coast"), ("ccmaps.ccx", "lakes"), ("btmaps.ccx", "ridges"), ("tamec.ufo", "pack")] {
+            write_map_archive_named(&base.join(archive), stem);
+        }
+        let pack = temp.0.join("pack");
+        map(&pack, "Setons Clutch (SC)", "Seton's Clutch");
+        std::fs::write(pack.join("maps").join("Setons Clutch (SC).ota"), "[GlobalHeader]{missionname=Seton's Clutch; numplayers=2; supcommap=SCMP_009; [Schema 0]{[specials]{[special0]{specialwhat=StartPos1;XPos=32;ZPos=32;} [special1]{specialwhat=StartPos2;XPos=128;ZPos=128;}}}}").unwrap();
+        let catalogue = scan(Request { game_dir: Some(base), builtin: None, mods: vec![info(pack, "map-pack-supreme-commander")], enabled: vec!["map-pack-supreme-commander".into()] }).unwrap();
+        let of = |stem: &str| catalogue.entries.iter().find(|entry| entry.stem == stem).map(|entry| (entry.origin, entry.source.clone(), entry.ribbon())).unwrap();
+        assert_eq!(of("coast"), (Origin::TotalAnnihilation, "Total Annihilation".into(), None));
+        assert_eq!(of("lakes"), (Origin::CoreContingency, "Core Contingency".into(), None));
+        assert_eq!(of("ridges"), (Origin::BattleTactics, "Battle Tactics".into(), None));
+        assert_eq!(of("pack"), (Origin::Mod, "tamec.ufo".into(), None));
+        assert_eq!(of("setons clutch (sc)"), (Origin::SupremeCommander, "Source map-pack-supreme-commander".into(), Some("SUPREME COMMANDER")));
+        // The source filter by name: the expansions' maps apart from TA's.
+        let preferences = ta_config::maps::Maps::default();
+        let named = |source: &str| catalogue.entries.iter().filter(|entry| matches(entry, &preferences, "", Filter::All, source)).count();
+        assert_eq!((named("Total Annihilation"), named("Core Contingency"), named("Battle Tactics")), (1, 1, 1));
+    }
+
     #[test]
     fn discovery_shows_disabled_sources_and_overridden_originals() {
         let temp = Temp::new();
@@ -967,7 +1018,14 @@ pub(crate) mod tests {
         assert!(find(ta_vfs::BUILTIN_LAYER, "reborn").active);
         let mut preferences = ta_config::maps::Maps::default(); preferences.set_enabled("active", "coast", false);
         assert!(!find("active", "coast").available(&preferences));
-        assert!(matches(find("disabled", "moon"), &preferences, "moon", Filter::Unavailable, "disabled"));
+        assert!(matches(find("disabled", "moon"), &preferences, "moon", Filter::Unavailable, "Source disabled"));
+        assert!(!matches(find("disabled", "moon"), &preferences, "moon", Filter::Unavailable, "Source active"), "a source by its name");
+        // Where each comes from, and the game's own named by it.
+        assert_eq!((find("base", "coast").origin, find("base", "coast").source.as_str()), (Origin::Mod, "In the game's folder"), "maps loose in the game's folder are no archive of TA's");
+        assert_eq!(find(ta_vfs::BUILTIN_LAYER, "reborn").origin, Origin::Reborn);
+        assert_eq!(find("active", "coast").origin, Origin::Mod);
+        assert_eq!(find(ta_vfs::BUILTIN_LAYER, "reborn").ribbon(), Some("REBORN"));
+        assert_eq!(find("active", "coast").ribbon(), None);
         assert!(matches(find("active", "coast"), &preferences, "coast", Filter::Unavailable, ""), "a deactivated map is unavailable");
         assert!(!matches(find("base", "ac1"), &preferences, "", Filter::Unavailable, ""), "campaign maps have their own filter");
         assert!(!matches(find("disabled", "moon"), &preferences, "moon", Filter::Available, ""));
