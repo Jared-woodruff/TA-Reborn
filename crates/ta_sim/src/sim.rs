@@ -1062,6 +1062,7 @@ impl Sim {
             let anchor = World::pos_to_anchor(pos, t.footprint);
             let origin = World::footprint_origin(anchor, t.footprint);
             self.world.occupy_yard(slot, origin, t.footprint, &t.blocking_cells, &t.open_yard_cells, false);
+            self.clear_ground(origin, t.footprint);
             occupied_origin = Some(origin);
             pos = self.world.anchor_to_pos(anchor, t.footprint);
             // (`anchor_to_pos` puts it on the highest ground under the footprint.)
@@ -4227,14 +4228,43 @@ impl Sim {
             .collect();
         let count = gone.len();
         for index in gone {
-            let f = &mut self.features[index];
-            f.alive = false;
-            let (origin, pos, def) = (f.origin, f.pos, f.def);
-            let fp = (self.data.features[def].footprint_x, self.data.features[def].footprint_z);
-            self.world.release(Occupant::Feature(index as u32), origin, fp);
-            self.events.push(SimEvent::FeatureDestroyed { index, pos });
+            self.take_off_map(index);
         }
         count
+    }
+
+    /// Takes a feature off the map, leaving nothing in its place.
+    fn take_off_map(&mut self, index: usize) {
+        let f = &mut self.features[index];
+        f.alive = false;
+        let (origin, pos, def) = (f.origin, f.pos, f.def);
+        let fp = (self.data.features[def].footprint_x, self.data.features[def].footprint_z);
+        self.world.release(Occupant::Feature(index as u32), origin, fp);
+        self.events.push(SimEvent::FeatureDestroyed { index, pos });
+    }
+
+    /// A building taking its ground (its footprint, from `origin`) clears it of what lies loose
+    /// on it: the features that do not block (TA lets a building be put over them) and are
+    /// neither wreckage holding metal nor deposits, vents or what cannot be destroyed (TA's ferns
+    /// and fronds, small stones, scars). Their 3D stand-ins would stand through it, so they go,
+    /// leaving nothing. A heap's metal stays to be reclaimed; anemones and corals, indestructible,
+    /// stay too.
+    fn clear_ground(&mut self, origin: (i32, i32), fp: (u32, u32)) {
+        let (x0, z0) = (Fx::from_int(origin.0 as i64 * CELL), Fx::from_int(origin.1 as i64 * CELL));
+        let (x1, z1) = (x0 + Fx::from_int(fp.0 as i64 * CELL), z0 + Fx::from_int(fp.1 as i64 * CELL));
+        let centre = FxVec3::new((x0 + x1) / 2, Fx::ZERO, (z0 + z1) / 2);
+        // (Out to the footprint's corners, and more.)
+        let reach = Fx::from_int((fp.0 + fp.1) as i64 * CELL);
+        let mut near = Vec::new();
+        self.features_near(centre, reach, &mut near);
+        for index in near.into_iter().map(|i| i as usize) {
+            let f = &self.features[index];
+            let d = &self.data.features[f.def];
+            let loose = f.alive && !d.blocking && d.metal <= 0.0 && !d.indestructible && !d.geothermal && !d.is_metal_deposit();
+            if loose && f.pos.x >= x0 && f.pos.x < x1 && f.pos.z >= z0 && f.pos.z < z1 {
+                self.take_off_map(index);
+            }
+        }
     }
 
     /// Removes a feature; `reclaimed` swaps in its reclaim remnant (e.g. a smudge).

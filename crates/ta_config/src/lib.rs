@@ -140,8 +140,11 @@ pub const RECORD_VERSION: u32 = 46;
 /// and go with it whatever shields them; only PLANT factories close up when idle, and a mod's other
 /// building that builds is switched on when built as its file says; EnergyUse counts
 /// only while switched on (Total Mayhem's fusion reactor makes 1,050, not 2,100); scripts cloak
-/// their units (`UNIT_CLOAKED`); Core Contingency's mines start cloaked (`init_cloaked`).
-pub const SIMULATION_VERSION: u32 = 88;
+/// their units (`UNIT_CLOAKED`); Core Contingency's mines start cloaked (`init_cloaked`); 89, a
+/// building put over what lies loose on the ground clears its footprint of it (the features that
+/// do not block and are neither wreckage holding metal nor deposits, vents or indestructible:
+/// TA's ferns, fronds, small stones and scars).
+pub const SIMULATION_VERSION: u32 = 89;
 /// Records shorter than one year of simulated time are supported. Shared with the
 /// launcher's metadata reader so impossible durations cannot start endless save catch-up.
 pub const MAX_RECORD_TICKS: u64 = 30 * 3600 * 24 * 365;

@@ -628,6 +628,14 @@ Escalation also replaces `fx.gaf`'s Explode2-Explode4 and Nuke1 with shield bubb
 * Features block by default (`blocking` absent = 1). Geothermal vents (`geothermal=1`,
   1×1, no `blocking` line) must not: geothermal plants have `G` cells in their `YardMap`
   and are built over a vent.
+* A feature with `blocking=0` does not stop a building being put over it. Of TA's 1,580 features
+  649 say so: scars and smudges (flat), wreckage heaps and the sea units' wrecks (with metal),
+  the lush and archipelago worlds' ferns and fronds (`category=foliage`, flamable, energy), a
+  few small green-world stones, and the water world's anemones and corals (indestructible). TA
+  Reborn draws the ferns, fronds and stones as 3D models, which would stand through a building,
+  so a building clears its footprint as it takes the ground (as its construction starts, or as a
+  mission places it) of those that hold no metal and can be destroyed, deposits and vents
+  aside; they leave nothing. Heaps keep their metal under it; anemones and corals stay.
 * A feature's `world` (or its folder under `features/`) against the OTA `planet` of the
   maps that use it: Green Planet → `greenworld`, Red Planet → `mars`, Lunar → `moon`, Water
   World → `water`, Wet Desert → `wetdesert`, the others by name (Acid, Archipelago, Crystal,

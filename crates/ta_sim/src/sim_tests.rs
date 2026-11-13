@@ -183,6 +183,49 @@ fn reclaim_reaches_and_removes_rocks_from_every_direction() {
     }
 }
 
+/// A building put over what lies loose on the ground (TA lets it be: none of it blocks) clears
+/// its footprint of the plants, stones and scars there, whose 3D stand-ins would stand through
+/// it. Wreckage keeps its metal under it, an indestructible anemone stays, a vent stays for its
+/// plant, and what lies beside it stays. A building placed whole (a mission's) clears its ground
+/// too.
+#[test]
+fn a_building_clears_the_loose_features_under_it() {
+    let data = || data_of(&[
+        unit("SOLAR", "BuildTime=600; FootprintX=4; FootprintZ=4;"),
+        ("features/all/loose.tdf".into(), [
+            "[FERN] { footprintx=1; footprintz=1; blocking=0; reclaimable=1; flamable=1; energy=75; }",
+            "[PEBBLE] { footprintx=1; footprintz=1; blocking=0; }",
+            "[HEAP] { footprintx=2; footprintz=2; blocking=0; reclaimable=1; metal=40; }",
+            "[ANEMONE] { footprintx=2; footprintz=2; blocking=0; indestructible=1; }",
+            "[VENT] { footprintx=1; footprintz=1; geothermal=1; }",
+        ].join("\n")),
+    ]);
+    let mut map = flat_map();
+    map.feature_names.extend(["FERN", "PEBBLE", "HEAP", "ANEMONE", "VENT"].map(String::from));
+    // (Cells: the building below takes 31..35 each way.)
+    for (x, z, f) in [(32, 32, 0u16), (34, 33, 1), (31, 33, 2), (33, 31, 3), (32, 34, 4), (36, 32, 0), (40, 40, 1)] {
+        map.features[z * 64 + x] = f;
+    }
+    let mut sim = sim_on_map(data(), 1, &map);
+    let standing = |sim: &Sim| -> Vec<(String, (i32, i32))> {
+        sim.features.iter().filter(|f| f.alive).map(|f| (sim.data.features[f.def].name.to_ascii_uppercase(), f.origin)).collect()
+    };
+    assert_eq!(standing(&sim).len(), 7);
+    sim.take_events();
+    let solar = sim.types.id("SOLAR").unwrap();
+    let site = sim.spawn_unit(solar, 0, FxVec3::from_ints(528, 0, 528), 0, false).unwrap();
+    assert_eq!(sim.unit(site).unwrap().occupied_origin, Some((31, 31)));
+    let mut left = standing(&sim);
+    left.sort();
+    assert_eq!(left, [("ANEMONE".to_string(), (33, 31)), ("FERN".into(), (36, 32)), ("HEAP".into(), (31, 33)), ("PEBBLE".into(), (40, 40)), ("VENT".into(), (32, 34))]);
+    let gone = sim.take_events().iter().filter(|e| matches!(e, SimEvent::FeatureDestroyed { .. })).count();
+    assert_eq!(gone, 2, "the fern and the pebble under it");
+    // Placed whole, as a mission places its buildings: the same.
+    let mut whole = sim_on_map(data(), 1, &map);
+    whole.spawn_unit(solar, 0, FxVec3::from_ints(528, 0, 528), 0, true).unwrap();
+    assert_eq!(standing(&whole).len(), 5);
+}
+
 #[test]
 fn construction_submarine_approaches_before_assisting_and_stops_its_previous_beam() {
     let data = data_of(&[
