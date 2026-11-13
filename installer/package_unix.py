@@ -49,6 +49,24 @@ def run(args, *, cwd=None, capture=False, env=None):
     return result.stdout if capture else None
 
 
+def create_disk_image(source, dmg, *, attempts=5, pause=20):
+    """`hdiutil create` for the disk image, tried again while the system holds the new image's
+    device: on GitHub's macOS runners it fails now and then with "Resource busy" (a scan of the
+    new volume still holding it) and succeeds on a later try. Any other failure stops at once."""
+    command = [str(a) for a in ("hdiutil", "create", "-volname", "TA Reborn", "-srcfolder", source, "-ov", "-format", "UDZO", dmg)]
+    for attempt in range(1, attempts + 1):
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        sys.stdout.write(result.stdout)
+        sys.stderr.write(result.stderr)
+        if result.returncode == 0:
+            return
+        if attempt == attempts or "Resource busy" not in result.stdout + result.stderr:
+            raise subprocess.CalledProcessError(result.returncode, command, result.stdout, result.stderr)
+        print(f"hdiutil: resource busy, trying again in {pause} s ({attempt} of {attempts})", flush=True)
+        Path(dmg).unlink(missing_ok=True)
+        time.sleep(pause)
+
+
 def require_tools(names):
     missing = [name for name in names if shutil.which(name) is None]
     if missing:
@@ -573,7 +591,7 @@ def macos_packages(work, release, name, target, version, metadata):
     (dmg_root / "Applications").symlink_to("/Applications")
     copy_file(REPO / "installer/macos/README.txt", dmg_root / "README.txt")
     dmg = work / f"{name}.dmg"
-    run(["hdiutil", "create", "-volname", "TA Reborn", "-srcfolder", dmg_root, "-ov", "-format", "UDZO", dmg])
+    create_disk_image(dmg_root, dmg)
     if identity != "-":
         run(["codesign", "--force", "--sign", identity, "--timestamp", dmg])
     if notary:

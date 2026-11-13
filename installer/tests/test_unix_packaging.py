@@ -277,6 +277,31 @@ class PackagingTests(unittest.TestCase):
                 self.assertEqual(call[4:-1], [] if identity == "-" else ["--options", "runtime", "--timestamp"])
             self.assertEqual(calls[3], ["codesign", "--verify", "--deep", "--strict", "--verbose=2", app])
 
+    def test_disk_image_is_made_again_while_its_device_is_busy(self):
+        busy = subprocess.CompletedProcess([], 1, "", "hdiutil: create failed - Resource busy\n")
+        made = subprocess.CompletedProcess([], 0, "created: TA.dmg\n", "")
+        full = subprocess.CompletedProcess([], 1, "", "hdiutil: create failed - No space left on device\n")
+        source, dmg = self.root / "disk-image", self.root / "TA.dmg"
+        quiet = (mock.patch.object(pkg.sys, "stdout"), mock.patch.object(pkg.sys, "stderr"))
+        for outcomes, attempts, calls, raises in (([busy, busy, made], 5, 3, False),  # busy, then made
+                                                  ([full], 5, 1, True),  # another failure: at once
+                                                  ([busy] * 3, 3, 3, True)):  # busy to the last
+            with self.subTest(calls=calls, raises=raises), quiet[0], quiet[1], \
+                    mock.patch.object(pkg.subprocess, "run", side_effect=outcomes) as command, \
+                    mock.patch.object(pkg.time, "sleep") as pause:
+                dmg.write_bytes(b"partial")
+                if raises:
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        pkg.create_disk_image(source, dmg, attempts=attempts)
+                else:
+                    pkg.create_disk_image(source, dmg, attempts=attempts)
+                self.assertEqual(command.call_count, calls)
+                self.assertEqual(pause.call_count, calls - 1)
+                self.assertEqual(command.call_args.args[0],
+                                 ["hdiutil", "create", "-volname", "TA Reborn", "-srcfolder", str(source), "-ov", "-format", "UDZO", str(dmg)])
+                # A busy try's partial image is removed before the next.
+                self.assertEqual(dmg.exists(), calls == 1)
+
     @unittest.skipUnless(pkg.platform.system() == "Darwin", "Native macOS signing is checked before Cargo on both Mac runners")
     def test_native_macos_signs_unsigned_helper_before_main_executable(self):
         pkg.require_tools(["clang", "codesign"])
