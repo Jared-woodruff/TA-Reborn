@@ -174,6 +174,8 @@
   the Mods and Maps pages or starts the game: it looks again only when the folder changes, so a
   folder holding many map packs no longer slows it down.
 - The REMOVE question no longer promises a GET button for mods that are downloaded by hand.
+- An update of TA Reborn asked for while a profile was being edited, or a skin had unsaved
+  changes, said STARTING THE UPDATE… and waited without saying why. It now says what it waits for.
 - Dropping a mod's file again while it installs now says to wait. The extra mods folder can no
   longer be set to Total Annihilation's own folder, where every one of TA's archives showed as a
   mod. The usual reasons a mod's package cannot be installed (no program to unpack it, an archive

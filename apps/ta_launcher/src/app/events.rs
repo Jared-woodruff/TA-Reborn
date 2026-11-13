@@ -13,6 +13,48 @@ use super::{Action, LauncherApp, Page};
 use crate::battles::Battles;
 use crate::getmods::Stage;
 use crate::update::Step;
+
+/// What a downloaded update waits for before Setup runs ([`LauncherApp::update_waits_for`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum UpdateWait {
+    /// A game is running: Setup replaces its files.
+    Game,
+    /// A skin's work, which closing the launcher would stop.
+    SkinWork,
+    /// A mod's install, likewise.
+    Install,
+    /// The map library's work (its status).
+    Maps(&'static str),
+    /// The profile being edited, which closing would lose.
+    Profile,
+    /// The skin editor's unsaved changes, likewise.
+    SkinEdits,
+}
+
+impl UpdateWait {
+    /// Why UPDATE NOW or INSTALL NOW cannot be pressed now.
+    pub(crate) fn why(self) -> &'static str {
+        match self {
+            UpdateWait::Game => t("Close the game first: the update replaces its files"),
+            UpdateWait::SkinWork => t("Wait for the current skin operation to finish, then try again."),
+            UpdateWait::Install => t("Wait for the mod being installed"),
+            UpdateWait::Maps(status) => t(status),
+            UpdateWait::Profile | UpdateWait::SkinEdits => self.queued(),
+        }
+    }
+
+    /// What an update asked for waits for, over its progress bar.
+    pub(crate) fn queued(self) -> &'static str {
+        match self {
+            UpdateWait::Game => t("READY · IT INSTALLS WHEN THE GAME CLOSES"),
+            UpdateWait::SkinWork => t("READY · IT INSTALLS AFTER THE SKIN WORK"),
+            UpdateWait::Install => t("READY · IT INSTALLS AFTER THE MOD"),
+            UpdateWait::Maps(status) => t(status),
+            UpdateWait::Profile => t("READY · IT INSTALLS WHEN THE PROFILE IS CLOSED"),
+            UpdateWait::SkinEdits => t("READY · IT INSTALLS WHEN THE SKIN IS SAVED"),
+        }
+    }
+}
 use crate::modlist;
 use crate::theme::*;
 use crate::widgets::ActionButton;
@@ -62,23 +104,43 @@ impl LauncherApp {
         }
     }
 
+    /// What keeps UPDATE NOW and INSTALL NOW from being pressed: Setup replaces the game's files,
+    /// and closing the launcher for it would stop a skin's work, a mod's install or the map
+    /// library's work.
+    pub(crate) fn update_blocked(&self) -> Option<UpdateWait> {
+        if self.game_running() { Some(UpdateWait::Game) }
+        else if self.skins.busy() { Some(UpdateWait::SkinWork) }
+        else if self.installer.busy() { Some(UpdateWait::Install) }
+        else { self.maps.status().map(UpdateWait::Maps) }
+    }
+
+    /// What an update asked for waits for before Setup runs: what keeps it from being asked
+    /// for ([`Self::update_blocked`]), then what closing the launcher would lose (the profile
+    /// being edited, a skin's unsaved changes). Its progress bar says which.
+    pub(crate) fn update_waits_for(&self) -> Option<UpdateWait> {
+        self.update_blocked().or_else(|| {
+            if self.profiles.dialog_open() { Some(UpdateWait::Profile) }
+            else if self.skins.editor.as_ref().is_some_and(|e| e.changed()) { Some(UpdateWait::SkinEdits) }
+            else { None }
+        })
+    }
+
     /// The new version on its way: its news taken in, and once its setup is checked and was
     /// asked for, the setup run and the launcher closed for it (not while the game runs or a mod
-    /// is being installed: it waits for them).
+    /// is being installed: it waits for them, [`Self::update_waits_for`]).
     pub(super) fn updates(&mut self, ctx: &egui::Context) {
         if self.autoupdate && matches!(self.update, crate::update::UpdateState::Available(_)) {
             self.autoupdate = false;
             self.start_update();
         }
-        let game_running = self.game_running();
+        let waits_for = self.update_waits_for();
         let Some(download) = &mut self.download else { return };
         if download.poll() {
             ctx.request_repaint();
         }
         match &download.step {
             Step::Downloading { .. } | Step::Checking => ctx.request_repaint_after(Duration::from_millis(150)),
-            Step::Ready(setup) if self.update_go && !self.profiles.dialog_open() && !game_running && !self.installer.busy() && !self.skins.busy() && !self.maps.busy()
-                && self.skins.editor.as_ref().is_none_or(|e| !e.changed()) => {
+            Step::Ready(setup) if self.update_go && waits_for.is_none() => {
                 self.update_go = false;
                 // Setup closes/replaces this process. Do not rely on on_exit,
                 // where a failed save can no longer leave the player a Retry action.

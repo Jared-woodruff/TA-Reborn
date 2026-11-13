@@ -34,7 +34,7 @@ enum MapChoice {
 impl LauncherApp {
     pub(crate) fn maps_page(&mut self, ui: &mut Ui) {
         let short = ui.available_height() < 600.0;
-        let idle = !self.maps.busy() && !self.installer.busy() && !self.game.is_running();
+        let idle = !self.maps.busy() && !self.installer.busy() && !self.game_running();
         self.maps_header(ui, short, idle);
         if let Some(status) = self.maps.status() { widgets::busy_line(ui, t(status)); }
         self.maps_feedback(ui);
@@ -109,7 +109,7 @@ impl LauncherApp {
         let game = self.detection.install().is_some();
         let playable = entry.available(preferences);
         let why = if !game { Some(t("Find your Total Annihilation install on the Play page first.")) }
-            else if self.game.is_running() { Some(t("The game is running.")) }
+            else if self.game_running() { Some(t("The game is running.")) }
             else if !idle { Some(t("Wait for the current map or mod work to finish.")) }
             else if !playable { Some(t(entry.status(preferences))) }
             else { None };
@@ -140,7 +140,7 @@ impl LauncherApp {
         menu.add(n("SHOW SOURCE FILES"), Icon::Folder, MapChoice::Do(Action::OpenPath(path)));
         if entry.pack() && installed {
             menu.rule();
-            let busy = (self.game.is_running() || self.installer.busy() || self.maps.busy()).then(|| self.maps_busy_reason()).flatten();
+            let busy = (self.game_running() || self.installer.busy() || self.maps.busy()).then(|| self.maps_busy_reason()).flatten();
             menu.add(n("REMOVE MAP PACK"), Icon::Remove, MapChoice::Do(Action::Maps(maps::Action::RemovePack(entry.layer.clone())))).danger().unless(busy);
         }
         menu
@@ -462,7 +462,7 @@ impl LauncherApp {
         let game = self.detection.install().is_some();
         let playable = entry.available(&self.config.maps);
         let why = if !game { Some(t("Find your Total Annihilation install on the Play page first.")) }
-            else if self.game.is_running() { Some(t("The game is running.")) }
+            else if self.game_running() { Some(t("The game is running.")) }
             else if !idle { Some(t("Wait for the current map or mod work to finish.")) }
             else if !playable { Some(t(entry.status(&self.config.maps))) }
             else { None };
@@ -546,7 +546,7 @@ impl LauncherApp {
         });
         if entry.pack() && installed {
             ui.add_space(space::XS);
-            let idle = !self.game.is_running() && !self.installer.busy() && !self.maps.busy();
+            let idle = !self.game_running() && !self.installer.busy() && !self.maps.busy();
             if ui.add_enabled(idle, ActionButton::danger("REMOVE MAP PACK").height(28.0))
                 .hover_tip(t("The imported map pack goes to the Recycle Bin, with every map in it.")).clicked() {
                 self.push(Action::Maps(maps::Action::RemovePack(entry.layer.clone())));

@@ -257,7 +257,7 @@ impl LauncherApp {
         let mut content = ui.new_child(UiBuilder::new().max_rect(rect.shrink2(vec2(inset, inset - space::S))).layout(if stacked { Layout::top_down(Align::Min) } else { Layout::left_to_right(Align::Center) }));
         let ui = &mut content;
         let installed = self.detection.install().is_some();
-        let busy = self.game.is_running();
+        let busy = self.game_running();
         ui.vertical(|ui| {
             ui.set_max_width(if stacked { ui.available_width() } else { (ui.available_width() - if compact { 220.0 } else { 280.0 }).max(1.0) });
             // A lamp and what is going on.

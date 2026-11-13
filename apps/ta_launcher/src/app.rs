@@ -26,6 +26,7 @@ use crate::widgets::{self, NavIcon};
 use ta_ui::metal;
 
 mod events;
+pub(crate) use events::UpdateWait;
 mod profile_page;
 mod profiles;
 mod polish;
@@ -4126,6 +4127,10 @@ name = \"{}\"
         app.elsewhere_checked = None;
         app.follow_game_elsewhere(&ctx);
         assert!(app.game_running(), "a game holds the lock");
+        // (The pages' buttons wait for it, as their actions do; the update tells what it waits for.)
+        assert!(app.removal_blocked().is_some() && app.maps_busy_reason().is_some(), "REMOVE and the map library wait");
+        assert_eq!(app.update_blocked(), Some(UpdateWait::Game));
+        assert_eq!(app.update_waits_for().map(UpdateWait::queued), Some("READY · IT INSTALLS WHEN THE GAME CLOSES"));
         app.apply(Action::Uninstall("escalation".into()), &eframe::Frame::_new_kittest());
         assert!(app.confirm_uninstall.is_none(), "no mod is removed while it runs");
         app.apply(Action::Play, &eframe::Frame::_new_kittest());

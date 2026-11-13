@@ -7,7 +7,7 @@ use ta_ui::i18n::{t, tf};
 
 use super::getmods::{megabytes, progress};
 use super::{paragraph, wrapped};
-use crate::app::{Action, LauncherApp};
+use crate::app::{Action, LauncherApp, UpdateWait};
 use crate::theme::*;
 use crate::update::{Release, Step, UpdateState};
 use crate::widgets::{self, ActionButton, Glyph};
@@ -63,19 +63,8 @@ impl LauncherApp {
     pub(super) fn update_controls(&mut self, ui: &mut Ui, release: &Release) {
         let step = self.download.as_ref().map(|d| d.step.clone());
         let size = release.setup.as_ref().map_or(0, |a| a.size);
-        // (What the update waits for: it replaces the game's files, and closing the launcher
-        // would stop a mod's install.)
-        let wait = if self.game.is_running() {
-            Some(t("Close the game first: the update replaces its files"))
-        } else if self.skins.busy() {
-            Some(t("Wait for the current skin operation to finish, then try again."))
-        } else if self.installer.busy() {
-            Some(t("Wait for the mod being installed"))
-        } else if let Some(status) = self.maps.status() {
-            Some(t(status))
-        } else {
-            None
-        };
+        // (What holds the update back: `update_blocked`.)
+        let wait = self.update_blocked().map(UpdateWait::why);
         let width = (ui.available_width() - 44.0).clamp(1.0, 560.0);
         ui.horizontal_wrapped(|ui| match &step {
             None | Some(Step::Failed(_)) => {
@@ -113,13 +102,7 @@ impl LauncherApp {
             Some(Step::Checking) => progress(ui, width, None, t("CHECKING THE DOWNLOAD…")),
             // (Asked for, it starts by itself once nothing holds it back.)
             Some(Step::Ready(_)) if self.update_go => {
-                let label = match wait {
-                    Some(_) if self.game.is_running() => t("READY · IT INSTALLS WHEN THE GAME CLOSES"),
-                    Some(_) if self.skins.busy() => t("Wait for the current skin operation to finish, then try again."),
-                    Some(why) if self.maps.busy() && !self.installer.busy() => why,
-                    Some(_) => t("READY · IT INSTALLS AFTER THE MOD"),
-                    None => t("STARTING THE UPDATE…"),
-                };
+                let label = self.update_waits_for().map_or(t("STARTING THE UPDATE…"), UpdateWait::queued);
                 progress(ui, width, Some(1.0), label);
             }
             Some(Step::Ready(_)) => {

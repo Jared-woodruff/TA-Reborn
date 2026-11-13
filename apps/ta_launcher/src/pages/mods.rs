@@ -329,7 +329,7 @@ impl LauncherApp {
                 let label = tf("UPDATE ALL · {n}", &[("n", &updates.len())]);
                 let width = widgets::galley(ui, RichText::new(&label).font(strong(13.5))).size().x + 34.0;
                 room(ui, width);
-                let running = self.game.is_running();
+                let running = self.game_running();
                 if ui.add_enabled(!running, ActionButton::primary(&label).height(widgets::CONTROL_HEIGHT)).hover_tip(t("Download and install the tested releases newer than yours"))
                     .disabled_tip(t("Close the game first: it may be using these mods.")).clicked() {
                     self.push(Action::UpdateAll);
@@ -505,7 +505,7 @@ impl LauncherApp {
             menu.rule();
         }
         let game = self.detection.install().is_some();
-        let running = self.game.is_running();
+        let running = self.game_running();
         let catalogue = item.and_then(|item| item.catalogue);
         // (A release only its creator's site hands out leads with that site, as its card does.)
         let manual = catalogue.is_some_and(|entry| entry.fit == Fit::Unverified || entry.file.is_some_and(|file| !file.can_download())) && installed.is_none();
@@ -662,14 +662,14 @@ impl LauncherApp {
     /// Why a mod cannot be removed now, if it cannot.
     /// Why the Maps page's work (imports, a new map, a rescan) waits, when it does.
     pub(crate) fn maps_busy_reason(&self) -> Option<&'static str> {
-        if self.game.is_running() { Some(t("The game is running.")) }
+        if self.game_running() { Some(t("The game is running.")) }
         else if self.installer.busy() { Some(t("Wait for the installs to finish.")) }
         else if self.maps.busy() { Some(t("Wait for the current map or mod work to finish.")) }
         else { None }
     }
 
     pub(crate) fn removal_blocked(&self) -> Option<&'static str> {
-        if self.game.is_running() { Some(t("The game is running.")) }
+        if self.game_running() { Some(t("The game is running.")) }
         else if self.installer.busy() { Some(t("Wait for the installs to finish.")) }
         else if self.maps.importing() { Some(t("Wait for the map import to finish.")) }
         else { None }
@@ -733,7 +733,7 @@ impl LauncherApp {
                 ui.add(egui::Label::new(RichText::new(by).font(strong(12.5)).color(AMBER).extra_letter_spacing(ta_ui::i18n::tracking(0.6))).wrap());
                 let stage = self.installer.stages.get(entry.id);
                 let blocked = self.removal_blocked();
-                let held = self.game.is_running().then(|| t("Close the game first: it may be using this mod."))
+                let held = self.game_running().then(|| t("Close the game first: it may be using this mod."))
                     .or_else(|| self.mods.in_game_folder(&item.id).then(|| t("This copy is in the game folder, which comes before your mods folder: replace it there to update it.")));
                 if let Some(action) = getmods::footer_ui(ui, entry, version.as_deref(), on, stage, !self.offline, blocked, held) {
                     actions.push(match action {
