@@ -245,9 +245,12 @@ fn implicit_renames(path: &Path, kind: &ModKind) -> BTreeMap<String, String> {
 }
 
 /// A stamp of what [`implicit_renames`] reads: an archive's size and time; a folder's time, and
-/// its entries' names, sizes and times (a file added in one of its folders changes that folder's
-/// time, an archive replaced its size or time).
+/// the name, size and time of every file below it, as it reads them all (a file renamed deep in
+/// one of its folders changes what it holds, and neither the folder nor those above it).
 type RenameStamp = Vec<(String, u64, Option<std::time::SystemTime>)>;
+
+/// Files a folder's stamp takes in at most: beyond, it is read as it is, every time.
+const MOST_STAMPED_FILES: usize = 200_000;
 
 /// What [`implicit_renames`] found, by path, with the stamp of what it read then. A scan runs at
 /// every visit of the launcher's Mods and Maps pages, on its interface thread: opening every
@@ -257,12 +260,28 @@ static RENAMES: std::sync::Mutex<KeptRenames> = std::sync::Mutex::new(BTreeMap::
 type KeptRenames = BTreeMap<PathBuf, (RenameStamp, BTreeMap<String, String>)>;
 
 fn rename_stamp(path: &Path, kind: &ModKind) -> Option<RenameStamp> {
-    let stat = |name: String, at: &Path| std::fs::metadata(at).ok().map(|m| (name, m.len(), m.modified().ok()));
-    let mut stamp = vec![stat(String::new(), path)?];
+    let root = std::fs::metadata(path).ok()?;
+    let mut stamp = vec![(String::new(), root.len(), root.modified().ok())];
     if *kind == ModKind::Directory {
-        let mut entries: Vec<(String, PathBuf)> = std::fs::read_dir(path).ok()?.flatten().map(|e| (e.file_name().to_string_lossy().into_owned(), e.path())).collect();
-        entries.sort();
-        stamp.extend(entries.into_iter().filter_map(|(name, at)| stat(name, &at)));
+        // (Its folders walked, links left aside as the game leaves them, each file stamped from
+        // its folder's listing: no file opened, no archive read.)
+        let mut files = Vec::new();
+        let mut pending = vec![path.to_path_buf()];
+        while let Some(dir) = pending.pop() {
+            for entry in std::fs::read_dir(&dir).ok()?.flatten() {
+                let Ok(kind) = entry.file_type() else { continue };
+                if kind.is_dir() {
+                    pending.push(entry.path());
+                } else if kind.is_file() && let Ok(meta) = entry.metadata() {
+                    let at = entry.path();
+                    let name = at.strip_prefix(path).unwrap_or(&at).to_string_lossy().into_owned();
+                    files.push((name, meta.len(), meta.modified().ok()));
+                    if files.len() > MOST_STAMPED_FILES { return None; }
+                }
+            }
+        }
+        files.sort();
+        stamp.extend(files);
     }
     Some(stamp)
 }
@@ -1246,6 +1265,13 @@ mod replacement_tests {
         test_archive::write(&mods.join("TAESC.gp3"), &[("unitse/armcom.fbi", b"escalation, again")]);
         let (found, _) = scan(&mods);
         assert_eq!(found.iter().find(|m| m.manifest.id == "taesc").unwrap().manifest.rename, pairs(&[("unitse", "units")]), "read again once it changed");
+        // (A folder's file renamed deep in it, the folders above it unchanged: read again too.)
+        std::fs::create_dir_all(mods.join("deep").join("unitse").join("arm")).unwrap();
+        std::fs::write(mods.join("deep/unitse/arm/unit.txt"), b"deep").unwrap();
+        let renamed = |mods: &Path| scan(mods).0.into_iter().find(|m| m.manifest.id == "deep").unwrap().manifest.rename;
+        assert!(renamed(&mods).is_empty(), "nothing of TA's in it yet");
+        std::fs::rename(mods.join("deep/unitse/arm/unit.txt"), mods.join("deep/unitse/arm/unit.fbi")).unwrap();
+        assert_eq!(renamed(&mods), pairs(&[("unitse", "units")]), "its unit found once renamed");
         let _ = std::fs::remove_dir_all(root);
     }
 

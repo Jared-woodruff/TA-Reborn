@@ -43,8 +43,8 @@
 ### Fixed
 - Updating a mod kept in the extra mods folder installed the new version in your own mods folder,
   leaving the old copy behind it as a second mod of the same name, which a later REMOVE brought
-  back. Such a mod is now updated where it is kept, and replacing it with a file of your own
-  does the same.
+  back. A mod folder kept there is now updated where it is, and replacing it with a file of your
+  own does the same (a mod that is a single archive is updated in your mods folder, as before).
 - A power cut just after a mod's update could leave the new version half written with the
   previous one already gone. The new files are now on the disk before they take its place.
 - REMOVE was offered for mods in TA Reborn's program folder, which only an administrator may
