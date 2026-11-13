@@ -241,12 +241,28 @@ impl Import {
         None
     }
 
-    /// Waits for an import under way at shutdown (the pack is installed whole or not at all).
-    pub fn finish_on_exit(&mut self) {
-        if let Some(job) = self.job.take() {
-            job.stop.store(true, Ordering::Relaxed);
-            let _ = job.handle.join();
-        }
+    /// Stops an import under way at shutdown after the map being made, and waits for it (the pack
+    /// is installed whole or not at all): its outcome, the maps made to be turned on.
+    pub fn finish_on_exit(&mut self) -> Option<Outcome> {
+        let job = self.job.take()?;
+        job.stop.store(true, Ordering::Relaxed);
+        job.handle.join().ok()
+    }
+
+    /// An import under way that ends, stopped, once asked to stop, having made the maps of
+    /// folders `made`: for tests.
+    #[cfg(test)]
+    pub fn pretend_importing(&mut self, made: &[&str]) {
+        let stop = Arc::new(AtomicBool::new(false));
+        let stopping = stop.clone();
+        let made: Vec<String> = made.iter().map(|m| m.to_string()).collect();
+        let handle = std::thread::spawn(move || {
+            while !stopping.load(Ordering::Relaxed) {
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+            Outcome { imported: made.clone(), made, stopped: true, ..Default::default() }
+        });
+        self.job = Some(Job { handle, stop });
     }
 }
 
@@ -356,6 +372,11 @@ fn import(game: &Install, own: &[PathBuf], maps: &[(PathBuf, bool, String)], ta_
             Ok(c) => {
                 // (An older version of this map, under another name, goes.)
                 remove_made_from(&maps_out, &m_source(folder));
+                // (Another map's files of the same name are never written over.)
+                if taken(&maps_out, &c.stem) {
+                    outcome.failed.push((name.clone(), tf("Another map in the pack has the file name {stem}.", &[("stem", &c.stem)]).to_string()));
+                    continue;
+                }
                 std::fs::write(maps_out.join(format!("{}.tnt", c.stem)), &c.tnt)?;
                 std::fs::write(maps_out.join(format!("{}.ota", c.stem)), &c.ota)?;
                 if let Some(f) = &c.features {
@@ -410,6 +431,16 @@ fn remove_made_from(maps: &Path, source: &str) {
     }
 }
 
+/// Whether `maps` holds a map of file stem `stem` (whatever its case: the game finds maps so).
+fn taken(maps: &Path, stem: &str) -> bool {
+    let Ok(entries) = std::fs::read_dir(maps) else { return false };
+    entries.flatten().any(|e| {
+        let path = e.path();
+        path.extension().is_some_and(|x| x.eq_ignore_ascii_case("tnt") || x.eq_ignore_ascii_case("ota"))
+            && path.file_stem().is_some_and(|s| s.to_string_lossy().eq_ignore_ascii_case(stem))
+    })
+}
+
 /// What importing `entries` takes on the disk, about (bytes): a map's art grows with its size.
 pub fn size_estimate(entries: &[&Entry]) -> u64 {
     entries.iter().map(|e| match e.scenario.size.0.max(e.scenario.size.1) {
@@ -441,6 +472,9 @@ mod tests {
         remove_made_from(&maps, "scmp_001");
         assert!(!maps.join("Old Name (SC).ota").exists() && !maps.join("Old Name (SC).tnt").exists());
         assert!(maps.join("Other (SC).ota").exists());
+        // Another map's name is taken, whatever its case; the one gone is free.
+        assert!(taken(&maps, "other (sc)"));
+        assert!(!taken(&maps, "Old Name (SC)"));
         std::fs::remove_dir_all(dir).unwrap();
     }
 

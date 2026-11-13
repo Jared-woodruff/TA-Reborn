@@ -211,8 +211,11 @@ recognises; TA's own files never begin with one.
   the game's own (`features/`) and never in place of one of them; `rebornworld` names the
   world a definition is of. Under `maps/`, they are no part of the data multiplayer peers
   compare, and the map's digest and its battles' cover them (`Compatibility::map_digest`,
-  `for_match`; a map without the file keeps the digest it always had). The map editor saves a
-  copy's beside it. Converted maps name their trees, bushes and rocks there (`SC1_Green_T1`).
+  `for_match`; a map without the file keeps the digest it always had). A battle's data holds the
+  game's features and its own map's alone, in that order (`GameData::for_map`): no other map's
+  shifts their numbers, which the simulation goes by. The game's data for menus and the editor
+  holds every map's. The map editor saves a copy's beside it. Converted maps name their trees,
+  bushes and rocks there (`SC1_Green_T1`).
 * **OTA keys TA Reborn reads besides TA's**: `rebornart=1` (the art was painted by TA Reborn's
   own tools: the renderer cleans no TA painter's hatching from it); a converted map's
   `supcommap` (its Supreme Commander folder) and `supcomversion` (the converter's version).

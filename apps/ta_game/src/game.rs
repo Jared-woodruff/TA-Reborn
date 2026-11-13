@@ -666,7 +666,8 @@ impl Game {
         // (A map bigger than the graphics card's textures: said so, instead of a black battle.)
         renderer.map_fits(&map).map_err(anyhow::Error::msg)?;
 
-        let mut sim = Sim::new(assets.types.clone(), assets.data.clone(), &map, &info, schema_index, &players, setup.seed);
+        // (The game's features and this map's own alone: their numbers the same for every player.)
+        let mut sim = Sim::new(assets.types.clone(), assets.data.for_map(vfs, map_name), &map, &info, schema_index, &players, setup.seed);
         let (ore_w, ore_h, ore) = crate::ore::deposits(&sim);
         for (i, slot) in setup.players.iter().enumerate() {
             sim.set_team(i as u8, slot.team);

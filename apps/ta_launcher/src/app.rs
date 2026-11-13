@@ -342,6 +342,8 @@ pub struct LauncherApp {
     /// close anyway.
     confirm_close: bool,
     close_confirmed: bool,
+    /// CLOSE ANYWAY during a Supreme Commander import: the launcher closes once it has stopped.
+    close_after_import: bool,
     /// END GAME's question is up; and the game was ended so (not a crash to report).
     confirm_end_game: bool,
     ending_game: bool,
@@ -544,6 +546,7 @@ impl LauncherApp {
             order_before_play: None,
             confirm_close: false,
             close_confirmed: false,
+            close_after_import: false,
             confirm_end_game: false,
             ending_game: false,
             pretend_at_risk: false,
@@ -1723,6 +1726,9 @@ impl LauncherApp {
         if self.maps.busy() {
             risks.push(n("Maps are still being imported."));
         }
+        if self.supcom.importing() {
+            risks.push(n("Supreme Commander maps are still being made: the launcher would close once the map in hand is done, keeping the maps made."));
+        }
         if self.pretend_at_risk && risks.is_empty() {
             risks.push(n("A mod is still downloading or installing: it would start over."));
         }
@@ -1792,7 +1798,19 @@ impl LauncherApp {
             self.confirm_close = false;
         }
         if close {
-            self.confirm_close = false;
+            self.close_anyway(ctx);
+        }
+    }
+
+    /// CLOSE ANYWAY: the launcher closes; during a Supreme Commander import, once the map in hand
+    /// is done and the maps made are installed (on_exit would wait for it with the window frozen).
+    fn close_anyway(&mut self, ctx: &egui::Context) {
+        self.confirm_close = false;
+        if self.supcom.importing() {
+            self.supcom.stop();
+            self.close_after_import = true;
+            self.notify("The launcher closes once the Supreme Commander map being made is done.", AMBER);
+        } else {
             self.close_confirmed = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
@@ -2508,6 +2526,12 @@ impl eframe::App for LauncherApp {
                 self.notify(ta_ui::i18n::tf("Imported {n} Supreme Commander maps: they are in the map library, and in skirmish.", &[("n", &outcome.imported.len())]), GREEN);
             }
         }
+        // CLOSE ANYWAY during the import: closed now it has stopped (its maps turned on above).
+        if self.close_after_import && !self.supcom.importing() {
+            self.close_after_import = false;
+            self.close_confirmed = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
         if self.supcom_blocked().is_none() && self.supcom.take_auto_start() {
             self.actions.push(Action::SupcomImport);
         }
@@ -2687,7 +2711,10 @@ impl eframe::App for LauncherApp {
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.mod_validation.shutdown();
-        self.supcom.finish_on_exit();
+        // (An import under way installs the maps it made: they are turned on, as in logic().)
+        if self.supcom.finish_on_exit().is_some_and(|outcome| !outcome.imported.is_empty()) {
+            modlist::set_enabled(&mut self.config.mods.enabled, crate::supcom::PACK_ID, true);
+        }
         self.installer.shutdown();
         // A publication may finish after the final UI frame or while shutdown waits.
         // Apply its on/off decision before flushing the profile, just as in logic().
@@ -3910,6 +3937,53 @@ name = \"{}\"
         let output = frame(&ctx, &mut app, close());
         assert!(!cancelled(&output));
         drop(app);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Closing during a Supreme Commander import: asked first; CLOSE ANYWAY stops it after the map
+    /// in hand and closes once it has (not in on_exit, with the window frozen), its maps turned on.
+    #[test]
+    fn closing_during_a_supreme_commander_import_closes_once_it_has_stopped() {
+        let dir = temp_dir("close_supcom_import");
+        let (ctx, mut app) = launcher(&dir.join("config.toml"), &["--pretend-missing"]);
+        app.skins.shutdown();
+        let close = || {
+            let mut input = RawInput::default();
+            input.viewports.insert(egui::ViewportId::ROOT, egui::ViewportInfo { events: vec![egui::ViewportEvent::Close], ..Default::default() });
+            input
+        };
+        let sent = |output: &egui::FullOutput, command: &egui::ViewportCommand| output.viewport_output.get(&egui::ViewportId::ROOT)
+            .is_some_and(|viewport| viewport.commands.contains(command));
+        app.supcom.pretend_importing(&["scmp_009"]);
+        assert_eq!(app.work_at_risk().len(), 1);
+        let output = frame(&ctx, &mut app, close());
+        assert!(sent(&output, &egui::ViewportCommand::CancelClose) && app.confirm_close, "the close waits for an answer");
+        app.close_anyway(&ctx);
+        assert!(!app.close_confirmed && app.close_after_import, "not closed while the map in hand is made");
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut output = frame(&ctx, &mut app, RawInput::default());
+        while !sent(&output, &egui::ViewportCommand::Close) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(5));
+            output = frame(&ctx, &mut app, RawInput::default());
+        }
+        assert!(sent(&output, &egui::ViewportCommand::Close), "closed once the import stopped");
+        assert!(app.close_confirmed && !app.supcom.importing());
+        assert!(app.config.mods.enabled.iter().any(|id| id == crate::supcom::PACK_ID), "the maps made are turned on");
+        drop(app);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Closed without the question (the system shutting down) during an import: on_exit waits for
+    /// it and turns on the maps it made.
+    #[test]
+    fn an_import_ending_at_exit_turns_its_maps_on() {
+        let dir = temp_dir("exit_supcom_import");
+        let path = dir.join("config.toml");
+        let (_, mut app) = launcher(&path, &["--pretend-missing"]);
+        app.skins.shutdown();
+        app.supcom.pretend_importing(&["scmp_009"]);
+        app.on_exit(None);
+        assert!(Config::try_load_from(&path).unwrap().mods.enabled.iter().any(|id| id == crate::supcom::PACK_ID));
         let _ = std::fs::remove_dir_all(dir);
     }
 

@@ -166,14 +166,21 @@ Portable`, `convert::trig`), and nothing depends on thread order.
 - **The OTA**: the map's name and description, its world's planet, the starts (at most TA's ten),
   tidal 20 where there is water, wind 500 to 2500, surface metal 3, and `rebornart=1`,
   `supcommap`, `supcomversion` (docs/FORMATS.md).
-- **Its file stem**: its name and `(SC)` (`Seton's Clutch (SC)`); a player's own map's folder too.
+- **Its file stem**: its name and `(SC)` (`Seton's Clutch (SC)`); a player's own map's folder
+  too, whole (`Seton's Clutch (SC setons_clutch v0003)`: versions of a map share all but the end
+  of their folders' names), past 48 characters cut with a mark of the whole name (`~` and six hex
+  digits of its FNV-1a). The same for every player who has the map: the lobby finds maps by it.
+  An import never writes over another map's files of the same name; it says so instead.
 
 ## Multiplayer
 
 The pack holds maps alone (`maps/*.tnt`, `.ota`, `.features`): it is no part of the data
 multiplayer peers compare, so a player with it plays anyone on other maps. Two players can play a
 converted map together when both made it with the same version of TA Reborn's converter (its
-digest covers its `.features`); the lobby says when a player's differs.
+digest covers its `.features`); the lobby says when a player's differs. A battle plays with the
+game's features and its own map's alone (`GameData::for_map`), so the features' numbers, which
+the simulation's checksum and a saved game's replay go by, are the same whichever other maps
+each player has imported.
 
 ## Tests
 

@@ -74,8 +74,10 @@ pub struct Converted {
     pub cut_off: Vec<(usize, usize)>,
 }
 
-/// A map's file stem in TA: its name, `(SC)` after it; a player's own map's folder too, so two
-/// players' maps of one name stay apart. At most 60 characters, none Windows refuses.
+/// A map's file stem in TA: its name, `(SC)` after it; a player's own map's folder too, whole, so
+/// two maps of one name stay apart (versions of a map share all but the end of their folders'
+/// names). The same for every player who has the map (multiplayer finds maps by it); at most 94
+/// characters, none Windows refuses.
 pub fn stem(scenario: &Scenario, players_own: bool) -> String {
     let clean = |s: &str| -> String {
         s.chars().map(|c| if c.is_control() || "<>:\"/\\|?*".contains(c) { ' ' } else { c }).collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ")
@@ -84,8 +86,28 @@ pub fn stem(scenario: &Scenario, players_own: bool) -> String {
     if name.is_empty() {
         name = clean(&scenario.folder);
     }
-    let tail = if players_own { format!(" (SC {})", clean(&scenario.folder.replace('.', " ")).chars().take(16).collect::<String>()) } else { " (SC)".to_string() };
+    let tail = if players_own {
+        let folder = clean(&scenario.folder.replace('.', " "));
+        // (A folder's name too long to keep whole: cut, with a mark of the whole name.)
+        let folder = if folder.chars().count() <= FOLDER_IN_STEM {
+            folder
+        } else {
+            let cut: String = folder.chars().take(FOLDER_IN_STEM - 7).collect();
+            format!("{}~{:06x}", cut.trim_end(), fnv1a(scenario.folder.as_bytes()) & 0xff_ffff)
+        };
+        format!(" (SC {folder})")
+    } else {
+        " (SC)".to_string()
+    };
     format!("{}{tail}", name.trim())
+}
+
+/// The most of a player's own map's folder name a stem keeps whole.
+const FOLDER_IN_STEM: usize = 48;
+
+/// FNV-1a, 32 bits: the same on every platform.
+fn fnv1a(bytes: &[u8]) -> u32 {
+    bytes.iter().fold(0x811c_9dc5u32, |h, &b| (h ^ b as u32).wrapping_mul(0x0100_0193))
 }
 
 /// Converts `map` (read from `files`), its features drawn from TA's own (`templates`) and its art
@@ -217,6 +239,20 @@ mod tests {
         assert_eq!(stem(&s, true), "What A map x y (SC my map v0004)");
         s.name = String::new();
         assert_eq!(stem(&s, false), "my.map.v0004 (SC)");
+    }
+
+    /// Two of a player's maps of one name stay apart however alike their folders' names: kept
+    /// whole, or, past their length, cut with a mark of the whole name.
+    #[test]
+    fn a_players_maps_of_one_name_keep_their_own_stems() {
+        let own = |folder: &str| stem(&Scenario { name: "Seton's Clutch".into(), folder: folder.into(), ..Default::default() }, true);
+        assert_eq!(own("adaptive_setons_clutch.v0001"), "Seton's Clutch (SC adaptive_setons_clutch v0001)");
+        assert_ne!(own("adaptive_setons_clutch.v0001"), own("adaptive_setons_clutch.v0002"));
+        let long = |v: u32| own(&format!("a_very_long_folder_name_for_a_map_of_the_vault_{v}.v0001"));
+        let (a, b) = (long(1), long(2));
+        assert_ne!(a, b);
+        assert!(a.contains('~') && a.chars().count() <= 94, "{a}");
+        assert_eq!(a, long(1), "the same for every player");
     }
 
     /// A small map converted end to end: its TNT, OTA and features read back as TA Reborn reads
