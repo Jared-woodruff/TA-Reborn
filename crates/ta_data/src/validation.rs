@@ -24,7 +24,31 @@ use ta_vfs::Vfs;
 /// 9: a script's code decoded as the VM runs it, so what a compiler left between functions is
 /// no unknown opcode; 10: a unit's script is its own, `scripts/<UnitName>.cob`, before its
 /// model's).
-pub const SCHEMA_VERSION: u32 = 10;
+pub const SCHEMA_VERSION: u32 = 11;
+
+/// The keys of `gamedata/sound.tdf`'s categories the game plays (`ta_audio`'s sound events), each
+/// with or without a variant number (`select1`, `select2`…), with `count0` to `count9`; the
+/// others (`load`, `unload`…) it never plays. (A test in `ta_audio` holds this to its events.)
+pub const PLAYED_SOUND_KEYS: &[&str] = &["select", "ok", "arrived", "cant", "underattack", "build", "repair", "working", "activate", "deactivate", "unitcomplete", "cloak", "uncloak", "capture", "canceldestruct"];
+
+/// Whether the game plays a sound category's key (`select1`, `count3`): [`PLAYED_SOUND_KEYS`],
+/// each with or without a variant number, and `count0` to `count9`.
+fn played_sound_key(key: &str) -> bool {
+    let key = key.trim().to_ascii_lowercase();
+    let base = key.trim_end_matches(|c: char| c.is_ascii_digit());
+    let digits = &key[base.len()..];
+    if base == "count" {
+        return digits.parse::<u8>().is_ok_and(|n| n <= 9);
+    }
+    (digits.is_empty() || digits.parse::<u32>().is_ok()) && PLAYED_SOUND_KEYS.contains(&base)
+}
+
+/// The unit values Reborn's engine answers when a script asks for one (`get`) or sets one
+/// (`set`), as `ta_sim`'s script host does: TA's own 1 to 20, the veteran level (32), TA 3.1's
+/// questions about units by id (69 to 75) and a later patch's cloak (111). A script asking for
+/// another reads 0, and one setting another sets nothing (`script.value`). (A test in `ta_sim`
+/// holds this list to the host's.)
+pub const ANSWERED_VALUES: &[i32] = &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 32, 69, 70, 71, 72, 73, 74, 75, 111];
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -33,6 +57,18 @@ pub enum Severity {
     #[default]
     Warning,
     Info,
+}
+
+impl Severity {
+    /// The graver of two.
+    fn graver(self, other: Severity) -> Severity {
+        let rank = |s: Severity| match s {
+            Severity::Error => 0,
+            Severity::Warning => 1,
+            Severity::Info => 2,
+        };
+        if rank(other) < rank(self) { other } else { self }
+    }
 }
 
 /// Whose doing a finding is.
@@ -182,15 +218,18 @@ pub fn compare(report: &mut Report, baseline: &Report) {
     let known: BTreeSet<(&str, &str, Option<u32>, &str)> = baseline.issues.iter().map(|i| (i.code.as_str(), i.path.as_str(), i.line, i.message.as_str())).collect();
     for issue in &mut report.issues {
         let without = known.contains(&(issue.code.as_str(), issue.path.as_str(), issue.line, issue.message.as_str()));
-        if issue.origin == Origin::Inherited && issue.severity != Severity::Info && !without {
-            issue.origin = Origin::Caused;
-            issue.affects_status = true;
-        } else if issue.origin == Origin::Mod && issue.code == "format.invalid" && without {
-            // A file of the mod's that does not read just as the one it is laid over does not (a
-            // copy of the original game's own: Total Mayhem carries TA's `anims/vismasks.gaf`,
-            // which is no GAF) is no fault of the mod's.
+        if without {
+            // There without the mod too, the same in the same place: the original game's or a
+            // dependency's, in what the mod uses (a sound category of TA's whose sound TA lacks)
+            // or carries a copy of (Total Mayhem's and TA: Escalation's of TA's
+            // `gamedata/sound.tdf`, Total Mayhem's of its `anims/vismasks.gaf`, which is no GAF):
+            // no fault of the mod's.
             issue.origin = Origin::Inherited;
             issue.affects_status = false;
+        } else if issue.origin == Origin::Inherited {
+            // Only there with the mod: its doing. (A note too, though notes never decide the badge.)
+            issue.origin = Origin::Caused;
+            issue.affects_status = true;
         }
     }
     report.sort();
@@ -238,7 +277,7 @@ pub fn validate(vfs: &Vfs, options: &Options, mut progress: impl FnMut(Progress<
         return scan.report;
     }
     let everything = vfs.list("", None, true);
-    let files: Vec<_> = everything.iter().filter(|p| known(p)).cloned().collect();
+    let files: Vec<_> = everything.iter().filter(|p| read_by_game(p)).cloned().collect();
     scan.report.counts.files_total = files.len() as u64;
     if let Some(target) = &options.target_layer {
         let own: Vec<&str> = everything.iter().filter(|p| vfs.origin(p).is_some_and(|o| &o.layer == target)).map(String::as_str).collect();
@@ -321,6 +360,24 @@ pub fn content_unreadable(report: &mut Report, unreadable: &[Issue]) {
 
 fn severity_order(s: Severity) -> u8 { match s { Severity::Error => 0, Severity::Warning => 1, Severity::Info => 2 } }
 fn known(p: &str) -> bool { p.rsplit_once('.').is_some_and(|(_, e)| matches!(e, "3do" | "cob" | "gaf" | "tnt" | "pcx" | "tdf" | "fbi" | "gui" | "ota" | "fnt" | "pal" | "wav")) }
+
+/// Whether a page's button makes units, as the game reads the page: its `commonattribs` bit 4;
+/// on a hand-made page without them (the game reads its buttons all, keeping those that name
+/// units), the `attribs` bit 32 TA marks its production buttons with, its navigation's not.
+fn production(common: &TdfSection) -> bool {
+    match common.get("commonattribs") {
+        Some(_) => common.get_i32_or("commonattribs", 0) & 4 != 0,
+        None => common.get_i32_or("attribs", 0) & 32 != 0,
+    }
+}
+
+/// The folders the game reads its data from. A file elsewhere (a picture in `docs/`, a GAF beside
+/// a read-me) it never opens, so it is never decoded: the packaging check tells where the game
+/// would read it (`misplaced`).
+const GAME_FOLDERS: &[&str] = &["ai", "anims", "bitmaps", "camps", "download", "features", "fonts", "gamedata", "guis", "maps", "music", "objects3d", "palettes", "scripts", "sounds", "textures", "unitpics", "units", "weapons"];
+
+/// Whether the game reads a file of a kind it decodes: in one of its folders.
+fn read_by_game(p: &str) -> bool { known(p) && p.split_once('/').is_some_and(|(top, _)| GAME_FOLDERS.contains(&top)) }
 fn key(kind: &str, name: &str) -> String { format!("{kind}:{}", name.trim().to_ascii_lowercase()) }
 fn asset(folder: &str, name: &str, ext: &str) -> String { ta_vfs::normalize(&format!("{folder}/{}.{ext}", name.trim())) }
 fn direct(path: &str, folder: &str, ext: &str) -> bool { path.starts_with(&format!("{folder}/")) && path.matches('/').count() == 1 && path.ends_with(&format!(".{ext}")) }
@@ -391,31 +448,142 @@ fn misplaced(path: &str) -> Option<&'static str> {
     (!home.0).then_some(home.1)
 }
 
-/// A reason a WAV file will not play, if any: not RIFF WAVE, no format or samples, or a codec
-/// the game's decoder (`ta_audio::decode::wav`) does not read.
-fn wav_problem(bytes: &[u8]) -> Option<String> {
-    // PCM, MS ADPCM, float, A-law, µ-law, IMA ADPCM; WAVE_FORMAT_EXTENSIBLE wraps them.
-    const READ: [u16; 6] = [0x0001, 0x0002, 0x0003, 0x0006, 0x0007, 0x0011];
-    if bytes.len() < 12 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" { return Some("it is not a RIFF WAVE file".into()); }
-    let word = |at: usize| bytes.get(at..at + 2).map(|b| u16::from_le_bytes([b[0], b[1]]));
-    let (mut at, mut tag, mut data) = (12usize, None, false);
+/// A reason a sound file will not play, if any, as the game's decoder (`ta_audio::decode`) reads
+/// one: a RIFF WAVE file of a codec it reads (PCM, MS ADPCM, float, A-law, µ-law, IMA ADPCM at 4
+/// bits; WAVE_FORMAT_EXTENSIBLE wraps them), its format of sense (1 to 32 channels, a rate up to
+/// 768 kHz, a sample size it reads), with samples; else Ogg Vorbis, Humongous's DIGI or TALK
+/// blocks, or headerless 8-bit samples saved as `.wav` (TA's own `honk.wav` and `sing.wav`). (A
+/// test in `ta_audio` holds this to the decoder.)
+pub fn sound_problem(bytes: &[u8]) -> Option<String> {
+    const PCM: u16 = 0x0001;
+    const MS_ADPCM: u16 = 0x0002;
+    const FLOAT: u16 = 0x0003;
+    const ALAW: u16 = 0x0006;
+    const MULAW: u16 = 0x0007;
+    const IMA_ADPCM: u16 = 0x0011;
+    const EXTENSIBLE: u16 = 0xFFFE;
+    if !(bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WAVE") {
+        if bytes.starts_with(b"OggS") {
+            return (!ogg_stream_played(bytes)).then(|| "it is an Ogg file without a Vorbis or FLAC stream, the ones the game plays".into());
+        }
+        if bytes.len() >= 8 && (bytes.starts_with(b"DIGI") || bytes.starts_with(b"TALK")) {
+            return (!humongous_samples(bytes)).then(|| "it is a Humongous sound block without its samples (no SDAT block within its length)".into());
+        }
+        return (!looks_like_pcm8(bytes)).then(|| "it is neither a RIFF WAVE file nor another sound the game reads".into());
+    }
+    let le16 = |b: &[u8], at: usize| u16::from_le_bytes([b[at], b[at + 1]]);
+    let le32 = |b: &[u8], at: usize| u32::from_le_bytes([b[at], b[at + 1], b[at + 2], b[at + 3]]);
+    // (The first format and data chunks, walked as the decoder walks them.)
+    let (mut fmt, mut data): (Option<&[u8]>, bool) = (None, false);
+    let mut at = 12usize;
     while at + 8 <= bytes.len() {
         let id = &bytes[at..at + 4];
-        let size = u32::from_le_bytes([bytes[at + 4], bytes[at + 5], bytes[at + 6], bytes[at + 7]]) as usize;
-        let body = at + 8;
-        if id == b"fmt " {
-            tag = word(body).map(|t| if t == 0xFFFE { word(body + 24).unwrap_or(t) } else { t });
-        } else if id == b"data" {
+        let declared = le32(bytes, at + 4) as usize;
+        let start = at + 8;
+        if id == b"data" && (declared == 0 || declared == u32::MAX as usize) {
             data = true;
+            break;
         }
-        at = body.saturating_add(size).saturating_add(size & 1);
+        let body = &bytes[start..start + declared.min(bytes.len() - start)];
+        match id {
+            b"fmt " if fmt.is_none() => fmt = Some(body),
+            b"data" => data = true,
+            _ => {}
+        }
+        match start.checked_add(declared).and_then(|end| end.checked_add(declared & 1)) {
+            Some(next) => at = next,
+            None => break,
+        }
     }
-    match tag {
-        None => Some("it has no format chunk".into()),
-        Some(t) if !READ.contains(&t) => Some(format!("its codec ({t:#06x}) is not one the game plays (PCM, ADPCM, float, A-law or µ-law)")),
-        _ if !data => Some("it has no sample data".into()),
-        _ => None,
+    let Some(c) = fmt else { return Some("it has no format chunk".into()) };
+    if c.len() < 14 {
+        return Some(format!("its format chunk is {} bytes long, too short to read", c.len()));
     }
+    let (mut tag, channels, rate, block_align) = (le16(c, 0), le16(c, 2), le32(c, 4), le16(c, 12));
+    let bits = if c.len() >= 16 { le16(c, 14) } else { 8 };
+    if tag == EXTENSIBLE {
+        let extra: &[u8] = if c.len() >= 18 { &c[18..(18 + le16(c, 16) as usize).min(c.len())] } else { &[] };
+        if extra.len() < 8 {
+            return Some("its WAVE_FORMAT_EXTENSIBLE header is too short to read".into());
+        }
+        tag = le16(extra, 6);
+    }
+    if channels == 0 || channels > 32 {
+        return Some(format!("it has {channels} channels (the game plays 1 to 32)"));
+    }
+    if rate == 0 || rate > 768_000 {
+        return Some(format!("its sample rate is {rate} (the game plays up to 768,000)"));
+    }
+    // (Bytes a sample, as the decoder works them out: from the block, else from the bits.)
+    let width = || {
+        let from_bits = (bits as usize).div_ceil(8);
+        let from_align = if (block_align as usize).is_multiple_of(channels as usize) { block_align as usize / channels as usize } else { 0 };
+        if (1..=8).contains(&from_align) && from_align >= from_bits { from_align } else { from_bits }
+    };
+    let problem = match tag {
+        PCM if !(1..=4).contains(&width()) => Some(format!("its samples are {bits}-bit PCM, which the game does not play (up to 32-bit)")),
+        FLOAT if !matches!(width(), 4 | 8) => Some(format!("its samples are {bits}-bit float, which the game does not play (32 or 64-bit)")),
+        IMA_ADPCM if bits != 4 => Some(format!("its IMA ADPCM is {bits}-bit, which the game does not play (4-bit)")),
+        PCM | FLOAT | ALAW | MULAW | IMA_ADPCM | MS_ADPCM => None,
+        tag => Some(format!("its codec ({tag:#06x}) is not one the game plays (PCM, ADPCM, float, A-law or µ-law)")),
+    };
+    problem.or_else(|| (!data).then(|| "it has no sample data".into()))
+}
+
+/// Whether an Ogg file opens a stream the game's decoder plays (symphonia's Ogg reader with its
+/// Vorbis and FLAC decoders), by the first packet of each of its first pages: a stream's first
+/// page holds its identification header alone, and every stream's first page comes before any
+/// other. Its audio is not decoded here: a stream damaged further on passes.
+fn ogg_stream_played(b: &[u8]) -> bool {
+    let mut at = 0;
+    for _ in 0..8 {
+        if b.get(at..at + 4) != Some(&b"OggS"[..]) {
+            return false;
+        }
+        let Some(&segments) = b.get(at + 26) else { return false };
+        let packet = at + 27 + segments as usize;
+        let Some(table) = b.get(at + 27..packet) else { return false };
+        if b.get(packet..).is_some_and(|p| p.starts_with(b"\x01vorbis") || p.starts_with(b"\x7fFLAC")) {
+            return true;
+        }
+        at = packet + table.iter().map(|&s| s as usize).sum::<usize>();
+    }
+    false
+}
+
+/// Whether a Humongous `DIGI` or `TALK` block holds its samples (`SDAT`) within its length, as
+/// the game's decoder reads its blocks (`ta_audio::decode`).
+fn humongous_samples(b: &[u8]) -> bool {
+    let be32 = |at: usize| u32::from_be_bytes([b[at], b[at + 1], b[at + 2], b[at + 3]]) as usize;
+    let end = be32(4).clamp(8, b.len());
+    let mut at = 8;
+    while at + 8 <= end {
+        let size = be32(at + 4);
+        if size < 8 {
+            return false;
+        }
+        if &b[at..at + 4] == b"SDAT" {
+            return true;
+        }
+        at = at.saturating_add(size);
+    }
+    false
+}
+
+/// Headerless unsigned 8-bit samples, as the game's decoder tells them (`ta_audio::decode`): long
+/// enough, and each sample near the one before (a correlation above 0.6).
+fn looks_like_pcm8(b: &[u8]) -> bool {
+    if b.len() < 256 {
+        return false;
+    }
+    let mean = b.iter().map(|&x| x as f64).sum::<f64>() / b.len() as f64;
+    let (mut num, mut den) = (0.0f64, 0.0f64);
+    for w in b.windows(2) {
+        let (x0, x1) = (w[0] as f64 - mean, w[1] as f64 - mean);
+        num += x0 * x1;
+        den += x0 * x0;
+    }
+    den > 0.0 && num / den > 0.6
 }
 
 /// A file read and decoded, summarised: what the report needs of it.
@@ -472,7 +640,7 @@ fn parse(vfs: &Vfs, path: &str, options: &Options) -> Parsed {
         "pcx" => ta_formats::pcx::PcxImage::parse(&bytes).map(|_| Content::Plain).map_err(|e| Failure::Invalid(e.to_string())),
         "fnt" => ta_formats::fnt::Font::parse(&bytes).map(|_| Content::Plain).map_err(|e| Failure::Invalid(e.to_string())),
         "pal" => ta_formats::image::Palette::parse(&bytes).map(|_| Content::Plain).map_err(|e| Failure::Invalid(e.to_string())),
-        "wav" => Ok(Content::Sound(wav_problem(&bytes))),
+        "wav" => Ok(Content::Sound(sound_problem(&bytes))),
         _ if bytes.len() > options.max_text_bytes => Err(Failure::TooLarge),
         // (TA ships some GUI pages in a binary form of its own: no text to lint.)
         _ => Ok(Content::Text { doc: tdf::parse_bytes(&bytes), syntax: if bytes.contains(&0) { Vec::new() } else { tdf::lint(&bytes) } }),
@@ -506,9 +674,13 @@ fn script_problems(script: &CobScript) -> Vec<Problem> {
     let entries: BTreeSet<usize> = script.functions.iter().map(|f| f.offset as usize).collect();
     let len = script.code.len();
     let mut decoded = vec![false; len];
+    // The unit values it asks for and sets that the engine does not answer (see `asked`).
+    let (mut unanswered_get, mut unanswered_set) = (BTreeSet::new(), BTreeSet::new());
     // (The places to decode from, lowest first: the entries, then where their jumps lead.)
     let mut pending = entries.clone();
     while let Some(mut pc) = pending.pop_first() {
+        // (The instructions just before this one, on the way here, opcode and operand.)
+        let mut recent: Vec<(u32, u32)> = Vec::new();
         // (Past the last instruction: a terminal label, which ends the thread.)
         while pc < len && !decoded[pc] {
             decoded[pc] = true;
@@ -535,10 +707,17 @@ fn script_problems(script: &CobScript) -> Vec<Problem> {
                 _ => None,
             };
             if let Some(what) = invalid {
-                problems.push(Problem { severity: Severity::Error, code: "script.operand_range", message: format!("COB instruction {} at word {pc} has an invalid {what}.", cob::opcode_name(opcode)), suggestion: "Recompile the script with valid piece, variable, function and jump references." });
+                problems.push(Problem { severity: Severity::Warning, code: "script.operand_range", message: format!("COB instruction {} at word {pc} has an invalid {what}.", cob::opcode_name(opcode)), suggestion: "Recompile the script with valid piece, variable, function and jump references." });
                 // (Where a jump out of the code would lead is not followed.)
                 if matches!(opcode, JUMP | JUMP_IF_FALSE) { break; }
             }
+            match asked(opcode, &recent) {
+                Some((false, value)) if !ANSWERED_VALUES.contains(&value) => { unanswered_get.insert(value); }
+                Some((true, value)) if !ANSWERED_VALUES.contains(&value) => { unanswered_set.insert(value); }
+                _ => {}
+            }
+            recent.push((opcode, arg));
+            if recent.len() > 5 { recent.remove(0); }
             match opcode {
                 RETURN => break,
                 JUMP => pc = arg as usize,
@@ -552,7 +731,35 @@ fn script_problems(script: &CobScript) -> Vec<Problem> {
             if entries.contains(&pc) { break; }
         }
     }
+    let values = |set: &BTreeSet<i32>| set.iter().map(i32::to_string).collect::<Vec<_>>();
+    if !unanswered_get.is_empty() {
+        let list = values(&unanswered_get);
+        let words: Vec<&str> = list.iter().map(String::as_str).collect();
+        problems.push(Problem { severity: Severity::Warning, code: "script.value", message: format!("This script asks the engine for unit value {}, which Reborn does not answer: it reads 0, so what the script does with it may not happen as in the engine it was made for.", listed(&words)), suggestion: "A later patch of TA's engine defines these values: report them, and what the mod does with them, to Reborn's maintainers." });
+    }
+    if !unanswered_set.is_empty() {
+        let list = values(&unanswered_set);
+        let words: Vec<&str> = list.iter().map(String::as_str).collect();
+        problems.push(Problem { severity: Severity::Warning, code: "script.value", message: format!("This script sets unit value {}, which Reborn does not answer: setting it does nothing, so what the script means by it does not happen as in the engine it was made for.", listed(&words)), suggestion: "A later patch of TA's engine defines these values: report them, and what the mod does with them, to Reborn's maintainers." });
+    }
     problems
+}
+
+/// The unit value an instruction asks for or sets, where the code names it outright, as a BOS
+/// compiler writes `get NAME`, `get NAME(a, b, c, d)` and `set NAME to x`: a constant pushed just
+/// before `get-unit-value`, before the four simple arguments of `get`, or before the one simple
+/// value of `set` (`recent`: the instructions just before, opcode and operand). Whether it sets
+/// (true) and the value. (A value worked out as the script runs is not named so: not told.)
+fn asked(opcode: u32, recent: &[(u32, u32)]) -> Option<(bool, i32)> {
+    use cob::op::*;
+    let simple = |op: u32| matches!(op, PUSH_CONSTANT | PUSH_LOCAL | PUSH_STATIC);
+    let back = |n: usize| recent.len().checked_sub(n).map(|i| recent[i]);
+    match opcode {
+        GET_UNIT_VALUE => back(1).filter(|(op, _)| *op == PUSH_CONSTANT).map(|(_, v)| (false, v as i32)),
+        GET => (back(5).is_some_and(|(op, _)| op == PUSH_CONSTANT) && (1..=4).all(|n| back(n).is_some_and(|(op, _)| simple(op)))).then(|| (false, back(5).unwrap().1 as i32)),
+        SET_VALUE => (back(2).is_some_and(|(op, _)| op == PUSH_CONSTANT) && back(1).is_some_and(|(op, _)| simple(op))).then(|| (true, back(2).unwrap().1 as i32)),
+        _ => None,
+    }
 }
 
 struct Reference { key: String, what: String, severity: Severity }
@@ -565,8 +772,10 @@ struct Record { path: String, refs: Vec<Reference>, unit: Option<UnitFacts> }
 /// definition (a weapon in a file of many).
 enum Use { File(String), Record(String) }
 /// What the later checks need of a unit.
-/// `script`: the unit's script as the game finds it (`UnitDef::script_path`).
-struct UnitFacts { name: String, object: String, script: String, builder: bool, weapons: [bool; 3] }
+/// `script`: the unit's script as the game finds it (`UnitDef::script_path`); `builds`: it has
+/// build power (`WorkerTime`), which makes it a builder whatever its Builder flag, as the game
+/// has it; `takes_no_ground`: a mod's upgrade module (`UnitDef::takes_no_ground`).
+struct UnitFacts { name: String, object: String, script: String, builds: bool, takes_no_ground: bool, weapons: [bool; 3] }
 #[derive(Default)]
 struct Animation { frames: usize, size: AnimSize }
 
@@ -589,12 +798,19 @@ struct Scan<'a> {
     /// paint with, all the game loads of them (`texture_capacity`).
     texture_entries: Vec<(String, usize, String)>,
     model_textures: BTreeSet<String>,
-    /// The empty files, in path order (told a folder at a time: `blank_notes`).
+    /// The empty files, in path order (told a folder at a time: `blank_notes`), and all of them
+    /// (a reference to one is to nothing: `references`).
     blanks: Vec<String>,
+    blank_paths: BTreeSet<String>,
     /// Production pages (`guis/<builder><page>.gui`): the units their buttons name.
     gui_pages: BTreeMap<String, Vec<Reference>>,
-    /// Units some menu offers (CANBUILD, download menus, production pages).
+    /// Units some builder with build power offers (CANBUILD, download menus, production pages).
     buildable: BTreeSet<String>,
+    /// CANBUILD's and the download menus' entries, builder and unit (settled in `references`,
+    /// once the builders' build power is known).
+    menu_entries: Vec<(String, String)>,
+    /// Builders whose every option is a module of their own (a mod's upgradeable building).
+    module_builders: BTreeSet<String>,
     /// The target's definitions an inherited one of the same name comes after, by the
     /// target's file: what, the later file, whose it is.
     shadowed: BTreeMap<String, Vec<(String, String, String)>>,
@@ -616,8 +832,8 @@ impl<'a> Scan<'a> {
     fn new(vfs: &'a Vfs, options: &'a Options) -> Self {
         Self {
             vfs, options, report: Report { complete: true, target_layer: options.target_layer.clone(), ..Default::default() }, retained: 0, halted: false,
-            records: BTreeMap::new(), pieces: BTreeMap::new(), functions: BTreeMap::new(), animations: BTreeMap::new(), too_big: BTreeMap::new(), texture_names: BTreeSet::new(), texture_entries: Vec::new(), model_textures: BTreeSet::new(), blanks: Vec::new(),
-            gui_pages: BTreeMap::new(), buildable: BTreeSet::new(), shadowed: BTreeMap::new(), uses: BTreeMap::new(), record_paths: BTreeMap::new(),
+            records: BTreeMap::new(), pieces: BTreeMap::new(), functions: BTreeMap::new(), animations: BTreeMap::new(), too_big: BTreeMap::new(), texture_names: BTreeSet::new(), texture_entries: Vec::new(), model_textures: BTreeSet::new(), blanks: Vec::new(), blank_paths: BTreeSet::new(),
+            gui_pages: BTreeMap::new(), buildable: BTreeSet::new(), menu_entries: Vec::new(), module_builders: BTreeSet::new(), shadowed: BTreeMap::new(), uses: BTreeMap::new(), record_paths: BTreeMap::new(),
             file_records: BTreeMap::new(), attributed: BTreeMap::new(), relevant: BTreeSet::new(), required: BTreeSet::new(),
         }
     }
@@ -677,7 +893,10 @@ impl<'a> Scan<'a> {
             let layer = |path: &str| self.vfs.origin(path).map_or(String::new(), |o| o.layer.clone());
             let (old_path, old_layer, new_layer) = (old.path.clone(), layer(&old.path), layer(&record.path));
             let what = describe(&key);
-            if old_path == record.path {
+            if kind == "side" {
+                // (The game keeps every side section: two of one name are two sides.)
+                self.issue(Severity::Warning, "definition.duplicate", &record.path, format!("{what} is defined twice; the game keeps both, two sides of one name."), "Give each side a name of its own, or remove the one not meant to be played.");
+            } else if old_path == record.path {
                 self.issue(Severity::Warning, "definition.duplicate", &record.path, format!("{what} is defined twice in this file; the game uses the later one."), "Give each definition a name of its own, or remove the one not meant to be used.");
             } else if old_layer == new_layer {
                 self.issue(Severity::Warning, "definition.duplicate", &record.path, format!("{what} is also defined in {old_path}; the game uses this one ({}).", record.path), "Give each definition a name of its own, or remove the one not meant to be used.");
@@ -813,7 +1032,10 @@ impl<'a> Scan<'a> {
                 if path.ends_with(".pcx") { self.report.counts.pcx += 1; }
             }
             Content::Blank => {
-                if self.retain(64 + path.len(), path) { self.blanks.push(path.to_string()); }
+                if self.retain(128 + 2 * path.len(), path) {
+                    self.blanks.push(path.to_string());
+                    self.blank_paths.insert(path.to_string());
+                }
             }
             Content::Sound(problem) => {
                 self.report.counts.sounds += 1;
@@ -829,9 +1051,10 @@ impl<'a> Scan<'a> {
         }
     }
 
-    /// One finding for a footprint outside what Reborn keeps (either side).
+    /// One finding for a footprint outside what Reborn keeps (either side). A footprint of none is
+    /// a mod's upgrade module's, which takes no ground (`UnitDef::takes_no_ground`).
     fn footprint(&mut self, path: &str, s: &TdfSection) {
-        let range = 1..=crate::MAX_FOOTPRINT_SIDE as i64;
+        let range = 0..=crate::MAX_FOOTPRINT_SIDE as i64;
         let (x, z) = (s.get_i64("footprintx"), s.get_i64("footprintz"));
         if x.is_some_and(|n| !range.contains(&n)) || z.is_some_and(|n| !range.contains(&n)) {
             let side = |v: Option<i64>| v.map_or("?".to_string(), |n| n.to_string());
@@ -851,11 +1074,13 @@ impl<'a> Scan<'a> {
             for (slot, w) in unit.weapons.iter().enumerate() { if let Some(w) = w { refs.push(Reference::new("weapon", w, format!("{} Weapon{}", unit.name, slot + 1), Severity::Error)); } }
             for (name, what) in [(&unit.explode_as, "death explosion"), (&unit.self_destruct_as, "self-destruct explosion")] { optional(&mut refs, "weapon", name, format!("{} {what}", unit.name), Severity::Warning); }
             optional(&mut refs, "feature", &unit.corpse, format!("{} wreckage", unit.name), Severity::Warning);
-            optional(&mut refs, "side", &unit.side, format!("{} faction", unit.name), Severity::Warning);
+            // (A note: the game never acts on a unit's side, which only files it in the
+            // encyclopaedia; TA: Escalation's units both sides build are `Side=ALL`.)
+            optional(&mut refs, "side", &unit.side, format!("{} faction", unit.name), Severity::Info);
             // (NONE: a unit meant to be silent.)
             if !unit.sound_category.trim().eq_ignore_ascii_case("none") { optional(&mut refs, "sounds", &unit.sound_category, format!("{} sounds", unit.name), Severity::Warning); }
             if unit.can_move && !unit.can_fly { optional(&mut refs, "move", &unit.movement_class, format!("{} movement class", unit.name), Severity::Warning); }
-            let facts = UnitFacts { name: unit.name.clone(), object: unit.object.clone(), script, builder: unit.builder, weapons: unit.weapons.clone().map(|w| w.is_some_and(|w| !w.trim().is_empty())) };
+            let facts = UnitFacts { name: unit.name.clone(), object: unit.object.clone(), script, builds: unit.worker_time > 0.0, takes_no_ground: unit.takes_no_ground, weapons: unit.weapons.clone().map(|w| w.is_some_and(|w| !w.trim().is_empty())) };
             self.record(key("unit", &unit.name), Record { path: path.into(), refs, unit: Some(facts) });
         } else if direct(path, "weapons", "tdf") {
             for s in &doc.sections {
@@ -879,7 +1104,9 @@ impl<'a> Scan<'a> {
                 let mut refs = Vec::new();
                 if !f.object.is_empty() { refs.push(Reference::new("file", &asset("objects3d", &f.object, "3do"), format!("{} feature model", f.name), Severity::Warning)); }
                 if f.is_sprite() {
-                    for (entry, label) in [(&f.seq_name, "animation"), (&f.seq_name_shadow, "shadow"), (&f.seq_name_burn, "burn animation"), (&f.seq_name_burn_shadow, "burn shadow"), (&f.seq_name_die, "death animation"), (&f.seq_name_reclaim, "reclaim animation")] {
+                    // (The game draws a feature by these three; TA's others, its burn shadow, death
+                    // and reclaim animations, it never reads.)
+                    for (entry, label) in [(&f.seq_name, "animation"), (&f.seq_name_shadow, "shadow"), (&f.seq_name_burn, "burn animation")] {
                         // TA's own shrubs use EMPTY to deliberately suppress shadows.
                         if label.contains("shadow") && entry.eq_ignore_ascii_case("empty") { continue; }
                         animation_ref(&mut refs, &f.filename, entry, format!("{} {label}", f.name));
@@ -904,7 +1131,15 @@ impl<'a> Scan<'a> {
             // A sound category: every entry names a sound (select1, ok1, build, count5…).
             for s in &doc.sections {
                 let mut refs = Vec::new();
-                for (entry, value) in &s.entries { optional(&mut refs, "sound", value, format!("{} {entry} sound", s.name.to_ascii_uppercase()), Severity::Warning); }
+                // (What the game plays: the keys it knows, a repeated one's last value.)
+                let mut played: Vec<(&str, &str)> = Vec::new();
+                for (entry, value) in &s.entries {
+                    // (An empty value is none: the engine keeps the one before.)
+                    if !played_sound_key(entry) || value.trim().is_empty() { continue; }
+                    played.retain(|(key, _)| !key.eq_ignore_ascii_case(entry));
+                    played.push((entry, value));
+                }
+                for (entry, value) in played { optional(&mut refs, "sound", value, format!("{} {entry} sound", s.name.to_ascii_uppercase()), Severity::Warning); }
                 self.record(key("sounds", &s.name), Record { path: path.into(), refs, ..Default::default() });
                 if self.halted { break; }
             }
@@ -921,10 +1156,11 @@ impl<'a> Scan<'a> {
             let mut refs = Vec::new();
             if let Some(can_build) = doc.section("CANBUILD") {
                 for builder in &can_build.sections {
-                    refs.push(Reference::new("unit", &builder.name, "Build-menu owner", Severity::Warning));
+                    // (A note: the game skips a list whose builder is missing.)
+                    refs.push(Reference::new("unit", &builder.name, "Build-menu owner", Severity::Info));
                     for (_, unit) in &builder.entries {
                         optional(&mut refs, "unit", unit, format!("{} build option", builder.name), Severity::Warning);
-                        if !unit.trim().is_empty() { self.buildable.insert(key("unit", unit)); }
+                        if !unit.trim().is_empty() { self.menu_entries.push((key("unit", &builder.name), key("unit", unit))); }
                     }
                 }
             }
@@ -937,14 +1173,16 @@ impl<'a> Scan<'a> {
                     // BLANK to disable that menu entry while preserving the source.
                     if builder.trim().eq_ignore_ascii_case("blank") { continue; }
                     refs.push(Reference::new("unit", builder, "Download build-menu owner", Severity::Warning)); refs.push(Reference::new("unit", unit, format!("{builder} build option"), Severity::Warning));
-                    self.buildable.insert(key("unit", unit));
+                    self.menu_entries.push((key("unit", builder), key("unit", unit)));
                 }
             }
             self.record(key("file", path), Record { path: path.into(), refs, ..Default::default() });
         } else if direct(path, "maps", "ota") {
             if doc.section("GlobalHeader").is_none() { self.issue(Severity::Warning, "map.header", path, "Missing [GlobalHeader]; this map has no usable metadata.".into(), "Export a matching OTA with a GlobalHeader and the desired game-type schemas."); }
             let map = crate::MapInfo::from_ota(doc);
-            let mut refs = vec![Reference::new("file", &format!("{}.tnt", path.trim_end_matches(".ota")), "Map terrain", Severity::Error)];
+            // (Without its terrain the game and the launcher leave the map out of their lists: its
+            // description alone does no harm, a mod's for a map of a pack of its own, say.)
+            let mut refs = vec![Reference::new("file", &format!("{}.tnt", path.trim_end_matches(".ota")), "Map terrain, without which the map is left out of the lists", Severity::Warning)];
             for schema in &map.schemas {
                 optional(&mut refs, "weapon", &schema.meteor_weapon, "Map meteor weapon", Severity::Warning);
                 for placed in &schema.placed { optional(&mut refs, "placed", &placed.what, "Map placed unit/feature", Severity::Warning); }
@@ -960,7 +1198,7 @@ impl<'a> Scan<'a> {
                     // commonattribs bit4 marks unit production. attribs bit32 also
                     // appears on empty IGPATCH slots (IGPATCH, IGPATCH2…) and stockpile
                     // buttons (commonattribs bit8), which are not missing unit names.
-                    if !n.is_empty() && !n.to_ascii_uppercase().starts_with("IGPATCH") && common.get_i32_or("commonattribs", 0) & 4 != 0 { refs.push(Reference::new("unit", n, "production button", Severity::Warning)); }
+                    if !n.is_empty() && !n.to_ascii_uppercase().starts_with("IGPATCH") && production(common) { refs.push(Reference::new("unit", n, "production button", Severity::Warning)); }
                 }
             }
             if self.retain(96 + path.len() + refs.iter().map(|r| 96 + r.key.len() + r.what.len()).sum::<usize>(), path) { self.gui_pages.insert(path.into(), refs); }
@@ -985,17 +1223,35 @@ impl<'a> Scan<'a> {
         self.report.counts.features = records.keys().filter(|k| k.starts_with("feature:")).count() as u64;
         // The production pages the game reads, as it reads them: a builder's
         // guis/<name>1.gui, 2, 3… up to 16, stopping at the first missing page after the first.
-        let builders: Vec<(String, String)> = records.values().filter_map(|r| r.unit.as_ref().filter(|u| u.builder).map(|u| (u.name.to_ascii_lowercase(), r.path.clone()))).collect();
-        for (builder, _) in &builders {
+        // A builder is a unit with build power (`WorkerTime`), whatever its Builder flag, as the
+        // game has it: another's pages and menu entries offer nothing (Total Mayhem's and TA:
+        // Escalation's silos list missile pseudo-units for their computer players).
+        let builders: Vec<String> = records.values().filter_map(|r| r.unit.as_ref().filter(|u| u.builds).map(|u| u.name.to_ascii_lowercase())).collect();
+        let mut options: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for builder in &builders {
             for page in 1..=16u32 {
                 let path = format!("guis/{builder}{page}.gui");
                 let Some(refs) = self.gui_pages.remove(&path) else {
                     if page > 1 { break; }
                     continue;
                 };
-                for r in &refs { self.buildable.insert(r.key.clone()); }
+                options.entry(key("unit", builder)).or_default().extend(refs.iter().map(|r| r.key.clone()));
                 let refs = refs.into_iter().map(|r| Reference { what: format!("{} {}", builder.to_ascii_uppercase(), r.what), ..r }).collect();
                 records.insert(key("gui", &path), Record { path, refs, ..Default::default() });
+            }
+        }
+        for (builder, unit) in std::mem::take(&mut self.menu_entries) {
+            if records.get(&builder).and_then(|r| r.unit.as_ref()).is_some_and(|u| u.builds) {
+                options.entry(builder).or_default().push(unit);
+            }
+        }
+        for (builder, offered) in &options {
+            self.buildable.extend(offered.iter().cloned());
+            // (A building whose every option is a module it makes for itself, out of its build
+            // stance: no nano spray, so no nano-lathe to ask of its script.)
+            let mut known = offered.iter().filter_map(|o| records.get(o).and_then(|r| r.unit.as_ref())).peekable();
+            if known.peek().is_some() && known.all(|u| u.takes_no_ground) {
+                self.module_builders.insert(builder.clone());
             }
         }
         // Required launch errors still count when a mod replaces the units folder
@@ -1018,8 +1274,10 @@ impl<'a> Scan<'a> {
         }
         let mut effect_entries = BTreeSet::new();
         for (record_key, record) in &records {
+            // (What it names that is missing: told once a thing, with every entry that names it.)
+            let mut missing: Vec<(&str, Severity, Vec<&str>)> = Vec::new();
             for reference in &record.refs {
-                if let Some(used) = resolve(&reference.key, self.vfs, &records) {
+                if let Some(used) = resolve(&reference.key, self.vfs, &records, &self.blank_paths) {
                     // A unit's faction label only needs the side to exist. It does
                     // not consume every menu entry in that side's source document.
                     // A target-owned sidedata file is already seeded independently.
@@ -1030,11 +1288,40 @@ impl<'a> Scan<'a> {
                     }
                     if record_key.starts_with("weapon:") && reference.key.starts_with("gaf:") { effect_entries.insert(reference.key.clone()); }
                 } else {
-                    let first = self.report.issues.len();
-                    self.issue(reference.severity, "reference.missing", &record.path, format!("{}: {} is missing.", reference.what, describe(&reference.key)), "Include the referenced asset/definition, correct its name, or declare and install the required mod dependency. Names are case-insensitive.");
-                    self.attribute(first, record_key);
+                    match missing.iter_mut().find(|(key, _, _)| *key == reference.key) {
+                        Some((_, severity, whats)) => {
+                            *severity = severity.graver(reference.severity);
+                            whats.push(&reference.what);
+                        }
+                        None => missing.push((&reference.key, reference.severity, vec![&reference.what])),
+                    }
                 }
                 if self.halted { break; }
+            }
+            // (A GAF's entries are missing where the GAF is: told once, for the file.)
+            let gone: BTreeSet<&str> = missing.iter().filter_map(|(key, _, _)| key.strip_prefix("file:")).collect();
+            missing.retain(|(key, _, _)| key.strip_prefix("gaf:").and_then(|entry| entry.split_once('#')).is_none_or(|(gaf, _)| !gone.contains(gaf)));
+            const HOW: &str = "Include the referenced asset/definition, correct its name, or declare and install the required mod dependency. Names are case-insensitive.";
+            // A model's textures: told once a model, every one named.
+            let textures: Vec<(&str, Severity)> = missing.iter().filter_map(|(key, severity, _)| key.strip_prefix("texture:").map(|t| (t, *severity))).collect();
+            if textures.len() > 1 && !self.halted {
+                missing.retain(|(key, _, _)| !key.starts_with("texture:"));
+                let severity = textures.iter().map(|(_, s)| *s).fold(Severity::Info, Severity::graver);
+                let names: Vec<String> = textures.iter().map(|(t, _)| t.to_ascii_uppercase()).collect();
+                let first = self.report.issues.len();
+                self.issue(severity, "reference.missing", &record.path, format!("Model texture: textures {} are missing.", listed(&names)), HOW);
+                self.attribute(first, record_key);
+            }
+            for (missing_key, severity, whats) in missing {
+                if self.halted { break; }
+                let first = self.report.issues.len();
+                let message = if file_of(missing_key).is_some_and(|path| self.blank_paths.contains(&path)) {
+                    format!("{}: {} is an empty file here, which blanks it out: nothing of it is read.", listed(&whats), describe(missing_key))
+                } else {
+                    format!("{}: {} is missing.", listed(&whats), describe(missing_key))
+                };
+                self.issue(severity, "reference.missing", &record.path, message, HOW);
+                self.attribute(first, record_key);
             }
             if let Some(unit) = &record.unit {
                 self.unit_checks(record_key, &record.path, unit);
@@ -1150,9 +1437,14 @@ impl<'a> Scan<'a> {
     fn unit_checks(&mut self, record_key: &str, path: &str, unit: &UnitFacts) {
         let (model, script) = (asset("objects3d", &unit.object, "3do"), unit.script.clone());
         if let (Some(model_names), Some(script_names)) = (self.pieces.get(&model), self.pieces.get(&script)) {
-            let missing: Vec<_> = script_names.difference(model_names).cloned().collect();
-            for name in missing {
-                self.issue(Severity::Warning, "script.model_piece", path, format!("{script} declares piece {name}, which is absent from {model}. Any animation or position query using it has no matching model part."), "Confirm that this is an intentional virtual/helper piece; otherwise use matching model and COB files or align the BOS piece declarations with the model's piece names.");
+            let missing: Vec<String> = script_names.difference(model_names).cloned().collect();
+            let message = match missing.as_slice() {
+                [] => None,
+                [name] => Some(format!("{script} declares piece {name}, which is absent from {model}. Any animation or position query using it has no matching model part.")),
+                names => Some(format!("{script} declares pieces {}, which are absent from {model}. Any animation or position query using them has no matching model part.", listed(names))),
+            };
+            if let Some(message) = message {
+                self.issue(Severity::Warning, "script.model_piece", path, message, "Confirm that these are intentional virtual/helper pieces; otherwise use matching model and COB files or align the BOS piece declarations with the model's piece names.");
                 if self.halted { return; }
             }
         }
@@ -1161,13 +1453,21 @@ impl<'a> Scan<'a> {
         // TA's aircraft fire fixed weapons wherever they fly.
         if let Some(functions) = self.functions.get(&script).cloned() {
             const QUERIES: [&str; 3] = ["QueryPrimary", "QuerySecondary", "QueryTertiary"];
-            for (slot, name) in QUERIES.iter().enumerate().filter(|(slot, _)| unit.weapons[*slot]) {
-                if !functions.contains(&name.to_ascii_lowercase()) {
-                    // (A note: mods give units dummy weapons, which need no muzzle.)
-                    self.issue(Severity::Info, "script.weapon", path, format!("{} has Weapon{} but its script {script} has no {name}: if the weapon fires, its shots leave from the unit's centre, not a barrel.", unit.name, slot + 1), "Add the function to the unit's BOS script, returning the piece the shots leave from, and recompile.");
+            // (A note: mods give units dummy weapons, which need no muzzle. One a unit.)
+            let lacking: Vec<(usize, &str)> = QUERIES.iter().enumerate().filter(|(slot, name)| unit.weapons[*slot] && !functions.contains(&name.to_ascii_lowercase())).map(|(slot, name)| (slot, *name)).collect();
+            let message = match lacking.as_slice() {
+                [] => None,
+                [(slot, name)] => Some(format!("{} has Weapon{} but its script {script} has no {name}: if the weapon fires, its shots leave from the unit's centre, not a barrel.", unit.name, slot + 1)),
+                many => {
+                    let slots: Vec<String> = many.iter().map(|(slot, _)| format!("Weapon{}", slot + 1)).collect();
+                    let names: Vec<&str> = many.iter().map(|(_, name)| *name).collect();
+                    Some(format!("{} has {} but its script {script} has no {}: if they fire, their shots leave from the unit's centre, not a barrel.", unit.name, listed(&slots), names.join(" or ")))
                 }
+            };
+            if let Some(message) = message {
+                self.issue(Severity::Info, "script.weapon", path, message, "Add the functions to the unit's BOS script, returning the pieces the shots leave from, and recompile.");
             }
-            if unit.builder && !functions.contains("querynanopiece") {
+            if unit.builds && !functions.contains("querynanopiece") && !self.module_builders.contains(record_key) {
                 self.issue(Severity::Info, "script.builder", path, format!("{} builds but its script {script} has no QueryNanoPiece: its build spray comes from the unit's centre.", unit.name), "Add QueryNanoPiece to the unit's BOS script, returning its nano-lathe piece, and recompile.");
             }
         }
@@ -1221,6 +1521,33 @@ impl<'a> Scan<'a> {
     }
 }
 
+/// What names something, as a finding lists it, each once (and how many times, where more):
+/// "A", "A and B", "A, B and C", "A (3 times)". Every one is named: a finding is told inherited
+/// by its message ([`compare`]), and two lists alike in their first names are not alike. (TA:
+/// Escalation's side data lists a unit several times over on one menu, to weight the computer
+/// players' choice.)
+fn listed<S: AsRef<str>>(whats: &[S]) -> String {
+    let mut unique: Vec<(&str, usize)> = Vec::new();
+    for what in whats {
+        let what = what.as_ref();
+        match unique.iter_mut().find(|(seen, _)| *seen == what) {
+            Some((_, n)) => *n += 1,
+            None => unique.push((what, 1)),
+        }
+    }
+    let shown: Vec<String> = unique.iter().map(|(what, n)| if *n > 1 { format!("{what} ({n} times)") } else { (*what).to_string() }).collect();
+    match shown.as_slice() {
+        [] => String::new(),
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
+}
+
+/// The file a reference is to, where it is to one: a file's, a sound's.
+fn file_of(reference: &str) -> Option<String> {
+    reference.strip_prefix("file:").map(str::to_string).or_else(|| reference.strip_prefix("sound:").map(sound_path))
+}
+
 fn optional(refs: &mut Vec<Reference>, kind: &str, name: &str, what: impl Into<String>, severity: Severity) {
     if !name.trim().is_empty() { refs.push(Reference::new(kind, name, what, severity)); }
 }
@@ -1234,9 +1561,9 @@ fn animation_ref(refs: &mut Vec<Reference>, gaf: &str, entry: &str, what: String
 }
 
 /// What a reference leads to, where it is there.
-fn resolve(reference: &str, vfs: &Vfs, records: &BTreeMap<String, Record>) -> Option<Use> {
-    if let Some(path) = reference.strip_prefix("file:") { return vfs.exists(path).then(|| Use::File(path.to_string())); }
-    if let Some(name) = reference.strip_prefix("sound:") { let path = sound_path(name); return vfs.exists(&path).then_some(Use::File(path)); }
+/// (An empty file is there, but nothing: TA's way of blanking one out, `blanks`.)
+fn resolve(reference: &str, vfs: &Vfs, records: &BTreeMap<String, Record>, blanks: &BTreeSet<String>) -> Option<Use> {
+    if let Some(path) = file_of(reference) { return (vfs.exists(&path) && !blanks.contains(&path)).then_some(Use::File(path)); }
     if let Some(name) = reference.strip_prefix("placed:") { return [key("unit", name), key("feature", name)].into_iter().find(|k| records.contains_key(k)).map(Use::Record); }
     records.contains_key(reference).then(|| Use::Record(reference.to_string()))
 }
@@ -1261,7 +1588,7 @@ mod tests {
             std::fs::write(path, bytes).unwrap();
         }
         fn valid(&self, layer: &str) {
-            self.put(layer, "units/example.fbi", b"[UNITINFO]{UnitName=EXAMPLE;ObjectName=example;Side=ARM;Builder=1;}");
+            self.put(layer, "units/example.fbi", b"[UNITINFO]{UnitName=EXAMPLE;ObjectName=example;Side=ARM;Builder=1;WorkerTime=100;}");
             self.put(layer, "gamedata/sidedata.tdf", b"[SIDE0]{name=ARM;commander=EXAMPLE;}");
             self.put(layer, "objects3d/example.3do", model("base"));
             self.put(layer, "scripts/example.cob", script("base", &[cob::op::RETURN]));
@@ -1408,7 +1735,7 @@ mod tests {
         for rate in [22050u32, 22050] { wav.extend(rate.to_le_bytes()); }
         for word in [1u16, 8] { wav.extend(word.to_le_bytes()); }
         wav.extend_from_slice(b"data"); wav.extend(4u32.to_le_bytes()); wav.extend([128u8; 4]);
-        assert_eq!(wav_problem(&wav), None, "a WAV the game plays");
+        assert_eq!(sound_problem(&wav), None, "a WAV the game plays");
         let f = Fixture::new(); f.valid("base");
         f.put("music", "music/track01.wav", &wav);
         let options = Options { target_layer: Some("music".into()), ..Default::default() };
@@ -1582,11 +1909,13 @@ mod tests {
     #[test]
     fn production_navigation_is_not_a_missing_unit_but_missing_build_options_are_reported() {
         let f = Fixture::new(); f.valid("mod");
-        f.put("mod", "guis/example1.gui", b"[A]{[COMMON]{id=1;name=ARMNEXT;attribs=2;}} [B]{[COMMON]{id=1;name=ARMMISSING;attribs=32;commonattribs=4;}} [C]{[COMMON]{id=1;name=ARMATTACK;attribs=64;}} [D]{[COMMON]{id=1;name=ARMMAKENUKE;attribs=32;commonattribs=8;}} [E]{[COMMON]{id=1;name=IGPATCH;attribs=32;commonattribs=0;}} [F]{[COMMON]{id=1;name=IGPATCH;attribs=32;commonattribs=4;}} [G]{[COMMON]{id=1;name=IGPATCH2;attribs=32;commonattribs=4;}}");
+        f.put("mod", "guis/example1.gui", b"[A]{[COMMON]{id=1;name=ARMNEXT;attribs=2;}} [B]{[COMMON]{id=1;name=ARMMISSING;attribs=32;commonattribs=4;}} [C]{[COMMON]{id=1;name=ARMATTACK;attribs=64;}} [D]{[COMMON]{id=1;name=ARMMAKENUKE;attribs=32;commonattribs=8;}} [E]{[COMMON]{id=1;name=IGPATCH;attribs=32;commonattribs=0;}} [F]{[COMMON]{id=1;name=IGPATCH;attribs=32;commonattribs=4;}} [G]{[COMMON]{id=1;name=IGPATCH2;attribs=32;commonattribs=4;}} [H]{[COMMON]{id=1;name=HANDMADE_MISSING;attribs=32;}}");
         f.put("mod", "download/add.tdf", b"[MENUENTRY0]{UNITMENU=EXAMPLE;UNITNAME=MISSING_DOWNLOAD;} [MENUENTRY1]{UNITMENU=BLANK;UNITNAME=DISABLED_UNIT;} [MENUENTRY2]{UNITMENU=EXAMPLE;UNITNAME=MISSING_DOWNLOAD;}");
         let report = validate_all(&f.vfs(&["mod"]));
         let text = report.to_text();
         assert!(text.contains("ARMMISSING") && text.contains("MISSING_DOWNLOAD"), "{text}");
+        // (A hand-made page without commonattribs: its production button, by its attribs.)
+        assert!(text.contains("HANDMADE_MISSING"), "{text}");
         assert!(!text.contains("ARMNEXT") && !text.contains("ARMATTACK"));
         assert!(!text.contains("ARMMAKENUKE") && !text.contains("IGPATCH") && !text.contains("unit BLANK") && !text.contains("DISABLED_UNIT"));
         assert_eq!(report.issues.iter().filter(|i| i.message.contains("MISSING_DOWNLOAD")).count(), 1, "Repeated AI/menu entries do not duplicate one diagnostic");
@@ -1708,7 +2037,125 @@ mod tests {
         let report = validate_all(&f.vfs(&["mod"]));
         assert_eq!(report.counts.maps, 1);
         assert!(report.issues.iter().any(|i| i.message.contains("feature MISSING_TREE")));
-        assert!(report.issues.iter().any(|i| i.message.contains("the file maps/orphan.tnt") && i.severity == Severity::Error));
+        // (A description without its terrain is left out of the lists: a warning, not an error.)
+        assert!(report.issues.iter().any(|i| i.message.contains("the file maps/orphan.tnt") && i.message.contains("left out of the lists") && i.severity == Severity::Warning));
+    }
+
+    /// The original game's slips are no mod's: a mod's copy of one of its files carries the same
+    /// finding in the same place (Total Mayhem's and TA: Escalation's copies of TA's
+    /// `gamedata/sound.tdf`), and a mod's unit using one of its sound categories reaches a finding
+    /// the original has without the mod. Both are there without the mod: inherited. A note only
+    /// there with the mod is its doing.
+    #[test]
+    fn what_the_original_game_has_without_the_mod_is_not_the_mods() {
+        let f = Fixture::new(); f.valid("base");
+        let sounds = "[CAT]\n{\nselect1=nowhere;\n}\n";
+        f.put("base", "gamedata/sound.tdf", sounds);
+        f.put("mod", "gamedata/sound.tdf", sounds);
+        f.put("mod", "units/scout.fbi", b"[UNITINFO]{UnitName=SCOUT;ObjectName=example;Side=ARM;SoundCategory=CAT;Weapon1=GUN;}");
+        f.put("mod", "weapons/gun.tdf", b"[GUN]{range=100;}");
+        let options = Options { target_layer: Some("mod".into()), ..Default::default() };
+        let mut report = validate(&f.vfs(&["base", "mod"]), &options, |_| true);
+        compare(&mut report, &validate_all(&f.vfs(&["base"])));
+        let sound = report.issues.iter().find(|i| i.message.contains("NOWHERE")).expect("the missing sound is told");
+        assert!(sound.origin == Origin::Inherited && !sound.affects_status, "{}", report.to_text());
+        // (The unit's script, the example's, has no QueryPrimary: a note only there with the mod.)
+        let note = report.issues.iter().find(|i| i.code == "script.weapon").expect("the note is told");
+        assert!(note.origin != Origin::Inherited && note.affects_status, "{}", report.to_text());
+        assert_eq!(report.status(), Status::Clean, "{}", report.to_text());
+    }
+
+    /// An empty file blanks the original game's out: what still uses it uses nothing, and is told
+    /// so (an emptied model or script would leave a unit without one).
+    #[test]
+    fn an_emptied_file_still_used_is_told() {
+        let f = Fixture::new(); f.valid("base");
+        f.put("mod", "objects3d/example.3do", b"");
+        let options = Options { target_layer: Some("mod".into()), ..Default::default() };
+        let mut report = validate(&f.vfs(&["base", "mod"]), &options, |_| true);
+        compare(&mut report, &validate_all(&f.vfs(&["base"])));
+        let emptied = report.issues.iter().find(|i| i.code == "reference.missing").unwrap_or_else(|| panic!("{}", report.to_text()));
+        assert!(emptied.message.contains("the file objects3d/example.3do is an empty file here") && emptied.affects_status, "{}", emptied.message);
+        assert_eq!(report.status(), Status::Errors, "a unit without its model");
+    }
+
+    /// What the game never reads it never decodes: a picture among a mod's documents that is no
+    /// PCX is told where the game would read one, not broken.
+    #[test]
+    fn files_the_game_never_reads_are_not_decoded() {
+        let f = Fixture::new(); f.valid("base");
+        f.put("mod", "docs/screenshot.pcx", b"not a picture");
+        f.put("mod", "weapons/gun.tdf", b"[GUN]{range=100;}");
+        let options = Options { target_layer: Some("mod".into()), ..Default::default() };
+        let mut report = validate(&f.vfs(&["base", "mod"]), &options, |_| true);
+        compare(&mut report, &validate_all(&f.vfs(&["base"])));
+        assert!(!report.issues.iter().any(|i| i.code == "format.invalid"), "{}", report.to_text());
+        assert_ne!(report.status(), Status::Errors, "{}", report.to_text());
+    }
+
+    /// Sound categories: only the keys the game plays are checked, a repeated key's last value.
+    #[test]
+    fn only_the_sounds_the_game_plays_are_checked() {
+        let f = Fixture::new(); f.valid("mod");
+        f.put("mod", "gamedata/sound.tdf", "[CAT]\n{\nload=never_played;\nselect1=first;\nselect1=example;\nok1=gone;\narrived1=kept;\narrived1=;\n}\n");
+        f.put("mod", "sounds/example.wav", b"");
+        let report = validate_all(&f.vfs(&["mod"]));
+        let text = report.to_text();
+        assert!(!text.contains("NEVER_PLAYED") && !text.contains("FIRST"), "{text}");
+        assert!(text.contains("GONE"), "{text}");
+        assert!(text.contains("KEPT"), "an empty value leaves the one before: {text}");
+        assert!(played_sound_key("Select2") && played_sound_key("count9") && !played_sound_key("count10") && !played_sound_key("unload"));
+    }
+
+    /// Sounds as the game's decoder reads them: Humongous's blocks and headerless 8-bit samples
+    /// (TA's own `honk.wav`) play; IMA ADPCM of other than 4 bits, and no channels, do not.
+    #[test]
+    fn sounds_are_judged_as_the_decoder_reads_them() {
+        let wav = |tag: u16, channels: u16, bits: u16| {
+            let mut b = b"RIFF\0\0\0\0WAVEfmt ".to_vec();
+            b.extend(16u32.to_le_bytes());
+            b.extend(tag.to_le_bytes());
+            b.extend(channels.to_le_bytes());
+            b.extend(11025u32.to_le_bytes());
+            b.extend((11025u32 * channels as u32).to_le_bytes());
+            b.extend((channels * bits.div_ceil(8)).max(1).to_le_bytes());
+            b.extend(bits.to_le_bytes());
+            b.extend(b"data");
+            b.extend(4u32.to_le_bytes());
+            b.extend([0u8; 4]);
+            b
+        };
+        assert_eq!(sound_problem(&wav(1, 1, 16)), None);
+        assert!(sound_problem(&wav(0x11, 1, 3)).is_some_and(|p| p.contains("IMA ADPCM")));
+        assert!(sound_problem(&wav(1, 0, 16)).is_some_and(|p| p.contains("0 channels")));
+        assert!(sound_problem(b"DIGI\0\0\0\x10HSHD").is_some(), "no samples");
+        let mut digi = b"DIGI\0\0\0\x1cHSHD\0\0\0\x08SDAT\0\0\0\x0c".to_vec();
+        digi.extend([128u8; 4]);
+        assert_eq!(sound_problem(&digi), None, "its samples");
+        assert!(sound_problem(&digi[..20]).is_some(), "its samples cut off");
+        assert!(sound_problem(b"OggS").is_some(), "an Ogg file without its stream");
+        // (A page of one segment, its packet a stream's identification header.)
+        let page = |packet: &[u8]| [b"OggS\0\x02".as_slice(), &[0; 20], &[1, packet.len() as u8], packet].concat();
+        assert_eq!(sound_problem(&page(b"\x01vorbis\0\0\0\0")), None, "Vorbis");
+        assert_eq!(sound_problem(&page(b"\x7fFLAC\x01\0")), None, "FLAC");
+        assert!(sound_problem(&page(b"OpusHead\x01")).is_some(), "Opus, which the game does not decode");
+        assert_eq!(sound_problem(&[page(b"fishead\0").as_slice(), &page(b"\x01vorbis\0")].concat()), None, "a stream after another");
+        let tone: Vec<u8> = (0..2000).map(|i| (128.0 + 90.0 * (i as f64 / 20.0).sin()) as u8).collect();
+        assert_eq!(sound_problem(&tone), None, "headerless 8-bit samples");
+        assert!(sound_problem(b"just some words, not a sound at all").is_some());
+    }
+
+    /// A model's missing textures are told once, and a list repeats no label.
+    #[test]
+    fn a_models_missing_textures_are_told_once() {
+        let f = Fixture::new(); f.valid("mod");
+        f.put("mod", "objects3d/shield.3do", textured_model(&["S01", "S02", "S03", "S04"]));
+        let report = validate_all(&f.vfs(&["mod"]));
+        let textures: Vec<_> = report.issues.iter().filter(|i| i.message.starts_with("Model texture")).collect();
+        assert_eq!(textures.len(), 1, "{}", report.to_text());
+        assert!(textures[0].message.contains("textures S01, S02, S03 and S04 are missing"), "{}", textures[0].message);
+        assert_eq!(listed(&["A", "B", "A", "A"]), "A (3 times) and B");
+        assert_eq!(listed(&["A", "B", "C", "D", "E"]), "A, B, C, D and E", "every one named: compared by its message");
     }
 
     /// TA's way of taking one of the original game's files out is an empty file over it (Total
@@ -1826,7 +2273,7 @@ mod tests {
     fn duplicates_syntax_sounds_and_scripts_are_checked() {
         let f = Fixture::new(); f.valid("mod");
         // Two files define one unit; an unclosed section swallows the weapon after it.
-        f.put("mod", "units/copy.fbi", b"[UNITINFO]{UnitName=Example;ObjectName=example;Side=ARM;Builder=1;}");
+        f.put("mod", "units/copy.fbi", b"[UNITINFO]{UnitName=Example;ObjectName=example;Side=ARM;Builder=1;WorkerTime=100;}");
         f.put("mod", "weapons/w.tdf", b"[SWALLOWER]\n{\n  RenderType=0;\n\n[LOST]\n{\n  RenderType=0;\n}\n");
         f.put("mod", "units/gunner.fbi", b"[UNITINFO]{UnitName=GUNNER;ObjectName=gunner;Side=ARM;Weapon1=LOST;SoundCategory=GUNNER_SOUNDS;}");
         f.put("mod", "objects3d/gunner.3do", model("base"));
@@ -1876,7 +2323,7 @@ mod tests {
     fn production_pages_are_read_as_the_game_reads_them() {
         let f = Fixture::new(); f.valid("mod");
         // A builder whose name ends in a digit; its pages 1 and 2, then a gap, then page 4.
-        f.put("mod", "units/corca2.fbi", b"[UNITINFO]{UnitName=CORCA2;ObjectName=example;Side=ARM;Builder=1;}");
+        f.put("mod", "units/corca2.fbi", b"[UNITINFO]{UnitName=CORCA2;ObjectName=example;Side=ARM;Builder=1;WorkerTime=100;}");
         let page = |unit: &str| format!("[A]{{[COMMON]{{id=1;name={unit};attribs=32;commonattribs=4;}}}}");
         f.put("mod", "guis/corca21.gui", page("ON_PAGE_ONE"));
         f.put("mod", "guis/corca22.gui", page("EXAMPLE"));
@@ -1890,6 +2337,75 @@ mod tests {
         assert!(!text.contains("AFTER_THE_GAP") && !text.contains("NOT_A_BUILDER"), "{text}");
         // EXAMPLE is on a menu now, and has no picture.
         assert!(report.issues.iter().any(|i| i.code == "unit.picture" && i.path == "units/example.fbi" && i.severity == Severity::Info), "{text}");
+    }
+
+    /// A script asking the engine for unit values Reborn does not answer is told of them (a mod
+    /// made for a later patch of the engine): those asked for, and those set, apart. Those it
+    /// answers are not told, nor a value worked out as the script runs.
+    #[test]
+    fn scripts_asking_for_values_the_engine_does_not_answer_are_told() {
+        use cob::op::*;
+        let f = Fixture::new();
+        f.valid("mod");
+        let code = [
+            PUSH_CONSTANT, 87, GET_UNIT_VALUE,
+            PUSH_CONSTANT, 99, PUSH_LOCAL, 0, PUSH_CONSTANT, 0, PUSH_CONSTANT, 0, PUSH_CONSTANT, 0, GET,
+            PUSH_CONSTANT, 5, PUSH_CONSTANT, 1, SET_VALUE,
+            PUSH_CONSTANT, 90, PUSH_CONSTANT, 1, SET_VALUE,
+            PUSH_CONSTANT, 11, GET_UNIT_VALUE,
+            PUSH_LOCAL, 0, GET_UNIT_VALUE,
+            RETURN,
+        ];
+        f.put("mod", "scripts/example.cob", script("base", &code));
+        let report = validate_all(&f.vfs(&["mod"]));
+        let told: Vec<&str> = report.issues.iter().filter(|i| i.code == "script.value").map(|i| i.message.as_str()).collect();
+        assert_eq!(told.len(), 2, "{}", report.to_text());
+        assert!(told[0].contains("asks the engine for unit value 87 and 99,"), "{}", told[0]);
+        assert!(told[1].contains("sets unit value 90,"), "{}", told[1]);
+    }
+
+    /// The mods' upgrades as the game reads them (Total Mayhem's geothermal plant, TA:
+    /// Escalation's silos): a building with build power and no Builder flag has its page read,
+    /// its module of no footprint is no clamped footprint, and the building, building nothing but
+    /// its own modules out of its stance, is not asked for a nano-lathe. A silo with a Builder
+    /// flag and no build power offers nothing: its page's pseudo-unit is neither missing nor one
+    /// that can be built.
+    #[test]
+    fn the_mods_upgrades_are_read_as_the_game_reads_them() {
+        let f = Fixture::new();
+        f.valid("mod");
+        let page = |unit: &str| format!("[A]{{[COMMON]{{id=1;name={unit};attribs=32;commonattribs=4;}}}}");
+        f.put("mod", "units/geo.fbi", b"[UNITINFO]{UnitName=GEO;ObjectName=example;Side=ARM;Builder=0;WorkerTime=300;}");
+        f.put("mod", "scripts/geo.cob", script_with("base", &["Create"], &[cob::op::RETURN]));
+        f.put("mod", "guis/geo1.gui", page("GEOUP"));
+        f.put("mod", "units/geoup.fbi", b"[UNITINFO]{UnitName=GEOUP;ObjectName=example;Side=ARM;FootprintX=0;FootprintZ=0;BMcode=1;MaxVelocity=1;Acceleration=0;}");
+        f.put("mod", "units/silo.fbi", b"[UNITINFO]{UnitName=SILO;ObjectName=example;Side=ARM;Builder=1;}");
+        f.put("mod", "guis/silo1.gui", page("MAKENUKE"));
+        let report = validate_all(&f.vfs(&["mod"]));
+        let text = report.to_text();
+        assert!(report.issues.iter().any(|i| i.code == "unit.picture" && i.path == "units/geoup.fbi"), "the geothermal plant's page is read: its module can be built: {text}");
+        assert!(!report.issues.iter().any(|i| i.code == "definition.footprint"), "a module's footprint of none is kept: {text}");
+        assert!(!report.issues.iter().any(|i| i.code == "script.builder" && i.path == "units/geo.fbi"), "a building making its own modules has no spray: {text}");
+        assert!(!text.contains("MAKENUKE"), "a silo without build power offers nothing: {text}");
+    }
+
+    /// A file's entries naming the same missing thing are one finding, the gravest of them, that
+    /// lists them all (TA: Escalation's menus name units it does not ship, a builder at a time).
+    #[test]
+    fn a_missing_thing_is_told_once_a_file() {
+        let f = Fixture::new();
+        f.valid("mod");
+        for builder in ["ARMCA", "ARMCK", "ARMCV", "ARMCH"] {
+            f.put("mod", &format!("units/{}.fbi", builder.to_ascii_lowercase()), format!("[UNITINFO]{{UnitName={builder};ObjectName=example;Side=ARM;Builder=1;WorkerTime=100;}}"));
+        }
+        let entry = |n: u32, builder: &str| format!("[MENUENTRY{n}]{{UNITMENU={builder};MENU=1;BUTTON={n};UNITNAME=ARMCHEAT;}}");
+        f.put("mod", "download/armcheat.tdf", [entry(1, "ARMCA"), entry(2, "ARMCK"), entry(3, "ARMCV"), entry(4, "ARMCH")].concat());
+        let report = validate_all(&f.vfs(&["mod"]));
+        let cheat: Vec<_> = report.issues.iter().filter(|i| i.code == "reference.missing" && i.message.contains("ARMCHEAT")).collect();
+        assert_eq!(cheat.len(), 1, "{}", report.to_text());
+        assert!(cheat[0].message.starts_with("ARMCA build option, ARMCK build option, ARMCV build option and ARMCH build option: unit ARMCHEAT is missing."), "{}", cheat[0].message);
+        assert_eq!(listed(&["A", "B"]), "A and B");
+        assert_eq!(listed(&["A", "B", "C"]), "A, B and C");
     }
 
     /// Opt-in local QA, no proprietary assets bundled with tests. Also writes the full

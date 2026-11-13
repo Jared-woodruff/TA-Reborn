@@ -521,20 +521,22 @@ enum Mount {
 /// skip in `issues`: the `target` layer's count, the others' are inherited.
 fn mount(base: &Path, builtin: Option<&Path>, modules: &[&ModInfo], target: Option<&str>, issues: &mut Vec<Issue>, cancel: &AtomicBool) -> Result<Vfs, Mount> {
     let cancelled = |_| Mount::Cancelled;
+    // (A folder or archive that cannot be read is told as such: no cancellation, unless one.)
+    let unread = |error: String| if cancel.load(Ordering::Relaxed) { Mount::Cancelled } else { Mount::Failed("SOURCE_UNREADABLE", error) };
     // (The install's archives the mods replace are not mounted, nor checked.)
     let replaced = ta_vfs::mods::replaced_archives(base, modules);
     let mut install = Vec::new();
-    check_archives(base, "base", false, target, &mut install, cancel).map_err(cancelled)?;
+    check_archives(base, "base", false, target, &mut install, cancel).map_err(unread)?;
     issues.extend(install.into_iter().filter(|issue| !replaced.iter().any(|name| name.eq_ignore_ascii_case(&issue.path))));
     if let Some(path) = builtin {
-        check_archives(path, ta_vfs::BUILTIN_LAYER, false, target, issues, cancel).map_err(cancelled)?;
+        check_archives(path, ta_vfs::BUILTIN_LAYER, false, target, issues, cancel).map_err(unread)?;
     }
     let mut found = Vec::new();
     for module in modules {
         check_cancel(cancel).map_err(cancelled)?;
         let layer = mod_layer(&module.manifest.id);
         found.push(issues.len());
-        check_archives(&module.path, &layer, module.kind == ModKind::Archive, target, issues, cancel).map_err(cancelled)?;
+        check_archives(&module.path, &layer, module.kind == ModKind::Archive, target, issues, cancel).map_err(unread)?;
     }
     check_cancel(cancel).map_err(cancelled)?;
     let mounted = ta_vfs::mods::mount(Some(base), builtin, modules, &|m| mod_layer(&m.manifest.id));
@@ -556,10 +558,12 @@ fn mount(base: &Path, builtin: Option<&Path>, modules: &[&ModInfo], target: Opti
     for module in modules {
         let layer = mod_layer(&module.manifest.id);
         let replaced = ta_vfs::mods::replaced_archives(base, &[module]);
-        // (An empty placeholder of a mod's, named like an archive of the install's, blanks that
-        // one on purpose: no archive the game fails to read.)
+        // (An empty placeholder of a mod's, named like an archive of the install's, or one TA's
+        // releases install that this install lacks (Battle Tactics' `btdata.ccx`), blanks that one
+        // on purpose: no archive the game fails to read.)
+        let claims = ta_vfs::mods::replaced_claims(module);
         issues.retain(|issue| !(issue.code == "ARCHIVE_UNREADABLE" && issue.layer == layer && module.kind == ModKind::Directory
-            && replaced.iter().any(|name| name.eq_ignore_ascii_case(&issue.path))
+            && (replaced.iter().any(|name| name.eq_ignore_ascii_case(&issue.path)) || claims.contains(&issue.path.to_lowercase()))
             && ta_vfs::package::is_placeholder(&module.path.join(&issue.path))));
         // (Which of the original game's archives the mod checked takes the place of: notes.)
         if Some(layer.as_str()) == target {
@@ -661,7 +665,8 @@ fn snapshot(roots: &[(String, PathBuf, bool)], cancel: &AtomicBool) -> Result<Sn
         // (A root may be a link, the game on another drive behind a junction: what is below it
         // may not.)
         let metadata = if depth == 0 { std::fs::metadata(path) } else { std::fs::symlink_metadata(path) }.map_err(|e| format!("{}: {e}", path.display()))?;
-        if depth > 0 && is_link(&metadata) { return Err(format!("Linked content is not validated: {}", path.display())); }
+        // (What a link below it leads to the game never reads (`ta_vfs`): nor does the check.)
+        if depth > 0 && is_link(&metadata) { return Ok(()); }
         let directory = metadata.is_dir();
         if !directory && !metadata.is_file() { return Err(format!("Content is not a regular file: {}", path.display())); }
         if !directory {
@@ -712,12 +717,14 @@ fn is_link(metadata: &std::fs::Metadata) -> bool {
     { metadata.file_type().is_symlink() }
 }
 
-/// The content's fingerprint: the checks' versions (not the launcher's build: a rebuild that
-/// leaves the checks alone keeps every report), the manifests of `order` and what they replace of
-/// the original game, and every file's digest, but those of the `without` layer.
+/// The content's fingerprint: the checks' versions and TA Reborn's release (not the launcher's
+/// build: a rebuild that leaves the checks alone keeps every report; a release, whose file readers
+/// and mount rules may read the same files otherwise, checks again), the manifests of `order` and
+/// what they replace of the original game, and every file's digest, but those of the `without`
+/// layer.
 fn fingerprint(snapshot: &Snapshot, order: &[&ModInfo], memo: &DigestMemo, cancel: &AtomicBool, without: Option<&str>) -> Result<String, String> {
     let mut hash = Sha256::new();
-    hash.update(format!("{}:{}", CACHE_VERSION, validation::SCHEMA_VERSION));
+    hash.update(format!("{}:{}:{}", CACHE_VERSION, validation::SCHEMA_VERSION, env!("CARGO_PKG_VERSION")));
     for module in order {
         hash.update(serde_json::to_vec(&module.manifest).map_err(|e| e.to_string())?);
         // What it replaces of the original game, when it replaces any: a report made before the

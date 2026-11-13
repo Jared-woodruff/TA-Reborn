@@ -100,13 +100,15 @@ struct ReportView {
     /// Groups folded away, and groups shown whole (past GROUP_PREVIEW).
     folded: BTreeSet<Group>,
     whole: BTreeSet<Group>,
-    /// Findings (by index) whose fix is open.
+    /// Findings (by index) whose fix is open, in the report checked at `checked` (a new report,
+    /// RUN AGAIN's, closes them: its findings are others).
     fixes: BTreeSet<usize>,
+    checked: u64,
 }
 
 impl ReportView {
     fn new(tab: ReportTab) -> Self {
-        Self { tab, copied_until: 0.0, shown: Shown { errors: true, warnings: true, notes: true, inherited: false }, search: String::new(), folded: BTreeSet::new(), whole: BTreeSet::new(), fixes: BTreeSet::new() }
+        Self { tab, copied_until: 0.0, shown: Shown { errors: true, warnings: true, notes: true, inherited: false }, search: String::new(), folded: BTreeSet::new(), whole: BTreeSet::new(), fixes: BTreeSet::new(), checked: 0 }
     }
 }
 
@@ -315,12 +317,18 @@ fn automated_report(ui: &mut Ui, installed: bool, status: &ValidationStatus, sav
         wrapped(ui, t("Checks installed data, references and asset limits. It does not certify gameplay, balance, multiplayer or visual quality."), STEEL);
         return;
     };
+    if view.checked != saved.checked_unix {
+        view.checked = saved.checked_unix;
+        view.fixes.clear();
+    }
     // Which version was checked, and when; the findings; then what the check covered.
     let version = if saved.version.is_empty() { t("Unknown").to_string() } else { saved.version.clone() };
     let when = std::time::UNIX_EPOCH.checked_add(std::time::Duration::from_secs(saved.checked_unix)).map_or(String::new(), crate::battles::age);
     wrapped(ui, tf("Version {version} · checked {when} · Reborn {reborn}", &[("version", &version), ("when", &when), ("reborn", &saved.reborn_version)]), STEEL);
     if !saved.report.complete { wrapped(ui, t("The check did not cover every file. See the findings below before relying on this result."), AMBER); }
-    if saved.report.issues.is_empty() && saved.report.complete {
+    // (Clean: nothing that counts, the original game's findings hidden. Every report holds
+    // some of those, so "no findings match" would greet every clean mod.)
+    if saved.report.complete && !saved.report.issues.iter().any(|i| i.affects_status) && !view.shown.inherited {
         ui.add_space(12.0);
         wrapped(ui, t("No issues found by these data checks. Review known gameplay and rendering observations separately."), GREEN);
         coverage(ui, saved, view);
@@ -370,13 +378,24 @@ fn coverage(ui: &mut Ui, saved: &SavedReport, view: &ReportView) {
     ui.add_space(14.0);
     ta_ui::panel::rule(ui);
     let counts = &saved.report.counts;
-    wrapped(ui, tf("Scope: {layers}", &[("layers", &saved.scope.join(" → "))]), STEEL_DIM);
+    let layers: Vec<String> = saved.scope.iter().map(|layer| scope_label(layer)).collect();
+    wrapped(ui, tf("Scope: {layers}", &[("layers", &layers.join(" → "))]), STEEL_DIM);
     wrapped(ui, tf("{files} files · {units} units · {maps} maps · {sounds} sounds", &[("files", &grouped(counts.files_checked)), ("units", &grouped(counts.units)), ("maps", &grouped(counts.maps)), ("sounds", &grouped(counts.sounds))]), STEEL_DIM);
     let hidden = saved.report.issues.iter().filter(|i| !i.affects_status).count();
     if !view.shown.inherited && hidden > 0 {
         wrapped(ui, tf("{n} findings in the original game, Reborn or a dependency are there without this mod too, and hidden: INHERITED shows them.", &[("n", &grouped(hidden as u64))]), STEEL_DIM);
     }
     wrapped(ui, t("Checks installed data, references and asset limits. It does not certify gameplay, balance, multiplayer or visual quality."), STEEL_DIM);
+}
+
+/// A layer of a report's scope as the reader reads it: the original game's and TA Reborn's own
+/// (kept in English in the report, which is shared), the mods' by their names.
+fn scope_label(layer: &str) -> String {
+    match layer {
+        "Original game" => t("Base game").to_string(),
+        "Reborn built-in content" => "TA Reborn".to_string(),
+        other => other.to_string(),
+    }
 }
 
 /// A group's heading: folded or open, its title and how many findings it shows.
