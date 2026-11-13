@@ -26,6 +26,10 @@ pub struct PortraitRequest<'a> {
     pub pieces: &'a [Mat4],
     pub team: u32,
     pub size: u32,
+    /// It stands on land (`UnitDef::stands_on_land`): what its model reaches under the ground
+    /// (below the world's y 0) is left out of the picture and of its framing, as a battle's
+    /// ground hides it.
+    pub ground: bool,
 }
 
 /// The picture's format.
@@ -140,8 +144,11 @@ impl PortraitStudio {
         let size = request.size.clamp(8, 1024);
         let inner = size * 2;
         let StudioSettings { samples, art_reborn, colour_blind, hd, exposure, frame_scale } = settings;
+        // (Framed by what is above the ground of a unit standing on land.)
         let points: Vec<Vec3> = models.library.corners(request.model)
-            .filter_map(|(piece, p)| request.pieces.get(piece as usize).filter(|m| **m != Mat4::ZERO).map(|m| m.transform_point3(p))).collect();
+            .filter_map(|(piece, p)| request.pieces.get(piece as usize).filter(|m| **m != Mat4::ZERO).map(|m| m.transform_point3(p)))
+            .map(|p| if request.ground { Vec3::new(p.x, p.y.max(0.0), p.z) } else { p })
+            .collect();
         let (view_proj, eye, light) = frame_model(&points)?;
         // Rotating launcher previews leave room for Reborn's added barrel/joint geometry,
         // which can extend beyond the original piece corners used to fit a portrait.
@@ -153,7 +160,17 @@ impl PortraitStudio {
         models.prepare(
             device,
             queue,
-            [DrawInstance { model: request.model, pieces: request.pieces, team: request.team, flags: 0, build: 1.0, damage: 0.0, piece: None, travel: [0.0; 2], playing: crate::model::PLAYING_ALL }],
+            [DrawInstance {
+                model: request.model,
+                pieces: request.pieces,
+                team: request.team,
+                flags: if request.ground { crate::model::FLAG_ABOVE_GROUND } else { 0 },
+                build: 1.0,
+                damage: 0.0,
+                piece: None,
+                travel: [0.0; 2],
+                playing: crate::model::PLAYING_ALL,
+            }],
             None,
             false,
         );

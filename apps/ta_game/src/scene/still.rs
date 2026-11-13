@@ -40,3 +40,30 @@ pub fn standing_pose(t: &UnitType) -> Vec<Mat4> {
     super::piece_matrices(&unit, t, Mat4::IDENTITY, &mut out);
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The pieces each unit's portrait shows and hides, as `standing_pose` stands it (the
+    /// install's units, and the mod's `TA_TEST_MOD=<mod folder>` mounted over it; `TA_UNITS=a,b`
+    /// for some): `cargo test --release -p ta_game --bin ta-reborn still::tests::standing_poses --
+    /// --ignored --nocapture`.
+    #[test]
+    #[ignore = "reads the install"]
+    fn standing_poses() {
+        let Ok(install) = ta_vfs::install::discover(None) else { return };
+        let module = std::env::var("TA_TEST_MOD").ok().map(|dir| ta_vfs::mods::read_mod(std::path::Path::new(&dir)).unwrap().expect("a mod's folder"));
+        let mounted = ta_vfs::mods::mount(Some(&install.root), ta_vfs::builtin_dir().as_deref(), &module.iter().collect::<Vec<_>>(), &|m| m.manifest.id.clone());
+        let vfs = mounted.vfs;
+        let only: Option<Vec<String>> = std::env::var("TA_UNITS").ok().map(|v| v.split(',').map(|s| s.trim().to_ascii_uppercase()).collect());
+        let data = ta_data::GameData::load(&vfs);
+        let types = ta_sim::UnitTypes::compile(&data, &|p| vfs.read_opt(p));
+        for t in types.types.iter().filter(|t| only.as_ref().is_none_or(|o| o.contains(&t.name))) {
+            let pose = standing_pose(t);
+            let (shown, hidden): (Vec<_>, Vec<_>) = t.model.pieces.iter().zip(&pose).partition(|(_, m)| **m != Mat4::ZERO);
+            let names = |v: Vec<(&ta_sim::defs::PieceDef, &Mat4)>| v.iter().map(|(p, _)| p.name.clone()).collect::<Vec<_>>().join(" ");
+            println!("{}: shown {}\n{:width$}  hidden {}", t.name, names(shown), "", names(hidden), width = t.name.len());
+        }
+    }
+}

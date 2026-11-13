@@ -6238,9 +6238,9 @@ impl State {
         wanted.sort_by_key(|k| k.2);
         for key @ (type_id, colour, size, enemy) in wanted {
             let id = self.game.scene.model_for_side(type_id, enemy).and_then(|model| {
-                let pieces = crate::scene::standing_pose(self.game.sim.types.get(type_id));
+                let (pieces, ground) = (crate::scene::standing_pose(self.game.sim.types.get(type_id)), self.game.sim.types.get(type_id).def.stands_on_land());
                 let studio = self.portrait_studio.get_or_insert_with(|| ta_render::portrait::PortraitStudio::new(&self.renderer));
-                let picture = studio.render(&mut self.renderer, &ta_render::portrait::PortraitRequest { model, pieces: &pieces, team: colour, size })?;
+                let picture = studio.render(&mut self.renderer, &ta_render::portrait::PortraitRequest { model, pieces: &pieces, team: colour, size, ground })?;
                 let view = picture.create_view(&wgpu::TextureViewDescriptor::default());
                 let id = self.egui.renderer.register_native_texture(&self.renderer.gpu.device, &view, wgpu::FilterMode::Linear);
                 self.portrait_views.insert(key, view);
@@ -7678,9 +7678,9 @@ impl State {
         for key @ (type_id, colour, size, enemy) in companion.hud.take_portrait_requests().into_iter().take(PORTRAITS_PER_FRAME) {
             if !self.portrait_views.contains_key(&key) {
                 let view = self.game.scene.model_for_side(type_id, enemy).and_then(|model| {
-                    let pieces = crate::scene::standing_pose(self.game.sim.types.get(type_id));
+                    let (pieces, ground) = (crate::scene::standing_pose(self.game.sim.types.get(type_id)), self.game.sim.types.get(type_id).def.stands_on_land());
                     let studio = self.portrait_studio.get_or_insert_with(|| ta_render::portrait::PortraitStudio::new(&self.renderer));
-                    let picture = studio.render(&mut self.renderer, &ta_render::portrait::PortraitRequest { model, pieces: &pieces, team: colour, size })?;
+                    let picture = studio.render(&mut self.renderer, &ta_render::portrait::PortraitRequest { model, pieces: &pieces, team: colour, size, ground })?;
                     Some(picture.create_view(&wgpu::TextureViewDescriptor::default()))
                 });
                 if let Some(view) = view {
@@ -7888,9 +7888,9 @@ impl State {
         for key @ (type_id, colour, size, enemy) in wanted {
             if !self.portrait_views.contains_key(&key) {
                 let view = self.game.scene.model_for_side(type_id, enemy).and_then(|model| {
-                    let pieces = crate::scene::standing_pose(self.game.sim.types.get(type_id));
+                    let (pieces, ground) = (crate::scene::standing_pose(self.game.sim.types.get(type_id)), self.game.sim.types.get(type_id).def.stands_on_land());
                     let studio = self.portrait_studio.get_or_insert_with(|| ta_render::portrait::PortraitStudio::new(&self.renderer));
-                    let picture = studio.render(&mut self.renderer, &ta_render::portrait::PortraitRequest { model, pieces: &pieces, team: colour, size })?;
+                    let picture = studio.render(&mut self.renderer, &ta_render::portrait::PortraitRequest { model, pieces: &pieces, team: colour, size, ground })?;
                     Some(picture.create_view(&wgpu::TextureViewDescriptor::default()))
                 });
                 if let Some(view) = view { self.portrait_views.insert(key, view); }

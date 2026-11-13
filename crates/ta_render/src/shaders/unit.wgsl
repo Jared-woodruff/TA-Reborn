@@ -626,6 +626,11 @@ fn cloak_share(in: VOut, n: vec3<f32>) -> f32 {
 // `handover_mask`: multisampled, a translucent veil rather than a screen door.)
 @fragment
 fn fs_main(in: VOut, @builtin(front_facing) front: bool) -> Covered {
+    // (A portrait of a unit standing on land: nothing of it under the ground, model.rs
+    // `FLAG_ABOVE_GROUND`.)
+    if ((in.flags & 128u) != 0u && in.world.y < 0.0) {
+        discard;
+    }
     let surface = model_surface(in, front);
     var out: Covered;
     out.color = shade_model(in, surface, in.flags);

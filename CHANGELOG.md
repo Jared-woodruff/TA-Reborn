@@ -8,6 +8,20 @@
   it had to be ordered again once the arm had folded away, four or five seconds after a job.
   They now build it at once. As in Total Annihilation, a builder is ready to build when its
   script says so, also between jobs.
+- TA: Escalation's Guardian was pictured on a tall red column in the build menu, on its card and
+  on its page of facts: the skirt its model reaches 73 high under the ground with, to close the
+  gap under it on a slope. Pictures of units that stand on land now leave out what is under the
+  ground, as a battle's ground hides it. The skins page's previews too.
+- The building being placed, and those queued, were shown as their models are without their
+  scripts, so a mod's building could look like another one until it was built: Total Mayhem's
+  metal extractors carried the gun turret and the parts of their upgrade, which their scripts
+  hide. A building being placed is now shown as it will stand once built, its script having set
+  it up: Total Mayhem's long-range guns (Big Bertha, Vulcan, Dora, Intimidator, Buzzsaw and
+  Nator) with their guns turned the way the variant chosen faces.
+- Buildings that build only their own upgrade, such as TA: Escalation's Guardian and Total
+  Mayhem's geothermal plants, were listed as factories: on the build menu's FACTORY tab and in
+  the FACTORIES group of the forces panel, with their idle count. They are now with the defences
+  or the economy, as what they are.
 
 ## 1.0.4 — 2026-11-13
 
