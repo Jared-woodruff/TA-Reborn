@@ -669,6 +669,8 @@ pub fn install_with_commit_guard<G>(
         let _ = std::fs::remove_dir_all(&staging);
         return Err(error);
     }
+    // (On the disk before it takes the installed copy's place: see `sync_tree`.)
+    sync_tree(&staging);
     let commit = match before_commit() {
         Ok(guard) => guard,
         Err(error) => {
@@ -713,8 +715,34 @@ pub fn install_with_commit_guard<G>(
     }
     drop(publishing);
     drop(commit);
+    // (The swap itself on the disk too, where a folder can be flushed.)
+    #[cfg(unix)]
+    let _ = std::fs::File::open(mods_dir).and_then(|dir| dir.sync_all());
     let _ = std::fs::remove_dir_all(&old);
     Ok(target)
+}
+
+/// Flushes a staged copy's files (and on Unix its folders) to the disk before it takes the
+/// installed copy's place, the previous version then removed at once: the unpacker's output, a
+/// copy across drives and `mod.toml` are written without it, and a power cut just after an
+/// update could otherwise leave the new copy half written with the old one gone. Best effort: a
+/// file that cannot be opened to write (one marked read-only) is left to the system.
+fn sync_tree(root: &Path) {
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            let Ok(kind) = entry.file_type() else { continue };
+            if kind.is_dir() {
+                pending.push(entry.path());
+            } else if kind.is_file() {
+                // (Write access: Windows flushes a file only through a handle that may write.)
+                let _ = std::fs::OpenOptions::new().write(true).open(entry.path()).and_then(|file| file.sync_all());
+            }
+        }
+        #[cfg(unix)]
+        let _ = std::fs::File::open(&dir).and_then(|dir| dir.sync_all());
+    }
 }
 
 fn archive_name(path: &Path) -> String {

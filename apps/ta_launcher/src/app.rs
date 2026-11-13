@@ -487,8 +487,9 @@ impl LauncherApp {
         if !capture {
             let cache = store.dir().join("cache");
             let mods_dir = store.dir().join("mods");
+            let extra = config.mods.extra_dir.clone();
             let sweep = std::thread::Builder::new().name("sweep".into())
-                .spawn(move || sweep_working_folders(&cache, &mods_dir, Duration::from_secs(600)));
+                .spawn(move || sweep_working_folders(&cache, &mods_dir, extra.as_deref(), Duration::from_secs(600)));
             if let Err(e) = sweep { log::warn!("could not sweep old working folders: {e}"); }
         }
         if !offline && let Some(entry) = args.get_mod.as_deref().and_then(crate::catalogue::get) {
@@ -992,7 +993,8 @@ impl LauncherApp {
                 self.keep_order_if_started();
             }
             Action::Uninstall(id) => {
-                if !self.game_running() && !self.installer.busy() && !self.map_import_blocks_mod_changes() {
+                // (Not a copy in TA Reborn's program folder: changing it needs an administrator.)
+                if !self.game_running() && !self.installer.busy() && !self.map_import_blocks_mod_changes() && !self.mods.in_game_folder(&id) {
                     self.confirm_uninstall = Some(id);
                 }
             }
@@ -1005,7 +1007,15 @@ impl LauncherApp {
                 }
             }
             Action::EnableMod(id) => self.enable_mod(&id),
-            Action::DisableMod(id) => modlist::set_enabled(&mut self.config.mods.enabled, &id, false),
+            Action::DisableMod(id) => {
+                modlist::set_enabled(&mut self.config.mods.enabled, &id, false);
+                // (Those that need it are not loaded without it: said at once.)
+                let (_, on) = self.mods.needed_by(&id, &self.config.mods.enabled);
+                if !on.is_empty() {
+                    let name = self.mods.get(&id).map_or(id.clone(), |m| m.info.manifest.name.clone());
+                    self.notify(ta_ui::i18n::tf("{mods} need {name}: they are not loaded without it.", &[("mods", &on.join(", ")), ("name", &name)]), AMBER);
+                }
+            }
             Action::HideMod(id, hidden) => self.set_mod_hidden(&id, hidden),
             Action::UnhideAllMods => self.unhide_all_mods(),
             Action::PlayMod(id) => {
@@ -1438,14 +1448,14 @@ impl LauncherApp {
             // never behind the game folder's copy, which would hide it.
             Some(Source::Catalogue(entry, from)) => {
                 if self.mods.in_game_folder(entry.id) {
-                    self.notify(ta_ui::i18n::t("This copy is in the game folder, which comes before your mods folder: replace it there to update it."), AMBER);
+                    self.notify(ta_ui::i18n::t("This copy is in TA Reborn's program folder, which comes before your mods folder: replace it there to update it."), AMBER);
                     return;
                 }
                 self.install_catalogue(entry, from);
             }
             // (Behind the game folder's copy of its id it would change nothing: replaced there.)
             Some(source) if self.mods.in_game_folder(source.id()) => {
-                self.notify(ta_ui::i18n::t("This copy is in the game folder, which comes before your mods folder: replace it there to update it."), AMBER);
+                self.notify(ta_ui::i18n::t("This copy is in TA Reborn's program folder, which comes before your mods folder: replace it there to update it."), AMBER);
                 return;
             }
             // (Over an installed mod of its id: asked first.)
@@ -1468,7 +1478,8 @@ impl LauncherApp {
         } else {
             self.updates_requested.remove(entry.id);
         }
-        self.installer.install(entry, from);
+        let into = self.mods.update_folder(entry.id);
+        self.installer.install_into(entry, from, into);
     }
 
     /// Whether the running game may be reading the installed mod `id` (any installed mod, for
@@ -1484,7 +1495,7 @@ impl LauncherApp {
     /// order.
     fn uninstall(&mut self, id: &str) {
         use ta_ui::recycle::Outcome;
-        if self.game_running() || self.installer.busy() || self.map_import_blocks_mod_changes() { return; }
+        if self.game_running() || self.installer.busy() || self.map_import_blocks_mod_changes() || self.mods.in_game_folder(id) { return; }
         let Some(entry) = self.mods.get(id) else { return };
         let (path, name) = (entry.info.path.clone(), entry.info.manifest.name.clone());
         match ta_ui::recycle::recycle(&path) {
@@ -2298,13 +2309,17 @@ fn out_arrow(painter: &egui::Painter, centre: egui::Pos2, reach: f32, colour: Co
 /// Mod folders for the current settings.
 /// Working folders an earlier run left behind, untouched for `age` (closed mid-download, an
 /// update's setup long since run, a map import cut short: each can hold gigabytes), and an
-/// install stopped half way (closed by force, the power gone) put right. Never this run's own.
-fn sweep_working_folders(cache: &Path, mods_dir: &Path, age: Duration) {
+/// install stopped half way (closed by force, the power gone) put right, in the mods folder and
+/// the extra one (where a mod kept there is updated). Never this run's own.
+fn sweep_working_folders(cache: &Path, mods_dir: &Path, extra: Option<&Path>, age: Duration) {
     crate::getmods::sweep_stale(&cache.join("updates"), "setup", age);
     crate::getmods::sweep_stale(&cache.join("moddb").join("catalogue"), "install", age);
     crate::getmods::sweep_stale(&cache.join("moddb").join("unpack"), "install", age);
     crate::getmods::sweep_stale(&cache.join("map-imports"), ".maps", age);
     for done in ta_vfs::package::recover(mods_dir) { log::info!("mods folder: {done}"); }
+    if let Some(extra) = extra {
+        for done in ta_vfs::package::recover(extra) { log::info!("extra mods folder: {done}"); }
+    }
     crate::getmods::sweep_stale_imports(mods_dir, age);
 }
 
@@ -2729,7 +2744,7 @@ mod tests {
             std::fs::create_dir_all(folder.join("unpacked")).unwrap();
             std::fs::write(folder.join("unpacked").join("big.ufo"), b"HAPI").unwrap();
         }
-        sweep_working_folders(&dir.join("cache"), &dir.join("mods"), Duration::ZERO);
+        sweep_working_folders(&dir.join("cache"), &dir.join("mods"), None, Duration::ZERO);
         assert!(!left.exists(), "another run's import workspace is removed");
         assert!(ours.exists(), "an import under way in this run is left alone");
         assert!(unrelated.exists(), "only the imports' own folders are touched");

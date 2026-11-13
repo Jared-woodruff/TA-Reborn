@@ -378,6 +378,7 @@ impl LauncherApp {
             return;
         };
         let (name, path) = (entry.info.manifest.name.clone(), entry.info.path.clone());
+        let (needing, _) = self.mods.needed_by(&id, &self.config.mods.enabled);
         // (A catalogue mod downloaded by hand has no GET button to install it again.)
         let catalogued = crate::catalogue::get(&id).is_some_and(|entry| entry.file.is_some_and(|file| file.can_download()));
         let title = tf("REMOVE {name}?", &[("name", &name.to_uppercase())]);
@@ -390,6 +391,10 @@ impl LauncherApp {
                 t("It goes to the Recycle Bin and out of the load order: put it back from there if you change your mind.")
             };
             ui.add(egui::Label::new(RichText::new(text).color(TEXT)).wrap());
+            // (The mods that need it: they would not be loaded without it.)
+            if !needing.is_empty() {
+                ui.add(egui::Label::new(RichText::new(tf("{mods} need it: they are not loaded without it.", &[("mods", &needing.join(", "))])).color(AMBER)).wrap());
+            }
             ui.add(egui::Label::new(RichText::new(path.display().to_string()).font(mono(12.0)).color(STEEL)).wrap());
             ui.add_space(6.0);
             ui.horizontal(|ui| {
@@ -443,7 +448,9 @@ impl LauncherApp {
         if replace {
             self.confirm_replace = None;
             if !self.game_holds_mods(Some(source.id())) {
-                self.installer.start(source);
+                // (Where the copy it replaces is: the extra folder's in the extra folder.)
+                let into = self.mods.update_folder(source.id());
+                self.installer.start_into(source, into);
             }
         } else if response.exit {
             self.confirm_replace = None;

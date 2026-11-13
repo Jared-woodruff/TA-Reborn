@@ -41,6 +41,21 @@
   at the screen's size too.
 
 ### Fixed
+- Updating a mod kept in the extra mods folder installed the new version in your own mods folder,
+  leaving the old copy behind it as a second mod of the same name, which a later REMOVE brought
+  back. Such a mod is now updated where it is kept, and replacing it with a file of your own
+  does the same.
+- A power cut just after a mod's update could leave the new version half written with the
+  previous one already gone. The new files are now on the disk before they take its place.
+- REMOVE was offered for mods in TA Reborn's program folder, which only an administrator may
+  change, and failed. It now says to remove them there. In the Mods page's folders that folder is
+  now called the program folder: "game folder" means Total Annihilation's.
+- Removing a mod, or turning it off, gave no warning when other mods need it. The REMOVE
+  question now names them, and turning it off says they are not loaded without it. The load
+  order offers GET for a missing mod that others need, where the catalogue can download it.
+- The launcher no longer reads every mod without a manifest (a map pack dropped into the mods
+  folder, an archive or a folder of loose files) again at each visit of the Mods and Maps pages:
+  it reads one again only when it changes.
 - With the classic interface, TA: Escalation, Total Mayhem and the other mods made for the
   patched engines of later years showed only four of a builder's buildings, the same two
   repeated down the panel, with no page arrows and no orders: most of the tech tree could not
