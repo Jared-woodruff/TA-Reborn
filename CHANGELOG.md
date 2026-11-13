@@ -44,6 +44,11 @@
   at the screen's size too.
 
 ### Fixed
+- A building put over ferns, fronds or small stones (on lush and archipelago maps, among
+  others) left them standing in it, their 3D models sticking out of the finished building. A
+  building now clears its footprint of the plants, stones and scars lying loose there as its
+  construction starts, as a mission's buildings do when they are placed. Wreckage keeps its
+  metal under it, and the sea floor's anemones and corals stay.
 - The mod check's report counted the whole game as the mod's: "6,128 files · 549 units" and "3
   parse/read failures" were the original game's with the mod's. It now gives the mod's own
   files, units, maps and sounds, and says how many files it was checked with.

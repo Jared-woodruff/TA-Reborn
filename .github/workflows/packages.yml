@@ -103,7 +103,7 @@ jobs:
       - name: Build Windows installer and portable package
         if: ${{ !cancelled() && steps.production.outcome == 'success' && runner.os == 'Windows' }}
         shell: pwsh
-        run: ./installer/build_installer.ps1 -SkipBuild -Target $env:RELEASE_TARGET -DistDir dist/release
+        run: ./installer/build_installer.ps1 -SkipBuild -Compress -Target $env:RELEASE_TARGET -DistDir dist/release
 
       - name: Build Ubuntu, Arch and portable Linux packages
         if: ${{ !cancelled() && steps.production.outcome == 'success' && runner.os == 'Linux' }}
