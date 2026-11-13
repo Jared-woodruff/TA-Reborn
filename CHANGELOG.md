@@ -41,6 +41,11 @@
   at the screen's size too.
 
 ### Fixed
+- A building put over ferns, fronds or small stones (on lush and archipelago maps, among
+  others) left them standing in it, their 3D models sticking out of the finished building. A
+  building now clears its footprint of the plants, stones and scars lying loose there as its
+  construction starts, as a mission's buildings do when they are placed. Wreckage keeps its
+  metal under it, and the sea floor's anemones and corals stay.
 - With the classic interface, TA: Escalation, Total Mayhem and the other mods made for the
   patched engines of later years showed only four of a builder's buildings, the same two
   repeated down the panel, with no page arrows and no orders: most of the tech tree could not
