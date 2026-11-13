@@ -22,6 +22,16 @@
   Mayhem's geothermal plants, were listed as factories: on the build menu's FACTORY tab and in
   the FACTORIES group of the forces panel, with their idle count. They are now with the defences
   or the economy, as what they are.
+- Total Mayhem's constructors listed the same building several times. The mod lays one
+  place of its build pages out for several variants of a building: its long-range guns (Big
+  Bertha, Vulcan, Dora, Intimidator, Buzzsaw, Nator) come in four, one for each way the gun
+  faces, round one picture, the side of the picture clicked being the way it faces; its hover
+  plants in two halves, for land and for the sea. Each variant took a place of its own, the
+  same picture again and again, and in the classic interface they pushed the buildings after
+  them (a metal maker among them) onto other pages. Such a place is now one picture, as in the
+  mod's own engine: the zone pointed at stands out, the picture in the modern interface turns
+  to show that variant (its gun facing that way), and a click builds it. The classic
+  interface also keeps the mod's big buttons over several places (a Krogoth's) as they are.
 
 ## 1.0.4 — 2026-11-13
 

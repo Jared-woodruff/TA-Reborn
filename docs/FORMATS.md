@@ -756,6 +756,19 @@ Escalation also replaces `fx.gaf`'s Explode2-Explode4 and Nuke1 with shield bubb
   or a little more (`ARMPAN` 128×352, Total Mayhem's 128×472; `PANELSIDE` 128×480): the
   engines filled the rest of the taller panel. A download entry's `BUTTON` counts that page's
   places. TA: Enhanced keeps TA's six.
+* Total Mayhem's build pages also share one place among several build buttons, and lay one
+  button over several places. A share is no larger than a place and off the grid; it is seen
+  only in the place its top-left corner is in. Its long-range guns (Big Bertha, Vulcan, Dora;
+  Core's Intimidator, Buzzsaw, Nator) are four units round one picture, each setting
+  `buildangle` in `Create` (0, `<90>` east, `<180>` north, `<270>` west): strips 18×64 at the
+  place's left and right edges for west and east, 28×32 at the top middle for north, and the
+  plain one at the bottom middle (Core's north and plain ones are whole 64×64 buttons at
+  x 82, laid over the rest). A point goes to the first button in the file holding it, so the
+  side of the picture clicked is the way the gun faces. Its plants come in halves (32×64,
+  `ARMHP`/`ARMHPNS`, land and sea, each with its own 32×64 frame); its missile silos' and
+  experimental plants' big buttons (128×192, 128×128) have their own art at that size. Its compass page's own GAF
+  (`anims/armack1.gaf`...) is empty (0 bytes), so the four variants' identical build pictures
+  are drawn.
 * `gamedata/sidedata.tdf` `[SIDEn]`: `intgaf` (PANELSIDE 129×480; PANELTOP ~512×32 from
   x 127; PANELBOT from (128,447)), `font` (bars) and `fontgui`, the bar palette ramps
   `metalcolor`/`energycolor`, and boxes on the 640×480 screen for the resource readouts

@@ -112,6 +112,9 @@ pub struct Hud {
     build_page: ((usize, Option<deck::Purpose>), usize),
     build_page_placing: Option<usize>,
     build_wheel: f32,
+    /// The places of each kind of builder's own build pages that several of its units share
+    /// (`hud_classic_art::shared_places`), by its type: one picture each in the build menu.
+    shared_places: HashMap<usize, std::sync::Arc<Vec<crate::hud_classic_art::SharedPlace>>>,
     /// When each selected unit was picked (interface clock), for its ring's pop; and the
     /// selection those were taken from.
     picked_at: HashMap<UnitId, f32>,

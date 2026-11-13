@@ -466,6 +466,43 @@ impl Grid {
         let row = ((rect.min.y - self.top) / 64.0).round().clamp(0.0, (self.rows - 1) as f32) as usize;
         row * 2 + col
     }
+
+    /// Whether a button at `rect` is a place of the grid, as TA's are (64 pixels square, on the
+    /// grid). The mods' pages also have buttons over a share of a place ([`Grid::share_of`])
+    /// and buttons over several (128 square, a Krogoth's).
+    pub fn is_place(&self, rect: Rect) -> bool {
+        let square = self.square(self.place_of(rect));
+        (rect.min - square.min).abs().max_elem() <= 4.0 && (rect.size() - square.size()).abs().max_elem() <= 4.0
+    }
+
+    /// The place a button at `rect` is a share of, if it is one: no larger than a place, off
+    /// the grid, in the place its top left corner is in (and seen only there: what reaches out
+    /// of it is under the next place's button, or off the panel). Total Mayhem's pages have
+    /// four round one picture, a long-range gun's variants, each facing another way (the side
+    /// of the picture clicked is the way the gun faces), and two halves, a plant's for land and
+    /// for the sea.
+    pub fn share_of(&self, rect: Rect) -> Option<usize> {
+        if self.is_place(rect) || rect.width() > 68.0 || rect.height() > 68.0 {
+            return None;
+        }
+        (0..self.places()).find(|&p| {
+            let square = self.square(p);
+            rect.min.x >= square.min.x - 2.0 && rect.min.x < square.max.x - 2.0 && rect.min.y >= square.min.y - 2.0 && rect.min.y < square.max.y - 2.0
+        })
+    }
+
+    /// The square of place `place` (TA pixels, from the panel's corner).
+    pub fn square(&self, place: usize) -> Rect {
+        Rect::from_min_size(pos2((place % 2) as f32 * 64.0, self.top + (place / 2) as f32 * 64.0), vec2(64.0, 64.0))
+    }
+
+    /// The places a button at `rect` covers: those it takes more than a sliver of.
+    pub fn covered(&self, rect: Rect) -> Vec<usize> {
+        (0..self.places()).filter(|&p| {
+            let common = self.square(p).intersect(rect);
+            common.width() > 4.0 && common.height() > 4.0
+        }).collect()
+    }
 }
 
 /// A gadget's `quickkey`: TA writes the key's character code (`97`: A), sometimes the letter
@@ -503,13 +540,121 @@ impl SideLayout {
     }
 }
 
+/// A place of a builder's own build page that several of its units share ([`Grid::share_of`]):
+/// each unit with its zone, the share of the place its button is seen over (0..1 across and
+/// down), in the page's order. A point of the place is the first zone's that holds it, as TA
+/// had it: Total Mayhem's Core Intimidator lays its north variant over the others.
+pub type SharedPlace = Vec<(usize, Rect)>;
+
+/// The zone of a shared place that a point of it (a share of the place, 0..1) is in.
+pub fn zone_at(place: &[(usize, Rect)], at: Pos2) -> Option<usize> {
+    place.iter().position(|(_, zone)| zone.contains(at))
+}
+
+/// The unit a shared place shows when nothing points at one of its zones, among those `shown`
+/// says may be: the one the others are named after (`ARMBRTHA`, of `ARMBRTHAE`, `ARMBRTHAW` and
+/// `ARMBRTHAN`), else the one with the largest zone (the first of those as large).
+pub fn plain_of(types: &ta_sim::UnitTypes, place: &[(usize, Rect)], shown: impl Fn(usize) -> bool) -> Option<usize> {
+    let units: Vec<&(usize, Rect)> = place.iter().filter(|(u, _)| shown(*u)).collect();
+    let named_after = |a: usize, b: usize| types.get(b).name.to_ascii_uppercase().starts_with(&types.get(a).name.to_ascii_uppercase());
+    // (Of zones as large, the first.)
+    let largest = || units.iter().fold(None, |best: Option<&&(usize, Rect)>, z| if best.is_some_and(|b| b.1.area() >= z.1.area()) { best } else { Some(z) });
+    units.iter().find(|(a, _)| units.iter().all(|(b, _)| named_after(*a, *b))).or_else(largest).map(|(u, _)| *u)
+}
+
+/// A place of a page being gathered into a [`SharedPlace`]: the place, the shares over it, and
+/// its own button.
+type PlaceZones = (usize, SharedPlace, Option<(usize, Rect)>);
+
+/// The places of `builder`'s own build pages that several of the units it builds share, each
+/// with its zones (a place's own button among them, the shares over it after it).
+pub fn shared_places(vfs: &Vfs, types: &ta_sim::UnitTypes, builder: &ta_sim::UnitType) -> Vec<SharedPlace> {
+    let name = builder.name.to_ascii_lowercase();
+    let mut out = Vec::new();
+    // (As `Art::menu`: the pages run from 1 until one is missing.)
+    for n in 1..=MAX_PAGES {
+        let Some(gui) = vfs.read_opt(&format!("guis/{name}{n}.gui")).map(|bytes| Gui::parse(&bytes)) else {
+            if n > 1 {
+                break;
+            }
+            continue;
+        };
+        // (By place: the shares, in the page's order, and the place's own button, which holds
+        // what the shares over it leave.)
+        let mut places: Vec<PlaceZones> = Vec::new();
+        for g in gui.gadgets.iter().filter(|g| g.kind == 1 && g.attribs & 32 != 0) {
+            let Some(id) = types.id(&g.name).filter(|id| builder.build_options.contains(id)) else { continue };
+            let (place, own) = match gui.grid.share_of(g.rect) {
+                Some(place) => (place, false),
+                None if gui.grid.is_place(g.rect) => (gui.grid.place_of(g.rect), true),
+                None => continue,
+            };
+            let square = gui.grid.square(place);
+            let seen = g.rect.intersect(square);
+            let zone = Rect::from_min_max(((seen.min - square.min) / 64.0).to_pos2(), ((seen.max - square.min) / 64.0).to_pos2());
+            let at = match places.iter().position(|(p, ..)| *p == place) {
+                Some(at) => at,
+                None => {
+                    places.push((place, Vec::new(), None));
+                    places.len() - 1
+                }
+            };
+            let (_, shares, whole) = &mut places[at];
+            if own {
+                whole.get_or_insert((id, zone));
+            } else if !shares.iter().any(|(u, _)| *u == id) {
+                shares.push((id, zone));
+            }
+        }
+        for (_, mut zones, whole) in places {
+            if let Some(whole) = whole
+                && !zones.iter().any(|(u, _)| *u == whole.0)
+            {
+                zones.push(whole);
+            }
+            if zones.len() > 1 {
+                out.push(zones);
+            }
+        }
+    }
+    out
+}
+
 /// One page of a build menu: the GUI laying it out and the unit type in each place.
+#[derive(Clone, Debug, Default)]
 pub struct MenuPage {
     /// `guis/<gui>.gui`: the builder's own page, or another page's layout for pages made
     /// up from download entries and build lists.
     pub gui: String,
-    /// One a place of the GUI's [`Grid`] (TA's six, or a mod's twelve).
+    /// One a place of the GUI's [`Grid`] (TA's six, or a mod's twelve). A place one of the
+    /// page's own `odd` buttons covers holds that button's unit.
     pub slots: Vec<Option<usize>>,
+    /// The page's own build buttons that are not a place each, by their index among the GUI's
+    /// gadgets, with their units: a share of a place (Total Mayhem's long-range guns, a variant
+    /// for each way they face round one picture; its plants' halves, land and sea) or several
+    /// places (a Krogoth's button). They keep their own rectangles ([`Grid::is_place`]).
+    pub odd: Vec<(usize, usize)>,
+}
+
+impl MenuPage {
+    /// The unit of the page's build button `index` (its index among the GUI's gadgets) at
+    /// `rect`: an odd one's own, else its place's.
+    pub fn unit_at(&self, grid: &Grid, index: usize, rect: Rect) -> Option<usize> {
+        if !grid.is_place(rect) {
+            return self.odd.iter().find(|&&(i, _)| i == index).map(|&(_, unit)| unit);
+        }
+        self.slots.get(grid.place_of(rect)).copied().flatten()
+    }
+
+    /// Every unit on the page (one covering several places, once).
+    pub fn units(&self) -> impl Iterator<Item = usize> + '_ {
+        let mut seen = Vec::new();
+        self.slots.iter().flatten().copied().chain(self.odd.iter().map(|&(_, unit)| unit)).filter(move |u| {
+            let new = !seen.contains(u);
+            seen.push(*u);
+            new
+        })
+    }
 }
 
 /// A download TDF menu entry: builder, `MENU`, `BUTTON`, unit.
@@ -716,13 +861,27 @@ impl Art {
                 }
                 continue;
             };
-            let mut page = MenuPage { gui: gui_name.clone(), slots: vec![None; gui.grid.places()] };
-            for g in gui.gadgets.iter().filter(|g| g.attribs & 32 != 0) {
+            let mut page = MenuPage { gui: gui_name.clone(), slots: vec![None; gui.grid.places()], odd: Vec::new() };
+            let builds = || gui.gadgets.iter().enumerate().filter(|(_, g)| g.attribs & 32 != 0);
+            for (_, g) in builds().filter(|(_, g)| gui.grid.is_place(g.rect)) {
                 let Some(id) = types.id(&g.name).filter(|id| options.contains(id) && !placed.contains(id)) else { continue };
                 let slot = gui.grid.place_of(g.rect);
                 if page.slots[slot].is_none() {
                     page.slots[slot] = Some(id);
                     placed.push(id);
+                }
+            }
+            // The rest keep their own rectangles, the places they cover taken: a share of a
+            // place, the place it is in; a button over several, those. (Rounded to a place each,
+            // Total Mayhem's four variants of a gun round one picture took three places and the
+            // metal maker's below, and its other buildings went to other pages.)
+            for (index, g) in builds().filter(|(_, g)| !gui.grid.is_place(g.rect)) {
+                let Some(id) = types.id(&g.name).filter(|id| options.contains(id) && !placed.contains(id)) else { continue };
+                page.odd.push((index, id));
+                placed.push(id);
+                let covered = gui.grid.share_of(g.rect).map_or_else(|| gui.grid.covered(g.rect), |p| vec![p]);
+                for p in covered {
+                    page.slots[p].get_or_insert(id);
                 }
             }
             own_layout.get_or_insert(gui_name);
@@ -736,7 +895,7 @@ impl Art {
             let (mut p, mut s) = (page, None);
             loop {
                 while pages.len() <= p {
-                    pages.push(MenuPage { gui: layout.clone(), slots: vec![None; places] });
+                    pages.push(MenuPage { gui: layout.clone(), slots: vec![None; places], odd: Vec::new() });
                 }
                 let slots = &mut pages[p].slots;
                 let mut at = s.unwrap_or_else(|| slot.min(slots.len().saturating_sub(1)));
@@ -879,7 +1038,7 @@ mod tests {
         assert_eq!((ack[2].gui.as_str(), names(&ack[2])[0].as_deref()), ("armack1", Some("ARMCKFUS")));
         // Everything a builder can build is on a page, once.
         for b in ["ARMCOM", "ARMACK", "ARMLAB", "CORCOM", "CORCK", "CORAVP"] {
-            let mut shown: Vec<usize> = menu(b).iter().flat_map(|p| p.slots.iter().flatten().copied()).collect();
+            let mut shown: Vec<usize> = menu(b).iter().flat_map(|p| p.units().collect::<Vec<_>>()).collect();
             let mut want = types.get(types.id(b).unwrap()).build_options.clone();
             shown.sort_unstable();
             want.sort_unstable();
@@ -930,6 +1089,91 @@ mod tests {
         shown.sort_unstable();
         want.sort_unstable();
         assert_eq!(shown, want, "everything the Commander builds, once");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Total Mayhem's pages share a place among several buttons: Arm's long-range guns, four
+    /// variants round one picture (strips east and west, the north one over the plain one), Core's
+    /// laid over each other at a place's size off the grid, a plant's halves; and they lay a
+    /// button over several places (a Krogoth's).
+    #[test]
+    fn buttons_over_a_share_of_a_place_or_over_several() {
+        let grid = Grid { top: 0.0, rows: 6 };
+        let r = |x: f32, y: f32, w: f32, h: f32| Rect::from_min_size(pos2(x, y), vec2(w, h));
+        assert!(grid.is_place(r(64.0, 128.0, 64.0, 64.0)) && grid.share_of(r(64.0, 128.0, 64.0, 64.0)).is_none());
+        for share in [r(110.0, 64.0, 18.0, 64.0), r(82.0, 96.0, 28.0, 32.0), r(64.0, 64.0, 18.0, 64.0), r(82.0, 64.0, 28.0, 32.0)] {
+            assert!(!grid.is_place(share));
+            assert_eq!(grid.share_of(share), Some(3), "Arm's, in the place at (64, 64): {share:?}");
+        }
+        assert_eq!([grid.share_of(r(82.0, 96.0, 64.0, 64.0)), grid.share_of(r(82.0, 64.0, 64.0, 64.0))], [Some(3), Some(3)], "Core's, in the place their corner is in");
+        assert_eq!([grid.share_of(r(0.0, 192.0, 32.0, 64.0)), grid.share_of(r(32.0, 192.0, 32.0, 64.0))], [Some(6), Some(6)], "halves");
+        let big = r(0.0, 256.0, 128.0, 128.0);
+        assert_eq!((grid.share_of(big), grid.covered(big)), (None, vec![8, 9, 10, 11]), "a Krogoth's: over four places");
+        // The first zone holding a point takes it (shares of the place): Core's north variant, laid
+        // over the others after them, takes what they leave of it.
+        let third = |a: f32| a / 64.0;
+        let zones: Vec<(usize, Rect)> = vec![
+            (1, Rect::from_min_max(pos2(third(46.0), 0.0), pos2(1.0, 1.0))),
+            (2, Rect::from_min_max(pos2(third(18.0), 0.5), pos2(1.0, 1.0))),
+            (3, Rect::from_min_max(pos2(0.0, 0.0), pos2(third(18.0), 1.0))),
+            (4, Rect::from_min_max(pos2(third(18.0), 0.0), pos2(1.0, 1.0))),
+        ];
+        let at = |x: f32, y: f32| zone_at(&zones, pos2(x, y));
+        assert_eq!([at(0.9, 0.25), at(0.5, 0.75), at(0.1, 0.5), at(0.5, 0.25)], [Some(0), Some(1), Some(2), Some(3)]);
+    }
+
+    /// A Total Mayhem build page over the install: the Advanced Construction Kbot's first page with
+    /// a Big Bertha in four variants round one place, as the mod lays it out. Each keeps its own
+    /// zone, the place is taken (the metal maker keeps its own, below), nothing is on two pages,
+    /// and the modern panel shows the four as one picture, the plain Bertha's.
+    #[test]
+    fn a_place_four_variants_share_keeps_them_round_one_picture() {
+        let Some(mut vfs) = install() else {
+            eprintln!("TA install not found; skipping");
+            return;
+        };
+        let dir = std::env::temp_dir().join(format!("ta_classic_compass_{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("guis")).unwrap();
+        std::fs::create_dir_all(dir.join("units")).unwrap();
+        for (name, angle) in [("ARMBRTHA", 0), ("ARMBRTHAE", 90), ("ARMBRTHAW", 270), ("ARMBRTHAN", 180)] {
+            let fbi = format!("[UNITINFO]\n{{\nUnitName={name};\nName=Big Bertha {angle};\nSide=ARM;\nObjectname=ARMGUARD;\nFootprintX=4;\nFootprintZ=4;\nBuildCostMetal=4812;\nBuildCostEnergy=60000;\nBuildTime=90000;\nMaxDamage=1800;\n}}\n");
+            std::fs::write(dir.join("units").join(format!("{}.fbi", name.to_ascii_lowercase())), fbi).unwrap();
+        }
+        let button = |i: usize, name: &str, x: u32, y: u32, w: u32, h: u32| format!("[GADGET{i}]{{[COMMON]{{id=1;name={name};xpos={x};ypos={y};width={w};height={h};attribs=32;commonattribs=4;}}}}\n");
+        let page = String::from("[GADGET0]{[COMMON]{id=0;name=HEADER;xpos=0;ypos=128;width=128;height=640;}panel=ARMPAN;}\n")
+            + &button(1, "ARMFUS", 0, 0, 64, 64)
+            + &button(2, "ARMARAD", 0, 64, 64, 64)
+            + &button(3, "ARMBRTHAE", 110, 64, 18, 64)
+            + &button(4, "ARMBRTHA", 82, 96, 28, 32)
+            + &button(5, "ARMBRTHAW", 64, 64, 18, 64)
+            + &button(6, "ARMBRTHAN", 82, 64, 28, 32)
+            + &button(7, "ARMMOHO", 0, 128, 64, 64)
+            + &button(8, "ARMMMKR", 64, 128, 64, 64);
+        std::fs::write(dir.join("guis").join("armack1.gui"), page).unwrap();
+        vfs.mount_mod_dir(&dir, "compass").unwrap();
+        let data = ta_data::GameData::load(&vfs);
+        let types = ta_sim::UnitTypes::compile(&data, &|p| vfs.read_opt(p));
+        let id = |name: &str| types.id(name).unwrap();
+        let ack = types.get(id("ARMACK"));
+        let pages = Art::default().menu(&vfs, &types, ack.id, "armcom1");
+        let first = &pages[0];
+        let berthas = ["ARMBRTHAE", "ARMBRTHA", "ARMBRTHAW", "ARMBRTHAN"].map(id);
+        // (By index among the gadgets, the header not one of them.)
+        assert_eq!(first.odd, (2..=5).zip(berthas).collect::<Vec<_>>(), "each in its own zone");
+        assert_eq!((first.slots[2], first.slots[3], first.slots[5]), (Some(id("ARMARAD")), Some(berthas[0]), Some(id("ARMMMKR"))), "the place taken; the metal maker's its own");
+        let mut shown: Vec<usize> = pages.iter().flat_map(|p| p.units().collect::<Vec<_>>()).collect();
+        let mut want = ack.build_options.clone();
+        shown.sort_unstable();
+        want.sort_unstable();
+        assert_eq!(shown, want, "everything it builds, once");
+        let places = shared_places(&vfs, &types, ack);
+        assert_eq!(places.len(), 1);
+        let place = &places[0];
+        assert_eq!(place.iter().map(|&(u, _)| u).collect::<Vec<_>>(), berthas, "in the page's order");
+        let at = |x: f32, y: f32| zone_at(place, pos2(x, y)).map(|k| types.get(place[k].0).name.clone());
+        assert_eq!([at(0.1, 0.5), at(0.9, 0.5), at(0.5, 0.25), at(0.5, 0.75)].map(Option::unwrap), ["ARMBRTHAW", "ARMBRTHAE", "ARMBRTHAN", "ARMBRTHA"], "the side of the picture is the way it faces");
+        assert_eq!(plain_of(&types, place, |_| true), Some(id("ARMBRTHA")), "the one the others are named after");
+        assert_eq!(plain_of(&types, place, |u| u != id("ARMBRTHA")).map(|u| types.get(u).name.clone()).as_deref(), Some("ARMBRTHAE"), "else the largest zone's");
         std::fs::remove_dir_all(&dir).ok();
     }
 
