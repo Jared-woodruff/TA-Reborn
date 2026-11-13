@@ -725,8 +725,13 @@ fn snapshot(roots: &[(String, PathBuf, bool)], cancel: &AtomicBool) -> Result<Sn
         }
         let time = |time: std::io::Result<SystemTime>| time.ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |t| t.as_nanos());
         // Only what the game reads (the music, movies and documents beside it changing
-        // makes no difference to a check).
-        let read = path.file_name().and_then(|n| n.to_str()).is_some_and(|n| is_archive(path) || validation::checked_file(&n.to_ascii_lowercase()));
+        // makes no difference to a check), and what the report tells a mod brings by its
+        // presence alone (its programs, TA's own computer players' files).
+        let folder = path.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()).map_or(String::new(), str::to_ascii_lowercase);
+        let read = path.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+            let name = n.to_ascii_lowercase();
+            is_archive(path) || validation::checked_file(&name) || validation::noted_file(&folder, &name)
+        });
         if !directory && read {
             files.push(FileStamp { path: path.to_path_buf(), len: metadata.len(), modified: time(metadata.modified()), created: time(metadata.created()) });
         }
@@ -1086,7 +1091,16 @@ mod tests {
         std::fs::write(dir.0.join("readme.txt"), "not read by the game").unwrap();
         assert_eq!(after, snapshot(&roots, &cancel).unwrap(), "what the game never reads does not change the fingerprint");
         std::fs::write(dir.0.join("added.tdf"), "new").unwrap();
-        assert_ne!(after, snapshot(&roots, &cancel).unwrap());
+        let added = snapshot(&roots, &cancel).unwrap();
+        assert_ne!(after, added);
+        // (What the report tells a mod brings by its presence alone: a program or an engine's
+        // library, TA's own computer players' files.)
+        std::fs::write(dir.0.join("patch.DLL"), "a library").unwrap();
+        let program = snapshot(&roots, &cancel).unwrap();
+        assert_ne!(added, program, "a program added is another report");
+        std::fs::create_dir(dir.0.join("AI")).unwrap();
+        std::fs::write(dir.0.join("AI").join("boost.txt"), "profile").unwrap();
+        assert_ne!(program, snapshot(&roots, &cancel).unwrap(), "a computer players' file added is another report");
     }
 
     #[test]

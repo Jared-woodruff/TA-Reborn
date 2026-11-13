@@ -243,6 +243,21 @@ rendering of a foreign rank otherwise; every title distinct.
 | line {n} / in {archive} (where a finding is) | 第 {n} 行 / 位于 {archive} |
 | checked {when} ({when}: 刚刚, 5 分钟前...) | {when}检查 |
 | {checked} of {total} files (progress) | {checked}/{total} 个文件 |
+| the report's tabs OVERVIEW / FINDINGS / PROJECT REVIEW; RUN AGAIN (in a sentence: 选择“再次运行”) | 概览 / 检查结果 / 项目评测；再次运行 |
+| verdicts Errors to put right / Warnings to look at / No problems found / The check did not finish | 待修正的错误 / 待查看的警告 / 未发现问题 / 检查未能完成 |
+| IN THIS MOD / FIX FIRST / SEE ALL {n} FINDINGS | 此模组包含 / 优先修复 / 查看全部 {n} 条检查结果 |
+| HOW TA REBORN PLAYS IT; how TA Reborn plays (what the mod uses), its own way | TA REBORN 的处理方式；（TA Reborn 如何）处理，以自己的方式处理 |
+| tags PLAYED (as in the engine it was made for; "as made {played}") / NOT USED ("Not used: …") | 原样运行（原样运行 {played} 项）/ 未使用（未使用：…） |
+| {n} OF ONE KIND (one card: findings of one check with one fix) / SHOW FEWER | {n} 条同类 / 收起 |
+| COMPATIBILITY (a mod's check in brief, in its details) | 兼容性 (as MOD COMPATIBILITY 模组兼容性) |
+| Seen in play (the project review's summary) / READ THE REVIEW / known gaps | 游玩实测 / 阅读评测 / 已知问题 |
+| TA's later engines / later patches / the patched engines of later years / engine patches | TA 后期引擎 / 后期补丁 / 后来几年打过补丁的引擎 / 引擎补丁 |
+| TA's own (engine, grid, computer players, campaigns) | TA 原版 |
+| build lists for the computer players (TA 3.1's [CANBUILD]) / a list's owner / entries | 电脑玩家的建造列表 / 所属单位 / 条目 |
+| menu pages / download lists (the download/ menus) | 菜单页面 / 下载列表 |
+| build places (TA's grid of 64-pixel places) / page arrows / orders (the side panel's) | 建造格位（64 像素格位网格）/ 翻页箭头 / 指令 |
+| lay out (a side panel) / the modern interface (beside the classic interface 经典界面) | 布局 / 现代界面 |
+| sides / campaigns of its own; programs (a mod brings) | 自有阵营 / 自有战役；程序 |
 | the map library | 地图库 (as 模组库, 皮肤库) |
 
 ## Conquest (the galaxy campaign: briefing, galaxy map, side panel, debrief, in-battle strip)

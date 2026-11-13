@@ -568,3 +568,25 @@ Mod check (findings): feature = Objekt; wreckage = Wrack; faction = Fraktion; bu
 labels are hyphen compounds ("{name}-Modell", "{name}-Skript"); "{what} fehlt." with nominative
 descriptions ("Einheit {name}", "die Datei {path}"); list joins ", " / " und " / " oder ";
 "({count}-mal)"; "{n} weitere"; sound problems continue "Dieser Sound wird nicht abgespielt: sie ...".
+
+## Mod check: the report's OVERVIEW and how TA Reborn plays a mod (`mod_report.rs`, `validation.rs`)
+
+The report's tabs are ÜBERSICHT and BEFUNDE; a sentence names a tab as "der Reiter BEFUNDE" (as
+"Reiter ÖKONOMIE"). No sentence opens with "Sie" for the mod or the check (it reads as the formal
+you): "Die Mod läuft", "Die Prüfung brach ab".
+
+| English | Deutsch |
+|---|---|
+| FINDINGS (the report's tab) / SEE ALL {n} FINDINGS | BEFUNDE / ALLE BEFUNDE ZEIGEN ({n}) |
+| FIX FIRST / IN THIS MOD (OVERVIEW's headings) | ZUERST BEHEBEN / IN DIESER MOD |
+| HOW TA REBORN PLAYS IT / tags PLAYED, NOT USED | WIE TA REBORN DIE MOD SPIELT / GESPIELT, UNGENUTZT ("Ungenutzt: …" opening a line) |
+| as made (played as in the engine it was made for) | wie vorgesehen ("{played} wie vorgesehen, {unused} ungenutzt") |
+| {n} OF ONE KIND (a card of one check's findings with one fix) / SHOW FEWER | {n} GLEICHER ART / WENIGER ZEIGEN |
+| Seen in play (the project review's verdict) / READ THE REVIEW | Im Spiel erprobt / PROJEKTTEST LESEN |
+| COMPATIBILITY (caption in a mod's details) | KOMPATIBILITÄT |
+| build list (TA 3.1's [CANBUILD], the computer players') | Bauoptionsliste (not Bauliste: that is the build queue) |
+| a place on the build pages (TA's grid of 64-pixel places) / build button | Feld (das 64-Pixel-Raster von TA; not Bauplatz, a building site) / Bauschaltfläche |
+| page arrows / the modern interface | Seitenpfeile / die moderne Oberfläche |
+| TA's later engines / the patched engines of later years | spätere TA-Engines / die gepatchten Engines späterer Jahre |
+| ID, IDs (a weapon's) | ID, IDs (Waffen-ID) |
+| the campaign screen | die Kampagnenseite (as die Gefechtsseite) |

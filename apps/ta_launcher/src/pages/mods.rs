@@ -853,6 +853,12 @@ impl LauncherApp {
     fn mod_files(&mut self, ui: &mut Ui, item: &Item, actions: &mut Vec<Action>) {
         let Some(entry) = self.mods.get(&item.id).cloned() else { return };
         let on = self.config.mods.enabled.contains(&item.id);
+        // (Its check in brief, once there is one: a click opens the report.)
+        if let Some(saved) = self.mod_validation.report(&item.id) {
+            ui.add_space(space::S);
+            ui.label(widgets::caption("COMPATIBILITY"));
+            if super::mod_report::report_brief(ui, saved) { actions.push(Action::ShowModReport(item.id.clone())); }
+        }
         ui.add_space(space::S);
         self.mod_changes(ui, &item.id, on);
         ui.add_space(space::XS);

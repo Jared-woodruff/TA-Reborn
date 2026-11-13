@@ -261,6 +261,20 @@ A title every five levels, in this order (ранг, as "Высший ранг");
 | where a finding is: line {n} / in {archive} | строка {n} / в {archive} |
 | progress counts | "Файлов: {checked} из {total}", "Файлов оригинальной игры: {checked} из {total}" (as "Карт: {n} из {total}") |
 | MOD INFO on the Mods page (in a sentence) | кнопка «О МОДЕ» на странице «Моды» |
+| OVERVIEW / FINDINGS (the report's tabs) | ОБЗОР / ПРОБЛЕМЫ (in a sentence: на вкладке «ПРОБЛЕМЫ»); READ THE REVIEW: ЧИТАТЬ ОБЗОР ПРОЕКТА (ОБЗОР alone is the OVERVIEW tab, a key shared with the profile page) |
+| the verdicts (OVERVIEW's heading) | Нужно исправить ошибки / Стоит изучить предупреждения / Проблем не найдено / Для проверок данных ничего нет / Проверка не завершена |
+| IN THIS MOD / FIX FIRST / SEE ALL {n} FINDINGS | В ЭТОМ МОДЕ / СНАЧАЛА ИСПРАВИТЬ / ВСЕ ПРОБЛЕМЫ ({n}) |
+| {n} OF ONE KIND (a card of findings with one fix) / SHOW FEWER | ОДНОТИПНЫХ: {n} / СВЕРНУТЬ (beside ПОКАЗАТЬ ВСЕ {n}) |
+| HOW TA REBORN PLAYS IT (what a mod uses of TA's later engines) | КАК ЭТО РАБОТАЕТ В TA REBORN; tags PLAYED / NOT USED: РАБОТАЕТ / НЕ ИСПОЛЬЗУЕТСЯ (the "how" line of plural things: "Не используются: …"); as made {played}: как задумано — {played}; plays it itself: воспроизводит сам; its own way: по-своему |
+| TA's later (patched) engines / a later patch / TA's own engine | более поздние движки TA, движки с патчами последующих лет / более поздний патч / оригинальный движок TA |
+| build list (TA 3.1's [CANBUILD], the computer players') | список постройки (as меню постройки, вариант постройки); its owner: владелец списка постройки, lower case as the other reference labels |
+| menu pages / download lists (download/*.tdf) | страницы меню / списки загружаемых юнитов (TA's downloadable units) |
+| build place (a 64-pixel place of the side panel's grid) / page arrows / orders | ячейка (меню постройки) / стрелки страниц / приказы; side panel: боковая панель; pixels after a figure: пикс. |
+| modern interface | современный интерфейс (beside классический интерфейс) |
+| Seen in play (the project review's) / known gaps: {n} | Проверено в игре / известных проблем: {n} |
+| RUN AGAIN in a sentence | нажмите «НАЧАТЬ СНОВА» (the key is the benchmark's too) |
+| COMPATIBILITY (the mod library's caption) | СОВМЕСТИМОСТЬ |
+| weapon ID / unit value | ID оружия / значение юнита; a count of weapons: "Видов оружия: {n}" |
 
 ## Conquest (the galaxy campaign)
 

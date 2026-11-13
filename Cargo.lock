@@ -3884,6 +3884,7 @@ dependencies = [
  "rayon",
  "rustc-hash 2.1.3",
  "serde",
+ "serde_json",
  "sha2",
  "ta_formats",
  "ta_vfs",

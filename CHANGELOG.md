@@ -2,7 +2,27 @@
 
 ## Unreleased
 
+### Added
+- A mod's compatibility report now opens on an OVERVIEW: what the check found, in a word and a
+  sentence, with its errors, warnings and notes, each a way into those findings; what the mod
+  holds; the findings to fix first; and what the project saw of it in play. A mod's details in
+  the library show the check in brief, under COMPATIBILITY.
+- The mod check tells how TA Reborn plays what a mod uses of TA's later engines, and of what TA
+  left to its own: the computer players' build lists (TA 3.1's `[CANBUILD]`), side panels laid
+  out for a 768-pixel screen, build buttons sharing a place or taking several, TA 3.1's script
+  questions about units, weapon IDs past 255, and sides and campaigns of its own, all played;
+  TA's own AI profiles and the programs a mod brings, not used. The copied report and `ta-tools
+  validate-mod` give it too.
+
+### Changed
+- In the report's FINDINGS, three or more findings of one check with one fix are one card: the
+  first three, the rest a click away, and the fix they share. Each finding takes less room, its
+  severity beside its words and HOW TO FIX beside where it is.
+
 ### Fixed
+- The mod check said units made for the computer players alone had no build picture, though no
+  menu shows them (TA: The Final Frontier's AI units), and called their entries in the computer
+  players' lists build options. Those lists are now told as the computer players'.
 - Total Mayhem's construction units (kbots, vehicles, hovercraft and ships) stood still at a
   building ordered while their nano arm was still out from the job before, and never built it:
   it had to be ordered again once the arm had folded away, four or five seconds after a job.

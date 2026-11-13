@@ -309,6 +309,20 @@ MOD INFO = ПРО МОД, "кнопка ПРО МОД на сторінці «М
 | groups THE CHECK / PACKAGING / SCRIPTS / MENUS & SIDES | ПЕРЕВІРКА / ПАКУВАННЯ / СКРИПТИ (COB scripts; not сценарій, the scenario) / МЕНЮ Й СТОРОНИ (& = Й) |
 | line {n} / in {archive} | рядок {n} / в архіві {archive} |
 | {checked} of {total} files | "Файли: {checked} із {total}" ("Файли оригінальної гри: ...") |
+| OVERVIEW / FINDINGS (the report's tabs) | ОГЛЯД / ВИСНОВКИ (in a sentence: на вкладці «ВИСНОВКИ»); READ THE REVIEW: ЧИТАТИ ОГЛЯД ПРОЄКТУ (ОГЛЯД alone is the OVERVIEW tab, a key shared with the profile page) |
+| the verdicts (OVERVIEW's heading) | Потрібно виправити помилки / Варто переглянути попередження / Проблем не виявлено / Для перевірок даних нічого немає / Перевірку не завершено |
+| IN THIS MOD / FIX FIRST / SEE ALL {n} FINDINGS | У ЦЬОМУ МОДІ / СПЕРШУ ВИПРАВИТИ / УСІ ВИСНОВКИ ({n}) |
+| {n} OF ONE KIND (a card of findings with one fix) / SHOW FEWER | ОДНОТИПНИХ: {n} / ЗГОРНУТИ (beside ПОКАЗАТИ ВСІ {n}); the fix they share: спільна порада |
+| HOW TA REBORN PLAYS IT (what a mod uses of TA's later engines) | ЯК ЦЕ ПРАЦЮЄ В TA REBORN; tags PLAYED / NOT USED: ПРАЦЮЄ / НЕ ЗАДІЯНО (impersonal, so it reads for any number; "Не задіяно: …"); as made {played}: як задумано — {played}; plays it itself: відтворює сам; its own way: по-своєму |
+| TA's later (patched) engines / a later patch / TA's own engine | пізніші рушії TA, рушії з патчами пізніших років / один із пізніших патчів / оригінальний рушій TA |
+| build list (TA 3.1's [CANBUILD], the computer players') | список будівництва (as меню будівництва, варіант будівництва); its owner: власник списку будівництва, lower case as the other reference labels |
+| menu pages / download lists (download/*.tdf) | сторінки меню / списки завантажуваних юнітів (TA's downloadable units) |
+| build place (a 64-pixel place of the side panel's grid) / page arrows / orders | комірка (меню будівництва) / стрілки сторінок / накази; side panel: бічна панель; pixels after a figure: пікс. |
+| modern interface | сучасний інтерфейс (beside класичний інтерфейс) |
+| Seen in play (the project review's) / known gaps: {n} | Перевірено в грі / відомі проблеми: {n} |
+| RUN AGAIN in a sentence | Натисніть ПОВТОРИТИ ТЕСТ (the benchmark's key too; no quotes, as "Виберіть ПЕРЕВІРИТИ МОД") |
+| COMPATIBILITY (the mod library's caption) | СУМІСНІСТЬ |
+| weapon ID / unit value | ID зброї / значення юніта; a count of weapons: "Види зброї: {n}" |
 
 ## Conquest (the galaxy campaign)
 

@@ -281,6 +281,8 @@ pub struct LauncherApp {
     capture: Option<Capture>,
     /// `--scroll`: page offset applied while capturing a screenshot.
     pub(crate) capture_scroll: Option<f32>,
+    /// `--show mod-report:<id>:<tab>`: the report's tab to open (`overview`, `findings`, `review`).
+    pub(crate) report_start: Option<String>,
     /// The window has been fitted to the screen (see [`LauncherApp::fit_to_screen`]).
     fitted: bool,
     /// The update check (see [`crate::update`]).
@@ -605,6 +607,7 @@ impl LauncherApp {
             notices: std::collections::VecDeque::new(),
             toasts_in_capture: false,
             capture_scroll: args.scroll.filter(|_| args.screenshot.is_some()),
+            report_start: None,
             // (A size given on the command line stays as it is.)
             fitted: args.window_size.is_some() || args.film.is_some(),
             capture: args.screenshot.map(|path| Capture::new(path, args.screenshot_frames)),
@@ -661,8 +664,10 @@ impl LauncherApp {
     /// `--show`: a dialog or a state put up for a capture.
     pub fn show(&mut self, what: &str) {
         match what.split_once(':').unwrap_or((what, "")) {
-            ("mod-report", id) => {
+            ("mod-report", rest) => {
+                let (id, tab) = rest.split_once(':').unwrap_or((rest, ""));
                 self.mod_validation.selected = Some(id.to_string());
+                if !tab.is_empty() { self.report_start = Some(tab.to_string()); }
                 if let Some(capture) = &mut self.capture { capture.wait_for_validation(); }
             }
             ("shortcuts", _) => self.show_shortcuts = true,

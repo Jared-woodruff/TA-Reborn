@@ -300,6 +300,19 @@ The original game is 원작 게임 (one older progress line still says 원본 �
 | archive (a mod's or TA's) | 압축 파일 |
 | checked {when} | {when} 확인 |
 | (once) (a baseline checked a single time) | (최초 1회) |
+| FINDINGS (the report's tab, beside OVERVIEW 개요; in sentences '발견 사항' 탭) | 발견 사항 |
+| RUN AGAIN (in sentences) | 다시 실행 ('다시 실행'을 누르면) |
+| Errors to put right / Warnings to look at / No problems found (the verdict's titles, noun endings) | 바로잡을 오류 / 살펴볼 경고 / 발견된 문제 없음 |
+| IN THIS MOD / FIX FIRST / SEE ALL {n} FINDINGS / SHOW FEWER | 이 모드의 내용 / 먼저 바로잡을 점 / 발견 사항 {n}개 모두 보기 / 간략히 보기 |
+| {n} OF ONE KIND (a card of findings of one check with one fix) | 같은 종류 {n}개 |
+| HOW TA REBORN PLAYS IT / PLAYED / NOT USED (tags; a sentence's "Not used:" 사용 안 함:) | TA REBORN의 처리 방식 (mixed case: TA Reborn의 처리 방식) / 재현됨 / 사용 안 함 (as made {played}: 원래대로 재현 {played}개) |
+| TA's later engines / the patched engines of later years / TA's later patches | 후기 TA 엔진 / 훗날 패치된 엔진 / TA의 이후 패치 |
+| TA's own (engine, campaigns, computer players) | TA 원작 |
+| build list (TA 3.1's [CANBUILD]) / for the computer players | 건설 목록 / 컴퓨터 플레이어용 |
+| menu pages / download lists (what build menus offer) | 메뉴 페이지 / 다운로드 목록 |
+| classic interface / modern interface / side panel | 클래식 인터페이스 / 현대식 인터페이스 (as 현대식 카메라) / 측면 패널 |
+| a place (a build button's, TA's grid of 64-pixel places) / page arrows / orders | 자리 / 페이지 화살표 / 명령 버튼 |
+| Seen in play (project review) / READ THE REVIEW / COMPATIBILITY (library caption) | 플레이 확인 결과 / 검토 내용 보기 / 호환성 |
 
 ## Conquest
 

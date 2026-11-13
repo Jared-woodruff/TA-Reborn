@@ -232,6 +232,21 @@ One rank every five levels, in ROC (Taiwan) rank names; every title distinct.
 | HOW TO FIX / HIDE THE FIX | 如何修正 / 隱藏修正方法 |
 | line {n} / in {archive} (where a finding is) | 第 {n} 行 / 位於 {archive} |
 | checked {when} (an age first, no space) | {when}檢查 |
+| the report's tabs OVERVIEW / FINDINGS / PROJECT REVIEW; RUN AGAIN (the benchmark's key too; in a sentence 「重新測試」) | 總覽 / 發現項目 / 專案評測；重新測試 |
+| verdicts Errors to put right / Warnings to look at / No problems found / The check did not finish | 待修正的錯誤 / 待檢視的警告 / 未發現問題 / 檢查未能完成 |
+| IN THIS MOD / FIX FIRST / SEE ALL {n} FINDINGS | 此模組包含 / 優先修正 / 查看全部 {n} 項發現 |
+| HOW TA REBORN PLAYS IT; how TA Reborn plays (what the mod uses), its own way | TA REBORN 的處理方式；（TA Reborn 如何）處理，以自己的方式處理 |
+| tags PLAYED (as in the engine it was made for; "as made {played}") / NOT USED ("Not used: …") | 原樣運作（原樣運作 {played} 項）/ 未使用（未使用：…） |
+| {n} OF ONE KIND (one card: findings of one check with one fix) / SHOW FEWER | {n} 項同類 / 顯示較少 |
+| COMPATIBILITY (a mod's check in brief, in its details) | 相容性 (as MOD COMPATIBILITY 模組相容性) |
+| Seen in play (the project review's summary) / READ THE REVIEW / known gaps | 遊玩實測 / 閱讀評測 / 已知問題 |
+| TA's later engines / later patches / the patched engines of later years / engine patches | TA 後期引擎 / 後續修正檔 / 後來幾年套用修正檔的引擎 / 引擎修正檔 |
+| TA's own (engine, grid, computer players, campaigns) | TA 原版 |
+| build lists for the computer players (TA 3.1's [CANBUILD]) / a list's owner / entries | 電腦玩家的建造清單 / 擁有者 / 項目 |
+| menu pages / download lists (the download/ menus) | 選單頁面 / 下載清單 |
+| build places (TA's grid of 64-pixel places) / page arrows / orders (the side panel's) | 建造格位（64 像素格位網格）/ 翻頁箭頭 / 命令 |
+| lay out (a side panel) / the modern interface (beside the classic interface 經典介面) | 配置版面 / 現代介面 |
+| sides / campaigns of its own; programs (a mod brings) | 自有陣營 / 自有戰役；程式 |
 | the map library | 地圖庫 |
 
 ## Conquest (the galaxy campaign: briefing, galaxy map, side panel, debrief, in-battle strip)

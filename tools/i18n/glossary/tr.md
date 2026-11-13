@@ -480,3 +480,25 @@ The chronicle told plainly and a little solemn; each archive document in its own
 | stamps | KURTARILDI, KONSEYİN EMRİYLE, TÜM FREKANSLARDA YAYINLANDI, HİZMETE ÖZEL (RESTRICTED), EĞİTİM AMAÇLI, TESLİM EDİLMEDİ, ELE GEÇİRİLDİ, DÜZELTİLECEK, GEREKTİĞİNDE AÇILACAK, GİZLİ |
 | FIELD COMMANDERS / TROOPER | saha komutanları (TÜM SAHA KOMUTANLARINA) / er (ER K-7) |
 | blacked-out words | [[...]] kept, the words inside translated ([[MİLYARLARCA]], [[NE PAHASINA OLURSA OLSUN]], [[UZAKTA]]) |
+
+## Mod check: the report's OVERVIEW and how TA Reborn plays a mod (`mod_report.rs`, `validation.rs`)
+
+A sentence names a tab with "sekmesi" carrying the suffix ("BULGULAR sekmesi", as "EKONOMİ
+sekmesi"). RUN AGAIN is one key with the benchmark's (YENİDEN ÖLÇ): a sentence that names the
+report's button quotes it as shown ("YENİDEN ÖLÇ düğmesine bas").
+
+| English | Türkçe |
+|---|---|
+| FINDINGS (the report's tab) / SEE ALL {n} FINDINGS | BULGULAR / TÜM BULGULARI GÖR ({n}) |
+| FIX FIRST / IN THIS MOD (OVERVIEW's headings) | ÖNCE DÜZELT / BU MODDA |
+| HOW TA REBORN PLAYS IT / tags PLAYED, NOT USED | TA REBORN MODU NASIL OYNATIR / OYNATILIR, KULLANILMAZ ("Kullanılmaz: …" opening a line) |
+| as made (played as in the engine it was made for) | yapıldığı gibi ("{played} tanesini yapıldığı gibi oynatır, {unused} tanesini kullanmaz") |
+| {n} OF ONE KIND (a card of one check's findings with one fix) / SHOW FEWER | AYNI TÜRDEN {n} / DAHA AZ GÖSTER |
+| Seen in play (the project review's verdict) / READ THE REVIEW | Oyunda denendi / İNCELEMEYİ OKU |
+| COMPATIBILITY (caption in a mod's details) | UYUMLULUK |
+| build list (TA 3.1's [CANBUILD], the computer players') | inşa listesi (label: Bilgisayar oyuncusu inşa listesi sahibi; "{name} için bilgisayar oyuncusu inşa seçeneği") |
+| a place on the build pages (TA's grid of 64-pixel places) / build button / page arrows | yuva (64 piksellik yuva ızgarası) / inşa düğmesi / sayfa okları |
+| the modern interface / side panel | modern arayüz / yan panel |
+| ID (a weapon's) | kimlik (silah kimliği, kimlikler) |
+| TA's later engines / the patched engines of later years | TA'nın sonraki motorları / sonraki yılların yamalı motorları |
+| the campaign screen | sefer ekranı |
