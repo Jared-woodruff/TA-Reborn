@@ -50,6 +50,7 @@ fn game_of(units: &[(&str, &str)]) -> Sim {
         features: vec![ta_formats::tnt::FEATURE_NONE; 64 * 64],
         feature_names: Vec::new(),
         minimap: Default::default(),
+        flags: Vec::new(),
     };
     let players: Vec<_> = (0..2)
         .map(|i| crate::PlayerSetup {

@@ -733,7 +733,7 @@ fn map_asset(path: &str) -> bool {
     let Some((folder, file)) = path.split_once('/') else { return false; };
     let extension = file.rsplit('.').next().unwrap_or("");
     match folder {
-        "maps" => !file.contains('/') && matches!(extension, "tnt" | "ota"),
+        "maps" => !file.contains('/') && matches!(extension, "tnt" | "ota" | "features"),
         "features" => extension == "tdf",
         "anims" | "textures" => extension == "gaf",
         "objects3d" => extension == "3do",
@@ -742,9 +742,9 @@ fn map_asset(path: &str) -> bool {
     }
 }
 
-struct Workspace(PathBuf);
+pub(crate) struct Workspace(pub(crate) PathBuf);
 impl Workspace {
-    fn new(root: &Path) -> Result<Self> {
+    pub(crate) fn new(root: &Path) -> Result<Self> {
         // The folders made for imports (`cache` and `map-imports` in the settings folder) must be
         // the launcher's own. Above them the folders are the player's: a settings folder (or a
         // whole user folder) moved to another drive and linked back is theirs to make.
@@ -902,7 +902,7 @@ pub(crate) mod tests {
         let height = 16;
         TntMap { width, height, sea_level: 0, tiles: vec![Box::new([12; 1024])], tile_map: vec![0; (width * height / 4) as usize],
             heights: vec![0; (width * height) as usize], features: vec![ta_formats::tnt::FEATURE_NONE; (width * height) as usize],
-            feature_names: Vec::new(), minimap: ta_formats::image::IndexedImage::new(252, 144, 12) }.write().unwrap()
+            feature_names: Vec::new(), minimap: ta_formats::image::IndexedImage::new(252, 144, 12), flags: Vec::new() }.write().unwrap()
     }
     /// Real HPI container with tiny original terrain, for integration tests of the
     /// launcher worker. It needs no external unpacker or copyrighted game data.

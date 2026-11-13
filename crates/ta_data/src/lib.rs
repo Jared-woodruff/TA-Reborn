@@ -184,6 +184,21 @@ impl GameData {
                 }
             }
         }
+        // Maps' own features (`maps/<map>.features`: a map converted from Supreme Commander names
+        // its trees and rocks there, TA's art under its own names and worth). Under `maps/`, they
+        // are no part of the game's data a battle's players compare, and a map's digest covers
+        // its own file; added after the game's, never in place of one of them.
+        for p in vfs.list("maps", Some("features"), false) {
+            let Some(doc) = read_tdf(vfs, &p) else { continue };
+            for s in &doc.sections {
+                let world = s.get("rebornworld").unwrap_or("all").trim().to_ascii_lowercase();
+                let f = FeatureDef::from_tdf(s, &world);
+                if let std::collections::hash_map::Entry::Vacant(slot) = feature_index.entry(f.name.to_ascii_lowercase()) {
+                    slot.insert(features.len());
+                    features.push(f);
+                }
+            }
+        }
 
         let mut move_classes = Vec::new();
         let mut move_index = FxHashMap::default();
@@ -481,5 +496,30 @@ mod compatibility_tests {
         assert_ne!(without, original, "a missing file changes the digest");
         assert_ne!(unreadable, without, "nor as a file that was never there");
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// A map's own features (`maps/<map>.features`, a converted map's) are the game's features
+    /// too, of the world their file names, after the game's own: one named like one of the game's
+    /// leaves the game's as it was.
+    #[test]
+    fn a_maps_own_features_join_the_games_and_never_replace_them() {
+        let root = std::env::temp_dir().join(format!("ta_data_map_features_{}", std::process::id()));
+        let files = [
+            ("features/green/trees.tdf", "[Tree1]{description=Tree;category=trees;footprintx=1;footprintz=1;energy=250;blocking=1;}"),
+            ("maps/ridge (SC).features", "[SC1_Green_T1]{description=Tree;category=trees;footprintx=1;footprintz=1;energy=10;metal=1;blocking=0;rebornworld=green;} [Tree1]{energy=1;}"),
+            ("maps/ridge (SC).tnt", "terrain"),
+        ];
+        for (path, text) in files {
+            let p = root.join(path);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, text).unwrap();
+        }
+        let mut vfs = Vfs::new();
+        vfs.mount_mod_dir(&root, "test").unwrap();
+        let data = GameData::load(&vfs);
+        std::fs::remove_dir_all(&root).ok();
+        let own = data.feature("SC1_Green_T1").expect("the map's own tree");
+        assert_eq!((own.blocking, own.energy, own.metal, own.world.as_str()), (false, 10.0, 1.0, "green"));
+        assert_eq!(data.feature("Tree1").unwrap().energy, 250.0, "the game's own tree is as it was");
     }
 }

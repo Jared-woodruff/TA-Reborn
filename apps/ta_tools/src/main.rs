@@ -11,6 +11,7 @@ mod inspect;
 mod mapgen;
 mod notices;
 mod sprites;
+mod supcom;
 
 #[derive(Parser)]
 #[command(name = "ta-tools", about = "Inspect and convert Total Annihilation data")]
@@ -109,6 +110,25 @@ enum Cmd {
         out: PathBuf,
         #[arg(long)]
         preview: Option<PathBuf>,
+    },
+    /// Make Supreme Commander: Forged Alliance's maps (its skirmish maps, or those `--only`
+    /// names, by folder or name) into TA maps, as the launcher does, into a folder holding
+    /// `maps/`, with pictures of each beside the game's own preview in `--preview`.
+    Supcom {
+        out: PathBuf,
+        #[arg(long)]
+        only: Option<String>,
+        /// The game's folder (default: the copy found, GOG's or Steam's).
+        #[arg(long)]
+        game: Option<PathBuf>,
+        #[arg(long)]
+        preview: Option<PathBuf>,
+        /// The most tiles a map's art may have.
+        #[arg(long, default_value_t = 28_000)]
+        budget: usize,
+        /// The most cells a side of a map may have.
+        #[arg(long, default_value_t = 1024)]
+        max_cells: usize,
     },
     /// Pack paintings (RGBA PNGs, listed in a `manifest.json` as tools/features/sprites.py
     /// writes it) into a GAF in TA's palette: TA Reborn's own feature art.
@@ -409,6 +429,7 @@ fn main() -> Result<()> {
                 mapgen::run(id, &out, preview.as_deref(), &palette)?;
             }
         }
+        Cmd::Supcom { out, only, game, preview, budget, max_cells } => supcom::run(&out, only.as_deref(), game.as_deref(), preview.as_deref(), budget, max_cells)?,
         Cmd::GafPack { manifest, out } => {
             let (_, vfs) = open_vfs()?;
             sprites::pack(&manifest, &out, &inspect::palette(&vfs)?)?;

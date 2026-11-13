@@ -49,6 +49,9 @@ pub struct MapInfo {
     pub size: String,
     pub water_does_damage: bool,
     pub water_damage: f64,
+    /// Its art was painted by TA Reborn's own tools (`rebornart=1`: a map converted from
+    /// Supreme Commander), not by TA's painters: the renderer cleans no painter's hatching from it.
+    pub reborn_art: bool,
     pub schemas: Vec<MapSchema>,
 }
 
@@ -78,6 +81,7 @@ impl MapInfo {
             size: st("size"),
             water_does_damage: h.get_bool_or("waterdoesdamage", false),
             water_damage: f("waterdamage", 0.0),
+            reborn_art: h.get_bool_or("rebornart", false),
             schemas,
         }
     }

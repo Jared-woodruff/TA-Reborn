@@ -523,8 +523,14 @@ https://github.com/user-attachments/assets/0c29747c-1139-4f19-877a-3661836a55c5
   map in miniature, a check for problems and TEST PLAY; it takes your pictures as heights, art or
   tile brushes, shows features as pictures and scatters them, and saves maps as mods the skirmish
   page lists at once.
+- **Supreme Commander's maps play too**: with Supreme Commander: Forged Alliance installed (GOG's or
+  Steam's), the Maps page's SUPREME COMMANDER… makes its skirmish maps (and your own downloaded and
+  Forged Alliance Forever ones) into TA Reborn maps from your copy: their land and painted ground,
+  cliffs that still stop tanks, forests, rocks, mass points as metal, hydrocarbons as vents, and
+  starts, for skirmish ([SUPCOM_MAPS.md](docs/SUPCOM_MAPS.md)).
 - **`ta-tools`** inspects, converts and validates TA's data files (`validate`, `map`, `gaf`, `model`,
-  `cob`, `cat`, `find`…), and grows TA Reborn's maps (`mapgen`; [MAPS.md](docs/MAPS.md)).
+  `cob`, `cat`, `find`…), grows TA Reborn's maps (`mapgen`; [MAPS.md](docs/MAPS.md)), and makes
+  Supreme Commander's into TA's (`supcom`).
 
 </details>
 

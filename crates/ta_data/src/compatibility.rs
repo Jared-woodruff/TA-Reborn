@@ -128,6 +128,44 @@ mod tests {
         std::fs::remove_dir_all(&root).unwrap();
     }
 
+    /// A converted map's own features (`maps/<stem>.features`) are part of its digest and of its
+    /// battles': another version of them is another map. They stay out of the data peers compare
+    /// (a pack of such maps keeps nobody out of other battles), and a map without them keeps the
+    /// digest it always had.
+    #[test]
+    fn a_maps_own_features_are_its_and_no_one_elses() {
+        let root = std::env::temp_dir().join(format!("ta_map_features_digest_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let put = |path: &str, text: &str| {
+            let file = root.join(path);
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(file, text).unwrap();
+        };
+        put("base/units/armcom.fbi", "[UNITINFO]{}");
+        put("base/maps/plain.tnt", "plain");
+        put("base/maps/plain.ota", "[GlobalHeader]{}");
+        put("pack/maps/ridge (sc).tnt", "ridge");
+        put("pack/maps/ridge (sc).ota", "[GlobalHeader]{}");
+        let load = || {
+            let mut vfs = Vfs::new();
+            vfs.mount_mod_dir(&root.join("base"), "base").unwrap();
+            vfs.mount_mod_dir(&root.join("pack"), "pack").unwrap();
+            Compatibility::load(&vfs)
+        };
+        let before = load();
+        put("pack/maps/ridge (sc).features", "[SC1_Green_T1]{energy=10;}");
+        let with = load();
+        assert_ne!(with.map_digest("Ridge (SC)"), before.map_digest("Ridge (SC)"));
+        assert_ne!(with.for_match("ridge (sc)", None), before.for_match("ridge (sc)", None));
+        assert_eq!(with.map_digest("plain"), before.map_digest("plain"));
+        assert_eq!(with.for_match("plain", None), before.for_match("plain", None));
+        assert_eq!(with.network(), before.network(), "maps' own features are no data peers compare");
+        assert!(!with.gives_data("pack"));
+        put("pack/maps/ridge (sc).features", "[SC1_Green_T1]{energy=20;}");
+        assert_ne!(load().map_digest("ridge (sc)"), with.map_digest("ridge (sc)"));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
     /// Which layers give the game something besides maps: a map pack of maps alone does not, a
     /// pack that brings features too does, and so does every mod with a unit of its own; a mod
     /// whose every file a later one replaces gives nothing.
@@ -284,6 +322,11 @@ impl Compatibility {
             Some((len, digest)) => { hash.update([1]); feed(&mut hash, "ota", *len, digest); }
             None => hash.update([0]),
         }
+        // (Its own features, `maps/<stem>.features`: a converted map's.)
+        if let Some((len, digest)) = self.maps.get(&format!("maps/{stem}.features")) {
+            hash.update([2]);
+            feed(&mut hash, "features", *len, digest);
+        }
         Some(short(hash))
     }
 
@@ -319,6 +362,11 @@ impl Compatibility {
     /// No filesystem access or archive decompression occurs when saving a game.
     pub fn for_match(&self, map: &str, mission: Option<&str>) -> u64 {
         let mut paths = vec![format!("maps/{map}.tnt"), format!("maps/{map}.ota")];
+        // (A map's own features, where it has them: every other map's battle digest is as it was.)
+        let own = format!("maps/{map}.features");
+        if self.maps.contains_key(&own.to_ascii_lowercase()) || self.maps.contains_key(&own) {
+            paths.push(own);
+        }
         if let Some(mission) = mission { paths.push(format!("maps/{mission}")); }
         for path in &mut paths { *path = path.replace('\\', "/").to_ascii_lowercase(); }
         paths.sort_unstable();

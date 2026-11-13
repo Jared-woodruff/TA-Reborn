@@ -14,6 +14,7 @@ mod play;
 mod settings;
 mod skins;
 mod skin_editor;
+mod supcom;
 
 /// A built-in skin's name in the interface's language.
 pub(crate) fn builtin_skin_name(id: &str) -> Option<String> { skins::builtin_name(id) }

@@ -157,6 +157,9 @@ pub fn write_mod(doc: &MapDoc, palette: &Palette, mods_dir: &Path, author: &str)
     std::fs::create_dir_all(stage.path.join("maps"))?;
     write_file(&stage.path.join("maps").join(format!("{stem}.tnt")), &tnt)?;
     write_file(&stage.path.join("maps").join(format!("{stem}.ota")), &ota)?;
+    if let Some(features) = &doc.features {
+        write_file(&stage.path.join("maps").join(format!("{stem}.features")), features)?;
+    }
     write_file(&stage.path.join("mod.toml"), manifest.as_bytes())?;
     let backup = stage.path.with_extension("old");
     let existed = dir.exists();

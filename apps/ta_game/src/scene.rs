@@ -1311,7 +1311,7 @@ mod tests {
 
     #[test]
     fn debris_ground_broad_phase_covers_cell_edges_and_drawn_pads() {
-        let map = ta_formats::tnt::TntMap { width: 8, height: 8, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![10; 64], features: vec![ta_formats::tnt::FEATURE_NONE; 64], feature_names: Vec::new(), minimap: Default::default() };
+        let map = ta_formats::tnt::TntMap { width: 8, height: 8, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![10; 64], features: vec![ta_formats::tnt::FEATURE_NONE; 64], feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
         let world = ta_sim::world::World::new(&map);
         let ground = Ground { world: &world, drawn: None };
         let pos = Vec3::new(31.0, 30.0, 31.0);
@@ -1438,7 +1438,7 @@ mod tests {
         use ta_sim::{Fx, FxVec3};
         let data = std::sync::Arc::new(data_of(&[("units/test.fbi", "[UNITINFO]{UnitName=TEST;MaxDamage=1000;BuildTime=100;FootprintX=1;FootprintZ=1;}")]));
         let types = std::sync::Arc::new(ta_sim::UnitTypes::compile(&data, &|_| None));
-        let map = ta_formats::tnt::TntMap { width: 32, height: 32, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![10; 1024], features: vec![ta_formats::tnt::FEATURE_NONE; 1024], feature_names: Vec::new(), minimap: Default::default() };
+        let map = ta_formats::tnt::TntMap { width: 32, height: 32, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![10; 1024], features: vec![ta_formats::tnt::FEATURE_NONE; 1024], feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
         let players = [ta_sim::PlayerSetup { side: "ARM".into(), color: 0, start: FxVec3::ZERO, metal: Fx::from_int(1000), energy: Fx::from_int(1000), ai: false }];
         let mut sim = Sim::new(types, data, &map, &ta_data::MapInfo::default(), 0, &players, 7);
         let kind = sim.types.id("TEST").unwrap();
@@ -1489,7 +1489,7 @@ mod tests {
         use ta_sim::{Fx, FxVec3};
         let data = std::sync::Arc::new(data_of(&[("units/test.fbi", "[UNITINFO]{UnitName=TEST;MaxDamage=1000;BuildTime=100;FootprintX=1;FootprintZ=1;}")]));
         let types = std::sync::Arc::new(ta_sim::UnitTypes::compile(&data, &|_| None));
-        let map = ta_formats::tnt::TntMap { width: 32, height: 32, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![10; 1024], features: vec![ta_formats::tnt::FEATURE_NONE; 1024], feature_names: Vec::new(), minimap: Default::default() };
+        let map = ta_formats::tnt::TntMap { width: 32, height: 32, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![10; 1024], features: vec![ta_formats::tnt::FEATURE_NONE; 1024], feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
         let players: Vec<_> = (0..3).map(|color| ta_sim::PlayerSetup { side: "ARM".into(), color, start: FxVec3::ZERO, metal: Fx::from_int(1000), energy: Fx::from_int(1000), ai: false }).collect();
         let mut sim = Sim::new(types, data, &map, &ta_data::MapInfo::default(), 0, &players, 7);
         sim.set_team(2, 0);
@@ -1543,7 +1543,7 @@ mod tests {
         // 64 x 64 cells rising 3 a cell westwards, out of a sea at 40 in the east (from x 54).
         let cells = 64 * 64;
         let heights = (0..cells).map(|i| (200 - 3 * (i % 64) as i32) as u8).collect();
-        let map = ta_formats::tnt::TntMap { width: 64, height: 64, sea_level: 40, tiles: Vec::new(), tile_map: Vec::new(), heights, features: vec![ta_formats::tnt::FEATURE_NONE; cells], feature_names: Vec::new(), minimap: Default::default() };
+        let map = ta_formats::tnt::TntMap { width: 64, height: 64, sea_level: 40, tiles: Vec::new(), tile_map: Vec::new(), heights, features: vec![ta_formats::tnt::FEATURE_NONE; cells], feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
         let players = [ta_sim::PlayerSetup { side: "ARM".into(), color: 0, start: FxVec3::ZERO, metal: Fx::from_int(1000), energy: Fx::from_int(1000), ai: false }];
         let mut sim = Sim::new(types, data, &map, &ta_data::MapInfo::default(), 0, &players, 7);
         let id = |sim: &Sim, name: &str| sim.types.id(name).unwrap();
@@ -1628,7 +1628,7 @@ mod tests {
             "[UNITINFO]{UnitName=MAKER;MaxDamage=1000;BuildTime=100;FootprintX=2;FootprintZ=2;EnergyUse=60;MakesMetal=1;OnOffable=1;ActivateWhenBuilt=1;}",
         )]));
         let types = std::sync::Arc::new(ta_sim::UnitTypes::compile(&data, &|_| None));
-        let map = ta_formats::tnt::TntMap { width: 32, height: 32, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![10; 1024], features: vec![ta_formats::tnt::FEATURE_NONE; 1024], feature_names: Vec::new(), minimap: Default::default() };
+        let map = ta_formats::tnt::TntMap { width: 32, height: 32, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![10; 1024], features: vec![ta_formats::tnt::FEATURE_NONE; 1024], feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
         let players = [ta_sim::PlayerSetup { side: "ARM".into(), color: 0, start: FxVec3::ZERO, metal: Fx::from_int(1000), energy: Fx::from_int(1000), ai: false }];
         let mut sim = Sim::new(types, data, &map, &ta_data::MapInfo::default(), 0, &players, 7);
         let kind = sim.types.id("MAKER").unwrap();
@@ -1688,7 +1688,7 @@ mod tests {
         let data = std::sync::Arc::new(ta_data::GameData::load(&vfs));
         let types = std::sync::Arc::new(ta_sim::UnitTypes::compile(&data, &|p| vfs.read_opt(p)));
         let cells = 64 * 64;
-        let map = ta_formats::tnt::TntMap { width: 64, height: 64, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![60; cells], features: vec![ta_formats::tnt::FEATURE_NONE; cells], feature_names: Vec::new(), minimap: Default::default() };
+        let map = ta_formats::tnt::TntMap { width: 64, height: 64, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![60; cells], features: vec![ta_formats::tnt::FEATURE_NONE; cells], feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
         let players = [ta_sim::PlayerSetup { side: "ARM".into(), color: 0, start: FxVec3::ZERO, metal: Fx::from_int(10000), energy: Fx::from_int(10000), ai: false }];
         let mut sim = Sim::new(types, data, &map, &ta_data::MapInfo::default(), 0, &players, 7);
         let kind = sim.types.id("ARMMAKR").unwrap();

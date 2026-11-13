@@ -24,7 +24,7 @@ fn installed() -> Option<(Arc<GameData>, Arc<UnitTypes>)> {
 /// middle.
 fn field(data: &Arc<GameData>, types: &Arc<UnitTypes>) -> (Sim, UnitId) {
     let cells = 128 * 128;
-    let map = TntMap { width: 128, height: 128, sea_level: 0, heights: vec![60; cells], features: vec![FEATURE_NONE; cells], tiles: Vec::new(), tile_map: Vec::new(), feature_names: Vec::new(), minimap: Default::default() };
+    let map = TntMap { width: 128, height: 128, sea_level: 0, heights: vec![60; cells], features: vec![FEATURE_NONE; cells], tiles: Vec::new(), tile_map: Vec::new(), feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
     let players = [PlayerSetup { side: "ARM".into(), color: 0, start: FxVec3::ZERO, metal: Fx::ZERO, energy: Fx::ZERO, ai: false }];
     let mut sim = Sim::new(types.clone(), data.clone(), &map, &MapInfo::default(), 0, &players, 73);
     sim.players[0].endless = true;

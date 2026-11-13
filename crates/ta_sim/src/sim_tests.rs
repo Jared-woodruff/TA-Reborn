@@ -68,7 +68,7 @@ fn unit(name: &str, keys: &str) -> (String, String) {
 /// A flat 64 × 64-cell map.
 fn flat_map() -> TntMap {
     let cells = 64 * 64;
-    TntMap { width: 64, height: 64, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![60; cells], features: vec![FEATURE_NONE; cells], feature_names: Vec::new(), minimap: Default::default() }
+    TntMap { width: 64, height: 64, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![60; cells], features: vec![FEATURE_NONE; cells], feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() }
 }
 
 fn sim_of(data: GameData, players: usize) -> Sim {
@@ -1046,7 +1046,7 @@ fn a_nuke_sent_at_a_unit_comes_down_where_the_unit_stood_at_its_launch() {
         // A flat field 4,096 px square.
         let side = 256;
         let cells = (side * side) as usize;
-        let map = TntMap { width: side, height: side, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![60; cells], features: vec![FEATURE_NONE; cells], feature_names: Vec::new(), minimap: Default::default() };
+        let map = TntMap { width: side, height: side, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![60; cells], features: vec![FEATURE_NONE; cells], feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
         let mut sim = sim_on_map(data, 2, &map);
         // (The silo's side sees what it aims at: an attack order needs its target in sight.)
         sim.los_enabled = false;
@@ -2031,7 +2031,7 @@ fn big_walkers_stand_level_on_rough_ground() {
     // Ground rising 2 px a cell eastwards and bumps of 6 px every other cell southwards.
     let cells = 64 * 64;
     let heights = (0..cells).map(|i| (60 + 2 * (i % 64) + 6 * ((i / 64) % 2)) as u8).collect();
-    let map = TntMap { width: 64, height: 64, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights, features: vec![FEATURE_NONE; cells], feature_names: Vec::new(), minimap: Default::default() };
+    let map = TntMap { width: 64, height: 64, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights, features: vec![FEATURE_NONE; cells], feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
     let setups = [PlayerSetup { side: "ARM".into(), color: 0, start: FxVec3::ZERO, metal: Fx::from_int(1000), energy: Fx::from_int(1000), ai: false }];
     let mut sim = Sim::new(Arc::new(types), data, &map, &MapInfo::default(), 0, &setups, 7);
     let id = |sim: &Sim, name: &str| sim.types.id(name).unwrap();

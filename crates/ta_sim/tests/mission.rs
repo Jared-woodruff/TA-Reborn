@@ -859,7 +859,7 @@ fn made_up_mission(header: &str, units: &[(&str, u32, i32, i32, &str)]) -> (Sim,
     let data = Arc::new(made_up_data());
     let types = Arc::new(UnitTypes::compile(&data, &|_| None));
     let cells = 64 * 64;
-    let map = TntMap { width: 64, height: 64, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![60; cells], features: vec![FEATURE_NONE; cells], feature_names: Vec::new(), minimap: Default::default() };
+    let map = TntMap { width: 64, height: 64, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![60; cells], features: vec![FEATURE_NONE; cells], feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
     let players: Vec<PlayerSetup> = (0..2).map(|i| PlayerSetup { side: "ARM".into(), color: i as u8, start: FxVec3::ZERO, metal: Fx::from_int(1000), energy: Fx::from_int(1000), ai: i == 1 }).collect();
     let mut sim = Sim::new(types, data, &map, &MapInfo::default(), 0, &players, 7);
     let placed: String = units.iter().enumerate().map(|(i, (name, player, x, z, more))| format!("[unit{i}]{{Unitname={name};XPos={x};ZPos={z};Player={player};{more}}}")).collect();

@@ -14,7 +14,7 @@ fn sea(torpedoes: bool) -> Sim {
     });
     let mut heights = vec![20; 4096];
     for z in 0..64 { for x in 48..64 { heights[z * 64 + x] = 150; } }
-    let map = TntMap { width: 64, height: 64, sea_level: 120, heights, features: vec![FEATURE_NONE; 4096], tiles: vec![], tile_map: vec![], feature_names: vec![], minimap: Default::default() };
+    let map = TntMap { width: 64, height: 64, sea_level: 120, heights, features: vec![FEATURE_NONE; 4096], tiles: vec![], tile_map: vec![], feature_names: vec![], minimap: Default::default(), flags: Vec::new() };
     let players: Vec<_> = [(200, 300), (820, 300)].iter().enumerate().map(|(i, &(x, z))| PlayerSetup { side: "ARM".into(), color: i as u8, start: FxVec3::from_ints(x, 120, z), metal: fx(1000), energy: fx(1000), ai: true }).collect();
     let mut sim = Sim::new(base.types.clone(), base.data.clone(), &map, &MapInfo::default(), 0, &players, 7);
     sim.los_enabled = false;
@@ -92,7 +92,7 @@ fn the_naval_waiting_post_is_reachable_open_water_off_the_shipyard() {
         data.units[sub].water_line = 40.0;
     });
     let heights = (0..4096).map(|i| if i / 64 < 24 { 20 } else if i / 64 < 30 { 100 } else { 150 }).collect();
-    let map = TntMap { width: 64, height: 64, sea_level: 120, heights, features: vec![FEATURE_NONE; 4096], tiles: vec![], tile_map: vec![], feature_names: vec![], minimap: Default::default() };
+    let map = TntMap { width: 64, height: 64, sea_level: 120, heights, features: vec![FEATURE_NONE; 4096], tiles: vec![], tile_map: vec![], feature_names: vec![], minimap: Default::default(), flags: Vec::new() };
     let setups: Vec<_> = [(200, 650), (800, 650)].iter().enumerate().map(|(i, &(x, z))| PlayerSetup { side: "ARM".into(), color: i as u8, start: FxVec3::from_ints(x, 150, z), metal: fx(1000), energy: fx(1000), ai: true }).collect();
     let mut sim = Sim::new(base.types.clone(), base.data.clone(), &map, &MapInfo::default(), 0, &setups, 7);
     sim.spawn_unit(sim.types.id("BUILDER").unwrap(), 0, setups[0].start, 0, true).unwrap();

@@ -39,7 +39,7 @@ impl Battle {
         let data = Arc::new(ta_data::GameData::load(&vfs));
         let types = Arc::new(ta_sim::UnitTypes::compile(&data, &|_| None));
         std::fs::remove_dir_all(&dir).unwrap();
-        let map = TntMap { width: 64, height: 64, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![60; 4096], features: vec![FEATURE_NONE; 4096], feature_names: Vec::new(), minimap: Default::default() };
+        let map = TntMap { width: 64, height: 64, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![60; 4096], features: vec![FEATURE_NONE; 4096], feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
         let players: Vec<_> = (0..2).map(|color| ta_sim::PlayerSetup { side: "ARM".into(), color, start: FxVec3::ZERO, metal: Fx::from_int(1000), energy: Fx::from_int(1000), ai: false }).collect();
         Self { sim: Sim::new(types, data, &map, &Default::default(), 0, &players, 7), selection: Vec::new(), groups: Default::default(), used: Used::default(), overlay: None }
     }

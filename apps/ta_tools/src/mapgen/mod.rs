@@ -10,7 +10,6 @@
 
 pub mod coasts;
 pub mod decks;
-pub mod field;
 pub mod geo;
 pub mod noise;
 pub mod paint;
@@ -19,8 +18,10 @@ pub mod place;
 mod qa;
 pub mod recipes;
 pub mod terrain;
-pub mod tiles;
 pub mod tracks;
+
+// (The grids and the tiles are shared with the converter of other games' maps.)
+pub use ta_mapart::{field, tiles};
 
 use std::path::Path;
 use std::time::Instant;
@@ -266,6 +267,7 @@ pub fn run(id: &str, out: &Path, preview: Option<&Path>, palette: &Palette) -> R
         features,
         feature_names: placed.names.clone(),
         minimap: Default::default(),
+        flags: Vec::new(),
     };
     map.minimap = map.build_minimap(palette);
     let [bl, ba, bb] = tiles::blockiness(&map.tile_map, &map.tiles, &palette.colors, tw);

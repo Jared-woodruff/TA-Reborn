@@ -711,6 +711,7 @@ mod tests {
             features: vec![ta_formats::tnt::FEATURE_NONE; (w * h) as usize],
             feature_names: Vec::new(),
             minimap: Default::default(),
+            flags: Vec::new(),
         };
         let field = HeightField { width: w, height: h, heights, sea_level: 50.0, display: Vec::new() };
         (map, palette, field)

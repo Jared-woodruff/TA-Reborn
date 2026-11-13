@@ -31,6 +31,7 @@ mod mod_library;
 mod news;
 mod pad;
 mod pages;
+mod supcom;
 mod persist;
 mod theme;
 mod sounds;

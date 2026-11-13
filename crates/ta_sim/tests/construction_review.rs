@@ -17,7 +17,7 @@ fn original() -> Option<&'static (Arc<ta_data::GameData>, Arc<UnitTypes>)> {
 }
 
 fn yard(data: &Arc<ta_data::GameData>, types: &Arc<UnitTypes>, water: bool) -> Sim {
-    let map = ta_formats::tnt::TntMap { width: 64, height: 64, sea_level: if water { 128 } else { 0 }, heights: vec![if water { 0 } else { 60 }; 64 * 64], features: vec![ta_formats::tnt::FEATURE_NONE; 64 * 64], tiles: Vec::new(), tile_map: Vec::new(), feature_names: Vec::new(), minimap: Default::default() };
+    let map = ta_formats::tnt::TntMap { width: 64, height: 64, sea_level: if water { 128 } else { 0 }, heights: vec![if water { 0 } else { 60 }; 64 * 64], features: vec![ta_formats::tnt::FEATURE_NONE; 64 * 64], tiles: Vec::new(), tile_map: Vec::new(), feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
     let players = [PlayerSetup { side: "ARM".into(), color: 0, start: FxVec3::ZERO, metal: Fx::from_int(1_000_000), energy: Fx::from_int(1_000_000), ai: false }];
     let mut sim = Sim::new(types.clone(), data.clone(), &map, &ta_data::MapInfo::default(), 0, &players, 17);
     sim.set_starting_resources(0, Fx::from_int(1_000_000), Fx::from_int(1_000_000));

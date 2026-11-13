@@ -156,6 +156,7 @@ fn terrain() -> Vec<u8> {
         features,
         feature_names: vec!["Tree01".into()],
         minimap: IndexedImage::new(4, 4, 3),
+        flags: Vec::new(),
     };
     map.write().unwrap()
 }

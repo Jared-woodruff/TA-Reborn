@@ -167,7 +167,7 @@ mod tests {
         }
         let data = Arc::new(data);
         let types = Arc::new(ta_sim::UnitTypes::compile(&data, &|_| None));
-        let map = ta_formats::tnt::TntMap { width: 64, height: 64, sea_level: 100, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![0; 4096], features: vec![ta_formats::tnt::FEATURE_NONE; 4096], feature_names: Vec::new(), minimap: Default::default() };
+        let map = ta_formats::tnt::TntMap { width: 64, height: 64, sea_level: 100, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![0; 4096], features: vec![ta_formats::tnt::FEATURE_NONE; 4096], feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
         let player = ta_sim::PlayerSetup { side: "ARM".into(), color: 0, start: FxVec3::ZERO, metal: Fx::ZERO, energy: Fx::ZERO, ai: false };
         let mut sim = Sim::new(types, data, &map, &Default::default(), 0, &[player], 7);
         let sub = sim.spawn_unit(0, 0, FxVec3::from_ints(100, 0, 100), 0, true).unwrap();

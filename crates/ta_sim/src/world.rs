@@ -172,7 +172,11 @@ impl World {
         for z in 0..h {
             for x in 0..w {
                 let c = [hv(x, z), hv(x + 1, z), hv(x, z + 1), hv(x + 1, z + 1)];
-                slope[z as usize * w as usize + x as usize] = c.iter().max().unwrap() - c.iter().min().unwrap();
+                // A cliff the map marks (one converted from another game, its heights pressed
+                // into TA's) is as steep as a slope can be: nothing that minds slopes crosses
+                // it or builds on it.
+                slope[z as usize * w as usize + x as usize] =
+                    if map.flags_at(x, z) & ta_formats::tnt::CELL_CLIFF != 0 { u8::MAX } else { c.iter().max().unwrap() - c.iter().min().unwrap() };
             }
         }
         World {
@@ -941,6 +945,7 @@ pub(crate) mod tests {
             features,
             feature_names: Vec::new(),
             minimap: Default::default(),
+            flags: Vec::new(),
         };
         let mut world = World::new(&map);
         world.occupy(Occupant::Unit(1), (20, 10), (4, 4), &[]);
@@ -1008,7 +1013,7 @@ pub(crate) mod tests {
         let (w, h) = (520u32, 520u32);
         let island = |x: u32, z: u32| x.is_multiple_of(2) && z.is_multiple_of(2);
         let features = (0..h).flat_map(|z| (0..w).map(move |x| if island(x, z) { ta_formats::tnt::FEATURE_NONE } else { FEATURE_VOID })).collect();
-        let map = TntMap { width: w, height: h, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![60; (w * h) as usize], features, feature_names: Vec::new(), minimap: Default::default() };
+        let map = TntMap { width: w, height: h, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![60; (w * h) as usize], features, feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
         let mut world = World::new(&map);
         let spec = MoveSpec { footprint: (1, 1), max_slope: 12, max_depth: 12, min_depth: -10_000, hover: false };
         world.prepare(&spec);
@@ -1026,6 +1031,35 @@ pub(crate) mod tests {
         let r = world.component(&spec, last);
         assert_eq!(world.nearest_in_component(&spec, r, (w as i32 - 1, h as i32 - 1), 4), Some(last));
         assert_ne!(world.component(&spec, (w as i32 - 4, h as i32 - 2)), r);
+    }
+
+    /// A wall of cells marked as cliffs across flat ground (a converted map's): a tank, and a
+    /// kbot that climbs anything TA's do, keep to its own side and cannot build on it; a ship
+    /// (on water, slopes are nothing to it) and a unit that minds no slope cross as before.
+    #[test]
+    fn a_maps_cliffs_are_too_steep_to_cross_or_build_on() {
+        let (w, h) = (24u32, 12u32);
+        let mut flags = vec![0u8; (w * h) as usize];
+        for z in 0..h {
+            flags[(z * w + 12) as usize] = ta_formats::tnt::CELL_CLIFF;
+        }
+        let map = TntMap { width: w, height: h, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![60; (w * h) as usize],
+            features: vec![ta_formats::tnt::FEATURE_NONE; (w * h) as usize], feature_names: Vec::new(), minimap: Default::default(), flags };
+        let mut world = World::new(&map);
+        assert_eq!((world.slope(12, 5), world.slope(11, 5)), (u8::MAX, 0));
+        let tank = MoveSpec { footprint: (2, 2), max_slope: 15, max_depth: 12, min_depth: -10_000, hover: false };
+        let climber = MoveSpec { footprint: (2, 2), max_slope: 254, max_depth: 12, min_depth: -10_000, hover: false };
+        let anything = MoveSpec { footprint: (2, 2), max_slope: 255, max_depth: 12, min_depth: -10_000, hover: false };
+        world.prepare_all(&[tank, climber, anything]);
+        for spec in [tank, climber] {
+            assert_ne!(world.component(&spec, (4, 5)), world.component(&spec, (20, 5)), "{spec:?} crossed the cliff");
+            assert!(!world.passable(&spec, (12, 5), None));
+        }
+        assert_eq!(world.component(&anything, (4, 5)), world.component(&anything, (20, 5)));
+        assert_ne!(world.component(&anything, (4, 5)), 0);
+        // (Building goes by the same slope: `placement_error` refuses dry cells steeper than
+        // the builder's limit, and no limit of TA's is past 254.)
+        assert!(world.slope(12, 0) as i32 > 254 && world.slope(10, 0) == 0);
     }
 
     #[test]

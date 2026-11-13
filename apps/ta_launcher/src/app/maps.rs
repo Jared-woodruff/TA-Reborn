@@ -7,6 +7,10 @@ impl LauncherApp {
     /// Reads may overlap other library work; publishing a map pack must finish before
     /// the same shared mod folder can be replaced or removed through the Mods page.
     pub(crate) fn map_import_blocks_mod_changes(&mut self) -> bool {
+        if self.supcom.importing() {
+            self.notify("Wait for the Supreme Commander maps being made, then try again.", AMBER);
+            return true;
+        }
         if !self.maps.importing() { return false; }
         self.notify("Checking and importing maps…", AMBER);
         true

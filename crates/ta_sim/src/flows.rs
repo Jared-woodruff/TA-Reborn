@@ -194,6 +194,7 @@ mod tests {
             features: vec![ta_formats::tnt::FEATURE_NONE; 64 * 64],
             feature_names: Vec::new(),
             minimap: Default::default(),
+            flags: Vec::new(),
         };
         let players = [PlayerSetup { side: "ARM".into(), color: 0, start: FxVec3::ZERO, metal: Fx::from_int(1000), energy: Fx::from_int(1000), ai: false }];
         Sim::new(types, data, &map, &ta_data::MapInfo::default(), 0, &players, 7)

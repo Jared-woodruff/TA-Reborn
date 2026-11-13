@@ -40,7 +40,7 @@ fn original_submarines_depth_charges_and_seaplanes_hit_wet_targets() {
     for (source, target) in pairs {
         // The shared fixture has one player; add the target's opponent normally.
         let setup = [PlayerSetup { side: "ARM".into(), color: 0, start: FxVec3::ZERO, metal: Fx::from_int(10000), energy: Fx::from_int(10000), ai: false }, PlayerSetup { side: "CORE".into(), color: 1, start: FxVec3::ZERO, metal: Fx::from_int(10000), energy: Fx::from_int(10000), ai: false }];
-        let map = TntMap { width: 128, height: 128, sea_level: 150, heights: vec![60; 128 * 128], features: vec![FEATURE_NONE; 128 * 128], tiles: vec![], tile_map: vec![], feature_names: vec![], minimap: Default::default() };
+        let map = TntMap { width: 128, height: 128, sea_level: 150, heights: vec![60; 128 * 128], features: vec![FEATURE_NONE; 128 * 128], tiles: vec![], tile_map: vec![], feature_names: vec![], minimap: Default::default(), flags: Vec::new() };
         let mut sim = Sim::new(types.clone(), data.clone(), &map, &MapInfo::default(), 0, &setup, 73);
         sim.los_enabled = false;
         let shooter = sim.spawn_unit(types.id(source).unwrap(), 0, FxVec3::from_ints(600, 150, 1000), 16384, true).unwrap();

@@ -1,0 +1,21 @@
+[package]
+name = "ta_supcom"
+description = "Supreme Commander: Forged Alliance's maps, read from the player's own copy of the game and made into TA Reborn's"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+ta_formats.workspace = true
+ta_mapart.workspace = true
+ta_vfs.workspace = true
+thiserror.workspace = true
+flate2.workspace = true
+rayon.workspace = true
+log.workspace = true
+sha2.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.56"
