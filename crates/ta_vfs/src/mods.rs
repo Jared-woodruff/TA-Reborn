@@ -171,7 +171,7 @@ pub fn read_mod(path: &Path) -> Result<Option<ModInfo>, ModError> {
         } else {
             // (A folder's whole name: "TA.Escalation" is not "TA", nor "Mod v1.2" "Mod v1".)
             let mut manifest = implicit_manifest(&path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default());
-            manifest.rename = implicit_renames(path, &ModKind::Directory);
+            manifest.rename = kept_renames(path, &ModKind::Directory);
             manifest
         };
         Ok(Some(ModInfo { manifest, path: path.to_path_buf(), kind: ModKind::Directory }))
@@ -182,7 +182,7 @@ pub fn read_mod(path: &Path) -> Result<Option<ModInfo>, ModError> {
     {
         let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
         let mut manifest = implicit_manifest(&stem);
-        manifest.rename = implicit_renames(path, &ModKind::Archive);
+        manifest.rename = kept_renames(path, &ModKind::Archive);
         Ok(Some(ModInfo { manifest, path: path.to_path_buf(), kind: ModKind::Archive }))
     } else {
         Ok(None)
@@ -242,6 +242,66 @@ fn implicit_renames(path: &Path, kind: &ModKind) -> BTreeMap<String, String> {
         }
     }
     crate::package::detected_renames(&contents, &BTreeSet::new())
+}
+
+/// A stamp of what [`implicit_renames`] reads: an archive's size and time; a folder's time, and
+/// the name, size and time of every file below it, as it reads them all (a file renamed deep in
+/// one of its folders changes what it holds, and neither the folder nor those above it).
+type RenameStamp = Vec<(String, u64, Option<std::time::SystemTime>)>;
+
+/// Files a folder's stamp takes in at most: beyond, it is read as it is, every time.
+const MOST_STAMPED_FILES: usize = 200_000;
+
+/// What [`implicit_renames`] found, by path, with the stamp of what it read then. A scan runs at
+/// every visit of the launcher's Mods and Maps pages, on its interface thread: opening every
+/// archive and walking every loose file of each mod without a manifest each time stalled it (a
+/// mods folder of map packs).
+static RENAMES: std::sync::Mutex<KeptRenames> = std::sync::Mutex::new(BTreeMap::new());
+type KeptRenames = BTreeMap<PathBuf, (RenameStamp, BTreeMap<String, String>)>;
+
+fn rename_stamp(path: &Path, kind: &ModKind) -> Option<RenameStamp> {
+    let root = std::fs::metadata(path).ok()?;
+    let mut stamp = vec![(String::new(), root.len(), root.modified().ok())];
+    if *kind == ModKind::Directory {
+        // (Its folders walked, links left aside as the game leaves them, each file stamped from
+        // its folder's listing: no file opened, no archive read.)
+        let mut files = Vec::new();
+        let mut pending = vec![path.to_path_buf()];
+        while let Some(dir) = pending.pop() {
+            for entry in std::fs::read_dir(&dir).ok()?.flatten() {
+                let Ok(kind) = entry.file_type() else { continue };
+                if kind.is_dir() {
+                    pending.push(entry.path());
+                } else if kind.is_file() && let Ok(meta) = entry.metadata() {
+                    let at = entry.path();
+                    let name = at.strip_prefix(path).unwrap_or(&at).to_string_lossy().into_owned();
+                    files.push((name, meta.len(), meta.modified().ok()));
+                    if files.len() > MOST_STAMPED_FILES { return None; }
+                }
+            }
+        }
+        files.sort();
+        stamp.extend(files);
+    }
+    Some(stamp)
+}
+
+/// [`implicit_renames`], read again only when what it reads changed ([`RENAMES`]).
+fn kept_renames(path: &Path, kind: &ModKind) -> BTreeMap<String, String> {
+    let Some(stamp) = rename_stamp(path, kind) else { return implicit_renames(path, kind) };
+    if let Ok(kept) = RENAMES.lock()
+        && let Some((was, renames)) = kept.get(path)
+        && *was == stamp
+    {
+        return renames.clone();
+    }
+    let renames = implicit_renames(path, kind);
+    if let Ok(mut kept) = RENAMES.lock() {
+        // (Bounded: mods come and go.)
+        if kept.len() >= 4096 { kept.clear(); }
+        kept.insert(path.to_path_buf(), (stamp, renames.clone()));
+    }
+    renames
 }
 
 fn implicit_manifest(stem: &str) -> ModManifest {
@@ -530,8 +590,13 @@ pub fn mount_enabled(install: Option<&Path>, builtin: Option<&Path>, enabled: &[
     }
 }
 
-/// Label of the mods folder next to the executables.
-pub const APP_FOLDER_LABEL: &str = "Game folder";
+/// Label of the mods folder in TA Reborn's own program folder, next to the executables (not
+/// Total Annihilation's folder, which players call the game folder).
+pub const APP_FOLDER_LABEL: &str = "Program folder";
+/// Label of the mods folder among the player's settings, where mods are installed.
+pub const USER_FOLDER_LABEL: &str = "User folder";
+/// Label of the extra mods folder a player may add.
+pub const EXTRA_FOLDER_LABEL: &str = "Extra folder";
 
 /// A place mods are looked for, with a short label for user interfaces.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -549,9 +614,9 @@ pub fn standard_folders(app_dir: Option<&Path>, user_config_dir: &Path, extra: O
         let resources = crate::bundle_resource_dir(dir).unwrap_or_else(|| dir.to_path_buf());
         candidates.push(ModFolder { label: APP_FOLDER_LABEL, path: resources.join("mods") });
     }
-    candidates.push(ModFolder { label: "User folder", path: user_config_dir.join("mods") });
+    candidates.push(ModFolder { label: USER_FOLDER_LABEL, path: user_config_dir.join("mods") });
     if let Some(extra) = extra {
-        candidates.push(ModFolder { label: "Extra folder", path: extra.to_path_buf() });
+        candidates.push(ModFolder { label: EXTRA_FOLDER_LABEL, path: extra.to_path_buf() });
     }
     let mut seen = std::collections::BTreeSet::new();
     candidates.into_iter().filter(|f| seen.insert(folder_key(&f.path))).collect()
@@ -1194,6 +1259,19 @@ mod replacement_tests {
         let mounted = mount(Some(&game), None, &[escalation], &ids);
         assert_eq!(mounted.vfs.read("units/armcom.fbi").unwrap(), b"escalation", "its units in place of TA's");
         assert!(!mounted.vfs.exists("units/armsy.fbi"), "TA's own hidden beneath, as its engine read only its folder");
+        // (Kept from scan to scan, and read again when the archive changes: the mount, which
+        // maps it, let go first.)
+        drop(mounted);
+        test_archive::write(&mods.join("TAESC.gp3"), &[("unitse/armcom.fbi", b"escalation, again")]);
+        let (found, _) = scan(&mods);
+        assert_eq!(found.iter().find(|m| m.manifest.id == "taesc").unwrap().manifest.rename, pairs(&[("unitse", "units")]), "read again once it changed");
+        // (A folder's file renamed deep in it, the folders above it unchanged: read again too.)
+        std::fs::create_dir_all(mods.join("deep").join("unitse").join("arm")).unwrap();
+        std::fs::write(mods.join("deep/unitse/arm/unit.txt"), b"deep").unwrap();
+        let renamed = |mods: &Path| scan(mods).0.into_iter().find(|m| m.manifest.id == "deep").unwrap().manifest.rename;
+        assert!(renamed(&mods).is_empty(), "nothing of TA's in it yet");
+        std::fs::rename(mods.join("deep/unitse/arm/unit.txt"), mods.join("deep/unitse/arm/unit.fbi")).unwrap();
+        assert_eq!(renamed(&mods), pairs(&[("unitse", "units")]), "its unit found once renamed");
         let _ = std::fs::remove_dir_all(root);
     }
 

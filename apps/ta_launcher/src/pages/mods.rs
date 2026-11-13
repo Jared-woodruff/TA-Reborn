@@ -515,7 +515,7 @@ impl LauncherApp {
             let version = installed.as_ref().map(|entry| entry.info.manifest.version.clone());
             let offline = self.offline.then(|| t("The launcher is offline."));
             let held = running.then(|| t("Close the game first: it may be using this mod."))
-                .or_else(|| self.mods.in_game_folder(id).then(|| t("This copy is in the game folder, which comes before your mods folder: replace it there to update it.")));
+                .or_else(|| self.mods.in_game_folder(id).then(|| t("This copy is in TA Reborn's program folder, which comes before your mods folder: replace it there to update it.")));
             let update = entry.file.filter(|file| file.can_download() && mod_library::update(entry, version.as_deref()).is_some());
             if manual {
                 menu.add_text(website(entry), Icon::Web, ModChoice::Do(Action::OpenUrl(entry.page()))).main();
@@ -595,7 +595,7 @@ impl LauncherApp {
         }
         if installed.is_some() {
             menu.rule();
-            menu.add(n("REMOVE"), Icon::Remove, ModChoice::Do(Action::Uninstall(id.into()))).danger().unless(self.removal_blocked());
+            menu.add(n("REMOVE"), Icon::Remove, ModChoice::Do(Action::Uninstall(id.into()))).danger().unless(self.removal_blocked_for(id));
         }
         menu
     }
@@ -675,6 +675,12 @@ impl LauncherApp {
         else { None }
     }
 
+    /// Why the mod `id` cannot be removed now, if it cannot: [`Self::removal_blocked`], or its copy
+    /// is in TA Reborn's program folder, which only an administrator may change.
+    pub(crate) fn removal_blocked_for(&self, id: &str) -> Option<&'static str> {
+        self.removal_blocked().or_else(|| self.mods.in_game_folder(id).then(|| t("This copy is in TA Reborn's program folder, which only an administrator may change: remove it there.")))
+    }
+
     /// The chosen mod: its banner, what it is, what can be done with it, what it changes; in two
     /// columns where there is room (the banner and its words at the left).
     fn mod_details(&mut self, ui: &mut Ui, height: f32) {
@@ -732,9 +738,9 @@ impl LauncherApp {
                 let by = tf("by {team}", &[("team", &entry.team)]);
                 ui.add(egui::Label::new(RichText::new(by).font(strong(12.5)).color(AMBER).extra_letter_spacing(ta_ui::i18n::tracking(0.6))).wrap());
                 let stage = self.installer.stages.get(entry.id);
-                let blocked = self.removal_blocked();
+                let blocked = self.removal_blocked_for(&item.id);
                 let held = self.game_running().then(|| t("Close the game first: it may be using this mod."))
-                    .or_else(|| self.mods.in_game_folder(&item.id).then(|| t("This copy is in the game folder, which comes before your mods folder: replace it there to update it.")));
+                    .or_else(|| self.mods.in_game_folder(&item.id).then(|| t("This copy is in TA Reborn's program folder, which comes before your mods folder: replace it there to update it.")));
                 if let Some(action) = getmods::footer_ui(ui, entry, version.as_deref(), on, stage, !self.offline, blocked, held) {
                     actions.push(match action {
                         CardAction::Get => Action::GetMod(entry.id),
@@ -762,7 +768,7 @@ impl LauncherApp {
                     }
                     ui.label(RichText::new(t(if on { "ON" } else { "OFF" })).font(strong(12.0)).color(if on { GREEN } else { STEEL }));
                     if super::mod_report::info_button(ui).clicked() { actions.push(Action::ShowModReport(item.id.clone())); }
-                    let blocked = self.removal_blocked();
+                    let blocked = self.removal_blocked_for(&item.id);
                     let remove = ui.add_enabled(blocked.is_none(), ActionButton::secondary("REMOVE").height(28.0));
                     let remove = match blocked { Some(why) => remove.disabled_tip(why), None => remove.hover_tip(t("Remove this mod (to the Recycle Bin)")) };
                     if remove.clicked() { actions.push(Action::Uninstall(item.id.clone())); }
@@ -977,7 +983,7 @@ impl LauncherApp {
 /// A mod folder's label, translated (`ta_vfs` names them in English).
 pub(super) fn folder_label(label: &str) -> &str {
     match label {
-        "Game folder" => t("Game folder"),
+        "Program folder" => t("Program folder"),
         "User folder" => t("User folder"),
         "Extra folder" => t("Extra folder"),
         other => other,

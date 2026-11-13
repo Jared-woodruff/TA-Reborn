@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use ta_ui::i18n::tf;
 use ta_vfs::mods::{self, ModError, ModInfo, ModKind};
 
-pub use ta_vfs::mods::APP_FOLDER_LABEL;
+pub use ta_vfs::mods::{APP_FOLDER_LABEL, EXTRA_FOLDER_LABEL};
 
 /// A folder scanned for mods.
 #[derive(Clone, Debug)]
@@ -130,6 +130,28 @@ impl ModList {
     /// where an update is installed (one there would change nothing).
     pub fn in_game_folder(&self, id: &str) -> bool {
         self.get(id).is_some_and(|m| self.folder_label(m) == APP_FOLDER_LABEL)
+    }
+
+    /// The folder an update of `id` goes to when it is not the mods folder: the extra folder, where
+    /// the copy in use is a mod folder kept there (installed in the mods folder, the update would
+    /// leave the old copy behind it, two mods of one id, and a REMOVE would bring the old one
+    /// back). A copy that is an archive is not replaced by a folder beside it (the installer
+    /// refuses to: it would be two mods of one id in one folder): its update goes to the mods
+    /// folder, which comes before the extra one, as before.
+    pub fn update_folder(&self, id: &str) -> Option<std::path::PathBuf> {
+        self.get(id)
+            .filter(|m| m.info.kind == ta_vfs::mods::ModKind::Directory)
+            .and_then(|m| self.folders.get(m.folder))
+            .filter(|folder| folder.label == EXTRA_FOLDER_LABEL)
+            .map(|folder| folder.path.clone())
+    }
+
+    /// The mods that need `id` (installed, their names), and those of them that are on.
+    pub fn needed_by(&self, id: &str, enabled: &[String]) -> (Vec<String>, Vec<String>) {
+        let needing: Vec<&ModEntry> = self.mods.iter().filter(|m| m.id() != id && m.info.manifest.depends.iter().any(|d| d == id)).collect();
+        let names = |list: &[&ModEntry]| list.iter().map(|m| m.info.manifest.name.clone()).collect::<Vec<_>>();
+        let on: Vec<&ModEntry> = needing.iter().copied().filter(|m| enabled.iter().any(|e| e == m.id())).collect();
+        (names(&needing), names(&on))
     }
 
     /// The version of `id` an update would replace: none when it is not installed, or when the
@@ -339,6 +361,29 @@ mod tests {
         assert_eq!(list.get("shared").map(|m| m.info.manifest.version.as_str()), Some("1.0"), "the game folder's, whatever the case of its id");
         assert!(list.in_game_folder("shared") && !list.in_game_folder("mine"));
         assert_eq!((list.updatable_version("shared"), list.updatable_version("mine"), list.updatable_version("gone")), (None, Some("2.0"), None));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// A mod kept in the extra folder is updated there (in the mods folder the update would leave
+    /// the old copy behind it); one in the mods folder where it is. And the mods needing one are
+    /// known, those on apart.
+    #[test]
+    fn a_mod_in_the_extra_folder_is_updated_there_and_who_needs_a_mod_is_known() {
+        let root = std::env::temp_dir().join(format!("ta_launcher_mods_extra_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (user, extra) = (root.join("user"), root.join("extra"));
+        for (dir, id, depends) in [(&user, "base", ""), (&user, "addon", "depends = [\"base\"]\n"), (&extra, "kept", ""), (&extra, "other", "depends = [\"base\"]\n")] {
+            std::fs::create_dir_all(dir.join(id)).unwrap();
+            std::fs::write(dir.join(id).join("mod.toml"), format!("id = \"{id}\"\nname = \"{id}\"\nversion = \"1.0\"\n{depends}")).unwrap();
+        }
+        std::fs::write(extra.join("packed.ufo"), b"an archive mod").unwrap();
+        let folders = vec![ModFolder { label: "User folder", path: user.clone(), exists: true }, ModFolder { label: EXTRA_FOLDER_LABEL, path: extra.clone(), exists: true }];
+        let list = ModList::scan(folders, &[]);
+        assert_eq!(list.update_folder("kept"), Some(extra.clone()), "updated where it is kept");
+        assert_eq!(list.update_folder("packed"), None, "an archive is not replaced by a folder beside it: the mods folder's update comes first");
+        assert_eq!((list.update_folder("base"), list.update_folder("gone")), (None, None), "the mods folder's: the installer's own");
+        let (needing, on) = list.needed_by("base", &ids(&["base", "addon"]));
+        assert_eq!((needing, on), (vec!["addon".to_string(), "other".to_string()], vec!["addon".to_string()]));
         let _ = std::fs::remove_dir_all(root);
     }
 }

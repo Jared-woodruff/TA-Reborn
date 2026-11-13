@@ -144,7 +144,8 @@ impl From<String> for Failure {
 }
 
 pub struct Installer {
-    requests: Sender<Source>,
+    /// What to install, and where when it is not the mods folder.
+    requests: Sender<(Source, Option<PathBuf>)>,
     updates: Receiver<(String, Stage)>,
     cancelled: Arc<Mutex<Vec<String>>>,
     /// The download under way, to stop when the launcher closes.
@@ -167,7 +168,7 @@ pub struct Installer {
 impl Installer {
     /// Installs into `mods_dir`; downloads and unpacks under `cache`.
     pub fn new(mods_dir: PathBuf, cache: PathBuf) -> Installer {
-        let (requests, jobs) = channel::<Source>();
+        let (requests, jobs) = channel::<(Source, Option<PathBuf>)>();
         let (report, updates) = channel();
         let cancelled: Arc<Mutex<Vec<String>>> = Arc::default();
         let current: Arc<Mutex<Option<moddb::Stopper>>> = Arc::default();
@@ -181,7 +182,7 @@ impl Installer {
         let worker = std::thread::Builder::new()
             .name("mod installs".into())
             .spawn(move || {
-                for job in jobs {
+                for (job, into) in jobs {
                     busy.store(true, Ordering::Release);
                     let id = job.id().to_string();
                     let is_cancelled = || {
@@ -199,7 +200,7 @@ impl Installer {
                         let send = |s: Stage| {
                             let _ = report.send((id.clone(), s));
                         };
-                        match install(&job, &mods_dir, &cache, &send, &is_cancelled, &running, &playing) {
+                        match install(&job, into.as_deref().unwrap_or(&mods_dir), &cache, &send, &is_cancelled, &running, &playing) {
                             Ok((units, maps, installed)) => Stage::Done { units, maps, id: installed },
                             Err(Failure::Cancelled) => Stage::Cancelled,
                             Err(Failure::Error(e)) => {
@@ -243,8 +244,19 @@ impl Installer {
         self.start(Source::Catalogue(entry, from));
     }
 
+    /// [`Installer::install`] into `into` where it is not the mods folder (an update of a mod kept
+    /// in the extra folder, `ModList::update_folder`).
+    pub fn install_into(&mut self, entry: &'static Entry, from: Option<PathBuf>, into: Option<PathBuf>) {
+        self.start_into(Source::Catalogue(entry, from), into);
+    }
+
     /// Installs a mod (unless it is already under way).
     pub fn start(&mut self, source: Source) {
+        self.start_into(source, None);
+    }
+
+    /// [`Installer::start`] into `into` where it is not the mods folder.
+    pub fn start_into(&mut self, source: Source, into: Option<PathBuf>) {
         let id = source.id().to_string();
         if self.stages.get(&id).is_some_and(Stage::active) {
             return;
@@ -263,7 +275,7 @@ impl Installer {
         } else {
             self.packages.remove(&id);
         }
-        let stage = if self.requests.send(source).is_ok() { Stage::Queued }
+        let stage = if self.requests.send((source, into)).is_ok() { Stage::Queued }
             else { Stage::Failed(installer_stopped_message()) };
         self.stages.insert(id, stage);
     }

@@ -211,11 +211,32 @@ impl LauncherApp {
                         if !fixes.contains(&dependency) { fixes.push(dependency); }
                     }
                 }
+                // (A dependency that is not installed: GET, where the catalogue downloads it.)
+                let mut downloads: Vec<&'static crate::catalogue::Entry> = Vec::new();
+                for id in enabled {
+                    let Some(module) = self.mods.get(id) else { continue };
+                    for dependency in &module.info.manifest.depends {
+                        if self.mods.get(dependency).is_none()
+                            && let Some(entry) = crate::catalogue::get(dependency).filter(|entry| entry.file.is_some_and(|file| file.can_download()))
+                            && !downloads.iter().any(|d| d.id == entry.id)
+                        {
+                            downloads.push(entry);
+                        }
+                    }
+                }
                 ui.horizontal_wrapped(|ui| {
                     for dependency in fixes {
                         let name = self.mods.get(&dependency).map_or(dependency.clone(), |m| m.info.manifest.name.clone());
                         if ui.add(widgets::ActionButton::primary(&tf("ENABLE {name}", &[("name", &ta_ui::i18n::upper(&name))])).height(28.0)).clicked() {
                             self.push(Action::EnableMod(dependency));
+                        }
+                    }
+                    for entry in downloads {
+                        let installing = self.installer.stages.get(entry.id).is_some_and(crate::getmods::Stage::active);
+                        let button = ui.add_enabled(!self.offline && !installing, widgets::ActionButton::primary(&tf("GET {name}", &[("name", &ta_ui::i18n::upper(entry.name))])).height(28.0));
+                        let button = if self.offline { button.disabled_tip(t("The launcher is offline.")) } else { button.hover_tip(t("Download and install it, then turn it on")) };
+                        if button.clicked() {
+                            self.push(Action::GetMod(entry.id));
                         }
                     }
                 });
