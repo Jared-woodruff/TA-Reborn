@@ -141,6 +141,14 @@ pub struct UnitDef {
 }
 
 impl UnitDef {
+    /// Whether it stands on land, as a land unit or building does (not flying, hovering, floating
+    /// or needing water): what its model reaches below its foot is under the ground, which hides
+    /// it in a battle (TA: Escalation's Guardian has a skirt 73 high under its base, to close the
+    /// gap on a slope), and its pictures leave that out.
+    pub fn stands_on_land(&self) -> bool {
+        !self.can_fly && !self.can_hover && !self.floater && self.min_water_depth <= 0.0
+    }
+
     /// Where the unit's script may be, in the order they are tried. TA runs a unit's own
     /// script, `scripts/<UnitName>.cob`, whatever model it borrows: TA: Enhanced gives 62
     /// units another unit's model, 35 of them with scripts under their own names only. A unit

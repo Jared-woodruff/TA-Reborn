@@ -860,7 +860,7 @@ fn purpose_ring(game: &Game, u: &Unit) -> Vec<Entry> {
         .iter()
         .enumerate()
         .filter_map(|(i, &p)| {
-            let of: Vec<usize> = options.iter().copied().filter(|&o| Purpose::of(game.sim.types.get(o)) == p).collect();
+            let of: Vec<usize> = options.iter().copied().filter(|&o| Purpose::of(&game.sim.types, game.sim.types.get(o)) == p).collect();
             let first = *of.first()?;
             let mut e = Entry::new(Id::Open(Menu::Buildings(i, 0)), Glyph::Build, t(p.short()), t(p.label())).opening();
             e.glyph = None;
@@ -879,7 +879,7 @@ fn building_ring(game: &Game, u: &Unit, purpose: usize, k: usize) -> Vec<Entry> 
         .build_options
         .iter()
         .copied()
-        .filter(|&o| game.sim.is_allowed(o) && Purpose::of(game.sim.types.get(o)) == p)
+        .filter(|&o| game.sim.is_allowed(o) && Purpose::of(&game.sim.types, game.sim.types.get(o)) == p)
         .map(|o| type_entry(game, Id::Place(o), o, &builder))
         .collect();
     let mut shown = page(list, k);
@@ -937,7 +937,7 @@ pub fn paging(game: &Game, radial: &Radial) -> Option<(usize, usize)> {
         Menu::Units(k) => (game.sim.unit_type(u).build_options.iter().filter(|&&o| game.sim.is_allowed(o)).count(), k),
         Menu::Buildings(p, k) => {
             let kind = *Purpose::ALL.get(p)?;
-            (game.sim.unit_type(u).build_options.iter().filter(|&&o| game.sim.is_allowed(o) && Purpose::of(game.sim.types.get(o)) == kind).count(), k)
+            (game.sim.unit_type(u).build_options.iter().filter(|&&o| game.sim.is_allowed(o) && Purpose::of(&game.sim.types, game.sim.types.get(o)) == kind).count(), k)
         }
         _ => return None,
     };

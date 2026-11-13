@@ -14,6 +14,9 @@ pub struct PreviewModel {
     pub model: Model3do,
     /// Finished standing pose from the caller's script sandbox; hidden pieces are zero.
     pub pieces: Option<Vec<Mat4>>,
+    /// It stands on land (`UnitDef::stands_on_land`): pictured without what its model reaches
+    /// under the ground, as the game's portraits are.
+    pub ground: bool,
 }
 
 /// Premultiplied sRGB RGBA, ready for an egui colour image (the same convention as portraits).
@@ -29,7 +32,7 @@ pub struct UnitStudio {
     frame: wgpu::BindGroup,
     portrait: PortraitStudio,
     models: Option<ModelRenderer>,
-    subjects: Vec<(ModelId, Vec<Mat4>)>,
+    subjects: Vec<(ModelId, Vec<Mat4>, bool)>,
     readback: Option<(u32, wgpu::Buffer)>,
 }
 
@@ -128,7 +131,7 @@ impl UnitStudio {
             if let Some(pieces) = &subject.pieces {
                 ensure!(pieces.len() == models.library.info(id).pieces.len(), "preview pose must match its model");
             }
-            self.subjects.push((id, subject.pieces.clone().unwrap_or_else(|| models.library.info(id).rest_pose())));
+            self.subjects.push((id, subject.pieces.clone().unwrap_or_else(|| models.library.info(id).rest_pose()), subject.ground));
         }
         self.models = Some(models);
         Ok(())
@@ -148,10 +151,10 @@ impl UnitStudio {
         }
         let buffer = &self.readback.as_ref().expect("created above").1;
         let mut images = Vec::with_capacity(self.subjects.len());
-        for (i, (model, rest)) in self.subjects.iter().enumerate() {
+        for (i, (model, rest, ground)) in self.subjects.iter().enumerate() {
             let pieces: Vec<_> = rest.iter().map(|m| rotation * *m).collect();
             let picture = self.portrait.render_model(&self.device, &self.queue, models, &self.frame,
-                &PortraitRequest { model: *model, pieces: &pieces, team: if i == 0 { 0 } else { 1 }, size },
+                &PortraitRequest { model: *model, pieces: &pieces, team: if i == 0 { 0 } else { 1 }, size, ground: *ground },
                 StudioSettings { samples: 1, art_reborn: true, colour_blind: false, hd: 1.0, exposure: 1.0, frame_scale: 0.80 })
                 .context("the model has no visible surfaces")?;
             let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("preview readback") });
@@ -188,7 +191,7 @@ mod tests {
         let gafs: Vec<_> = vfs.list("textures", Some("gaf"), false).iter()
             .filter_map(|p| vfs.read_opt(p).and_then(|b| Gaf::parse(&b).ok())).collect();
         let subjects: Vec<_> = ["ARMSTUMP", "CORRAID"].into_iter().map(|name| PreviewModel {
-            unit: name.into(), object: name.into(), pieces: None,
+            unit: name.into(), object: name.into(), pieces: None, ground: true,
             model: Model3do::parse(&vfs.read(&format!("objects3d/{name}.3do")).unwrap()).unwrap(),
         }).collect();
         let mut studio = UnitStudio::new().unwrap();

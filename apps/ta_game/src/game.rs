@@ -11,7 +11,7 @@ use ta_sim::{Command, Fx, FxVec3, Order, PlayerSetup, Seen, Sim, SimEvent, Unit,
 use winit::keyboard::KeyCode;
 
 use crate::input::{Input, MouseButtonId};
-use crate::scene::{Scene, piece_matrices};
+use crate::scene::Scene;
 use crate::setup::{Assets, Controller, GameSetup};
 
 pub const TICK_SECONDS: f32 = 1.0 / 30.0;
@@ -484,6 +484,8 @@ pub struct Game {
     pub placement: Option<Placement>,
     /// Piece matrices of the ghosts of the selected constructors' queued buildings.
     queued_ghosts: Vec<Vec<Mat4>>,
+    /// Each building's pose as it stands finished, by type, for its ghosts (`ghost_pose`).
+    standing_poses: rustc_hash::FxHashMap<usize, Vec<Mat4>>,
     /// The viewer's fog of war as drawn (eased from one state to the next), and the enemy
     /// structures the viewer remembers (drawn as ghosts where they were last seen): see `fog.rs`.
     pub fog: crate::fog::FogView,
@@ -873,6 +875,7 @@ impl Game {
             selection: Vec::new(),
             placement: None,
             queued_ghosts: Vec::new(),
+            standing_poses: Default::default(),
             fog: crate::fog::FogView::default(),
             memory: crate::fog::Memory::default(),
             command_mode: None,
@@ -3804,11 +3807,11 @@ impl Game {
         self.scene.skin_viewer = self.hud_player();
         // What the viewer remembers of the enemy's structures (those they see are remembered).
         self.memory.update(&self.sim, viewer);
-        let Game { sim, scene, features, effects, placement, local_player, queued_ghosts, show_all_plans, solo, selection: selected, memory, .. } = self;
+        let Game { sim, scene, features, effects, placement, local_player, queued_ghosts, standing_poses, show_all_plans, solo, selection: selected, memory, .. } = self;
         let waiting: Vec<usize> = effects.unsettled_wrecks().collect();
         features.update(sim, time, view_min, view_max, foliage, &waiting);
-        // Ghost: a fresh, unanimated instance of the building at the cursor (one per site
-        // while dragging out a row).
+        // Ghost: the building at the cursor as it will stand finished (one per site while
+        // dragging out a row).
         let mut ghost = None;
         let mut row_ghosts = Vec::new();
         if let Some(pl) = placement.as_mut() {
@@ -3817,14 +3820,12 @@ impl Game {
             if let Some(model) = model {
                 let t = sim.types.get(pl.type_id);
                 for (i, &(pos, ok)) in pl.row.iter().enumerate() {
-                    piece_matrices(&ghost_unit(pl.type_id, pos), t, ghost_root(sim, pl.type_id, pos), &mut pl.row_matrices[i]);
+                    ghost_pose(standing_poses, t, ghost_root(sim, pl.type_id, pos), &mut pl.row_matrices[i]);
                     row_ghosts.push((model, ta_render::model::FLAG_BUILDING | if ok { 0 } else { ta_render::model::FLAG_INVALID }));
                 }
             }
             if let (Some(pos), Some(model), true) = (pl.pos, model, pl.row.is_empty()) {
-                let t = sim.types.get(pl.type_id);
-                let dummy = ghost_unit(pl.type_id, pos);
-                piece_matrices(&dummy, t, ghost_root(sim, pl.type_id, pos), &mut pl.matrices);
+                ghost_pose(standing_poses, sim.types.get(pl.type_id), ghost_root(sim, pl.type_id, pos), &mut pl.matrices);
                 let flags = ta_render::model::FLAG_BUILDING | if pl.valid { 0 } else { ta_render::model::FLAG_INVALID };
                 ghost = Some((model, flags));
             }
@@ -3840,7 +3841,7 @@ impl Game {
         let mut queued_models = Vec::new();
         for (i, &(type_id, pos)) in queued.iter().enumerate() {
             if let Some(model) = scene.model_for(type_id) {
-                piece_matrices(&ghost_unit(type_id, pos), sim.types.get(type_id), ghost_root(sim, type_id, pos), &mut queued_ghosts[i]);
+                ghost_pose(standing_poses, sim.types.get(type_id), ghost_root(sim, type_id, pos), &mut queued_ghosts[i]);
                 queued_models.push((i, model));
             }
         }
@@ -4166,7 +4167,6 @@ pub fn fx_vec(v: Vec3) -> FxVec3 {
     FxVec3::new(Fx::from_f32(v.x), Fx::from_f32(v.y), Fx::from_f32(v.z))
 }
 
-/// A throwaway unit used only to evaluate a rest-pose model for the placement ghost.
 /// The cells a building of type `t` centred at `pos` covers: (x0, z0, x1, z1), exclusive.
 fn footprint_rect(t: &ta_sim::UnitType, pos: ta_sim::FxVec3) -> (i32, i32, i32, i32) {
     use ta_sim::world::World;
@@ -4183,10 +4183,15 @@ fn ghost_root(sim: &Sim, type_id: usize, pos: Vec3) -> Mat4 {
     Mat4::from_translation(Vec3::new(rest.x.to_f32(), y, rest.z.to_f32()))
 }
 
-fn ghost_unit(type_id: usize, pos: Vec3) -> ta_sim::Unit {
-    let mut u = ta_sim::Unit::new(UnitId { slot: u32::MAX, generation: 0 }, type_id, 0, fx_vec(pos));
-    u.build_progress = Fx::ZERO;
-    u
+/// A building's ghost: its model as it will stand finished, its script's `Create` (and
+/// `Activate`) run in a sandbox (`scene::standing_pose`, worked out once a type), set down at
+/// `root`. Not its model as drawn without the script: Total Mayhem's metal extractors carry the
+/// gun turret and the parts of their upgrade, which their scripts hide, and its Big Berthas turn
+/// their guns the way the variant chosen builds them.
+fn ghost_pose(poses: &mut rustc_hash::FxHashMap<usize, Vec<Mat4>>, t: &ta_sim::UnitType, root: Mat4, out: &mut Vec<Mat4>) {
+    let pose = poses.entry(t.id).or_insert_with(|| crate::scene::standing_pose(t));
+    out.clear();
+    out.extend(pose.iter().map(|m| if *m == Mat4::ZERO { Mat4::ZERO } else { root * *m }));
 }
 
 

@@ -108,6 +108,10 @@ pub const FLAG_STUNNED: u32 = 32;
 /// A structure the viewer saw and no longer sees, remembered where it stood (the fog of war's
 /// ghosts): a cool grey, a little translucent, casting no shadow.
 pub const FLAG_REMEMBERED: u32 = 64;
+/// Only what stands above the world's ground plane (y 0) is drawn: a portrait of a unit that
+/// stands on land, without what its model reaches under the ground, as a battle's ground hides
+/// it (TA: Escalation's Guardian's skirt).
+pub const FLAG_ABOVE_GROUND: u32 = 128;
 /// Bits 8-15 of the flags: how bright the flash of a hit is (0..255).
 pub const FLAG_HIT_SHIFT: u32 = 8;
 /// Bits 16-23 of the flags: how fast its treads run (world units a second, 0..255): marks on

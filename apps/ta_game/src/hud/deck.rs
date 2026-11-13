@@ -177,11 +177,13 @@ enum Group {
 impl Group {
     const ALL: [Group; 7] = [Group::Commander, Group::Army, Group::Builders, Group::Factories, Group::Aircraft, Group::Navy, Group::Defences];
 
-    fn of(ty: &UnitType) -> Option<Group> {
+    /// (A building that builds only its own upgrade, such as TA: Escalation's Guardian, is no
+    /// factory: it makes no unit that moves, `UnitTypes::makes_units`.)
+    fn of(types: &ta_sim::UnitTypes, ty: &UnitType) -> Option<Group> {
         let armed = ty.weapons.iter().any(|w| w.is_some());
         Some(if ty.def.is_commander {
             Group::Commander
-        } else if ty.is_factory {
+        } else if types.makes_units(ty) {
             Group::Factories
         } else if ty.locomotion == Locomotion::Static {
             if armed { Group::Defences } else { return None }
@@ -263,10 +265,12 @@ pub(crate) enum Purpose {
 impl Purpose {
     pub(crate) const ALL: [Purpose; 5] = [Purpose::Economy, Purpose::Factories, Purpose::Defence, Purpose::Sensors, Purpose::Other];
 
-    pub(crate) fn of(ty: &UnitType) -> Purpose {
+    /// The tab a building goes on. (One that builds only its own upgrade, such as TA:
+    /// Escalation's Guardian, is no factory: it makes no unit that moves, `UnitTypes::makes_units`.)
+    pub(crate) fn of(types: &ta_sim::UnitTypes, ty: &UnitType) -> Purpose {
         let d = &ty.def;
         let makes = ty.extracts_metal > Fx::ZERO || ty.makes_metal > Fx::ZERO || ty.metal_make > Fx::ZERO || ty.energy_make > ty.energy_use;
-        if ty.is_factory {
+        if types.makes_units(ty) {
             Purpose::Factories
         } else if ty.locomotion != Locomotion::Static {
             Purpose::Other
@@ -407,7 +411,7 @@ impl Hud {
         let fullest = if ty.is_factory {
             options.len()
         } else {
-            Purpose::ALL.iter().map(|&p| options.iter().filter(|&&o| Purpose::of(game.sim.types.get(o)) == p).count()).max().unwrap_or(0)
+            Purpose::ALL.iter().map(|&p| options.iter().filter(|&&o| Purpose::of(&game.sim.types, game.sim.types.get(o)) == p).count()).max().unwrap_or(0)
         };
         let columns = fullest.div_ceil(2).clamp(COLUMNS, COLUMNS_MOST);
         columns as f32 * TILE + (columns - 1) as f32 * GRID_GAP
@@ -424,7 +428,7 @@ pub(super) fn force_list(game: &Game) -> Vec<Force> {
             continue;
         }
         let ty = game.sim.unit_type(u);
-        let Some(f) = Group::of(ty).and_then(|g| forces.iter_mut().find(|f| f.group == g)) else { continue };
+        let Some(f) = Group::of(&game.sim.types, ty).and_then(|g| forces.iter_mut().find(|f| f.group == g)) else { continue };
         f.ids.push(u.id);
         match f.types.iter_mut().find(|(k, _)| *k == u.type_id) {
             Some((_, k)) => *k += 1,
@@ -453,7 +457,7 @@ fn mark_selected(forces: &mut [Force], game: &Game) {
     }
     for &id in &game.selection {
         let Some(u) = game.sim.unit(id).filter(|u| u.owner == owner) else { continue };
-        if let Some(g) = Group::of(game.sim.unit_type(u))
+        if let Some(g) = Group::of(&game.sim.types, game.sim.unit_type(u))
             && let Some(f) = forces.iter_mut().find(|f| f.group == g)
         {
             f.selected += 1;
@@ -1272,7 +1276,7 @@ impl Hud {
         } else {
             Purpose::ALL
                 .iter()
-                .map(|&p| (Some(p), options.iter().copied().filter(|&o| Purpose::of(game.sim.types.get(o)) == p).collect::<Vec<_>>()))
+                .map(|&p| (Some(p), options.iter().copied().filter(|&o| Purpose::of(&game.sim.types, game.sim.types.get(o)) == p).collect::<Vec<_>>()))
                 .filter(|(_, list)| !list.is_empty())
                 .collect()
         };
@@ -1284,7 +1288,7 @@ impl Hud {
         // Placing something picked elsewhere (a key, the classic panel): its tab, once.
         if placing != self.build_tab_placing {
             self.build_tab_placing = placing;
-            if let Some(pl) = placing.map(|o| Purpose::of(game.sim.types.get(o))).filter(|p| tabs.contains(p)) {
+            if let Some(pl) = placing.map(|o| Purpose::of(&game.sim.types, game.sim.types.get(o))).filter(|p| tabs.contains(p)) {
                 shown = Some(pl);
             }
         }

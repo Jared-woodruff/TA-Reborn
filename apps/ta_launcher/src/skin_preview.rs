@@ -483,7 +483,7 @@ fn subjects(source: &Source, pack: &ta_skins::Pack, wanted: &[String; 2]) -> any
             // (Its own script, else its model's, as the game runs it.)
             let script = unit.script_paths().iter().find_map(|p| source.vfs.read_opt(p)).and_then(|bytes| ta_formats::cob::CobScript::parse(&bytes).ok());
             let pieces = pose::standing(&model, script, unit.activate_when_built);
-            models.push(ta_render::preview::PreviewModel { unit: unit.name.clone(), object: unit.object.clone(), model, pieces: Some(pieces) });
+            models.push(ta_render::preview::PreviewModel { unit: unit.name.clone(), object: unit.object.clone(), model, pieces: Some(pieces), ground: unit.stands_on_land() });
             break;
         }
     }
