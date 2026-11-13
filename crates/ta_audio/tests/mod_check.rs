@@ -36,6 +36,13 @@ fn the_mod_check_judges_sounds_as_the_decoder_reads_them() {
         ("33 channels", wav(1, 33, 8, &samples)),
         ("MP3 in a WAV", wav(0x55, 1, 16, &samples)),
         ("headerless 8-bit samples", tone),
+        ("Ogg Vorbis", std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/tone_440hz_quarter_second.ogg")).unwrap()),
+        ("an Ogg header alone", b"OggS".to_vec()),
+        ("a DIGI block without its samples", b"DIGI\0\0\0\x10HSHD\0\0\0\x08".to_vec()),
+        ("a DIGI block with its samples", [b"DIGI\0\0\0\x1cHSHD\0\0\0\x08SDAT\0\0\0\x0c".as_slice(), &[128u8; 4]].concat()),
+        ("a DIGI block cut off before its samples", b"DIGI\0\0\0\x1cHSHD\0\0\0\x08SDAT".to_vec()),
+        ("a TALK block without its samples", b"TALK\0\0\0\x08".to_vec()),
+        ("an Ogg page of an Opus stream", [b"OggS\0\x02".as_slice(), &[0; 20], &[1, 9], b"OpusHead\x01"].concat()),
         ("words", b"just some words, not a sound at all".to_vec()),
     ];
     for (what, bytes) in cases {

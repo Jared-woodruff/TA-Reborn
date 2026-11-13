@@ -113,9 +113,9 @@ picture, a weapon with no muzzle in its script).
   can run, from each function's start along its jumps, and its pieces, variables, functions
   and jumps; what no function reaches, such as the signature some compilers leave after a
   function's last instruction, is never run and not read), GAF animations, TNT maps, PCX pictures, fonts and
-  palettes, sounds (as the game's decoder reads them: a WAV of a codec it plays, Ogg Vorbis,
-  Humongous's DIGI blocks, or headerless 8-bit samples saved as `.wav`, as TA's own
-  `honk.wav`), and every text file
+  palettes, sounds (as the game's decoder reads them: a WAV of a codec it plays, an Ogg file of
+  a Vorbis or FLAC stream, Humongous's DIGI and TALK blocks holding their samples, or headerless
+  8-bit samples saved as `.wav`, as TA's own `honk.wav`), and every text file
   (FBI/TDF/GUI/OTA) for its structure: a section never closed (it swallows what follows), a
   brace that closes nothing, a header without a body or a `]`, a comment never ended, each
   with its line.

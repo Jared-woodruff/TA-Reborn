@@ -137,7 +137,8 @@
   list for a builder that does not exist are notes, and feature animations and sound keys the
   game never plays are not checked. Sounds are judged as the game's decoder reads them: TA's own
   honk and sing sounds, which play, are no longer reported as broken, and sounds the game cannot
-  play (IMA ADPCM other than 4-bit, more than 32 channels) are.
+  play (IMA ADPCM other than 4-bit, more than 32 channels, an Ogg file of an Opus stream, a
+  Humongous sound block without its samples) are.
 - A script instruction pointing past a piece, a variable or the end of its code is now a warning
   rather than an error: the game skips it.
 - A mod whose check found nothing said "No findings match the filters or the search" in its

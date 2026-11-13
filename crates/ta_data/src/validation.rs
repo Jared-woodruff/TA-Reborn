@@ -463,8 +463,13 @@ pub fn sound_problem(bytes: &[u8]) -> Option<String> {
     const IMA_ADPCM: u16 = 0x0011;
     const EXTENSIBLE: u16 = 0xFFFE;
     if !(bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WAVE") {
-        let other = bytes.len() >= 4 && &bytes[0..4] == b"OggS" || bytes.len() >= 8 && (&bytes[0..4] == b"DIGI" || &bytes[0..4] == b"TALK") || looks_like_pcm8(bytes);
-        return (!other).then(|| "it is neither a RIFF WAVE file nor another sound the game reads".into());
+        if bytes.starts_with(b"OggS") {
+            return (!ogg_stream_played(bytes)).then(|| "it is an Ogg file without a Vorbis or FLAC stream, the ones the game plays".into());
+        }
+        if bytes.len() >= 8 && (bytes.starts_with(b"DIGI") || bytes.starts_with(b"TALK")) {
+            return (!humongous_samples(bytes)).then(|| "it is a Humongous sound block without its samples (no SDAT block within its length)".into());
+        }
+        return (!looks_like_pcm8(bytes)).then(|| "it is neither a RIFF WAVE file nor another sound the game reads".into());
     }
     let le16 = |b: &[u8], at: usize| u16::from_le_bytes([b[at], b[at + 1]]);
     let le32 = |b: &[u8], at: usize| u32::from_le_bytes([b[at], b[at + 1], b[at + 2], b[at + 3]]);
@@ -523,6 +528,46 @@ pub fn sound_problem(bytes: &[u8]) -> Option<String> {
         tag => Some(format!("its codec ({tag:#06x}) is not one the game plays (PCM, ADPCM, float, A-law or µ-law)")),
     };
     problem.or_else(|| (!data).then(|| "it has no sample data".into()))
+}
+
+/// Whether an Ogg file opens a stream the game's decoder plays (symphonia's Ogg reader with its
+/// Vorbis and FLAC decoders), by the first packet of each of its first pages: a stream's first
+/// page holds its identification header alone, and every stream's first page comes before any
+/// other. Its audio is not decoded here: a stream damaged further on passes.
+fn ogg_stream_played(b: &[u8]) -> bool {
+    let mut at = 0;
+    for _ in 0..8 {
+        if b.get(at..at + 4) != Some(&b"OggS"[..]) {
+            return false;
+        }
+        let Some(&segments) = b.get(at + 26) else { return false };
+        let packet = at + 27 + segments as usize;
+        let Some(table) = b.get(at + 27..packet) else { return false };
+        if b.get(packet..).is_some_and(|p| p.starts_with(b"\x01vorbis") || p.starts_with(b"\x7fFLAC")) {
+            return true;
+        }
+        at = packet + table.iter().map(|&s| s as usize).sum::<usize>();
+    }
+    false
+}
+
+/// Whether a Humongous `DIGI` or `TALK` block holds its samples (`SDAT`) within its length, as
+/// the game's decoder reads its blocks (`ta_audio::decode`).
+fn humongous_samples(b: &[u8]) -> bool {
+    let be32 = |at: usize| u32::from_be_bytes([b[at], b[at + 1], b[at + 2], b[at + 3]]) as usize;
+    let end = be32(4).clamp(8, b.len());
+    let mut at = 8;
+    while at + 8 <= end {
+        let size = be32(at + 4);
+        if size < 8 {
+            return false;
+        }
+        if &b[at..at + 4] == b"SDAT" {
+            return true;
+        }
+        at = at.saturating_add(size);
+    }
+    false
 }
 
 /// Headerless unsigned 8-bit samples, as the game's decoder tells them (`ta_audio::decode`): long
@@ -1089,7 +1134,8 @@ impl<'a> Scan<'a> {
                 // (What the game plays: the keys it knows, a repeated one's last value.)
                 let mut played: Vec<(&str, &str)> = Vec::new();
                 for (entry, value) in &s.entries {
-                    if !played_sound_key(entry) { continue; }
+                    // (An empty value is none: the engine keeps the one before.)
+                    if !played_sound_key(entry) || value.trim().is_empty() { continue; }
                     played.retain(|(key, _)| !key.eq_ignore_ascii_case(entry));
                     played.push((entry, value));
                 }
@@ -1476,8 +1522,10 @@ impl<'a> Scan<'a> {
 }
 
 /// What names something, as a finding lists it, each once (and how many times, where more):
-/// "A", "A and B", "A, B and C", "A, B and 4 more", "A (3 times)". (TA: Escalation's side data
-/// lists a unit several times over on one menu, to weight the computer players' choice.)
+/// "A", "A and B", "A, B and C", "A (3 times)". Every one is named: a finding is told inherited
+/// by its message ([`compare`]), and two lists alike in their first names are not alike. (TA:
+/// Escalation's side data lists a unit several times over on one menu, to weight the computer
+/// players' choice.)
 fn listed<S: AsRef<str>>(whats: &[S]) -> String {
     let mut unique: Vec<(&str, usize)> = Vec::new();
     for what in whats {
@@ -1491,9 +1539,7 @@ fn listed<S: AsRef<str>>(whats: &[S]) -> String {
     match shown.as_slice() {
         [] => String::new(),
         [one] => one.clone(),
-        [first, second] => format!("{first} and {second}"),
-        [first, second, third] => format!("{first}, {second} and {third}"),
-        [first, second, rest @ ..] => format!("{first}, {second} and {} more", rest.len()),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
     }
 }
 
@@ -2051,12 +2097,13 @@ mod tests {
     #[test]
     fn only_the_sounds_the_game_plays_are_checked() {
         let f = Fixture::new(); f.valid("mod");
-        f.put("mod", "gamedata/sound.tdf", "[CAT]\n{\nload=never_played;\nselect1=first;\nselect1=example;\nok1=gone;\n}\n");
+        f.put("mod", "gamedata/sound.tdf", "[CAT]\n{\nload=never_played;\nselect1=first;\nselect1=example;\nok1=gone;\narrived1=kept;\narrived1=;\n}\n");
         f.put("mod", "sounds/example.wav", b"");
         let report = validate_all(&f.vfs(&["mod"]));
         let text = report.to_text();
         assert!(!text.contains("NEVER_PLAYED") && !text.contains("FIRST"), "{text}");
         assert!(text.contains("GONE"), "{text}");
+        assert!(text.contains("KEPT"), "an empty value leaves the one before: {text}");
         assert!(played_sound_key("Select2") && played_sound_key("count9") && !played_sound_key("count10") && !played_sound_key("unload"));
     }
 
@@ -2081,7 +2128,18 @@ mod tests {
         assert_eq!(sound_problem(&wav(1, 1, 16)), None);
         assert!(sound_problem(&wav(0x11, 1, 3)).is_some_and(|p| p.contains("IMA ADPCM")));
         assert!(sound_problem(&wav(1, 0, 16)).is_some_and(|p| p.contains("0 channels")));
-        assert_eq!(sound_problem(b"DIGI\0\0\0\x10HSHD"), None);
+        assert!(sound_problem(b"DIGI\0\0\0\x10HSHD").is_some(), "no samples");
+        let mut digi = b"DIGI\0\0\0\x1cHSHD\0\0\0\x08SDAT\0\0\0\x0c".to_vec();
+        digi.extend([128u8; 4]);
+        assert_eq!(sound_problem(&digi), None, "its samples");
+        assert!(sound_problem(&digi[..20]).is_some(), "its samples cut off");
+        assert!(sound_problem(b"OggS").is_some(), "an Ogg file without its stream");
+        // (A page of one segment, its packet a stream's identification header.)
+        let page = |packet: &[u8]| [b"OggS\0\x02".as_slice(), &[0; 20], &[1, packet.len() as u8], packet].concat();
+        assert_eq!(sound_problem(&page(b"\x01vorbis\0\0\0\0")), None, "Vorbis");
+        assert_eq!(sound_problem(&page(b"\x7fFLAC\x01\0")), None, "FLAC");
+        assert!(sound_problem(&page(b"OpusHead\x01")).is_some(), "Opus, which the game does not decode");
+        assert_eq!(sound_problem(&[page(b"fishead\0").as_slice(), &page(b"\x01vorbis\0")].concat()), None, "a stream after another");
         let tone: Vec<u8> = (0..2000).map(|i| (128.0 + 90.0 * (i as f64 / 20.0).sin()) as u8).collect();
         assert_eq!(sound_problem(&tone), None, "headerless 8-bit samples");
         assert!(sound_problem(b"just some words, not a sound at all").is_some());
@@ -2095,8 +2153,9 @@ mod tests {
         let report = validate_all(&f.vfs(&["mod"]));
         let textures: Vec<_> = report.issues.iter().filter(|i| i.message.starts_with("Model texture")).collect();
         assert_eq!(textures.len(), 1, "{}", report.to_text());
-        assert!(textures[0].message.contains("textures S01, S02 and 2 more are missing"), "{}", textures[0].message);
+        assert!(textures[0].message.contains("textures S01, S02, S03 and S04 are missing"), "{}", textures[0].message);
         assert_eq!(listed(&["A", "B", "A", "A"]), "A (3 times) and B");
+        assert_eq!(listed(&["A", "B", "C", "D", "E"]), "A, B, C, D and E", "every one named: compared by its message");
     }
 
     /// TA's way of taking one of the original game's files out is an empty file over it (Total
@@ -2344,7 +2403,7 @@ mod tests {
         let report = validate_all(&f.vfs(&["mod"]));
         let cheat: Vec<_> = report.issues.iter().filter(|i| i.code == "reference.missing" && i.message.contains("ARMCHEAT")).collect();
         assert_eq!(cheat.len(), 1, "{}", report.to_text());
-        assert!(cheat[0].message.starts_with("ARMCA build option, ARMCK build option and 2 more: unit ARMCHEAT is missing."), "{}", cheat[0].message);
+        assert!(cheat[0].message.starts_with("ARMCA build option, ARMCK build option, ARMCV build option and ARMCH build option: unit ARMCHEAT is missing."), "{}", cheat[0].message);
         assert_eq!(listed(&["A", "B"]), "A and B");
         assert_eq!(listed(&["A", "B", "C"]), "A, B and C");
     }
