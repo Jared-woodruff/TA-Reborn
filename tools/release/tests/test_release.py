@@ -261,6 +261,27 @@ class ReleaseTests(unittest.TestCase):
                     release.promote(folder, self.ver, 'owner/repo', 'v2.1.0')
                 run.assert_not_called()
 
+    def test_only_the_previous_versions_tag_stays_with_the_new_one(self):
+        tags = 'v2.1.0\nv2.0.10\nv2.0.9\nv2.0.8\nv2.1.0-rc.1\nnightly\nv2.2.0\nv1.9.0\n'
+        with patch.object(release.subprocess, 'check_output', return_value=tags), \
+             patch.object(release.subprocess, 'run', return_value=release.subprocess.CompletedProcess([], 0)) as run:
+            deleted = release.prune_tags('owner/repo', 'v2.1.0')
+        # (The previous release's, v2.0.10, stays, not its own release candidate's; a tag naming
+        # no version, and a newer one, are not this release's to touch.)
+        self.assertEqual(deleted, ['v1.9.0', 'v2.0.8', 'v2.0.9', 'v2.1.0-rc.1'])
+        calls = [call.args[0] for call in run.call_args_list]
+        self.assertEqual(calls, [['gh', 'api', '-X', 'DELETE', f'repos/owner/repo/git/refs/tags/{t}'] for t in deleted])
+
+    def test_a_tag_that_cannot_be_deleted_does_not_fail_the_release(self):
+        with patch.object(release.subprocess, 'check_output', return_value='v2.1.0 v2.0.9 v2.0.8 v2.0.7'), \
+             patch.object(release.subprocess, 'run', side_effect=[release.subprocess.CompletedProcess([], 1), release.subprocess.CompletedProcess([], 0)]):
+            self.assertEqual(release.prune_tags('owner/repo', 'v2.1.0'), ['v2.0.8'])
+        with patch.object(release.subprocess, 'check_output', return_value='v2.1.0 v2.0.9'), \
+             patch.object(release.subprocess, 'run') as run:
+            self.assertEqual(release.prune_tags('owner/repo', 'v2.1.0'), [], 'the previous version alone: nothing to delete')
+            run.assert_not_called()
+        self.assertEqual(release.prune_tags('owner/repo', 'nightly'), [], 'a tag naming no version prunes nothing')
+
     def test_versions_order_by_number_and_a_prerelease_comes_first(self):
         key = release.version_key
         self.assertLess(key('v2.1.0'), key('v2.1.1'))
