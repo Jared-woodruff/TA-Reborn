@@ -47,6 +47,14 @@ pub mod value {
     /// with it while they wait, and uncloak to go off. (Free: TA's cloak costs the energy the
     /// unit's `CloakCost` says, which a mine's file does not.)
     pub const UNIT_CLOAKED: i32 = 111;
+    /// Every value the host answers a script that asks for it, in order (and keeps, those a
+    /// script may set): what the mod check tells a mod's scripts Reborn answers
+    /// (`ta_data::validation::ANSWERED_VALUES`, held to this by a test).
+    pub const ANSWERED: &[i32] = &[
+        ACTIVATION, STANDING_MOVE_ORDERS, STANDING_FIRE_ORDERS, HEALTH, IN_BUILD_STANCE, BUSY, PIECE_XZ, PIECE_Y, UNIT_XZ, UNIT_Y,
+        UNIT_HEIGHT, XZ_ATAN, XZ_HYPOT, ATAN, HYPOT, GROUND_HEIGHT, BUILD_PERCENT_LEFT, YARD_OPEN, BUGGER_OFF, ARMORED, VETERAN_LEVEL,
+        MIN_ID, MAX_ID, MY_ID, UNIT_TEAM, UNIT_BUILD_PERCENT_LEFT, UNIT_ALLIED, UNIT_IS_ON_THIS_COMP, UNIT_CLOAKED,
+    ];
 }
 
 /// How much of a unit is left to build, as TA's scripts are told it (`BUILD_PERCENT_LEFT`): 0

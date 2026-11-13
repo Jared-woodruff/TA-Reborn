@@ -22,6 +22,9 @@
   run through Steam as a non-Steam game, put it in that game's Proton prefix, in any Steam
   library. In Wine prefixes it now also looks in `Program Files`, and finds the CD's folders
   whatever the case of their names.
+- The mod check now tells when a mod's scripts ask the engine for values TA Reborn does not
+  answer, as mods made for later patches of TA's engine can: what such a script does with them
+  may not happen as the mod intends. Total Mayhem and TA: Escalation ask for none it lacks.
 
 ### Changed
 - On Linux, the Steam Deck and macOS, the interface's text is now set in Sofia Sans, a typeface
@@ -108,6 +111,47 @@
 - If the launcher crashes in a graphics driver, it now saves `launcher-crash.txt` naming the
   driver and says so, as the game does.
 - Opening a skin whose scale has more than two decimals no longer marks it as changed.
+- The mod check now judges the mods' upgrades as the game plays them. An upgrade module's
+  footprint of none is no longer reported as a footprint the game changes, and a building that
+  builds only its own upgrade modules is no longer told it lacks a nano-lathe. Menus count only
+  for units that can build (Total Mayhem's and TA: Escalation's silos list missile buttons for
+  their computer players, which build nothing), and buildings that build without TA's builder
+  flag, such as Total Mayhem's geothermal plants, have their menus checked.
+- A map whose terrain is missing is now a warning, not an error: the game and the launcher leave
+  such a map out of their lists, and nothing else is affected. Total Mayhem lists 9 maps it does
+  not ship, and was shown with errors for them.
+- When one file names the same missing thing several times (a menu file naming a unit the mod
+  does not ship, a builder at a time), the mod check now tells it once, listing who names it,
+  and a model's missing textures are told together.
+- The original game's own slips no longer count against a mod. A finding that is there without
+  the mod, the same in the same place, is shown as inherited even when the mod uses what it is
+  about or carries a copy of its file: Total Mayhem and TA: Escalation carry copies of TA's list
+  of unit sounds, and the sounds missing from TA's own counted against them. With this and the
+  fixes below, Total Mayhem's counted findings fall from 137 to 91, TA: Escalation's from 395
+  to 223, each keeping its 4 real errors (units naming weapons the mod does not have).
+- A mod that emptied a file its units still use (a model, a script, a sound) passed the mod check
+  without a word. Such a file is now told where it is used: the game reads nothing from it.
+- Files the game never reads, such as pictures among a mod's documents, are no longer decoded,
+  so a mod is no longer marked with errors for them.
+- The mod check no longer warns about data the game never acts on: a unit's faction and a menu
+  list for a builder that does not exist are notes, and feature animations and sound keys the
+  game never plays are not checked. Sounds are judged as the game's decoder reads them: TA's own
+  honk and sing sounds, which play, are no longer reported as broken, and sounds the game cannot
+  play (IMA ADPCM other than 4-bit, more than 32 channels, an Ogg file of an Opus stream, a
+  Humongous sound block without its samples) are.
+- A script instruction pointing past a piece, a variable or the end of its code is now a warning
+  rather than an error: the game skips it.
+- A mod whose check found nothing said "No findings match the filters or the search" in its
+  report; it now says no issues were found. Fixes opened in a report no longer stay open on other
+  findings after RUN AGAIN.
+- When a folder or archive cannot be read during a mod check, the report now says so, instead of
+  "Validation cancelled".
+- An empty placeholder named like one of Battle Tactics' or Core Contingency's archives is no
+  longer reported as unreadable on an install without them, and a link (a shortcut or a junction)
+  inside a mod's or the game's folder no longer stops a mod check: it is skipped, as the game
+  skips it.
+- Mods are checked again after an update of TA Reborn, whose file readers may read them
+  differently, and the report's scope line is now in the interface's language.
 - The launcher only knew a game was running when it had started that game itself. With a game it
   had not started (one running when the launcher was opened, or one the game had started again
   with a battle's mods), the launcher would update, add or remove mods under it, start a second

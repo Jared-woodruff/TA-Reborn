@@ -307,6 +307,12 @@ impl GameData {
         }
         for (builder, mut list) in menus {
             let Some(&i) = self.unit_index.get(&builder) else { continue };
+            // (Without build power a unit builds nothing, whatever its pages and lists name: Total
+            // Mayhem's and TA: Escalation's silos list missile pseudo-units for their computer
+            // players. None of TA's own units has a Builder flag without a WorkerTime.)
+            if self.units[i].worker_time <= 0.0 {
+                continue;
+            }
             list.sort_by_key(|(page, slot, _)| (*page, *slot));
             self.units[i].build_options =
                 list.into_iter().map(|(_, _, u)| u).filter(|u| self.unit_index.contains_key(u)).collect();
@@ -350,10 +356,10 @@ mod compatibility_tests {
     fn menu_tabs_named_like_units_are_not_build_options() {
         let root = std::env::temp_dir().join(format!("ta_data_menu_tabs_{}", std::process::id()));
         let files = [
-            ("units/coraap.fbi", "[UNITINFO]{UnitName=CORAAP;Builder=1;}"),
+            ("units/coraap.fbi", "[UNITINFO]{UnitName=CORAAP;Builder=1;WorkerTime=200;}"),
             ("units/coraca.fbi", "[UNITINFO]{UnitName=CORACA;}"),
             ("units/corbuild.fbi", "[UNITINFO]{UnitName=CORBUILD;Name=Hydration Plant;}"),
-            ("units/corhand.fbi", "[UNITINFO]{UnitName=CORHAND;Builder=1;}"),
+            ("units/corhand.fbi", "[UNITINFO]{UnitName=CORHAND;Builder=1;WorkerTime=200;}"),
             // TA's page: the BUILD tab (CORBUILD, no production attribute) and a build button.
             ("guis/coraap1.gui", "[A]{[COMMON]{id=1;name=CORBUILD;attribs=16;commonattribs=0;}} [B]{[COMMON]{id=1;name=CORACA;attribs=32;commonattribs=4;}}"),
             // A hand-made page without the attribute still reads its buttons.

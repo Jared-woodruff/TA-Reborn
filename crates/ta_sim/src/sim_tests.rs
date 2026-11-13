@@ -2513,6 +2513,13 @@ fn a_unit_without_build_power_offers_nothing_to_build() {
     assert!(!silo.is_builder && silo.build_options.is_empty());
 }
 
+/// The mod check tells a mod's scripts which unit values Reborn answers (`script.value`): the
+/// host's, every one.
+#[test]
+fn the_mod_check_knows_the_values_the_engine_answers() {
+    assert_eq!(crate::host::value::ANSWERED, ta_data::validation::ANSWERED_VALUES);
+}
+
 /// A script cloaks its own unit (`UNIT_CLOAKED`, a later patch's: Total Mayhem's mines while they
 /// wait), at no cost when its file gives none, and uncloaks it.
 #[test]

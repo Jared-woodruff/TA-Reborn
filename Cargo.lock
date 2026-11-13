@@ -3857,6 +3857,7 @@ dependencies = [
  "serde",
  "symphonia",
  "ta_config",
+ "ta_data",
  "ta_formats",
  "ta_vfs",
  "thiserror 2.0.21",
