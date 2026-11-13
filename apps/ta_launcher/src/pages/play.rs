@@ -114,7 +114,8 @@ impl LauncherApp {
         ta_ui::motion::next_frame(ui.ctx(), std::time::Duration::from_millis(33));
         painter.add(metal::pipe_frame(rect, HERO_PIPE));
 
-        let running = self.game.is_running();
+        // (Any game: END GAME only for the one this launcher started.)
+        let running = self.game_running();
         let summary = self.settings_summary();
         let mods = self.mods_summary();
         // A child that lays out inside the already-allocated hero without moving our cursor.
@@ -173,6 +174,7 @@ impl LauncherApp {
                 ui.painter().add(metal::lamp(lamp.center(), 4.0, colour, on));
                 let status = match self.game.running_for() {
                     Some(time) => tf("OPERATION IN PROGRESS · {time}", &[("time", &battles::length(time.as_secs()))]),
+                    None if running => t("OPERATION IN PROGRESS").to_string(),
                     None if wrong => t("THE LAST GAME WENT WRONG · SEE BELOW").to_string(),
                     None => t("ALL SYSTEMS GO").to_string(),
                 };
@@ -182,7 +184,7 @@ impl LauncherApp {
                 }
                 ui.label(RichText::new(status).font(strong(12.5)).color(colour).extra_letter_spacing(ta_ui::i18n::tracking(2.2)));
                 // A game that stopped responding can be ended from here (asked first).
-                if running && widgets::text_link(ui, "END GAME").hover_tip(t("Close the game at once, if it has stopped responding")).clicked() {
+                if self.game.is_running() && widgets::text_link(ui, "END GAME").hover_tip(t("Close the game at once, if it has stopped responding")).clicked() {
                     self.push(Action::EndGame);
                 }
             });
@@ -233,7 +235,7 @@ impl LauncherApp {
     /// its tile comes first, in brass.
     fn quick_start(&mut self, ui: &mut Ui) {
         use deck::Mode;
-        let ready = !self.game.is_running();
+        let ready = !self.game_running();
         let newcomer = self.newcomer();
         widgets::card_title(ui, "QUICK START");
         if newcomer {
@@ -443,7 +445,7 @@ impl LauncherApp {
     fn battles_card(&mut self, ui: &mut Ui) {
         let (save, replay) = (self.battles.save.clone(), self.battles.replay.clone());
         let (older_saves, older_replays) = (self.battles.older_saves.clone(), self.battles.older_replays.clone());
-        let ready = !self.game.is_running();
+        let ready = !self.game_running();
         let folders = [
             (t("SAVES"), self.battles.saves_dir.clone()),
             (t("REPLAYS"), self.battles.replays_dir.clone()),
@@ -578,7 +580,7 @@ impl LauncherApp {
         match choice {
             BattleChoice::Switch => {
                 log::info!("{}: its mods turned on ({:?})", prompt.record.path.display(), prompt.check.load_order());
-                self.config.mods.enabled = prompt.check.load_order();
+                self.order_before_play = Some(std::mem::replace(&mut self.config.mods.enabled, prompt.check.load_order()));
                 self.mods.refresh(&self.config.mods.enabled);
                 self.push(Action::PlayWith(args(false)));
             }

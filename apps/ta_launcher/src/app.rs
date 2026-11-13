@@ -26,6 +26,7 @@ use crate::widgets::{self, NavIcon};
 use ta_ui::metal;
 
 mod events;
+pub(crate) use events::UpdateWait;
 mod profile_page;
 mod profiles;
 mod polish;
@@ -318,6 +319,13 @@ pub struct LauncherApp {
     pub(crate) celebrate: Option<(String, f64)>,
     /// A mod the player asked to remove, awaiting confirmation (by id).
     pub(crate) confirm_uninstall: Option<String>,
+    /// A package the player brought, of the id of a mod installed already: asked before it takes
+    /// that mod's place (one dropped by its name over the player's own, or over a catalogue mod's
+    /// tested release).
+    pub(crate) confirm_replace: Option<crate::getmods::Source>,
+    /// The load order as it was before a PLAY that changes it for its game (a battle's mods,
+    /// USE ITS MODS): put back if the game does not start, the change being that game's.
+    pub(crate) order_before_play: Option<Vec<String>>,
     /// The window was closed with work at risk: the question is up; and the answer was to
     /// close anyway.
     confirm_close: bool,
@@ -325,6 +333,10 @@ pub struct LauncherApp {
     /// END GAME's question is up; and the game was ended so (not a crash to report).
     confirm_end_game: bool,
     ending_game: bool,
+    /// A game this launcher did not start (one running when it was opened), or its own that
+    /// started itself again with a battle's mods, followed by its lock: [`LauncherApp::game_running`].
+    elsewhere: Elsewhere,
+    elsewhere_checked: Option<Instant>,
     /// `--show close`: as if a mod were downloading.
     pretend_at_risk: bool,
     /// Catalogue mods asked for while installed (updates: they keep their on or off).
@@ -395,6 +407,16 @@ pub struct LauncherApp {
 /// milliseconds a frame against the two the frame itself takes. Frames asked for sooner
 /// (an animation's, the pointer's) wait here instead, asleep.
 pub const MAX_FPS: f64 = 120.0;
+
+/// A game running that is not this launcher's own child (see [`LauncherApp::game_running`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Elsewhere {
+    None,
+    /// One holds the lock.
+    Running,
+    /// This launcher's game started itself again, then (the new one has not the lock yet).
+    Restarting(Instant),
+}
 
 impl LauncherApp {
     pub fn new(cc: &eframe::CreationContext<'_>, args: Args) -> Self {
@@ -502,6 +524,10 @@ impl LauncherApp {
         LauncherApp {
             skins: crate::skins::Library::new(store.dir().join("skins"), [config.graphics.unit_skin.clone(), config.graphics.enemy_skin().to_string()]),
             confirm_uninstall: None,
+            confirm_replace: None,
+            elsewhere: Elsewhere::None,
+            elsewhere_checked: None,
+            order_before_play: None,
             confirm_close: false,
             close_confirmed: false,
             confirm_end_game: false,
@@ -691,6 +717,8 @@ impl LauncherApp {
                 self.music_control.open();
             }
             ("remove", id) => self.confirm_uninstall = Some(id.to_string()),
+            // (A package named like an installed mod, as dropped: the question before it replaces it.)
+            ("replace", file) => self.confirm_replace = crate::getmods::Source::package(Path::new(file)),
             ("crash", _) => {
                 self.game = GameState::Exited {
                     code: Some(101),
@@ -959,9 +987,12 @@ impl LauncherApp {
                     self.notify(ta_ui::i18n::tf("Recommended settings applied ({level} graphics): the next game starts with them", &[("level", &ta_ui::i18n::t(rec.level.label()))]), GREEN);
                 }
             }
-            Action::PlayWith(args) => self.play(&args),
+            Action::PlayWith(args) => {
+                self.play(&args);
+                self.keep_order_if_started();
+            }
             Action::Uninstall(id) => {
-                if !self.game.is_running() && !self.installer.busy() && !self.map_import_blocks_mod_changes() {
+                if !self.game_running() && !self.installer.busy() && !self.map_import_blocks_mod_changes() {
                     self.confirm_uninstall = Some(id);
                 }
             }
@@ -978,8 +1009,12 @@ impl LauncherApp {
             Action::HideMod(id, hidden) => self.set_mod_hidden(&id, hidden),
             Action::UnhideAllMods => self.unhide_all_mods(),
             Action::PlayMod(id) => {
+                // (The mod is turned on for this game: if it does not start, the order stays as
+                // it was. Refused for a mod another needs, it is not left turned off.)
+                self.order_before_play = Some(self.config.mods.enabled.clone());
                 modlist::turn_on_conversion(&mut self.config.mods.enabled, &id);
                 self.play(&[]);
+                self.keep_order_if_started();
             }
             Action::GetMod(id) => {
                 if !self.offline && !self.map_import_blocks_mod_changes() && !self.game_holds_mods(Some(id)) && let Some(entry) = crate::catalogue::get(id) {
@@ -992,7 +1027,7 @@ impl LauncherApp {
                 let shown: Vec<&'static crate::catalogue::Entry> = crate::catalogue::MODS.iter().filter(|entry| !self.config.mods.is_hidden(entry.id)).collect();
                 for entry in shown {
                     let installed = self.mods.updatable_version(entry.id);
-                    if entry.file.is_some_and(|file| file.can_download()) && crate::mod_library::update(entry, installed).is_some() {
+                    if crate::mod_library::waiting_update(entry, installed).is_some() {
                         self.install_catalogue(entry, None);
                     }
                 }
@@ -1181,6 +1216,13 @@ impl LauncherApp {
                     dialog = dialog.set_directory(current);
                 }
                 if let Some(dir) = dialog.pick_folder() {
+                    // (Total Annihilation's own folder holds TA's archives, every one of which would
+                    // show as a mod: the mods its installers put there are offered as they are.)
+                    let same = |a: &Path, b: &Path| std::fs::canonicalize(a).ok().zip(std::fs::canonicalize(b).ok()).is_some_and(|(a, b)| a == b);
+                    if self.detection.install().is_some_and(|install| same(&install.root, &dir)) {
+                        self.notify(ta_ui::i18n::t("Total Annihilation's own folder cannot be a mods folder: the mods its installers put there are offered on the Mods page."), AMBER);
+                        return;
+                    }
                     self.config.mods.extra_dir = Some(dir);
                     self.refresh_mods();
                 }
@@ -1208,6 +1250,53 @@ impl LauncherApp {
 
     /// Starts the game (with `extra` arguments), then does as the player has the launcher do
     /// when the game starts.
+    /// Whether a game is running: this launcher's own, or another seen by its lock (one running
+    /// when the launcher was opened, its own started again with a battle's mods). While one runs
+    /// the mods, maps and profiles are left as they are, and no other game is started.
+    pub(crate) fn game_running(&self) -> bool {
+        self.game.is_running() || self.elsewhere != Elsewhere::None
+    }
+
+    /// A game this launcher did not start, or its own started again, followed by its lock
+    /// (`ta_config::running`), a second at a time: when it ends, as when its own does.
+    fn follow_game_elsewhere(&mut self, ctx: &egui::Context) {
+        // (The new game takes the lock once the one before has ended: given a few seconds.)
+        const RESTART_GRACE: Duration = Duration::from_secs(8);
+        if self.game.is_running() {
+            self.elsewhere = Elsewhere::None;
+            return;
+        }
+        if self.elsewhere_checked.is_none_or(|at| at.elapsed() >= Duration::from_secs(1)) {
+            self.elsewhere_checked = Some(Instant::now());
+            let held = ta_config::running::held(&self.store.dir());
+            let (next, ended) = match self.elsewhere {
+                _ if held => (Elsewhere::Running, false),
+                Elsewhere::Restarting(since) if since.elapsed() < RESTART_GRACE => (Elsewhere::Restarting(since), false),
+                Elsewhere::None => (Elsewhere::None, false),
+                Elsewhere::Running | Elsewhere::Restarting(_) => (Elsewhere::None, true),
+            };
+            self.elsewhere = next;
+            if ended {
+                self.game_ended(ctx);
+            }
+        }
+        if self.elsewhere != Elsewhere::None {
+            ctx.request_repaint_after(Duration::from_secs(1));
+        }
+    }
+
+    /// After a PLAY that changed the load order for its game: the order is kept if the game
+    /// started, else put back as it was.
+    fn keep_order_if_started(&mut self) {
+        if let Some(before) = self.order_before_play.take()
+            && !self.game.is_running()
+            && self.config.mods.enabled != before
+        {
+            self.config.mods.enabled = before;
+            self.mods.refresh(&self.config.mods.enabled);
+        }
+    }
+
     fn play(&mut self, extra: &[OsString]) {
         if self.profiles.active.is_none() && self.profiles.required {
             self.profiles.edit(false);
@@ -1221,7 +1310,7 @@ impl LauncherApp {
             self.page = Page::Play;
             return;
         }
-        if self.game.is_running() {
+        if self.game_running() {
             self.notify("The game is already running: close it to start another", AMBER);
             return;
         }
@@ -1291,7 +1380,7 @@ impl LauncherApp {
     /// come to the Benchmark page when it ends. The launcher goes down to the taskbar meanwhile
     /// (never closes: it waits for the report).
     fn run_benchmark(&mut self, mode: ta_config::benchmark::Mode) {
-        if self.game.is_running() || self.detection.install().is_none() {
+        if self.game_running() || self.detection.install().is_none() {
             return;
         }
         if let Err(e) = std::fs::create_dir_all(&self.benchmarks.dir) {
@@ -1339,6 +1428,11 @@ impl LauncherApp {
         if self.map_import_blocks_mod_changes() { return; }
         match Source::package(path) {
             Some(source) if self.game_holds_mods(Some(source.id())) => return,
+            // (Dropped again while it installs: said, not left silent.)
+            Some(source) if self.installer.stages.get(source.id()).is_some_and(crate::getmods::Stage::active) => {
+                self.notify(ta_ui::i18n::t("Wait for the mod being installed"), AMBER);
+                return;
+            }
             // A catalogue mod's tested release installs as the card installs it: an update when
             // the mod is installed (its on or off kept, the other conversions left alone), and
             // never behind the game folder's copy, which would hide it.
@@ -1349,6 +1443,13 @@ impl LauncherApp {
                 }
                 self.install_catalogue(entry, from);
             }
+            // (Behind the game folder's copy of its id it would change nothing: replaced there.)
+            Some(source) if self.mods.in_game_folder(source.id()) => {
+                self.notify(ta_ui::i18n::t("This copy is in the game folder, which comes before your mods folder: replace it there to update it."), AMBER);
+                return;
+            }
+            // (Over an installed mod of its id: asked first.)
+            Some(source) if self.mods.get(source.id()).is_some() => self.confirm_replace = Some(source),
             Some(source) => self.installer.start(source),
             None => {
                 self.notify(ta_ui::i18n::tf("{path} has no name to install it by", &[("path", &path.display())]), RED);
@@ -1374,7 +1475,7 @@ impl LauncherApp {
     /// `None`), so it cannot be replaced now: the player is told so. (Its files open in the game,
     /// the swap would fail half way, or change them under it.)
     fn game_holds_mods(&mut self, id: Option<&str>) -> bool {
-        if !self.game.is_running() || id.is_some_and(|id| self.mods.get(id).is_none()) { return false; }
+        if !self.game_running() || id.is_some_and(|id| self.mods.get(id).is_none()) { return false; }
         self.notify(ta_ui::i18n::t("Close the game first: an installed mod cannot be updated or replaced while the game runs"), AMBER);
         true
     }
@@ -1383,7 +1484,7 @@ impl LauncherApp {
     /// order.
     fn uninstall(&mut self, id: &str) {
         use ta_ui::recycle::Outcome;
-        if self.game.is_running() || self.installer.busy() || self.map_import_blocks_mod_changes() { return; }
+        if self.game_running() || self.installer.busy() || self.map_import_blocks_mod_changes() { return; }
         let Some(entry) = self.mods.get(id) else { return };
         let (path, name) = (entry.info.path.clone(), entry.info.manifest.name.clone());
         match ta_ui::recycle::recycle(&path) {
@@ -1463,7 +1564,7 @@ impl LauncherApp {
                 if self.page != Page::Play && self.detection.install().is_some() {
                     let play = Rect::from_min_max(pos2(right - 92.0, rect.center().y - 17.0), pos2(right, rect.center().y + 17.0));
                     let mut slot = ui.new_child(UiBuilder::new().max_rect(play).layout(Layout::left_to_right(Align::Center)));
-                    let running = self.game.is_running();
+                    let running = self.game_running();
                     let button = slot.add_enabled(!running, widgets::ActionButton::primary("PLAY").size(play.width(), play.height()));
                     if button.hover_tip(ta_ui::i18n::t("Start the game")).disabled_tip(ta_ui::i18n::t("The game is running")).clicked() {
                         self.actions.push(Action::Play);
@@ -1687,7 +1788,7 @@ impl LauncherApp {
                 // (A hidden mod's update waits in HIDDEN, uncounted, as UPDATE ALL leaves it.)
                 let updates = self.mods.mods.iter()
                     .filter(|m| !self.config.mods.is_hidden(m.id()))
-                    .filter(|m| crate::catalogue::get(m.id()).is_some_and(|entry| crate::mod_library::update(entry, self.mods.updatable_version(m.id())).is_some()))
+                    .filter(|m| crate::catalogue::get(m.id()).is_some_and(|entry| crate::mod_library::waiting_update(entry, self.mods.updatable_version(m.id())).is_some()))
                     .count();
                 if updates > 0 {
                     (Some((updates.to_string(), AMBER)), Some(tf("Updates waiting: {n}", &[("n", &updates)])))
@@ -1937,7 +2038,7 @@ impl LauncherApp {
                     // One unified launch control includes readiness on every page.
                     if self.page != Page::Play && !missing {
                         Frame::NONE.inner_margin(Margin { left: 16, right: 12, top: 0, bottom: 14 }).show(ui, |ui| {
-                            let running = self.game.is_running();
+                            let running = self.game_running();
                             let state = if running { widgets::PlayState::Running } else { widgets::PlayState::Ready };
                             let button = widgets::play_button_width(ui, state, ui.available_width());
                             if button.hover_tip(ta_ui::i18n::t("Start the game")).clicked() {
@@ -2301,16 +2402,23 @@ impl eframe::App for LauncherApp {
             if std::mem::take(&mut self.ending_game) {
                 self.game = GameState::Idle;
                 self.notify("The game was ended", AMBER);
+                self.game_ended(ctx);
+            } else if ta_config::running::take_restart(&self.store.dir()) {
+                // (It started itself again, with a battle's mods: the new one is followed.)
+                self.elsewhere = Elsewhere::Restarting(Instant::now());
+                self.elsewhere_checked = None;
+            } else {
+                self.game_ended(ctx);
             }
-            self.game_ended(ctx);
         }
+        self.follow_game_elsewhere(ctx);
         self.store.tick(&mut self.config, ctx);
         self.tell_recovery();
-        self.installer.set_game_running(self.game.is_running());
+        self.installer.set_game_running(self.game_running());
         // logic runs even with the window minimized: completed installs must stop blocking
         // a ready update and make their results available when the launcher comes back.
         self.installs(ctx);
-        self.mod_validation.set_paused(self.game.is_running() || self.installer.busy() || self.maps.busy());
+        self.mod_validation.set_paused(self.game_running() || self.installer.busy() || self.maps.busy());
         // A check just made that found errors in a mod that is on: said, not only badged.
         if let Some(done) = self.mod_validation.tick(ctx)
             && done.status == ta_data::validation::Status::Errors
@@ -2341,7 +2449,7 @@ impl eframe::App for LauncherApp {
         // (Here, not in `ui`: the music fades out as the window goes down to the taskbar, and
         // goes on to its next track while nothing is drawn.)
         let minimized = ctx.input(|i| i.viewport().minimized.unwrap_or(false));
-        self.sounds.music(ctx, &self.config.audio, minimized || self.game.is_running());
+        self.sounds.music(ctx, &self.config.audio, minimized || self.game_running());
     }
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
@@ -2411,6 +2519,7 @@ impl eframe::App for LauncherApp {
         self.end_game_dialog(&ctx);
         self.progress_gallery(&ctx);
         self.uninstall_dialog(&ctx);
+        self.replace_dialog(&ctx);
         self.skin_dialogs(&ctx);
         self.conversion_dialog(&ctx);
         self.battle_dialog(&ctx);
@@ -2456,8 +2565,8 @@ impl eframe::App for LauncherApp {
         {
             self.after_launch = None;
             match then {
-                ta_config::OnPlay::Close if self.game.is_running() && !self.installer.busy() && !self.skins.busy() && !self.maps.busy() && self.download.is_none() => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
-                ta_config::OnPlay::Close | ta_config::OnPlay::Minimise if self.game.is_running() => {
+                ta_config::OnPlay::Close if self.game_running() && !self.installer.busy() && !self.skins.busy() && !self.maps.busy() && self.download.is_none() => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+                ta_config::OnPlay::Close | ta_config::OnPlay::Minimise if self.game_running() => {
                     self.minimised_for_game = true;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
                 }
@@ -2471,6 +2580,12 @@ impl eframe::App for LauncherApp {
             self.sync_profile_name();
         }
         crate::cursor::show(&ctx, &self.config);
+        // A drag in the load order ends where the button is let go, whatever was shown then: one
+        // let go while the order was out of sight moves nothing (the order's view has dropped one
+        // let go over it, this frame).
+        if self.mod_library.dragging.is_some() && ctx.input(|i| !i.pointer.any_down()) {
+            self.mod_library.dragging = None;
+        }
         let bundled_pictures_ready = self.page != Page::Mods || self.mods_tab != ModsTab::Library || crate::catalogue::MODS.iter()
             .filter(|entry| entry.bundled_image().is_some()).all(|entry| self.media.pictures.contains_key(entry.id))
             && (self.page != Page::Mods || self.mod_library.changes.idle());
@@ -3541,6 +3656,35 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    /// A package the player brings, named like a mod installed already (their own hand-made
+    /// folder, or a catalogue mod's tested release that this file is not), takes its place only
+    /// once asked: nothing is installed meanwhile. One of a new id installs at once.
+    #[test]
+    fn a_dropped_package_over_an_installed_mod_asks_first() {
+        let dir = temp_dir("dropped_package_replace");
+        let folder = dir.join("mods").join("myunits");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("mod.toml"), "id = \"myunits\"
+name = \"My Units\"
+version = \"2\"
+").unwrap();
+        let (_ctx, mut app) = launcher(&dir.join("config.toml"), &["--pretend-missing"]);
+        app.skins.shutdown();
+        let package = dir.join("MyUnits.zip");
+        std::fs::write(&package, b"not opened before it is asked").unwrap();
+        app.install_package(&package);
+        assert!(app.confirm_replace.as_ref().is_some_and(|source| source.id() == "myunits"), "asked first");
+        assert!(!app.installer.stages.contains_key("myunits"), "nothing installed meanwhile");
+        app.confirm_replace = None;
+        let other = dir.join("Other Units.zip");
+        std::fs::write(&other, b"x").unwrap();
+        app.install_package(&other);
+        assert!(app.confirm_replace.is_none(), "a new mod is not asked about");
+        app.installer.cancel("otherunits");
+        drop(app);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     #[test]
     fn an_update_keeps_a_mod_on_or_off_and_a_first_install_turns_it_on() {
         use crate::getmods::Stage;
@@ -3961,6 +4105,42 @@ name = \"{}\"
         std::fs::remove_dir_all(dir).unwrap();
     }
 
+    /// A game this launcher did not start (one running when it was opened, or its own started
+    /// again with a battle's mods) is seen by its lock: while it runs, no mod is removed and no
+    /// other game started.
+    #[test]
+    fn a_game_this_launcher_did_not_start_holds_its_mods() {
+        let dir = temp_dir("game_elsewhere");
+        let (ctx, mut app) = launcher(&dir.join("config.toml"), &["--pretend-missing"]);
+        app.skins.shutdown();
+        app.config.game_dir = Some(fake_game(&dir));
+        app.rescan();
+        app.follow_game_elsewhere(&ctx);
+        assert!(!app.game_running(), "no game");
+        // (A game takes the lock in the folder of the launcher's settings.)
+        ta_config::running::hold(&app.store.dir());
+        let start = Instant::now();
+        while !ta_config::running::held(&app.store.dir()) {
+            assert!(start.elapsed() < Duration::from_secs(10), "the lock is taken");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        app.elsewhere_checked = None;
+        app.follow_game_elsewhere(&ctx);
+        assert!(app.game_running(), "a game holds the lock");
+        // (The pages' buttons wait for it, as their actions do; the update tells what it waits for.)
+        assert!(app.removal_blocked().is_some() && app.maps_busy_reason().is_some(), "REMOVE and the map library wait");
+        assert_eq!(app.update_blocked(), Some(UpdateWait::Game));
+        assert_eq!(app.update_waits_for().map(UpdateWait::queued), Some("READY · IT INSTALLS WHEN THE GAME CLOSES"));
+        app.apply(Action::Uninstall("escalation".into()), &eframe::Frame::_new_kittest());
+        assert!(app.confirm_uninstall.is_none(), "no mod is removed while it runs");
+        app.apply(Action::Play, &eframe::Frame::_new_kittest());
+        assert!(matches!(app.game, GameState::Idle), "no second game");
+        assert!(app.last_notice().is_some_and(|notice| notice.text.contains("already running")));
+        drop(ctx);
+        drop(app);
+        // (The lock stays held by this test's process until it ends: its folder is left.)
+    }
+
     #[test]
     fn every_launch_route_waits_for_queued_mod_publication() {
         let dir = temp_dir("launch_install_busy");
@@ -3969,11 +4149,14 @@ name = \"{}\"
         app.config.game_dir = Some(fake_game(&dir));
         app.rescan();
         app.installer.stages.insert("updating-mod".into(), crate::getmods::Stage::Queued);
+        app.config.mods.enabled = vec!["escalation".into(), "my-addon".into()];
         for action in [Action::Play, Action::PlayWith(vec!["--open-skirmish".into()]), Action::Benchmark, Action::QuickBenchmark, Action::PlayMod("totalmayhem".into())] {
             app.apply(action, &eframe::Frame::_new_kittest());
             assert!(matches!(app.game, GameState::Idle), "no child may read files during replacement");
             assert!(app.last_notice().is_some_and(|notice| notice.text.contains("Wait for mod installations")));
             assert!(app.benchmarks.running.is_none());
+            // (The card's PLAY turns its mod on for its game: refused, the order stays as it was.)
+            assert_eq!(app.config.mods.enabled, ["escalation", "my-addon"]);
         }
         app.installer.stages.clear();
         drop(ctx); drop(app);

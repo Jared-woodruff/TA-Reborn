@@ -149,7 +149,12 @@ pub fn restart(record: &Path, replay: bool) -> std::io::Result<()> {
         command.env_remove(name);
     }
     no_console(&mut command);
-    command.spawn().map(|_| ())
+    // (The launcher that started this game follows the new one: `ta_config::running`.)
+    let root = ta_config::running::profile_root();
+    ta_config::running::mark_restart(&root);
+    command.spawn().map(|_| ()).inspect_err(|_| {
+        ta_config::running::take_restart(&root);
+    })
 }
 
 /// The launcher beside the game, on its Mods page at the mod `id` (to get it there): started, or,

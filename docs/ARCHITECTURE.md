@@ -3912,6 +3912,15 @@ deployment on PLAY (`paint_launch`, 1.8 s, while the game starts).
   project's GitHub page is on About (SOURCE ON GITHUB). Quick start leads a commander yet to
   finish a battle to the tutorial; the recent saves preselect the newest that can still be
   continued, and one that cannot says why in words.
+* **The game running** (`LauncherApp::game_running`): its own child (`launch.rs`), or a game it
+  did not start, seen by the lock the game holds for as long as it runs (`ta_config::running`:
+  `game.lock` in the folder of the launcher's settings, `TA_PROFILE_ROOT`), looked at once a
+  second: one running when the launcher was opened, or its own game started again with a
+  battle's mods (that game leaves `game.restart` for the launcher, which follows the new one,
+  given a few seconds to take the lock). While any runs, mods are not installed, updated or
+  removed, maps not imported, profiles not changed, no other game or benchmark started and no
+  update run; when a game it follows ends, the launcher does what it does when its own ends
+  (`game_ended`).
 * **Launcher interaction polish**: static labels cannot be selected; text fields keep
   normal editing and selection. Footer
   save indicators are vector marks centred on their first text line. Original steel/brass

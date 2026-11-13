@@ -64,7 +64,7 @@ impl LauncherApp {
         if let Some((at, keys)) = crate::library::menu::asked(ui, &row) {
             crate::library::menu::open(ui.ctx(), super::mods::mod_menu_id(), id, at, keys.then_some(row.id));
         }
-        if row.drag_started() { self.mod_library.dragging = Some(index); }
+        if row.drag_started() { self.mod_library.dragging = Some((id.to_string(), index)); }
         if self.mod_library.order_reveal.as_deref() == Some(id) {
             self.mod_library.order_reveal = None;
             ui.scroll_to_rect(rect, None);
@@ -87,9 +87,10 @@ impl LauncherApp {
         }
         let mut action = None;
         if ui.is_rect_visible(rect) {
-            let hot = row.hovered() || self.mod_library.dragging == Some(index);
+            let dragged = self.mod_library.dragging.as_ref().is_some_and(|(dragged, _)| dragged == id);
+            let hot = row.hovered() || dragged;
             let painter = ui.painter();
-            ta_ui::panel::row_state(painter, rect, self.mod_library.dragging == Some(index), hot);
+            ta_ui::panel::row_state(painter, rect, dragged, hot);
             painter.add(ta_ui::metal::seam(rect.x_range().shrink(4.0), rect.bottom() - 1.0));
             // The grip: two columns of dots.
             for column in 0..2 {
@@ -165,7 +166,12 @@ impl LauncherApp {
 
     /// A row being dragged: a brass line where it would land, and the move when it is let go.
     fn drag_rows(&mut self, ui: &mut Ui, rows: &[Rect], moves: &mut Option<(usize, usize)>) {
-        let Some(from) = self.mod_library.dragging else { return };
+        let Some((id, _)) = self.mod_library.dragging.clone() else { return };
+        // (Where the mod is now: the order may have changed under the drag. Gone, the drag is.)
+        let Some(from) = self.config.mods.enabled.iter().position(|e| *e == id) else {
+            self.mod_library.dragging = None;
+            return;
+        };
         let Some(pointer) = ui.ctx().pointer_latest_pos() else { return };
         // (The slot: how many rows lie above the pointer.)
         let slot = rows.iter().filter(|row| row.center().y < pointer.y).count();

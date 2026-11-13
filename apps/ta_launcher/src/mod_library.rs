@@ -94,6 +94,18 @@ pub fn update(entry: &Entry, installed: Option<&str>) -> Option<&'static str> {
     (installed != file.version && !crate::update::newer(installed, file.version)).then_some(file.version)
 }
 
+/// The catalogue release waiting to be installed over the copy in use, as the rail's badge, the
+/// UPDATES filter, a card and UPDATE ALL count it: one the launcher can download ([`update`]'s
+/// newer release), over a copy whose version is known. A copy of unknown version (one added from
+/// Total Annihilation's folder) waits for nothing: it may be that release or a later one, and the
+/// mod's details still offer UPDATE over it. A release the launcher cannot download is the mod's
+/// website's to give (the details say a newer one is out): nothing UPDATE ALL could clear.
+pub fn waiting_update(entry: &Entry, installed: Option<&str>) -> Option<&'static str> {
+    entry.file.filter(|file| file.can_download())?;
+    installed.filter(|version| !version.trim().is_empty())?;
+    update(entry, installed)
+}
+
 /// Search treats dotted and dotless I alike, so translated Turkish tags and English names
 /// remain discoverable without changing the text displayed to players.
 fn search_fold(text: &str) -> String {
@@ -164,7 +176,7 @@ pub fn accepts(item: &Item, query: &str, filter: Filter, hidden_view: bool, fact
         Filter::All => true,
         Filter::Installed => item.installed,
         Filter::Enabled => facts.enabled.contains(&item.id),
-        Filter::Updates => item.catalogue.is_some_and(|entry| update(entry, facts.updatable_version(&item.id)).is_some()),
+        Filter::Updates => item.catalogue.is_some_and(|entry| waiting_update(entry, facts.updatable_version(&item.id)).is_some()),
         Filter::PlaysWell => item.catalogue.is_some_and(|entry| plays_well(entry, item.installed, &(facts.status)(&item.id))),
     };
     shown && match (item.catalogue, facts.mods.get(&item.id)) {
@@ -413,8 +425,9 @@ pub struct Library {
     pub chosen_before_hidden: Option<String>,
     reveal: Option<String>,
     pub changes: ChangesWork,
-    /// The load order's row being dragged (its place when it was picked up).
-    pub dragging: Option<usize>,
+    /// The mod being dragged in the load order: its id (the order may change under the drag, an
+    /// install finishing), and where it was taken from.
+    pub dragging: Option<(String, usize)>,
     /// A mod just moved in the load order, to bring into view.
     pub order_reveal: Option<String>,
 }
@@ -684,6 +697,13 @@ description = "Naval maps"
         assert_eq!(update(entry, Some("11.4.0")), None, "updates never downgrade a newer manual install");
         assert_eq!(update(entry, Some("unverified")), Some("11.3.0"));
         assert_eq!(update(entry, None), None, "nothing to update when it is not installed");
+        // What waits, as the badge and UPDATE ALL count it: a downloadable release over a copy of
+        // a known version (one added from TA's folder has none: it waits for nothing).
+        assert_eq!(waiting_update(entry, Some("11.2.0")), Some("11.3.0"));
+        assert_eq!(waiting_update(entry, Some("")), None);
+        assert_eq!(update(entry, Some("")), Some("11.3.0"), "the details still offer it");
+        let manual = catalogue::MODS.iter().find(|e| e.file.is_some_and(|f| !f.can_download())).expect("a release downloaded by hand");
+        assert_eq!(waiting_update(manual, Some("0.1")), None, "UPDATE ALL could never clear it");
     }
 
     #[test]

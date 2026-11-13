@@ -281,7 +281,8 @@ fn main() {
                 app.show(what);
             }
             if let Some(id) = show_mod.as_deref() {
-                app.open_mod(id);
+                // (Mod ids are kept in lower case, as another launcher's call has them.)
+                app.open_mod(&id.to_lowercase());
             }
             Ok(Box::new(app))
         }),

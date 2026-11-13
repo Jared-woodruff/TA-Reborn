@@ -310,7 +310,11 @@ pub fn replaced_archives(install: &Path, mods: &[&ModInfo]) -> Vec<String> {
     if names.is_empty() {
         return Vec::new();
     }
+    // (A mod's archives in the game's folder are never the install's, [`mount`]: none of them is
+    // one a mod takes the place of. TA: Escalation added from there names its own `TAESC.gp3`.)
+    let theirs: BTreeSet<PathBuf> = game_folder_mods(install).into_iter().flat_map(|m| m.archives).collect();
     let mut out: Vec<String> = crate::archive_files(install).unwrap_or_default().iter()
+        .filter(|p| !theirs.contains(*p))
         .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
         .filter(|name| names.contains(&name.to_lowercase()))
         .collect();
@@ -353,6 +357,33 @@ const KNOWN_ARCHIVES: &[(&str, &str, &[&str])] = &[
 /// of the original game's releases are never one's ([`crate::install::ARCHIVES`]), nor archives
 /// with TA's folders alone: unit packs and maps TA's own engine read too.
 pub fn game_folder_mods(install: &Path) -> Vec<GameFolderMod> {
+    // (It opens every archive in the folder that is not the original game's, a map pack's too,
+    // and is asked at every mount of the game, every visit of the launcher's Mods and Maps pages:
+    // kept, while the folder's archives are those it found, each as large and as old.)
+    type Key = Vec<(PathBuf, u64, Option<std::time::SystemTime>)>;
+    static KEPT: std::sync::Mutex<Option<(PathBuf, Key, Vec<GameFolderMod>)>> = std::sync::Mutex::new(None);
+    let key: Key = crate::archive_files(install)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|path| {
+            let meta = std::fs::metadata(&path).ok();
+            let (len, modified) = meta.map_or((0, None), |m| (m.len(), m.modified().ok()));
+            (path, len, modified)
+        })
+        .collect();
+    if let Some((dir, kept_key, mods)) = KEPT.lock().unwrap_or_else(|e| e.into_inner()).as_ref()
+        && dir == install
+        && *kept_key == key
+    {
+        return mods.clone();
+    }
+    let mods = scan_game_folder(install);
+    *KEPT.lock().unwrap_or_else(|e| e.into_inner()) = Some((install.to_path_buf(), key, mods.clone()));
+    mods
+}
+
+/// [`game_folder_mods`], worked out.
+fn scan_game_folder(install: &Path) -> Vec<GameFolderMod> {
     struct Found {
         path: PathBuf,
         name: String,
@@ -1048,6 +1079,21 @@ mod replacement_tests {
         assert_eq!(listing(&without.vfs), listing(&alone), "no mod: the install as it always was");
         assert!(without.replaced.is_empty());
         assert_eq!(without.vfs.read("units/armsy.fbi").unwrap(), b"core contingency");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// A mod added from the game's folder holds archives of the names it has there (they are
+    /// those, linked): none of them is the install's it takes the place of (the install never
+    /// mounts them). One of the original game's names still is.
+    #[test]
+    fn a_mod_added_from_the_game_folder_replaces_none_of_its_own_archives() {
+        let root = temp("game_folder_replaces");
+        let game = install(&root);
+        test_archive::write(&game.join("TAESC.gp3"), &[("unitse/armcom.fbi", b"escalation"), ("guie/armcom1.gui", b"escalation")]);
+        let added = mod_dir(&root, "escalation", "", &[("TAESC.gp3", &[("unitse/armcom.fbi", b"escalation"), ("guie/armcom1.gui", b"escalation")])]);
+        assert!(replaced_archives(&game, &[&added]).is_empty(), "its own archive is no replacement");
+        let enhanced = mod_dir(&root, "enhanced", "", &[("rev31.gp3", &[("units/armcom.fbi", b"enhanced")])]);
+        assert_eq!(replaced_archives(&game, &[&enhanced]), ["rev31.gp3"], "the original game's still is");
         let _ = std::fs::remove_dir_all(root);
     }
 

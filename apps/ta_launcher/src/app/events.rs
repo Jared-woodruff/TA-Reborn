@@ -13,6 +13,48 @@ use super::{Action, LauncherApp, Page};
 use crate::battles::Battles;
 use crate::getmods::Stage;
 use crate::update::Step;
+
+/// What a downloaded update waits for before Setup runs ([`LauncherApp::update_waits_for`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum UpdateWait {
+    /// A game is running: Setup replaces its files.
+    Game,
+    /// A skin's work, which closing the launcher would stop.
+    SkinWork,
+    /// A mod's install, likewise.
+    Install,
+    /// The map library's work (its status).
+    Maps(&'static str),
+    /// The profile being edited, which closing would lose.
+    Profile,
+    /// The skin editor's unsaved changes, likewise.
+    SkinEdits,
+}
+
+impl UpdateWait {
+    /// Why UPDATE NOW or INSTALL NOW cannot be pressed now.
+    pub(crate) fn why(self) -> &'static str {
+        match self {
+            UpdateWait::Game => t("Close the game first: the update replaces its files"),
+            UpdateWait::SkinWork => t("Wait for the current skin operation to finish, then try again."),
+            UpdateWait::Install => t("Wait for the mod being installed"),
+            UpdateWait::Maps(status) => t(status),
+            UpdateWait::Profile | UpdateWait::SkinEdits => self.queued(),
+        }
+    }
+
+    /// What an update asked for waits for, over its progress bar.
+    pub(crate) fn queued(self) -> &'static str {
+        match self {
+            UpdateWait::Game => t("READY · IT INSTALLS WHEN THE GAME CLOSES"),
+            UpdateWait::SkinWork => t("READY · IT INSTALLS AFTER THE SKIN WORK"),
+            UpdateWait::Install => t("READY · IT INSTALLS AFTER THE MOD"),
+            UpdateWait::Maps(status) => t(status),
+            UpdateWait::Profile => t("READY · IT INSTALLS WHEN THE PROFILE IS CLOSED"),
+            UpdateWait::SkinEdits => t("READY · IT INSTALLS WHEN THE SKIN IS SAVED"),
+        }
+    }
+}
 use crate::modlist;
 use crate::theme::*;
 use crate::widgets::ActionButton;
@@ -62,22 +104,43 @@ impl LauncherApp {
         }
     }
 
+    /// What keeps UPDATE NOW and INSTALL NOW from being pressed: Setup replaces the game's files,
+    /// and closing the launcher for it would stop a skin's work, a mod's install or the map
+    /// library's work.
+    pub(crate) fn update_blocked(&self) -> Option<UpdateWait> {
+        if self.game_running() { Some(UpdateWait::Game) }
+        else if self.skins.busy() { Some(UpdateWait::SkinWork) }
+        else if self.installer.busy() { Some(UpdateWait::Install) }
+        else { self.maps.status().map(UpdateWait::Maps) }
+    }
+
+    /// What an update asked for waits for before Setup runs: what keeps it from being asked
+    /// for ([`Self::update_blocked`]), then what closing the launcher would lose (the profile
+    /// being edited, a skin's unsaved changes). Its progress bar says which.
+    pub(crate) fn update_waits_for(&self) -> Option<UpdateWait> {
+        self.update_blocked().or_else(|| {
+            if self.profiles.dialog_open() { Some(UpdateWait::Profile) }
+            else if self.skins.editor.as_ref().is_some_and(|e| e.changed()) { Some(UpdateWait::SkinEdits) }
+            else { None }
+        })
+    }
+
     /// The new version on its way: its news taken in, and once its setup is checked and was
     /// asked for, the setup run and the launcher closed for it (not while the game runs or a mod
-    /// is being installed: it waits for them).
+    /// is being installed: it waits for them, [`Self::update_waits_for`]).
     pub(super) fn updates(&mut self, ctx: &egui::Context) {
         if self.autoupdate && matches!(self.update, crate::update::UpdateState::Available(_)) {
             self.autoupdate = false;
             self.start_update();
         }
+        let waits_for = self.update_waits_for();
         let Some(download) = &mut self.download else { return };
         if download.poll() {
             ctx.request_repaint();
         }
         match &download.step {
             Step::Downloading { .. } | Step::Checking => ctx.request_repaint_after(Duration::from_millis(150)),
-            Step::Ready(setup) if self.update_go && !self.profiles.dialog_open() && !self.game.is_running() && !self.installer.busy() && !self.skins.busy() && !self.maps.busy()
-                && self.skins.editor.as_ref().is_none_or(|e| !e.changed()) => {
+            Step::Ready(setup) if self.update_go && waits_for.is_none() => {
                 self.update_go = false;
                 // Setup closes/replaces this process. Do not rely on on_exit,
                 // where a failed save can no longer leave the player a Retry action.
@@ -213,7 +276,7 @@ impl LauncherApp {
 
     pub(crate) fn dialog_open(&self) -> bool {
         self.profiles.dialog_open() || self.show_shortcuts || self.whats_new.is_some()
-            || self.confirm_uninstall.is_some() || self.mod_validation.selected.is_some() || self.conversion_prompt.is_some() || self.battle_prompt.is_some() || self.show_mod_folders
+            || self.confirm_uninstall.is_some() || self.confirm_replace.is_some() || self.mod_validation.selected.is_some() || self.conversion_prompt.is_some() || self.battle_prompt.is_some() || self.show_mod_folders
             || self.confirm_close || self.confirm_end_game || self.show_progress
             || self.skins.ask.is_some()
     }
@@ -235,8 +298,9 @@ impl LauncherApp {
         if wanted != self.pad.is_some() {
             self.pad = wanted.then(|| crate::pad::Pad::start(ctx));
         }
+        let game_running = self.game_running();
         let Some(pad) = &mut self.pad else { return };
-        pad.listen(raw.focused && !self.game.is_running());
+        pad.listen(raw.focused && !game_running);
         let readings = pad.take();
         let moved = crate::pad::mouse_moved(&raw.events);
         let mouse = moved.or_else(|| ctx.input(|i| i.pointer.latest_pos()));
@@ -290,7 +354,7 @@ impl LauncherApp {
             let enter = !focused && i.consume_key(Modifiers::NONE, Key::Enter);
             (enter, i.consume_key(Modifiers::NONE, Key::F5))
         });
-        if enter && self.page == Page::Play && self.detection.install().is_some() && !self.game.is_running() {
+        if enter && self.page == Page::Play && self.detection.install().is_some() && !self.game_running() {
             ta_ui::sound::play(ctx, ta_ui::sound::UiSound::BigButton);
             self.push(Action::Play);
         }
@@ -314,7 +378,8 @@ impl LauncherApp {
             return;
         };
         let (name, path) = (entry.info.manifest.name.clone(), entry.info.path.clone());
-        let catalogued = crate::catalogue::get(&id).is_some();
+        // (A catalogue mod downloaded by hand has no GET button to install it again.)
+        let catalogued = crate::catalogue::get(&id).is_some_and(|entry| entry.file.is_some_and(|file| file.can_download()));
         let title = tf("REMOVE {name}?", &[("name", &name.to_uppercase())]);
         let mut remove = false;
         let response = ta_ui::panel::modal(ctx, "launcher_uninstall", Panel::new(&title).exit(Exit::Close).width((ctx.content_rect().width() - 80.0).clamp(1.0, 560.0)).max_height((ctx.content_rect().height() - 24.0).max(1.0)).accent(RED), true, |ui| {
@@ -329,7 +394,7 @@ impl LauncherApp {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 10.0;
-                remove = ui.add_enabled(!self.game.is_running() && !self.installer.busy(), ActionButton::danger("REMOVE")).clicked();
+                remove = ui.add_enabled(!self.game_running() && !self.installer.busy(), ActionButton::danger("REMOVE")).clicked();
                 if ui.add(ActionButton::secondary("KEEP")).clicked() {
                     self.confirm_uninstall = None;
                 }
@@ -340,6 +405,48 @@ impl LauncherApp {
             self.uninstall(&id);
         } else if response.exit {
             self.confirm_uninstall = None;
+        }
+    }
+
+    /// The question before a package the player brought takes the place of the installed mod of
+    /// its id.
+    pub(super) fn replace_dialog(&mut self, ctx: &egui::Context) {
+        let Some(source) = self.confirm_replace.clone() else { return };
+        let Some(entry) = self.mods.get(source.id()) else {
+            // (No longer installed: nothing in its way.)
+            self.confirm_replace = None;
+            self.installer.start(source);
+            return;
+        };
+        let (name, version, path) = (entry.info.manifest.name.clone(), entry.info.manifest.version.clone(), entry.info.path.clone());
+        let version = if version.trim().is_empty() || version == "unverified" { t("Unknown").to_string() } else { version };
+        let file = match &source {
+            crate::getmods::Source::Package { path, .. } | crate::getmods::Source::Classic { path, .. } => path.file_name().map_or(String::new(), |n| n.to_string_lossy().into_owned()),
+            _ => String::new(),
+        };
+        let title = tf("REPLACE {name}?", &[("name", &name.to_uppercase())]);
+        let mut replace = false;
+        let response = ta_ui::panel::modal(ctx, "launcher_replace", Panel::new(&title).exit(Exit::Close).width((ctx.content_rect().width() - 80.0).clamp(1.0, 560.0)).max_height((ctx.content_rect().height() - 24.0).max(1.0)).accent(AMBER), true, |ui| {
+            ui.spacing_mut().item_spacing.y = 8.0;
+            let text = tf("{file} would take the place of the {name} installed now (version {version}): its files would be removed.", &[("file", &file), ("name", &name), ("version", &version)]);
+            ui.add(egui::Label::new(RichText::new(text).color(TEXT)).wrap());
+            ui.add(egui::Label::new(RichText::new(path.display().to_string()).font(mono(12.0)).color(STEEL)).wrap());
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 10.0;
+                replace = ui.add_enabled(!self.game_running() && !self.installer.busy(), ActionButton::danger("REPLACE")).clicked();
+                if ui.add(ActionButton::secondary("KEEP")).clicked() {
+                    self.confirm_replace = None;
+                }
+            });
+        });
+        if replace {
+            self.confirm_replace = None;
+            if !self.game_holds_mods(Some(source.id())) {
+                self.installer.start(source);
+            }
+        } else if response.exit {
+            self.confirm_replace = None;
         }
     }
 

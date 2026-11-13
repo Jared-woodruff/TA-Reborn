@@ -146,7 +146,7 @@ impl LauncherApp {
         let report = self.mod_validation.report(&id);
         let progress = self.mod_validation.progress(&id);
         // Why RUN AGAIN cannot be pressed now, if it cannot.
-        let blocked = if self.game.is_running() { Some(t("Wait for the game to close.")) }
+        let blocked = if self.game_running() { Some(t("Wait for the game to close.")) }
             else if self.installer.busy() { Some(t("Wait for the installs to finish.")) }
             else if self.maps.busy() { Some(t("Wait for the map library to finish.")) }
             else if matches!(status, ValidationStatus::Queued | ValidationStatus::Checking) { Some(t("A check is under way.")) }

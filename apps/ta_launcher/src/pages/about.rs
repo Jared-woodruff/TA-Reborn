@@ -250,7 +250,7 @@ impl LauncherApp {
     fn credits_roll(&mut self, ui: &mut Ui, since: f64) {
         use ta_ui::credits::{BAND, PROJECT_LEAD_URL, SONG, TEAM};
         let installed = self.detection.install().is_some();
-        let running = self.game.is_running();
+        let running = self.game_running();
         let mut watch = false;
         section_heading(ui, "CREDITS", |ui| {
             if installed {
