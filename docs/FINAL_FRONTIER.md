@@ -6,11 +6,13 @@ The catalogue does not claim that development has officially ended.
 
 ## Install and play
 
-1. Open **Mods → Get Mods** and search for **Final Frontier** or **TAFF**.
+1. Open **MODS** in the launcher and find **The Final Frontier** in the **LIBRARY** (search for
+   **Final Frontier** or **TAFF**).
 2. Choose **WEBSITE** to open the [mod's website](https://taff.tauniverse.com/index.html)
    in your browser and download `taffV74.zip` there. The expected release is 8,581,261
    bytes (about 8.2 MiB).
-3. Choose **Have the file?** on the card and select the downloaded archive. The launcher
+3. Choose **Have the file?** in its details (or in the menu a right-click on its card opens) and
+   select the downloaded archive. The launcher
    verifies its pinned size and SHA-256 before installing it; a different or damaged
    release leaves any existing installation intact.
 4. **PLAY** enables the conversion and disables other catalogue conversions. Player-added
@@ -35,8 +37,8 @@ identical to the standalone patch. Installing it again is unnecessary.
 
 The two map packs contain ZIP files inside ZIP files. They are optional and are not
 automatically installed with the conversion. To add a readable map, extract the outer
-pack and its individual map ZIP, then drop the map's `.ufo` file into the launcher and
-enable it under Installed Mods. Import the map archive itself; Asteroid Field's package
+pack and its individual map ZIP, then drop the map's `.ufo` file on the launcher's **MAPS**
+page: it is imported as a map pack and turned on. Import the map archive itself; Asteroid Field's package
 also includes an older AI text file that should not replace the main mod's AI data.
 
 Three nested map archives are damaged in the supplied downloads:

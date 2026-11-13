@@ -18,6 +18,12 @@ toml.workspace = true
 image.workspace = true
 rfd = "0.17.2"
 
+[target.'cfg(not(windows))'.dependencies]
+# What the player removes goes to the system's trash (`recycle`): the freedesktop.org trash on
+# Linux (the home's, or the drive's own), the Trash on macOS (through NSFileManager, which asks
+# for no permission to control the Finder). MIT.
+trash = { version = "5.3.0", default-features = false, features = ["freedesktop", "chrono"] }
+
 [target.'cfg(windows)'.dependencies]
 # Resolve Automatic seasonal effects using the player's local date in every UI host; what the
 # player removes goes to the Recycle Bin (`recycle`).

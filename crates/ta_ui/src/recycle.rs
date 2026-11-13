@@ -1,17 +1,18 @@
 //! Removing the player's things (a mod, a skin, a profile, saved games and replays): they go
-//! to the Recycle Bin (Windows), so what was removed by mistake can be put back; elsewhere
-//! they are deleted.
+//! to the Recycle Bin (Windows) or the system's trash (Linux's freedesktop.org trash, macOS's
+//! Trash), so what was removed by mistake can be put back. Where it cannot go there, it stays
+//! where it was (Windows asks first, and deletes it for good if told to).
 
 use std::path::Path;
 
 /// What became of what was removed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Outcome {
-    /// It is in the Recycle Bin.
-    #[cfg_attr(not(windows), allow(dead_code))] // Produced only by the Windows shell backend.
+    /// It is in the Recycle Bin (the trash).
     Recycled,
     /// Deleted: it could not go to the Recycle Bin (a network folder, too big for it), and
-    /// Windows asked first; or there is no Recycle Bin (not on Windows).
+    /// Windows asked first; or Windows' Recycle Bin of that drive keeps nothing.
+    #[cfg_attr(not(windows), allow(dead_code))] // Produced only by the Windows shell backend.
     Deleted,
     /// Left where it was: deleting it for good was not wanted.
     #[cfg_attr(not(windows), allow(dead_code))] // Windows can cancel its deletion dialog.
@@ -73,11 +74,16 @@ pub fn recycle_all<P: AsRef<Path>>(paths: &[P]) -> Result<Outcome, String> {
     }
     #[cfg(not(windows))]
     {
-        for path in paths {
-            let result = if path.is_dir() { std::fs::remove_dir_all(path) } else { std::fs::remove_file(path) };
-            result.map_err(|e| e.to_string())?;
+        #[allow(unused_mut)] // (Only macOS sets its way.)
+        let mut context = trash::TrashContext::new();
+        #[cfg(target_os = "macos")]
+        {
+            use trash::macos::{DeleteMethod, TrashContextExtMacos};
+            context.set_delete_method(DeleteMethod::NsFileManager);
         }
-        Ok(Outcome::Deleted)
+        // (Never deleted for good instead: the player was told it could be put back.)
+        context.delete_all(&paths).map_err(|error| crate::i18n::tf("{path} could not go to the trash: {error}", &[("path", &paths[0].display()), ("error", &error)]))?;
+        Ok(Outcome::Recycled)
     }
 }
 

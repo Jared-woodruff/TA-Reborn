@@ -202,6 +202,18 @@ impl LauncherApp {
                 self.notify(tf("Could not install {name}: {error}", &[("name", &name), ("error", why)]), RED);
             }
         }
+        // A package that turned out to be an installed mod of another id (its own manifest
+        // names it): asked about as a package of that id is, nothing installed meanwhile.
+        for (key, path) in std::mem::take(&mut self.installer.replaces) {
+            let Some(Stage::Replaces { id, name }) = self.installer.stages.remove(&key) else { continue };
+            self.installer.packages.remove(&key);
+            let source = crate::getmods::Source::Package { path, id, name };
+            if self.mods.in_game_folder(source.id()) {
+                self.notify(t("This copy is in TA Reborn's program folder, which comes before your mods folder: replace it there to update it."), AMBER);
+            } else {
+                self.confirm_replace = Some(source);
+            }
+        }
         for key in std::mem::take(&mut self.installer.finished) {
             // (Installed when it was asked for: an update.)
             let updated = self.updates_requested.remove(&key);

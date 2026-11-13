@@ -665,9 +665,10 @@ mod tests {
     /// Bahnschrift hold.
     #[test]
     fn without_bahnschrift_the_interface_is_in_sofia_sans() {
-        assert!(std::ptr::eq(face_of(None, Weight::Regular).bytes, SOFIA_SANS_SEMI_CONDENSED));
-        assert!(std::ptr::eq(face_of(None, Weight::Strong).bytes, SOFIA_SANS_SEMI_CONDENSED));
-        assert!(std::ptr::eq(face_of(None, Weight::Display).bytes, SOFIA_SANS_EXTRA_CONDENSED));
+        // (By their bytes: a debug build may keep two copies of one embedded file, at two places.)
+        assert!(face_of(None, Weight::Regular).bytes == SOFIA_SANS_SEMI_CONDENSED);
+        assert!(face_of(None, Weight::Strong).bytes == SOFIA_SANS_SEMI_CONDENSED);
+        assert!(face_of(None, Weight::Display).bytes == SOFIA_SANS_EXTRA_CONDENSED);
         for bytes in [SOFIA_SANS_SEMI_CONDENSED, SOFIA_SANS_EXTRA_CONDENSED] {
             assert!(has_face(bytes, 0));
             let axes = FontData::from_static(bytes).variation_axes();

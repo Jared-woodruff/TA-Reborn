@@ -329,8 +329,9 @@ fn validate_mod(path: &Path, json: bool, fail_on: &str, inherited: bool) -> Resu
 
 /// `ta-tools mod-install`: see [`Cmd::ModInstall`].
 fn mod_install(package: &Path, mods_dir: &Path, id: Option<String>, name: Option<String>) -> Result<()> {
+    const INVALID_ID: &str = "mod id must be a single ordinary directory name of 1 to 64 letters, other than base and reborn";
     let stem = package.file_stem().map_or(String::new(), |s| s.to_string_lossy().to_string());
-    if let Some(id) = &id { anyhow::ensure!(ta_vfs::package::safe_component(id), "mod id must be a single ordinary directory name"); }
+    if let Some(id) = &id { anyhow::ensure!(ta_vfs::mods::valid_id(id), INVALID_ID); }
     let unpacker = ta_vfs::package::Unpacker::find().context("no unpacker (7-Zip or tar) found")?;
     // Neither a supplied id nor an abandoned directory may choose what gets deleted.
     // Exclusively create a fresh workspace, independent of the package's filenames.
@@ -368,9 +369,12 @@ fn mod_install(package: &Path, mods_dir: &Path, id: Option<String>, name: Option
     }
     println!("  {} units, {} maps; skipped {}: {}", plan.units, plan.maps, plan.skipped.len(), plan.skipped.join(", "));
     // A package laid out as a mod already keeps its own manifest (its id, what it needs), as the
-    // launcher installs it; --id and --name still choose.
-    let own = [plan.root.as_path(), temp.as_path()].into_iter().find(|dir| dir.join("mod.toml").is_file())
-        .and_then(|dir| ta_vfs::mods::read_mod(dir).ok().flatten()).map(|m| m.manifest);
+    // launcher installs it; --id and --name still choose. One that does not read is refused, as
+    // the launcher refuses it: its author meant it.
+    let own = match [plan.root.as_path(), temp.as_path()].into_iter().find(|dir| ta_vfs::mods::manifest_path(dir).is_file()) {
+        Some(dir) => ta_vfs::mods::read_mod(dir).map_err(|error| anyhow::anyhow!("{error}"))?.map(|m| m.manifest),
+        None => None,
+    };
     let mut manifest = own.unwrap_or_else(|| ta_vfs::mods::ModManifest {
         id: stem.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect(),
         name: stem.clone(),
@@ -385,7 +389,7 @@ fn mod_install(package: &Path, mods_dir: &Path, id: Option<String>, name: Option
     });
     if let Some(id) = id { manifest.id = id; }
     if let Some(name) = name { manifest.name = name; }
-    anyhow::ensure!(ta_vfs::package::safe_component(&manifest.id), "mod id must be a single ordinary directory name");
+    anyhow::ensure!(ta_vfs::mods::valid_id(&manifest.id), INVALID_ID);
     let dir = ta_vfs::package::install(&plan, &manifest, mods_dir)?;
     println!("installed: {}", dir.display());
     Ok(())

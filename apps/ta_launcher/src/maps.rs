@@ -154,6 +154,8 @@ pub struct Library {
     pub selected: String,
     pub feedback: Option<(String, bool)>,
     pub needs_scan: bool,
+    /// The maps' mounted game and mods let go of ([`Library::release`]), until the next scan.
+    released: bool,
     pub loaded_for: Option<String>,
     /// Where cards' pictures are kept between runs.
     pub cache: Option<PathBuf>,
@@ -183,7 +185,7 @@ impl Default for Library {
     fn default() -> Self {
         Self { catalogue: Catalogue::default(), query: String::new(), filter: Filter::default(), source: String::new(), players: Players::default(),
             size: Size::default(), world: String::new(), favourites: false, sort: Sort::default(), view: View::default(), selected: String::new(),
-            feedback: None, needs_scan: false, loaded_for: None, cache: None, played: BTreeMap::new(),
+            feedback: None, needs_scan: false, released: false, loaded_for: None, cache: None, played: BTreeMap::new(),
             thumbs: Pictures::new("map cards", 2, 192), details: Pictures::new("map details", 1, 6), details_open: false, focused: None, notice: None,
             history: None, history_for: None, visible: None, generation: 0, reveal_selected: None, job: None, imported: VecDeque::new(),
             pending_imports: VecDeque::new(), import_errors: Vec::new() }
@@ -242,6 +244,21 @@ impl Library {
             }
         }
     }
+    /// Lets go of the mounted game and mods the catalogue's maps are read from, and of the
+    /// pictures still waiting to be made from them: on Windows a mod's archive cannot be
+    /// replaced or removed while it is open, so an install or a removal asks for this first
+    /// (a visit to the page held them all session). The pictures made stay; the maps are looked
+    /// for again on the next visit.
+    pub fn release(&mut self) {
+        if self.released { return; }
+        self.released = true;
+        let empty = Arc::new(Vfs::new());
+        for entry in &mut self.catalogue.entries { entry.vfs = empty.clone(); }
+        self.thumbs.drop_queued();
+        self.details.drop_queued();
+        self.needs_scan = true;
+    }
+
     pub fn scan(&mut self, request: Request) {
         if self.busy() { self.needs_scan = true; return; }
         self.needs_scan = false;
@@ -287,6 +304,10 @@ impl Library {
         match result {
             Ok(Completed::Scan(catalogue)) => {
                 self.catalogue = *catalogue;
+                // (Read again: a picture that could not be made from what was let go of may be now.)
+                self.released = false;
+                self.thumbs.forget_failures();
+                self.details.forget_failures();
                 self.generation += 1;
                 self.visible = None;
                 if !self.catalogue.entries.iter().any(|entry| entry.layer == self.source) { self.source.clear(); }
@@ -1230,6 +1251,33 @@ pub(crate) mod tests {
         // (Junctions are removed as links, their targets left: `Temp` cleans up the rest.)
         std::fs::remove_dir(elsewhere.join("cache")).unwrap();
         std::fs::remove_dir(&settings).unwrap();
+    }
+
+    /// The library holds the game and the mods its maps are read from, mounted, for their
+    /// pictures: on Windows a mod's folder holding an archive so opened cannot be moved aside
+    /// for its update, nor removed. Let go of, it can (and the maps are looked for again).
+    #[cfg(windows)]
+    #[test]
+    fn a_released_library_holds_no_mods_archive_open() {
+        let temp = Temp::new();
+        let mods = temp.0.join("mods");
+        let folder = mods.join("moonpack");
+        std::fs::create_dir_all(&folder).unwrap();
+        write_map_archive(&folder.join("moon.ufo"));
+        std::fs::write(folder.join("mod.toml"), "id = \"moonpack\"
+name = \"Moon pack\"
+").unwrap();
+        let (found, errors) = ta_vfs::mods::scan(&mods);
+        assert!(errors.is_empty(), "{errors:?}");
+        let mut library = Library::default();
+        library.catalogue = scan(Request { game_dir: None, builtin: None, mods: found, enabled: vec!["moonpack".into()] }).unwrap();
+        assert!(library.catalogue.entries.iter().any(|entry| entry.stem == "moon"));
+        let aside = mods.join(".moonpack.old");
+        assert!(std::fs::rename(&folder, &aside).is_err(), "the mounted archive keeps its folder where it is");
+        library.release();
+        std::fs::rename(&folder, &aside).expect("let go of, the folder moves");
+        assert!(library.needs_scan, "the maps are looked for again");
+        library.release();
     }
 
     #[test]

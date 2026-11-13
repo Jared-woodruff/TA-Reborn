@@ -102,31 +102,32 @@ impl Unpacker {
     /// [`Unpacker::unpack`], the tool killed as soon as `cancelled` says so (a cancel, the
     /// launcher closing: it must not go on unpacking behind it).
     pub fn unpack_cancellable(&self, archive: &Path, into: &Path, cancelled: &dyn Fn() -> bool) -> Result<(), PackageError> {
+        self.unpack_within(archive, into, cancelled, MAX_PACKAGE_ENTRIES, MAX_PACKAGE_BYTES)
+    }
+
+    /// [`Unpacker::unpack_cancellable`] within these limits: refused before anything is
+    /// unpacked where the archive's listing says it holds more, else stopped as soon as what
+    /// comes out passes them.
+    fn unpack_within(&self, archive: &Path, into: &Path, cancelled: &dyn Fn() -> bool, max_entries: usize, max_bytes: u64) -> Result<(), PackageError> {
         let archive = std::fs::canonicalize(archive).map_err(io(archive))?;
         std::fs::create_dir_all(into).map_err(io(into))?;
         if crate::is_link(&std::fs::symlink_metadata(into).map_err(io(into))?) || std::fs::read_dir(into).map_err(io(into))?.next().is_some() {
             return Err(PackageError::Unsafe("extraction requires an empty ordinary directory".into()));
         }
-        let mut command = match self {
-            Unpacker::SevenZip(exe) => {
-                let mut c = Command::new(exe);
-                c.arg("x").arg("-y").arg("-bd").arg(format!("-o{}", into.display())).arg("--").arg(&archive);
-                c
-            }
-            Unpacker::Tar(exe) => {
-                let mut c = Command::new(exe);
-                c.arg("-xf").arg(&archive).arg("-C").arg(into);
-                c
-            }
-        };
-        #[cfg(windows)]
-        {
-            // No console window flashing up over the launcher.
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(0x0800_0000);
-        }
         let file = archive.file_name().map_or(String::new(), |f| f.to_string_lossy().to_string());
         let failed = |message: String| PackageError::Unpack { tool: self.name().into(), file: file.clone(), message };
+        let too_much = || PackageError::Unsafe(format!("{file} unpacks to more than 8 GiB or 100,000 files"));
+        let named = Named::new(self, &archive, into).map_err(io(&archive))?;
+        // (Its listing first: a package of more entries than the limits, a hundred thousand tiny
+        // files, is refused at once, not after minutes of unpacking. A listing that does not come
+        // is no verdict: what comes out is measured as it does.)
+        match self.listing(&named, cancelled, max_entries) {
+            Ok((entries, bytes)) if entries > max_entries || bytes.is_some_and(|bytes| bytes > max_bytes) => return Err(too_much()),
+            Err(PackageError::Cancelled) => return Err(PackageError::Cancelled),
+            Err(error) => log::info!("{file}: no listing before unpacking ({error})"),
+            Ok(_) => {}
+        }
+        let mut command = self.command(&named, false);
         let mut child = command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped()).spawn().map_err(|e| failed(e.to_string()))?;
         // (Its complaints read on a thread of their own: a full pipe would stall it.)
         let mut complaints = child.stderr.take();
@@ -153,11 +154,11 @@ impl Unpacker {
             }
             if std::time::Instant::now() >= measure_at {
                 let started = std::time::Instant::now();
-                if past_limits(into, MAX_PACKAGE_ENTRIES, MAX_PACKAGE_BYTES) {
+                if past_limits(into, max_entries, max_bytes) {
                     let _ = child.kill();
                     let _ = child.wait();
                     let _ = reader.join();
-                    return Err(PackageError::Unsafe(format!("{file} unpacks to more than 8 GiB or 100,000 files")));
+                    return Err(too_much());
                 }
                 measure_at = std::time::Instant::now() + std::time::Duration::from_secs(1).max(started.elapsed() * 10);
             }
@@ -174,6 +175,129 @@ impl Unpacker {
             return Err(PackageError::Incomplete { file });
         }
         Ok(())
+    }
+
+    /// The tool's command, to list the archive's entries or to unpack it, given `named`.
+    fn command(&self, named: &Named, list: bool) -> Command {
+        let mut command = match self {
+            Unpacker::SevenZip(exe) => {
+                let mut c = Command::new(exe);
+                if list { c.arg("l").arg("-ba").arg("-slt"); } else { c.arg("x").arg("-y").arg("-bd").arg(format!("-o{}", named.into.display())); }
+                c.arg("--").arg(&named.archive);
+                c
+            }
+            Unpacker::Tar(exe) => {
+                let mut c = Command::new(exe);
+                if list { c.arg("-tf").arg(&named.archive); } else { c.arg("-xf").arg(&named.archive).arg("-C").arg(&named.into); }
+                c
+            }
+        };
+        if let Some(folder) = &named.folder { command.current_dir(folder); }
+        #[cfg(windows)]
+        {
+            // No console window flashing up over the launcher.
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x0800_0000);
+        }
+        command
+    }
+
+    /// What the archive holds by the tool's listing, read before anything is unpacked: how many
+    /// entries, and (7-Zip's listing says) how many bytes they unpack to. The reading stops past
+    /// `most` entries, the tool stopped with it.
+    fn listing(&self, named: &Named, cancelled: &dyn Fn() -> bool, most: usize) -> Result<(usize, Option<u64>), PackageError> {
+        use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+        let failed = |message: String| PackageError::Unpack { tool: self.name().into(), file: String::new(), message };
+        let mut child = self.command(named, true).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().map_err(|e| failed(e.to_string()))?;
+        let (entries, bytes) = (std::sync::Arc::new(AtomicUsize::new(0)), std::sync::Arc::new(AtomicU64::new(0)));
+        let seven = matches!(self, Unpacker::SevenZip(_));
+        let output = child.stdout.take();
+        let reader = {
+            let (entries, bytes) = (entries.clone(), bytes.clone());
+            // (Each line as bytes: names come in whatever encoding the archive keeps them.)
+            std::thread::spawn(move || {
+                let Some(output) = output else { return };
+                for line in std::io::BufRead::split(std::io::BufReader::new(output), b'\n') {
+                    let Ok(line) = line else { break };
+                    let line = line.strip_suffix(b"\r").unwrap_or(&line);
+                    if !seven {
+                        if !line.iter().all(u8::is_ascii_whitespace) { entries.fetch_add(1, Ordering::Relaxed); }
+                    } else if line.starts_with(b"Path = ") {
+                        entries.fetch_add(1, Ordering::Relaxed);
+                    } else if let Some(size) = line.strip_prefix(b"Size = ").and_then(|n| std::str::from_utf8(n).ok()?.trim().parse::<u64>().ok()) {
+                        bytes.fetch_add(size, Ordering::Relaxed);
+                    }
+                    if entries.load(Ordering::Relaxed) > most { break; }
+                }
+            })
+        };
+        let stop = |child: &mut std::process::Child| { let _ = child.kill(); let _ = child.wait(); };
+        let mut outcome = Ok(());
+        loop {
+            if cancelled() {
+                stop(&mut child);
+                outcome = Err(PackageError::Cancelled);
+                break;
+            }
+            if entries.load(Ordering::Relaxed) > most {
+                stop(&mut child);
+                break;
+            }
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    if !status.success() { outcome = Err(failed(format!("listing ended with {status}"))); }
+                    break;
+                }
+                Ok(None) => std::thread::sleep(std::time::Duration::from_millis(20)),
+                Err(error) => {
+                    stop(&mut child);
+                    outcome = Err(failed(error.to_string()));
+                    break;
+                }
+            }
+        }
+        let _ = reader.join();
+        outcome.map(|()| (entries.load(Ordering::Relaxed), seven.then(|| bytes.load(Ordering::Relaxed))))
+    }
+}
+
+/// The archive and the folder to unpack into, as the tool is given them. Windows' bsdtar reads
+/// its arguments in the system's ANSI code page, so a path beyond it (a package named in
+/// Cyrillic on a Western Windows, or a user name in another script, in the launcher's working
+/// folder) reached it as question marks, and nothing unpacked. There, the archive is linked
+/// (or copied) beside the folder under a name of plain letters, and both are given relative to
+/// the tool's working folder, which Windows resolves by its whole name. 7-Zip reads any name.
+struct Named {
+    archive: PathBuf,
+    into: PathBuf,
+    /// The tool's working folder, where the names are relative to it.
+    folder: Option<PathBuf>,
+    /// The archive's link, removed with this.
+    link: Option<PathBuf>,
+}
+
+impl Named {
+    fn new(unpacker: &Unpacker, archive: &Path, into: &Path) -> std::io::Result<Named> {
+        let plain = |path: &Path| path.to_str().is_some_and(|s| s.is_ascii());
+        let as_given = Named { archive: archive.to_path_buf(), into: into.to_path_buf(), folder: None, link: None };
+        if !cfg!(windows) || matches!(unpacker, Unpacker::SevenZip(_)) || (plain(archive) && plain(into)) {
+            return Ok(as_given);
+        }
+        let (Some(folder), Some(name)) = (into.parent(), into.file_name().map(Path::new).filter(|name| plain(name))) else { return Ok(as_given) };
+        let extension = archive.extension().and_then(|e| e.to_str()).filter(|e| !e.is_empty() && e.chars().all(|c| c.is_ascii_alphanumeric())).unwrap_or("pkg").to_ascii_lowercase();
+        let link_name = format!(".package-{}.{extension}", std::process::id());
+        let link = folder.join(&link_name);
+        let _ = std::fs::remove_file(&link);
+        if std::fs::hard_link(archive, &link).is_err() {
+            std::fs::copy(archive, &link)?;
+        }
+        Ok(Named { archive: PathBuf::from(link_name), into: name.to_path_buf(), folder: Some(folder.to_path_buf()), link: Some(link) })
+    }
+}
+
+impl Drop for Named {
+    fn drop(&mut self) {
+        if let Some(link) = &self.link { let _ = std::fs::remove_file(link); }
     }
 }
 
@@ -223,6 +347,19 @@ fn tree_size(dir: &Path) -> u64 {
 }
 
 /// TA's data folders (lower case), taken when they sit beside the content's archives.
+/// A mod's documents, by their extensions (lower case): what an install keeps in its `docs/`, and
+/// what the launcher lists as its documents.
+pub const DOCUMENT_EXTENSIONS: &[&str] = &["txt", "md", "rtf", "pdf", "doc", "docx", "htm", "html", "nfo"];
+
+/// Folders a package keeps its documents in (`Docs/`, `Documentation/`...), in lower case: the
+/// documents at their top go into the mod's `docs/` with those beside the content.
+const DOCUMENT_FOLDERS: &[&str] = &["doc", "docs", "documentation", "manual", "manuals", "readme", "help"];
+
+/// Whether a file's name (in lower case) is a document's ([`DOCUMENT_EXTENSIONS`]).
+pub fn is_document(name: &str) -> bool {
+    name.rsplit_once('.').is_some_and(|(_, extension)| DOCUMENT_EXTENSIONS.contains(&extension))
+}
+
 pub const TA_FOLDERS: &[&str] = &[
     "ai", "anims", "bitmaps", "camps", "download", "features", "fonts", "gamedata", "guis", "maps", "objects3d", "palettes",
     "scripts", "sounds", "textures", "unitpics", "units", "weapons", "music",
@@ -356,20 +493,39 @@ pub fn plan(unpacked: &Path) -> Result<Plan, PackageError> {
     }
     let mut entries: Vec<PathBuf> = std::fs::read_dir(&root).map_err(io(&root))?.flatten().map(|e| e.path()).collect();
     entries.sort();
+    // (Folders of documents after the documents beside the content: those take their names.)
+    let mut document_folders = Vec::new();
     for path in entries {
         let name = path.file_name().map_or(String::new(), |n| n.to_string_lossy().to_ascii_lowercase());
         if path.is_dir() {
             // (A folder with a name of the mod's own stays only if it proves to be one.)
             if TA_FOLDERS.contains(&name.as_str()) || declared.contains(&name) || rename_candidate(&name).is_some() {
                 plan.folders.push(path);
+            } else if DOCUMENT_FOLDERS.contains(&name.as_str()) {
+                document_folders.push(path);
             } else {
                 plan.skipped.push(format!("{}/", rel(&path)));
             }
         } else if plan.archives.contains(&path) || stubs.contains(&path) || unreadable.iter().any(|(p, _)| *p == path) {
-        } else if ["txt", "md", "rtf", "pdf", "doc", "htm", "html"].iter().any(|e| name.ends_with(&format!(".{e}"))) {
+        } else if is_document(&name) {
             plan.docs.push(path);
         } else {
             plan.skipped.push(rel(&path));
+        }
+    }
+    // A folder of documents: those at its top join the rest, one of a name taken once (on every
+    // system alike); the rest of it, pictures and folders, stays behind.
+    for folder in document_folders {
+        let mut documents: Vec<PathBuf> = std::fs::read_dir(&folder).map_err(io(&folder))?.flatten().map(|e| e.path())
+            .filter(|p| p.is_file() && p.file_name().is_some_and(|n| is_document(&n.to_string_lossy().to_ascii_lowercase()))).collect();
+        documents.sort();
+        let named = |p: &PathBuf| p.file_name().map(|n| n.to_string_lossy().to_lowercase());
+        for document in documents {
+            if plan.docs.iter().any(|taken| named(taken) == named(&document)) {
+                plan.skipped.push(rel(&document));
+            } else {
+                plan.docs.push(document);
+            }
         }
     }
     // What the content holds, by top folder: how many files of each kind.
@@ -577,9 +733,14 @@ pub fn install_with_commit_guard<G>(
     }
     check_tree(&plan.root)?;
     // Public plans may also be built by callers: only direct children of the selected
-    // content root can be moved, and no destination may alias an unpacked source.
+    // content root can be moved (and documents in a folder of documents there), and no
+    // destination may alias an unpacked source.
+    let in_document_folder = |path: &PathBuf| path.parent().is_some_and(|folder| {
+        folder.parent() == Some(plan.root.as_path())
+            && folder.file_name().is_some_and(|name| DOCUMENT_FOLDERS.contains(&name.to_string_lossy().to_lowercase().as_str()))
+    });
     for path in plan.archives.iter().chain(&plan.folders).chain(&plan.docs) {
-        if path.parent() != Some(plan.root.as_path()) {
+        if path.parent() != Some(plan.root.as_path()) && !(plan.docs.contains(path) && in_document_folder(path)) {
             return Err(PackageError::Unsafe("planned file is outside the content root".into()));
         }
     }
@@ -615,11 +776,12 @@ pub fn install_with_commit_guard<G>(
     };
     ordinary(&staging)?;
     ordinary(&old)?;
-    for (path, incomplete) in [(&staging, true), (&old, false)] {
+    for path in [&staging, &old] {
         if !path.exists() { continue; }
-        // Only staging may legitimately lack a manifest after an interrupted copy.
-        // A published backup must identify the mod it belongs to.
-        if incomplete && !path.join("mod.toml").exists() { continue; }
+        // (Its reserved name is the installer's own: one without a manifest is a copy staged and
+        // never finished, or a version replaced that had none, a folder installed by hand.
+        // One with a manifest must be this mod's.)
+        if !crate::mods::manifest_path(path).exists() { continue; }
         match crate::mods::read_mod(path) {
             Ok(Some(info)) if info.manifest.id == manifest.id.to_lowercase() => {}
             _ => return Err(PackageError::Unsafe(format!("{} does not belong to mod {}", path.display(), manifest.id))),
@@ -664,7 +826,7 @@ pub fn install_with_commit_guard<G>(
     // is the only previous installation: retain it on cancellation or staging
     // failure, and let the rollback below restore it if publication fails.
     if install_target(mods_dir, &manifest.id).is_some_and(|live| live.exists())
-        && let Err(error) = remove_directory(&old)
+        && let Err(error) = discard(mods_dir, &old)
     {
         let _ = std::fs::remove_dir_all(&staging);
         return Err(error);
@@ -704,12 +866,12 @@ pub fn install_with_commit_guard<G>(
         return Err(error);
     }
     // Swap the new version in (the old one out of the way first).
-    if target.exists() && let Err(error) = std::fs::rename(&target, &old) {
+    if target.exists() && let Err(error) = rename_patiently(&target, &old) {
         let _ = std::fs::remove_dir_all(&staging);
         return Err(io(&target)(error));
     }
-    if let Err(error) = std::fs::rename(&staging, &target) {
-        if old.exists() { let _ = std::fs::rename(&old, &target); }
+    if let Err(error) = rename_patiently(&staging, &target) {
+        if old.exists() { let _ = rename_patiently(&old, &target); }
         let _ = std::fs::remove_dir_all(&staging);
         return Err(io(&staging)(error));
     }
@@ -718,15 +880,74 @@ pub fn install_with_commit_guard<G>(
     // (The swap itself on the disk too, where a folder can be flushed.)
     #[cfg(unix)]
     let _ = std::fs::File::open(mods_dir).and_then(|dir| dir.sync_all());
-    let _ = std::fs::remove_dir_all(&old);
+    let _ = discard(mods_dir, &old);
     Ok(target)
+}
+
+/// How long a rename of the swap waits for a file in the way to be let go of.
+const RENAME_PATIENCE: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// A rename of the swap, tried again for a few seconds where Windows refuses it because a file
+/// in the folder is open for a moment: an antivirus reading the files just written, a check or
+/// a picture still reading the version replaced.
+fn rename_patiently(from: &Path, to: &Path) -> std::io::Result<()> {
+    let deadline = std::time::Instant::now() + RENAME_PATIENCE;
+    loop {
+        match std::fs::rename(from, to) {
+            Err(error) if in_use(&error) && std::time::Instant::now() < deadline => std::thread::sleep(std::time::Duration::from_millis(100)),
+            result => return result,
+        }
+    }
+}
+
+/// Whether Windows refused a file operation because something has a file open (access denied,
+/// a sharing violation, a lock).
+fn in_use(error: &std::io::Error) -> bool {
+    cfg!(windows) && (error.kind() == std::io::ErrorKind::PermissionDenied || matches!(error.raw_os_error(), Some(5 | 32 | 33)))
+}
+
+/// The folders of `mods_dir` being discarded (`.trash-<n>`): what is left of one is swept away
+/// by [`recover`].
+const TRASH_PREFIX: &str = ".trash-";
+
+/// Removes a version replaced (`path`, in `mods_dir`): renamed out of its reserved name first,
+/// in one step, then deleted. Stopped half way (the launcher closed, the power cut), what is
+/// left is a folder of no mod's that [`recover`] sweeps away, never a version half deleted
+/// under the name the next install of the mod would take for one of its own.
+fn discard(mods_dir: &Path, path: &Path) -> Result<(), PackageError> {
+    if std::fs::symlink_metadata(path).is_err() { return Ok(()); }
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
+    let trash = mods_dir.join(format!("{TRASH_PREFIX}{}-{nanos}-{}", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+    rename_patiently(path, &trash).map_err(io(path))?;
+    // (Best effort: what stays behind is swept away by the next start.)
+    let _ = std::fs::remove_dir_all(&trash);
+    Ok(())
+}
+
+/// Clears Windows' read-only mark of the file at `path`, if it has one: files from a CD, and
+/// 7-Zip keeps the mark as it unpacks them. A mod's files so marked could not be flushed to the
+/// disk before an update, nor replaced by the next one. (Elsewhere nothing: a file's mode is
+/// its owner's to set.)
+pub fn clear_read_only(path: &Path) {
+    #[cfg(windows)]
+    if let Ok(meta) = std::fs::symlink_metadata(path) && meta.is_file() && meta.permissions().readonly() {
+        let mut permissions = meta.permissions();
+        // (Windows' read-only attribute, not a Unix mode: nothing is made writable to others.)
+        #[allow(clippy::permissions_set_readonly_false)]
+        permissions.set_readonly(false);
+        let _ = std::fs::set_permissions(path, permissions);
+    }
+    #[cfg(not(windows))]
+    let _ = path;
 }
 
 /// Flushes a staged copy's files (and on Unix its folders) to the disk before it takes the
 /// installed copy's place, the previous version then removed at once: the unpacker's output, a
 /// copy across drives and `mod.toml` are written without it, and a power cut just after an
-/// update could otherwise leave the new copy half written with the old one gone. Best effort: a
-/// file that cannot be opened to write (one marked read-only) is left to the system.
+/// update could otherwise leave the new copy half written with the old one gone. A file marked
+/// read-only (Windows flushes only through a handle that may write) has the mark cleared first;
+/// on Unix one the owner may not write is flushed through a handle that reads.
 fn sync_tree(root: &Path) {
     let mut pending = vec![root.to_path_buf()];
     while let Some(dir) = pending.pop() {
@@ -736,8 +957,14 @@ fn sync_tree(root: &Path) {
             if kind.is_dir() {
                 pending.push(entry.path());
             } else if kind.is_file() {
+                let path = entry.path();
+                clear_read_only(&path);
                 // (Write access: Windows flushes a file only through a handle that may write.)
-                let _ = std::fs::OpenOptions::new().write(true).open(entry.path()).and_then(|file| file.sync_all());
+                let flushed = std::fs::OpenOptions::new().write(true).open(&path).and_then(|file| file.sync_all());
+                #[cfg(unix)]
+                if flushed.is_err() { let _ = std::fs::File::open(&path).and_then(|file| file.sync_all()); }
+                #[cfg(not(unix))]
+                let _ = flushed;
             }
         }
         #[cfg(unix)]
@@ -819,7 +1046,18 @@ fn open_lock(path: PathBuf) -> Result<(PathBuf, std::fs::File), PackageError> {
 pub fn recover(mods_dir: &Path) -> Vec<String> {
     let mut done = Vec::new();
     let Ok(entries) = std::fs::read_dir(mods_dir) else { return done };
-    let ids: std::collections::BTreeSet<String> = entries.flatten()
+    let entries: Vec<std::fs::DirEntry> = entries.flatten().collect();
+    // (A version replaced whose deletion was stopped half way: no mod's, no name a mod takes.)
+    for entry in &entries {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with(TRASH_PREFIX) && entry.file_type().is_ok_and(|t| t.is_dir()) {
+            match std::fs::remove_dir_all(entry.path()) {
+                Ok(()) => done.push(format!("removed what was left of a replaced version ({name})")),
+                Err(e) => done.push(format!("could not remove what was left of a replaced version ({name}): {e}")),
+            }
+        }
+    }
+    let ids: std::collections::BTreeSet<String> = entries.iter()
         .filter(|entry| entry.file_type().is_ok_and(|t| t.is_dir()))
         .filter_map(|entry| {
             let name = entry.file_name().to_string_lossy().to_string();
@@ -832,7 +1070,7 @@ pub fn recover(mods_dir: &Path) -> Vec<String> {
     let ours = |dir: &Path, id: &str, unfinished: bool| {
         !std::fs::symlink_metadata(dir).is_ok_and(|m| crate::is_link(&m)) && dir.is_dir()
             && match crate::mods::read_mod(dir) {
-                Ok(Some(m)) => m.manifest.id == id || unfinished && !dir.join("mod.toml").exists(),
+                Ok(Some(m)) => m.manifest.id == id || unfinished && !crate::mods::manifest_path(dir).exists(),
                 _ => false,
             }
     };
@@ -846,12 +1084,14 @@ pub fn recover(mods_dir: &Path) -> Vec<String> {
             }
         }
         let old = mods_dir.join(format!(".{id}.old"));
-        if !ours(&old, &id, false) { continue; }
+        // (Without a manifest too: its reserved name is the installer's own, and a version
+        // installed by hand has none.)
+        if !ours(&old, &id, true) { continue; }
         // (Its folder chosen and taken as an install's is: one at a time.)
         let Ok(_publishing) = lock_publication(mods_dir) else { continue };
         let live = crate::mods::scan(mods_dir).0.iter().any(|m| m.manifest.id == id);
         if live {
-            match std::fs::remove_dir_all(&old) {
+            match discard(mods_dir, &old) {
                 Ok(()) => done.push(format!("removed the replaced version of {id}")),
                 Err(e) => done.push(format!("could not remove the replaced version of {id}: {e}")),
             }
@@ -1065,6 +1305,86 @@ mod tests {
         assert!(matches!(unpacker.unpack_cancellable(&zip, &base.join("stopped"), &|| true), Err(PackageError::Cancelled)));
         unpacker.unpack(&zip, &base.join("whole")).unwrap();
         assert_eq!(std::fs::read(base.join("whole/units/test.fbi")).unwrap(), b"[UNITINFO]{UnitName=TEST;}");
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    /// A package of more entries than the limits is refused from its listing, before anything
+    /// is unpacked; within them, it unpacks. (Windows' own tar makes the package, and lists it.)
+    #[cfg(windows)]
+    #[test]
+    fn a_package_of_too_many_entries_is_refused_from_its_listing() {
+        let Some(tar) = std::env::var_os("SystemRoot").map(|r| PathBuf::from(r).join("System32").join("tar.exe")).filter(|p| p.is_file()) else { return };
+        let base = std::env::temp_dir().join(format!("ta_package_listing_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let input = base.join("input");
+        std::fs::create_dir_all(input.join("units")).unwrap();
+        for n in 0..5 { std::fs::write(input.join(format!("units/u{n}.fbi")), b"[UNITINFO]{UnitName=U;}").unwrap(); }
+        let zip = base.join("mod.zip");
+        assert!(Command::new(&tar).arg("-a").arg("-cf").arg(&zip).arg("-C").arg(&input).arg("units").status().unwrap().success());
+        for unpacker in [Some(Unpacker::Tar(tar.clone())), Unpacker::find()].into_iter().flatten() {
+            let refused = base.join(format!("refused-{}", unpacker.name()));
+            assert!(matches!(unpacker.unpack_within(&zip, &refused, &|| false, 4, 1 << 30), Err(PackageError::Unsafe(_))), "{}", unpacker.name());
+            assert_eq!(std::fs::read_dir(&refused).unwrap().count(), 0, "nothing was unpacked ({})", unpacker.name());
+            let whole = base.join(format!("whole-{}", unpacker.name()));
+            unpacker.unpack_within(&zip, &whole, &|| false, 10, 1 << 30).unwrap();
+            assert_eq!(std::fs::read_dir(whole.join("units")).unwrap().count(), 5);
+        }
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    /// Windows' tar reads its arguments in the system's ANSI code page: a package, and a folder,
+    /// named beyond it (Cyrillic on a Western Windows) unpack all the same, nothing left beside.
+    #[cfg(windows)]
+    #[test]
+    fn windows_tar_unpacks_a_package_named_in_any_script() {
+        let Some(tar) = std::env::var_os("SystemRoot").map(|r| PathBuf::from(r).join("System32").join("tar.exe")).filter(|p| p.is_file()) else { return };
+        let root = std::env::temp_dir().join(format!("ta_package_named_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        // (Made under plain names, which the tool reads, then moved under the others.)
+        let input = root.join("input");
+        std::fs::create_dir_all(input.join("units")).unwrap();
+        std::fs::write(input.join("units/test.fbi"), b"[UNITINFO]{UnitName=TEST;}").unwrap();
+        let made = root.join("made.zip");
+        assert!(Command::new(&tar).arg("-a").arg("-cf").arg(&made).arg("-C").arg(&input).arg("units").status().unwrap().success());
+        let base = root.join("Моды и карты");
+        std::fs::create_dir_all(&base).unwrap();
+        let zip = base.join("Мод 1.2.zip");
+        std::fs::rename(&made, &zip).unwrap();
+        let output = base.join("unpacked");
+        Unpacker::Tar(tar).unpack(&zip, &output).unwrap();
+        assert_eq!(std::fs::read(output.join("units/test.fbi")).unwrap(), b"[UNITINFO]{UnitName=TEST;}");
+        let beside: Vec<String> = std::fs::read_dir(&base).unwrap().flatten().map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| n.starts_with(".package-")).collect();
+        assert!(beside.is_empty(), "the link is gone: {beside:?}");
+        assert!(zip.is_file(), "the package itself stays");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// A package's documents go into the mod's `docs/`: those beside its content, and those at the
+    /// top of a folder of documents of its own (`Docs/`), one of a name once; the rest of that
+    /// folder stays behind.
+    #[test]
+    fn a_packages_documents_folder_is_kept() {
+        let base = std::env::temp_dir().join(format!("ta_package_docs_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let source = base.join("source");
+        std::fs::create_dir_all(source.join("units")).unwrap();
+        std::fs::write(source.join("units/NEW.FBI"), b"[UNITINFO]{UnitName=NEW;}").unwrap();
+        std::fs::write(source.join("Readme.txt"), b"beside").unwrap();
+        std::fs::create_dir_all(source.join("Docs/pictures")).unwrap();
+        std::fs::write(source.join("Docs/Guide.html"), b"guide").unwrap();
+        std::fs::write(source.join("Docs/Credits.NFO"), b"credits").unwrap();
+        std::fs::write(source.join("Docs/readme.txt"), b"in the folder").unwrap();
+        std::fs::write(source.join("Docs/pictures/shot.png"), b"png").unwrap();
+        let planned = plan(&source).unwrap();
+        let mut names: Vec<String> = planned.docs.iter().map(|p| p.file_name().unwrap().to_string_lossy().to_string()).collect();
+        names.sort();
+        assert_eq!(names, ["Credits.NFO", "Guide.html", "Readme.txt"]);
+        let mods = base.join("mods");
+        let installed = install(&planned, &manifest("docmod", "1"), &mods).unwrap();
+        assert!(installed.join("docs/Guide.html").is_file() && installed.join("docs/Credits.NFO").is_file());
+        assert_eq!(std::fs::read(installed.join("docs/Readme.txt")).unwrap(), b"beside", "the one beside the content");
+        assert!(!installed.join("docs/pictures").exists());
+        assert!(is_document("manual.docx") && !is_document("shot.png"));
         std::fs::remove_dir_all(base).unwrap();
     }
 
@@ -1420,9 +1740,19 @@ mod tests {
         folder(".busy.installing", None);
         folder(".editor-1-2.installing", None);
         folder(".other.old", Some("not-other"));
+        // (A version installed by hand, with no manifest, moved aside for an update that stopped
+        // there; one whose deletion stopped half way, its manifest gone first; and what was left
+        // of one being discarded.)
+        folder(".bare.old", None);
+        folder(".halfgone.old", None);
+        folder("halfgone", Some("halfgone"));
+        folder(".trash-1-2-3", None);
         let held = lock_install(&mods, "busy").unwrap();
         let log = recover(&mods);
         assert_eq!(std::fs::read(mods.join("gone/canary")).unwrap(), b".gone.old", "the only copy is back: {log:?}");
+        assert_eq!(std::fs::read(mods.join("bare/canary")).unwrap(), b".bare.old", "the only copy is back, manifest or not: {log:?}");
+        assert!(!mods.join(".halfgone.old").exists() && mods.join("halfgone/canary").is_file(), "{log:?}");
+        assert!(!mods.join(".trash-1-2-3").exists(), "{log:?}");
         assert!(!mods.join(".gone.old").exists() && !mods.join(".done.old").exists() && !mods.join(".stale.installing").exists(), "{log:?}");
         assert_eq!(std::fs::read(mods.join("done/canary")).unwrap(), b"done");
         for kept in [".busy.installing", ".editor-1-2.installing", ".other.old"] {
@@ -1431,6 +1761,36 @@ mod tests {
         drop(held);
         let ids: Vec<String> = crate::mods::scan(&mods).0.into_iter().map(|m| m.manifest.id).collect();
         assert!(ids.contains(&"gone".to_string()) && ids.contains(&"done".to_string()), "{ids:?}");
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    /// A version replaced whose deletion stopped half way (its manifest went first) holds up no
+    /// later install of the mod: its reserved name is the installer's own. A version replaced is
+    /// renamed out of that name before it is deleted, so none is left half deleted under it.
+    #[test]
+    fn a_half_deleted_replaced_version_holds_up_no_install() {
+        let base = std::env::temp_dir().join(format!("ta_package_halfgone_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let mods = base.join("mods");
+        let content = |name: &str, text: &[u8]| {
+            let source = base.join(name);
+            std::fs::create_dir_all(source.join("units")).unwrap();
+            std::fs::write(source.join("units/NEW.FBI"), text).unwrap();
+            source
+        };
+        install(&plan(&content("one", b"first")).unwrap(), &manifest("testmod", "1"), &mods).unwrap();
+        let old = mods.join(".testmod.old");
+        std::fs::create_dir_all(old.join("weapons")).unwrap();
+        std::fs::write(old.join("weapons/left.tdf"), b"left behind").unwrap();
+        let target = install(&plan(&content("two", b"second")).unwrap(), &manifest("testmod", "2"), &mods).unwrap();
+        assert_eq!(std::fs::read(target.join("units/NEW.FBI")).unwrap(), b"second");
+        assert!(!old.exists());
+        let left: Vec<String> = std::fs::read_dir(&mods).unwrap().flatten().map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| n.starts_with(TRASH_PREFIX) || n.ends_with(".old")).collect();
+        assert!(left.is_empty(), "nothing replaced is left: {left:?}");
+        // (One of another mod's is still refused.)
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::write(old.join("mod.toml"), toml::to_string(&manifest("other", "1")).unwrap()).unwrap();
+        assert!(matches!(install(&plan(&content("three", b"third")).unwrap(), &manifest("testmod", "3"), &mods), Err(PackageError::Unsafe(_))));
         std::fs::remove_dir_all(base).unwrap();
     }
 

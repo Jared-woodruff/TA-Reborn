@@ -126,6 +126,21 @@ impl Pictures {
         queue.ready.notify_one();
     }
 
+    /// Drops the pictures still waiting their turn (not those being made, which come in as
+    /// usual): their makers let go of what they hold, the maps' mounted archives.
+    pub fn drop_queued(&mut self) {
+        let Some(queue) = &self.queue else { return };
+        let mut jobs = queue.jobs.lock().unwrap_or_else(|e| e.into_inner());
+        for (key, _) in jobs.drain(..) {
+            self.pending.remove(&key);
+            self.show.remove(&key);
+        }
+    }
+
+    /// Forgets which pictures could not be made, so that they are tried again (the content they
+    /// are made from read again).
+    pub fn forget_failures(&mut self) { self.failed.clear(); }
+
     /// Looks ahead for `key`: made after everything asked for to show, its size kept, no texture.
     pub fn prefetch(&mut self, key: String, make: impl FnOnce() -> anyhow::Result<Picture> + Send + 'static) {
         if self.textures.contains_key(&key) || self.pending.contains(&key) || self.failed.contains(&key) || self.sizes.contains_key(&key) { return; }
