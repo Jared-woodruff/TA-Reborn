@@ -33,12 +33,16 @@ pub enum Stage {
     /// Stopped by the player: as if never started.
     Cancelled,
     Failed(String),
+    /// Stopped before anything was installed: the package's own manifest names another mod
+    /// than the one asked for (`id`, named `name`), one installed already, which the player is
+    /// asked about before it is replaced, as for any package of an installed mod's id.
+    Replaces { id: String, name: String },
 }
 
 impl Stage {
     /// Still going (queued or under way).
     pub fn active(&self) -> bool {
-        !matches!(self, Stage::Done { .. } | Stage::Cancelled | Stage::Failed(_))
+        !matches!(self, Stage::Done { .. } | Stage::Cancelled | Stage::Failed(_) | Stage::Replaces { .. })
     }
 }
 
@@ -110,7 +114,7 @@ fn own_manifest(dir: &Path) -> Result<Option<ta_vfs::mods::ModManifest>, String>
     use std::io::Read;
     use ta_ui::i18n::{t, tf};
     const LIMIT: u64 = 1 << 20;
-    let path = dir.join("mod.toml");
+    let path = ta_vfs::mods::manifest_path(dir);
     let invalid = |error: &dyn std::fmt::Display| tf("Invalid manifest {path}: {error}", &[("path", &path.display()), ("error", error)]);
     // This also runs on the UI thread for dropped folders, before package planning.
     let mut text = String::new();
@@ -124,10 +128,23 @@ fn own_manifest(dir: &Path) -> Result<Option<ta_vfs::mods::ModManifest>, String>
         return Err(invalid(&t("mod manifest exceeds 1 MiB")));
     }
     let manifest: ta_vfs::mods::ModManifest = toml::from_str(&text).map_err(|error| invalid(&error))?;
-    if !(1..=64).contains(&manifest.id.chars().count()) || !ta_vfs::package::safe_component(&manifest.id) {
-        return Err(invalid(&t("invalid mod id")));
+    if !ta_vfs::mods::valid_id(&manifest.id) {
+        return Err(invalid(&refused_id(&manifest.id)));
+    }
+    if manifest.rename.iter().any(|(from, to)| !ta_vfs::mods::valid_rename(from, to)) {
+        return Err(invalid(&t("a renamed folder may stand only for one of TA's own")));
     }
     Ok(Some(manifest))
+}
+
+/// Why a mod cannot be installed as `id`: one the original game's or TA Reborn's own content goes
+/// by (`ta_vfs::mods::RESERVED_IDS`) said so, with what to do; any other, no name it can take.
+fn refused_id(id: &str) -> String {
+    if ta_vfs::mods::reserved_id(id) {
+        ta_ui::i18n::tf("{id} is the name of the original game's or TA Reborn's own content: give the mod another name, then install it again.", &[("id", &id)])
+    } else {
+        ta_ui::i18n::t("invalid mod id").to_string()
+    }
 }
 
 /// Why an install did not finish.
@@ -135,6 +152,8 @@ fn own_manifest(dir: &Path) -> Result<Option<ta_vfs::mods::ModManifest>, String>
 enum Failure {
     Cancelled,
     Error(String),
+    /// The package is the installed mod `id` (`Stage::Replaces`).
+    Replaces { id: String, name: String },
 }
 
 impl From<String> for Failure {
@@ -163,6 +182,14 @@ pub struct Installer {
     /// Installs that failed since the launcher last looked (it says so where the Mods page is not
     /// in sight).
     pub failed: Vec<String>,
+    /// Packages found to be an installed mod of another id than asked (`Stage::Replaces`), since
+    /// the launcher last looked: it asks before replacing it. With each, the package.
+    pub replaces: Vec<(String, PathBuf)>,
+    /// The packages asked for, by the id asked, where they are.
+    paths: BTreeMap<String, PathBuf>,
+    /// The mods installed now, in any of the mods folders (by id): a package naming one of them
+    /// in its own manifest is not installed over it unasked.
+    installed: Arc<Mutex<std::collections::BTreeSet<String>>>,
 }
 
 impl Installer {
@@ -179,6 +206,8 @@ impl Installer {
         let game = Arc::new(AtomicBool::new(false));
         let playing = game.clone();
         let (stop, running) = (cancelled.clone(), current.clone());
+        let installed: Arc<Mutex<std::collections::BTreeSet<String>>> = Arc::default();
+        let known = installed.clone();
         let worker = std::thread::Builder::new()
             .name("mod installs".into())
             .spawn(move || {
@@ -200,9 +229,10 @@ impl Installer {
                         let send = |s: Stage| {
                             let _ = report.send((id.clone(), s));
                         };
-                        match install(&job, into.as_deref().unwrap_or(&mods_dir), &cache, &send, &is_cancelled, &running, &playing) {
+                        match install(&job, into.as_deref().unwrap_or(&mods_dir), &cache, &send, &is_cancelled, &running, &playing, &known) {
                             Ok((units, maps, installed)) => Stage::Done { units, maps, id: installed },
                             Err(Failure::Cancelled) => Stage::Cancelled,
+                            Err(Failure::Replaces { id, name }) => Stage::Replaces { id, name },
                             Err(Failure::Error(e)) => {
                                 log::warn!("installing {id}: {e}");
                                 Stage::Failed(e)
@@ -214,7 +244,14 @@ impl Installer {
                 }
             });
         if let Err(error) = worker { log::error!("could not start mod installs: {error}"); }
-        Installer { requests, updates, cancelled, current, stopped, working, game, stages: BTreeMap::new(), packages: BTreeMap::new(), finished: Vec::new(), failed: Vec::new() }
+        Installer { requests, updates, cancelled, current, stopped, working, game, stages: BTreeMap::new(), packages: BTreeMap::new(), finished: Vec::new(), failed: Vec::new(),
+            replaces: Vec::new(), paths: BTreeMap::new(), installed }
+    }
+
+    /// The mods installed now, by id, in any of the mods folders (kept up to date by the
+    /// launcher as it finds them).
+    pub fn set_installed(&self, ids: impl IntoIterator<Item = String>) {
+        if let Ok(mut installed) = self.installed.lock() { *installed = ids.into_iter().collect(); }
     }
 
     /// Whether the game runs now (an installed mod is not replaced under it).
@@ -275,6 +312,10 @@ impl Installer {
         } else {
             self.packages.remove(&id);
         }
+        match &source {
+            Source::Package { path, .. } => { self.paths.insert(id.clone(), path.clone()); }
+            _ => { self.paths.remove(&id); }
+        }
         let stage = if self.requests.send((source, into)).is_ok() { Stage::Queued }
             else { Stage::Failed(installer_stopped_message()) };
         self.stages.insert(id, stage);
@@ -309,6 +350,7 @@ impl Installer {
             match stage {
                 Stage::Done { .. } => self.finished.push(id.clone()),
                 Stage::Failed(_) => self.failed.push(id.clone()),
+                Stage::Replaces { .. } => if let Some(path) = self.paths.get(&id) { self.replaces.push((id.clone(), path.clone())); },
                 _ => {}
             }
             self.stages.insert(id, stage);
@@ -332,6 +374,9 @@ fn installer_stopped_message() -> String {
 }
 
 /// Installs one mod; returns the units and maps it brought, and the id it was installed as.
+/// (`installed`: the mods installed now, by id: a package whose own manifest names one of them,
+/// other than the one asked for, is not installed over it unasked.)
+#[allow(clippy::too_many_arguments)]
 fn install(
     source: &Source,
     mods_dir: &Path,
@@ -340,10 +385,13 @@ fn install(
     cancelled: &dyn Fn() -> bool,
     running: &Mutex<Option<moddb::Stopper>>,
     game: &AtomicBool,
+    installed: &Mutex<std::collections::BTreeSet<String>>,
 ) -> Result<(usize, usize, String), Failure> {
     use ta_ui::i18n::{t, tf};
     let (path, manifest) = match source {
         Source::Classic { path, id, name } => {
+            // (Refused before it is copied: installed, it could not be found as a mod.)
+            if !ta_vfs::mods::valid_id(id) { return Err(refused_id(id).into()); }
             let destination = archive_destination(path, mods_dir).map_err(|error| error.to_string())?;
             game_holds(game, &destination, name)?;
             ta_formats::hpi::HpiArchive::open(path).map_err(|error| error.to_string())?;
@@ -374,8 +422,8 @@ fn install(
         return Err(Failure::Cancelled);
     }
     send(Stage::Unpacking);
-    if !ta_vfs::package::safe_component(&manifest.id) || !(1..=64).contains(&manifest.id.chars().count()) {
-        return Err(t("invalid mod id").to_string().into());
+    if !ta_vfs::mods::valid_id(&manifest.id) {
+        return Err(refused_id(&manifest.id).into());
     }
     let legacy_temp = cache.join("unpack").join(&manifest.id);
     // A recovered old staging folder may contain unfinished files. Preserve it and
@@ -409,7 +457,15 @@ fn install(
             let own = match own_manifest(&plan.root)? { Some(own) => Some(own), None => own_manifest(&temp)? };
             (plan, own)
         };
-        // A mod laid out as one already keeps its own manifest (its id, what it needs).
+        // A mod laid out as one already keeps its own manifest (its id, what it needs): one of
+        // another mod installed now is asked about first, as a package named after it would be
+        // (where it is, and that it goes, are the player's to agree to).
+        if let Some(own) = &own
+            && own.id != manifest.id
+            && installed.lock().is_ok_and(|installed| installed.contains(&own.id))
+        {
+            return Err(Failure::Replaces { id: own.id.clone(), name: own.name.clone() });
+        }
         let manifest = own.unwrap_or_else(|| manifest.clone());
         // (Cancelled while it was being unpacked: nothing is installed.)
         if cancelled() {
@@ -447,7 +503,7 @@ fn install_from_game_folder(
         rename: found.rename.clone(),
         replaces: Vec::new(),
     };
-    if !ta_vfs::package::safe_component(&manifest.id) || !(1..=ta_vfs::mods::MOST_ID_LETTERS).contains(&manifest.id.chars().count()) {
+    if !ta_vfs::mods::valid_id(&manifest.id) {
         return Err(ta_ui::i18n::t("invalid mod id").to_string().into());
     }
     let plan = ta_vfs::package::game_folder_plan(found);
@@ -550,9 +606,14 @@ pub fn package_error(e: &ta_vfs::package::PackageError) -> String {
     }
 }
 
+/// The lock the run working in a working folder holds on its `.held` file: another run's sweep
+/// leaves a folder so held, whatever its age (a long download writes into a file of it, which
+/// leaves the folder's own time as it was; on Linux and macOS a folder in use can be deleted).
+const HELD: &str = ".held";
+
 /// Removes working folders (`<prefix>-<pid>-<n>`) another run of the launcher left behind in
-/// `dir`: none of this one's, nor any touched in the last `min_age` (a setup may still be
-/// reading its own).
+/// `dir`: none of this one's, none another run still works in (its `.held` locked), nor any
+/// touched in the last `min_age` (a setup may still be reading its own).
 pub fn sweep_stale(dir: &Path, prefix: &str, min_age: Duration) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     let ours = std::process::id().to_string();
@@ -560,6 +621,9 @@ pub fn sweep_stale(dir: &Path, prefix: &str, min_age: Duration) {
         let name = entry.file_name().to_string_lossy().to_string();
         let Some(rest) = name.strip_prefix(prefix).and_then(|r| r.strip_prefix('-')) else { continue };
         if rest.split('-').next() == Some(ours.as_str()) {
+            continue;
+        }
+        if std::fs::File::open(entry.path().join(HELD)).is_ok_and(|held| held.try_lock().is_err()) {
             continue;
         }
         let old = entry.metadata().and_then(|m| m.modified()).is_ok_and(|t| t.elapsed().is_ok_and(|age| age >= min_age));
@@ -592,8 +656,9 @@ pub fn sweep_stale_imports(mods_dir: &Path, min_age: Duration) {
     }
 }
 
-/// A private workspace keeps concurrent launcher instances and cancelled installs apart.
-struct InstallWorkspace(PathBuf);
+/// A private workspace keeps concurrent launcher instances and cancelled installs apart. Its
+/// `.held` locked while it lasts: no other run's sweep takes it (`sweep_stale`).
+struct InstallWorkspace(PathBuf, Option<std::fs::File>);
 
 impl InstallWorkspace {
     fn create(parent: &Path) -> Result<Self, String> {
@@ -603,7 +668,10 @@ impl InstallWorkspace {
         for _ in 0..100 {
             let path = parent.join(format!("install-{}-{}", std::process::id(), SERIAL.fetch_add(1, Ordering::Relaxed)));
             match std::fs::create_dir(&path) {
-                Ok(()) => return Ok(Self(path)),
+                Ok(()) => {
+                    let held = std::fs::File::create(path.join(HELD)).ok().filter(|file| file.lock().is_ok());
+                    return Ok(Self(path, held));
+                }
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {},
                 Err(e) => return Err(e.to_string()),
             }
@@ -613,7 +681,11 @@ impl InstallWorkspace {
 }
 
 impl Drop for InstallWorkspace {
-    fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.0); }
+    fn drop(&mut self) {
+        // (Let go of first: its lock file goes with the folder.)
+        self.1.take();
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 /// Curated downloads use a private workspace and the same verification for manual import.
@@ -784,6 +856,7 @@ fn download_sources(
                 let _ = std::fs::remove_file(&done);
                 match failure {
                     Failure::Cancelled => return Err(Failure::Cancelled),
+                    Failure::Replaces { .. } => return Err(failure),
                     Failure::Error(error) => {
                         log::info!("{}: mirror {url}: {error}", file.name);
                         last = error;
@@ -938,6 +1011,9 @@ fn copy_archive(source: &Path, mods: &Path, progress: &dyn Fn(u64, u64), cancell
         check_cancelled()
     })();
     drop(output);
+    // (A copy installed before and marked read-only, as files from a CD often are, is replaced
+    // all the same: Windows refuses to rename over a read-only file.)
+    if result.is_ok() { ta_vfs::package::clear_read_only(&destination); }
     let result = result.and_then(|()| std::fs::rename(&temporary, &destination));
     if result.is_err() {
         let _ = std::fs::remove_file(&temporary);
@@ -1232,7 +1308,7 @@ mod tests {
         let stages = std::cell::RefCell::new(Vec::new());
         let send = |stage| stages.borrow_mut().push(stage);
         let running = Mutex::default();
-        let result = install(&Source::Catalogue(entry, None), &mods, &cache, &send, &|| false, &running, &AtomicBool::new(false));
+        let result = install(&Source::Catalogue(entry, None), &mods, &cache, &send, &|| false, &running, &AtomicBool::new(false), &Mutex::default());
         assert!(matches!(result, Err(Failure::Error(why)) if why.contains("Have the file?")));
         let result = download(entry, &file, &cache, &send, &|| false, &running);
         assert!(matches!(result, Err(Failure::Error(why)) if why.contains("Have the file?")));
@@ -1337,14 +1413,14 @@ mod tests {
         let mut changed = bytes.clone();
         *changed.last_mut().unwrap() ^= 1;
         std::fs::write(&source, &changed).unwrap();
-        let result = install(&Source::Catalogue(entry, Some(source.clone())), &dir.join("mods"), &dir.join("cache"), &|_| {}, &|| false, &Mutex::default(), &AtomicBool::new(false));
+        let result = install(&Source::Catalogue(entry, Some(source.clone())), &dir.join("mods"), &dir.join("cache"), &|_| {}, &|| false, &Mutex::default(), &AtomicBool::new(false), &Mutex::default());
         assert!(matches!(result, Err(Failure::Error(_))));
         assert_eq!(std::fs::read(old.join("canary")).unwrap(), b"previous install");
         assert_eq!(std::fs::read(&source).unwrap(), changed);
         assert_eq!(std::fs::read_dir(dir.join("cache/catalogue")).unwrap().count(), 0);
         std::fs::write(&source, &bytes).unwrap();
         if ta_vfs::package::Unpacker::find().is_some() {
-            let result = install(&Source::Catalogue(entry, Some(source.clone())), &dir.join("mods"), &dir.join("cache"), &|_| {}, &|| false, &Mutex::default(), &AtomicBool::new(false)).unwrap();
+            let result = install(&Source::Catalogue(entry, Some(source.clone())), &dir.join("mods"), &dir.join("cache"), &|_| {}, &|| false, &Mutex::default(), &AtomicBool::new(false), &Mutex::default()).unwrap();
             assert_eq!(result, (1, 0, "verifiedtest".into()));
             assert_eq!(std::fs::read(old.join("units/TEST.FBI")).unwrap(), b"[UNITINFO]{UnitName=TEST;}");
             assert!(!old.join("canary").exists());
@@ -1366,7 +1442,7 @@ mod tests {
         installer.install(entry, None);
         assert!(!installer.busy());
         assert!(matches!(installer.stages.get(entry.id), Some(Stage::Failed(why)) if why.contains("Have the file?")));
-        assert!(matches!(install(&Source::Catalogue(entry, None), &mods, &cache, &|_| panic!("no work before a local file is selected"), &|| false, &Mutex::default(), &AtomicBool::new(false)), Err(Failure::Error(_))));
+        assert!(matches!(install(&Source::Catalogue(entry, None), &mods, &cache, &|_| panic!("no work before a local file is selected"), &|| false, &Mutex::default(), &AtomicBool::new(false), &Mutex::default()), Err(Failure::Error(_))));
         assert!(!cache.exists() && !mods.exists());
         let mut media = Media::new();
         media.files.insert(entry.id, vec![
@@ -1392,7 +1468,7 @@ mod tests {
         let source = dir.join("user-chosen.zip");
         std::fs::write(&source, b"not an archive").unwrap();
         let job = Source::Catalogue(entry, Some(source.clone()));
-        let install = |send: &dyn Fn(Stage), cancelled: &dyn Fn() -> bool| super::install(&job, &dir.join("mods"), &dir.join("cache"), send, cancelled, &Mutex::default(), &AtomicBool::new(false));
+        let install = |send: &dyn Fn(Stage), cancelled: &dyn Fn() -> bool| super::install(&job, &dir.join("mods"), &dir.join("cache"), send, cancelled, &Mutex::default(), &AtomicBool::new(false), &Mutex::default());
         assert!(install(&|_| {}, &|| false).is_err());
         assert_eq!(std::fs::read(old.join("canary")).unwrap(), b"previous install");
         assert_eq!(std::fs::read(&source).unwrap(), b"not an archive");
@@ -1432,7 +1508,8 @@ mod tests {
         let (report, updates) = channel();
         drop(jobs);
         let mut installer = Installer { requests, updates, cancelled: Arc::default(), current: Arc::default(),
-            stopped: Arc::default(), working: Arc::default(), game: Arc::default(), stages: BTreeMap::new(), packages: BTreeMap::new(), finished: Vec::new(), failed: Vec::new() };
+            stopped: Arc::default(), working: Arc::default(), game: Arc::default(), stages: BTreeMap::new(), packages: BTreeMap::new(), finished: Vec::new(), failed: Vec::new(),
+            replaces: Vec::new(), paths: BTreeMap::new(), installed: Arc::default() };
         installer.stages.insert("done".into(), Stage::Unpacking);
         installer.stages.insert("waiting".into(), Stage::Queued);
         installer.stages.insert("working".into(), Stage::Checking);
@@ -1463,13 +1540,13 @@ mod tests {
         let package = Source::Package { path: source.clone(), id: "myunits".into(), name: "My units".into() };
         let running = AtomicBool::new(true);
         // Not installed yet: it installs, the game running or not.
-        assert!(install(&package, &mods, &cache, &|_| {}, &|| false, &Mutex::default(), &running).is_ok());
+        assert!(install(&package, &mods, &cache, &|_| {}, &|| false, &Mutex::default(), &running, &Mutex::default()).is_ok());
         // Installed: not replaced while the game runs, and said why.
-        let held = install(&package, &mods, &cache, &|_| {}, &|| false, &Mutex::default(), &running);
+        let held = install(&package, &mods, &cache, &|_| {}, &|| false, &Mutex::default(), &running, &Mutex::default());
         assert!(matches!(&held, Err(Failure::Error(why)) if why.contains("Close the game first")), "{held:?}");
         assert!(mods.join("myunits/units/test.fbi").is_file(), "the installed copy is left as it was");
         running.store(false, Ordering::Release);
-        assert!(install(&package, &mods, &cache, &|_| {}, &|| false, &Mutex::default(), &running).is_ok(), "once it closed");
+        assert!(install(&package, &mods, &cache, &|_| {}, &|| false, &Mutex::default(), &running, &Mutex::default()).is_ok(), "once it closed");
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -1485,11 +1562,20 @@ mod tests {
         }
         let file = dir.join("install-1-1");
         std::fs::write(&file, b"a file, not a working folder").unwrap();
+        // (Another run working in its own, a long download: its lock held.)
+        let working = dir.join(format!("install-{}-5", std::process::id().wrapping_add(2)));
+        std::fs::create_dir_all(&working).unwrap();
+        let held = std::fs::File::create(working.join(HELD)).unwrap();
+        held.lock().unwrap();
         // (Too young: left, a setup may be reading it.)
         sweep_stale(&dir, "install", Duration::from_secs(600));
         assert!(theirs.is_dir());
         sweep_stale(&dir, "install", Duration::ZERO);
         assert!(!theirs.exists(), "another run's folder goes");
+        assert!(working.is_dir(), "one another run works in stays, however old");
+        drop(held);
+        sweep_stale(&dir, "install", Duration::ZERO);
+        assert!(!working.exists(), "let go of, it goes");
         assert!(ours.is_dir(), "this run's stays");
         assert!(unrelated.is_dir() && file.is_file(), "nothing else is touched");
         std::fs::remove_dir_all(dir).unwrap();
@@ -1550,7 +1636,7 @@ mod tests {
         std::fs::write(source.join("units/test.fbi"), "[UNITINFO]{UnitName=TEST;}").unwrap();
         let package = Source::Package { path: source.clone(), id: "myunits".into(), name: "My units".into() };
         let mods = dir.join("mods");
-        assert_eq!(install(&package, &mods, &cache, &|_| {}, &|| false, &Mutex::default(), &AtomicBool::new(false)).unwrap(), (1, 0, "myunits".into()));
+        assert_eq!(install(&package, &mods, &cache, &|_| {}, &|| false, &Mutex::default(), &AtomicBool::new(false), &Mutex::default()).unwrap(), (1, 0, "myunits".into()));
         assert_eq!(std::fs::read(previous.join("canary")).unwrap(), b"another instance or interrupted import");
         assert!(mods.join("myunits/units/test.fbi").is_file());
         assert!(source.join("units/test.fbi").is_file());
@@ -1624,13 +1710,13 @@ mod tests {
         let content = source.join("units").join("unit.fbi");
         std::fs::write(&content, "[UNITINFO]{UnitName=TEST;}").unwrap();
         let package = Source::Package { path: source.clone(), id: "my_mod".into(), name: "My mod".into() };
-        assert!(install(&package, &dir.join("mods"), &cache, &|_| {}, &|| false, &Mutex::new(None), &AtomicBool::new(false)).is_err());
+        assert!(install(&package, &dir.join("mods"), &cache, &|_| {}, &|| false, &Mutex::new(None), &AtomicBool::new(false), &Mutex::default()).is_err());
         assert!(content.is_file(), "refusing the install must preserve the dropped source");
         let valuable = dir.join("valuable");
         std::fs::create_dir_all(&valuable).unwrap();
         std::fs::write(valuable.join("keep"), b"kept").unwrap();
         let package = Source::Package { path: source, id: "../../valuable".into(), name: "Invalid".into() };
-        assert!(install(&package, &dir.join("mods"), &cache, &|_| {}, &|| false, &Mutex::new(None), &AtomicBool::new(false)).is_err());
+        assert!(install(&package, &dir.join("mods"), &cache, &|_| {}, &|| false, &Mutex::new(None), &AtomicBool::new(false), &Mutex::default()).is_err());
         assert_eq!(std::fs::read(valuable.join("keep")).unwrap(), b"kept");
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -1648,7 +1734,7 @@ mod tests {
         std::fs::write(work.join("units/unit.fbi"), "[UNITINFO]{UnitName=TEST;}").unwrap();
         std::fs::write(work.join("src/unit.bos"), b"the author's script source").unwrap();
         let source = Source::package(&work).unwrap();
-        assert!(install(&source, &mods, &dir.join("cache"), &|_| {}, &|| false, &Mutex::new(None), &AtomicBool::new(false)).is_err());
+        assert!(install(&source, &mods, &dir.join("cache"), &|_| {}, &|| false, &Mutex::new(None), &AtomicBool::new(false), &Mutex::default()).is_err());
         assert_eq!(std::fs::read(work.join("src/unit.bos")).unwrap(), b"the author's script source");
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -1667,7 +1753,7 @@ mod tests {
         std::fs::write(package.join("units/unit.fbi"), "[UNITINFO]{UnitName=TEST;}").unwrap();
         let source = Source::package(&package).unwrap();
         assert_eq!(source.id(), "islands");
-        let (_, _, id) = install(&source, &mods, &dir.join("cache"), &|_| {}, &|| false, &Mutex::new(None), &AtomicBool::new(false)).map_err(|e| format!("{e:?}")).unwrap();
+        let (_, _, id) = install(&source, &mods, &dir.join("cache"), &|_| {}, &|| false, &Mutex::new(None), &AtomicBool::new(false), &Mutex::default()).map_err(|e| format!("{e:?}")).unwrap();
         assert_eq!(id, "islands");
         assert_eq!(std::fs::read(mods.join("islands/maps/Islands.tnt")).unwrap(), b"the player's map");
         let mut ids: Vec<String> = ta_vfs::mods::scan(&mods).0.into_iter().map(|m| m.manifest.id).collect();
@@ -1837,7 +1923,7 @@ mod tests {
                 .map(|metadata| metadata.len()).max().unwrap_or(0);
             if copied > 0 { copied_when_cancelled.set(copied); true } else { false }
         };
-        let result = install(&Source::package(&source).unwrap(), &mods, &cache, &|_| {}, &cancelled, &Mutex::default(), &AtomicBool::new(false));
+        let result = install(&Source::package(&source).unwrap(), &mods, &cache, &|_| {}, &cancelled, &Mutex::default(), &AtomicBool::new(false), &Mutex::default());
         assert!(matches!(result, Err(Failure::Cancelled)), "cancellation is not a failed install");
         assert!((1..content.len() as u64).contains(&copied_when_cancelled.get()), "stop before copying the remainder of the asset");
         assert_eq!(std::fs::read(source.join("units/test.fbi")).unwrap(), content);
@@ -1915,6 +2001,69 @@ mod tests {
         let id = source.id().to_string();
         installer.start(source);
         assert!(matches!(wait(&mut installer, &id), Stage::Failed(_)));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A package whose own manifest names another mod than its file's name, one installed now,
+    /// is not installed over it unasked: it stops, nothing changed, for the player to be asked as
+    /// for a package of that mod's id; agreed, it installs over it. (Windows' own tar makes it.)
+    #[cfg(windows)]
+    #[test]
+    fn a_package_of_an_installed_mod_by_its_own_manifest_asks_first() {
+        let Some(tar) = std::env::var_os("SystemRoot").map(|r| PathBuf::from(r).join("System32").join("tar.exe")).filter(|p| p.is_file()) else { return };
+        if ta_vfs::package::Unpacker::find().is_none() { return; }
+        let dir = temp_dir("own_id");
+        let content = dir.join("content");
+        std::fs::create_dir_all(content.join("units")).unwrap();
+        std::fs::write(content.join("units").join("a.fbi"), "[UNITINFO]
+{
+}
+").unwrap();
+        std::fs::write(content.join("mod.toml"), "id = \"mymod\"
+name = \"My Mod\"
+version = \"1.2\"
+").unwrap();
+        let zip = dir.join("MyMod_v1.2.zip");
+        assert!(std::process::Command::new(&tar).arg("-a").arg("-cf").arg(&zip).arg("-C").arg(&content).arg("units").arg("mod.toml").status().unwrap().success());
+        let mods = dir.join("mods");
+        let installed = mods.join("mymod");
+        std::fs::create_dir_all(installed.join("units")).unwrap();
+        std::fs::write(installed.join("mod.toml"), "id = \"mymod\"
+name = \"My Mod\"
+version = \"1.1\"
+").unwrap();
+        std::fs::write(installed.join("units").join("old.fbi"), "old").unwrap();
+        let mut installer = Installer::new(mods.clone(), dir.join("cache"));
+        installer.set_installed(["mymod".to_string()]);
+        let source = Source::package(&zip).unwrap();
+        assert_eq!(source.id(), "mymodv12", "named after the file until it is unpacked");
+        installer.start(source);
+        assert_eq!(wait(&mut installer, "mymodv12"), Stage::Replaces { id: "mymod".into(), name: "My Mod".into() });
+        assert!(installed.join("units").join("old.fbi").is_file(), "nothing is replaced unasked");
+        assert_eq!(installer.replaces, [("mymodv12".to_string(), zip.clone())]);
+        assert!(!mods.join("mymodv12").exists());
+        // Asked, and agreed: it takes the installed copy's place, as a package of its id does.
+        installer.start(Source::Package { path: zip.clone(), id: "mymod".into(), name: "My Mod".into() });
+        assert!(matches!(wait(&mut installer, "mymod"), Stage::Done { .. }));
+        assert!(!installed.join("units").join("old.fbi").exists() && installed.join("units").join("a.fbi").is_file());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// An archive named like the original game's or TA Reborn's own content (`base`, `reborn`) is
+    /// refused before it is copied, saying what to do: installed, it could not be found as a mod.
+    #[test]
+    fn an_archive_named_like_the_games_own_content_is_refused_before_it_is_copied() {
+        let dir = temp_dir("reserved_archive");
+        let mods = dir.join("mods");
+        for name in ["Base.ufo", "reborn.hpi"] {
+            let archive = dir.join(name);
+            std::fs::write(&archive, b"HAPI").unwrap();
+            let source = Source::package(&archive).unwrap();
+            assert!(matches!(&source, Source::Classic { .. }));
+            let result = install(&source, &mods, &dir.join("cache"), &|_| {}, &|| false, &Mutex::default(), &AtomicBool::new(false), &Mutex::default());
+            assert!(matches!(&result, Err(Failure::Error(why)) if why.contains(source.id()) && why.contains("another name")), "{name}: {result:?}");
+            assert!(std::fs::read_dir(&mods).map_or(true, |mut entries| entries.next().is_none()), "nothing is copied for {name}");
+        }
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -2085,7 +2234,7 @@ mod tests {
             asked.set(asked.get() + 1);
             asked.get() > 1
         };
-        let result = install(&Source::package(&package).unwrap(), &mods, &cache, &|_| {}, &cancelled, &Mutex::new(None), &AtomicBool::new(false));
+        let result = install(&Source::package(&package).unwrap(), &mods, &cache, &|_| {}, &cancelled, &Mutex::new(None), &AtomicBool::new(false), &Mutex::default());
         assert!(matches!(result, Err(Failure::Cancelled)));
         assert!(!mods.join("late").exists(), "nothing installed");
         assert!(!cache.join("unpack").join("late").exists(), "nothing left in the cache");
@@ -2132,7 +2281,7 @@ mod game_folder_tests {
         let found = ta_vfs::mods::game_folder_mods(&game);
         assert_eq!(found.len(), 1, "TA's own archive is no mod's");
         let (mods, cache) = (dir.join("mods"), dir.join("cache"));
-        let result = install(&Source::GameFolder(found[0].clone()), &mods, &cache, &|_| {}, &|| false, &Mutex::default(), &AtomicBool::new(false));
+        let result = install(&Source::GameFolder(found[0].clone()), &mods, &cache, &|_| {}, &|| false, &Mutex::default(), &AtomicBool::new(false), &Mutex::default());
         assert_eq!(result.unwrap(), (1, 0, "totalmayhem".to_string()));
         let installed = ta_vfs::mods::read_mod(&mods.join("totalmayhem")).unwrap().unwrap();
         assert_eq!((installed.manifest.name.as_str(), installed.manifest.version.as_str()), ("Total Mayhem", ""));
@@ -2146,7 +2295,7 @@ mod game_folder_tests {
         assert_eq!(mounted.vfs.read("units/armcom.fbi").unwrap(), b"mayhem");
         // One that has gone from the game's folder meanwhile is not installed.
         std::fs::remove_file(game.join("mayhem.gp3")).unwrap();
-        assert!(install(&Source::GameFolder(found[0].clone()), &dir.join("mods2"), &cache, &|_| {}, &|| false, &Mutex::default(), &AtomicBool::new(false)).is_err());
+        assert!(install(&Source::GameFolder(found[0].clone()), &dir.join("mods2"), &cache, &|_| {}, &|| false, &Mutex::default(), &AtomicBool::new(false), &Mutex::default()).is_err());
         assert!(!dir.join("mods2").join("totalmayhem").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }

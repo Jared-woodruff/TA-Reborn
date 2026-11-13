@@ -516,8 +516,9 @@ https://github.com/user-attachments/assets/0c29747c-1139-4f19-877a-3661836a55c5
   version and contents. The lists say what a battle needs; opening one whose mods are missing, off
   or changed offers to turn them on, to get them in the launcher, or to load it anyway.
 - **Every mod is checked** for its files, references, sounds and packaging, against the game without
-  it; a readable report says where and how to fix it ([MOD_VALIDATION.md](docs/MOD_VALIDATION.md),
-  or `ta-tools validate-mod` for a mod's own build).
+  it; a readable report says where and how to fix it, and how TA Reborn plays what the mod uses of
+  TA's later engines ([MOD_VALIDATION.md](docs/MOD_VALIDATION.md), or `ta-tools validate-mod` for a
+  mod's own build). The [modding guide](docs/MODDING.md) covers mods for players and their makers.
 - **The map editor** works on new maps or copies of existing ones: tools by name, a status bar, the
   map in miniature, a check for problems and TEST PLAY; it takes your pictures as heights, art or
   tile brushes, shows features as pictures and scatters them, and saves maps as mods the skirmish
@@ -692,7 +693,8 @@ launcher, add *TA Reborn (game only)*, which `install.sh` also puts in the menu,
 Many do, with no code: mods load from folders or TA's own archives. TA: Escalation, Total Mayhem
 and TA: Enhanced install from the launcher and play with all their units. The launcher checks every
 mod against the game without it and says, readably, what fits and what does not
-([how mods are checked](docs/MOD_VALIDATION.md)).
+([how mods are checked](docs/MOD_VALIDATION.md)). The [modding guide](docs/MODDING.md) covers
+installing, ordering and making mods.
 
 </details>
 

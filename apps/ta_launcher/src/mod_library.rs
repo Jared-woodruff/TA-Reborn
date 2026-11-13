@@ -250,7 +250,6 @@ impl ChangesRequest {
     }
 }
 
-const DOC_EXTENSIONS: [&str; 7] = ["txt", "md", "pdf", "htm", "html", "rtf", "nfo"];
 
 fn mount(vfs: &mut Vfs, info: &ModInfo) -> ta_vfs::Result<()> {
     let renames = ta_vfs::Renames::new(&info.manifest.rename);
@@ -321,7 +320,7 @@ fn docs(target: &ModInfo) -> Vec<PathBuf> {
     for folder in [target.path.clone(), target.path.join("docs")] {
         let Ok(entries) = std::fs::read_dir(&folder) else { continue };
         let mut here: Vec<PathBuf> = entries.flatten().map(|entry| entry.path())
-            .filter(|path| path.is_file() && path.extension().and_then(|e| e.to_str()).is_some_and(|e| DOC_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str())))
+            .filter(|path| path.is_file() && path.extension().and_then(|e| e.to_str()).is_some_and(|e| ta_vfs::package::DOCUMENT_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str())))
             .collect();
         here.sort();
         found.extend(here);
@@ -508,7 +507,10 @@ mod tests {
         std::fs::create_dir_all(original.join("units")).unwrap();
         std::fs::write(original.join("units/original.fbi"), b"original").unwrap();
         for (id, label) in [("base", "Total Annihilation"), ("reborn", "TA Reborn")] {
-            let named = folder(&root, id, &["units/mod.fbi"]);
+            // (Ids no mod read from its folder may take now, `ta_vfs::mods::RESERVED_IDS`: one an
+            // older version read, made by hand here, relabels nothing either.)
+            let mut named = folder(&root, &format!("{id}-mod"), &["units/mod.fbi"]);
+            (named.manifest.id, named.manifest.name) = (id.into(), format!("Mod {id}"));
             let target = folder(&root, "target", &["units/original.fbi", "units/mod.fbi"]);
             let request = ChangesRequest { game_dir: (id == "base").then(|| original.clone()),
                 builtin: (id == "reborn").then(|| original.clone()), mods: vec![named, target],

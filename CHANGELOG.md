@@ -13,6 +13,10 @@
   questions about units, weapon IDs past 255, and sides and campaigns of its own, all played;
   TA's own AI profiles and the programs a mod brings, not used. The copied report and `ta-tools
   validate-mod` give it too.
+- A guide to mods, [docs/MODDING.md](docs/MODDING.md): for players, getting mods, the load order,
+  updates, the compatibility report, saved games and multiplayer, where things live and what to do
+  when something goes wrong; for mod makers, the layout TA Reborn reads, the `mod.toml` manifest,
+  how mods are layered, what TA Reborn plays of TA's later engines, and checking and testing a mod.
 
 ### Changed
 - In the report's FINDINGS, three or more findings of one check with one fix are one card: the
@@ -23,6 +27,45 @@
 - The mod check said units made for the computer players alone had no build picture, though no
   menu shows them (TA: The Final Frontier's AI units), and called their entries in the computer
   players' lists build options. Those lists are now told as the computer players'.
+- On Windows, once the Maps page had been opened, updating, replacing or removing a mod kept in an
+  archive failed for the rest of the session ("Access is denied"): the map library kept the mods'
+  archives open. The launcher now lets go of them before an install or a removal, and stops a check
+  reading a mod before it is removed.
+- An update stopped while the version it replaced was being deleted (the launcher closed, the power
+  cut) could leave that version half deleted under the name kept for it, and every later install of
+  the mod was refused. A version replaced is now moved out of the way before it is deleted, and what
+  is left of one is cleared at the next start.
+- On Linux and macOS, REMOVE deleted a mod (or a skin, a map pack, a profile) for good, though the
+  launcher said it went to the Recycle Bin. It now goes to the trash; where it cannot, it stays
+  where it was.
+- Without 7-Zip, a package named in letters outside Windows' code page (Cyrillic on a Western
+  Windows, say), or unpacked in a Windows user folder named so, did not unpack with Windows' own
+  `tar`. It now does.
+- A package of more than 100,000 files was refused only after minutes of unpacking. It is now
+  refused from its list of contents, before anything is unpacked.
+- A package whose own `mod.toml` names a mod installed under another name took that mod's place
+  without asking, its files deleted for good. The launcher now asks first, as for a package named
+  like the installed mod.
+- Files marked read-only, as files from a CD often are, could not be written to the disk before an
+  update took the installed copy's place, nor replaced by the next update. The mark is now cleared.
+- A mod with the id `base` or `reborn` was taken for the original game's content or TA Reborn's
+  own (the map library listed its maps as theirs). Such an id is now refused, with what to do.
+- On Linux, a manifest named `Mod.toml` or `MOD.TOML` was not read, so the mod had another id there
+  and lost its dependencies. It is now found in any case.
+- On Linux and macOS, opening the launcher a second time could delete a mod download the first one
+  had been making for more than ten minutes. A working folder in use is now left alone.
+- The digest of a mod's files kept by saved games and replays covered its documents too, so an
+  edited read-me file made them say the mod's files had changed. It now covers the files the game
+  reads; records made before still know the same copy.
+- A package's folder of documents (`Docs/`, `Documentation/`) was left out of the installed mod.
+  Its documents now go into the mod's `docs/` with the rest, and `.nfo` and `.docx` files count as
+  documents.
+- A mod added from Total Annihilation's folder, whose version is unknown, had UPDATE in its menu
+  but not in its details. The details now offer it too.
+- `ta-tools mod-install` installed ids longer than the launcher's 64 letters, and passed over a
+  package's `mod.toml` that did not read. It now refuses both, as the launcher does. A manifest's
+  `[rename]` entries must map a folder of the mod's own to one of TA's folders, or the manifest
+  does not read.
 - Total Mayhem's construction units (kbots, vehicles, hovercraft and ships) stood still at a
   building ordered while their nano arm was still out from the job before, and never built it:
   it had to be ordered again once the arm had folded away, four or five seconds after a job.

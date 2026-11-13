@@ -38,7 +38,8 @@ impl LauncherApp {
         if self.page != Page::Maps { return; }
         self.maps.want_details();
         self.maps.load_history(self.profiles.store.clone(), self.profiles.active.as_ref().map(|profile| profile.id.clone()));
-        if self.maps.busy() { return; }
+        // (Not while an install may be replacing a mod's archives: read once it is done.)
+        if self.maps.busy() || self.installer.busy() { return; }
         let game_dir = self.detection.install().map(|install| install.root.clone());
         let key = format!("{:?}|{:?}|{:?}|{}", game_dir, self.config.mods.enabled,
             self.mods.mods.iter().map(|entry| (&entry.info.path, &entry.info.kind, &entry.info.manifest.id,

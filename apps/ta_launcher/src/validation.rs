@@ -245,6 +245,23 @@ impl ModValidation {
         self.paused = paused;
     }
 
+    /// Stops the check under way, if any, before a mod's files are removed (it may be reading
+    /// them, and on Windows an open file cannot go): cancelled and queued again, as a pause has
+    /// it, and waited for up to `timeout`, its worker let go of once it has stopped. The next
+    /// check starts as usual.
+    pub fn stop_active(&mut self, timeout: std::time::Duration) {
+        if self.active.is_none() { return; }
+        let paused = self.paused;
+        self.set_paused(true);
+        self.paused = paused;
+        let deadline = std::time::Instant::now() + timeout;
+        while self.active.as_ref().is_some_and(|active| !active.worker.is_finished()) && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        // (Cancelled: what it found is not wanted.)
+        if self.active.as_ref().is_some_and(|active| active.worker.is_finished()) { self.active = None; }
+    }
+
     pub fn busy(&self) -> bool { self.active.is_some() || (!self.paused && !self.queue.is_empty()) }
     pub fn status(&self, id: &str) -> ValidationStatus {
         self.entries.get(id).map_or(ValidationStatus::Unknown, |entry| entry.status.clone())
@@ -379,7 +396,7 @@ fn mod_stamp(module: &ModInfo) -> ModStamp {
     let stat = |path: &Path| std::fs::metadata(path).map_or((0, None), |m| (m.len(), m.modified().ok()));
     ModStamp(match module.kind {
         ModKind::Archive => vec![stat(&module.path)],
-        ModKind::Directory => vec![stat(&module.path), stat(&module.path.join("mod.toml"))],
+        ModKind::Directory => vec![stat(&module.path), stat(&ta_vfs::mods::manifest_path(&module.path))],
     })
 }
 

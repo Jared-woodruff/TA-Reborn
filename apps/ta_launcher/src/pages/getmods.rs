@@ -43,7 +43,7 @@ pub(super) fn stage_progress(stage: &Stage) -> (Option<f32>, String) {
         Stage::Checking => (None, t("CHECKING THE FILE…").to_string()),
         Stage::Copying { got, total } => (Some(*got as f32 / (*total).max(1) as f32), tf("Copying {done} / {total}", &[("done", &megabytes(*got)), ("total", &megabytes(*total))])),
         Stage::Unpacking => (None, t("UNPACKING AND INSTALLING…").to_string()),
-        Stage::Done { .. } | Stage::Cancelled | Stage::Failed(_) => (None, String::new()),
+        Stage::Done { .. } | Stage::Cancelled | Stage::Failed(_) | Stage::Replaces { .. } => (None, String::new()),
     }
 }
 
@@ -85,9 +85,11 @@ pub(super) fn footer_ui(ui: &mut Ui, entry: &'static Entry, installed: Option<&s
         }
         if active.is_none() && entry.can_import() {
             match (installed, entry.file) {
-                // (Only over an older copy: never the release over a newer one, nor over one of
-                // unknown version, as the badge and UPDATE ALL have it.)
-                (Some(version), Some(file)) if crate::mod_library::waiting_update(entry, Some(version)).is_some() => {
+                // (Over an older copy, never the release over a newer one; and over one of unknown
+                // version, as its menu offers it: one added from Total Annihilation's folder may be
+                // this release or a later one, so the badge and UPDATE ALL count it waiting for
+                // nothing, but it can be replaced by the tested release here.)
+                (Some(version), Some(file)) if file.can_download() && crate::mod_library::update(entry, Some(version)).is_some() => {
                     let why = if !online { Some(t("The launcher is offline.")) } else { held };
                     if ui.add_enabled(why.is_none(), ActionButton::primary(&tf("UPDATE · {size}", &[("size", &megabytes(file.bytes))])).height(34.0))
                         .disabled_tip(why.unwrap_or_default()).clicked() { action = Some(CardAction::Get); }

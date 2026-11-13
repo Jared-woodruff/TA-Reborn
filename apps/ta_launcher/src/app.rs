@@ -484,6 +484,7 @@ impl LauncherApp {
         // (A capture asks no one: it shows what the launcher would without a source.)
         let update = update_check(&config, capture || offline, false);
         let mut installer = crate::getmods::Installer::new(store.dir().join("mods"), store.dir().join("cache").join("moddb"));
+        installer.set_installed(mods.mods.iter().map(|m| m.info.manifest.id.clone()));
         // Working folders an earlier run left behind (closed mid-download, an update's setup
         // long since run) go, on a thread of their own.
         if !capture {
@@ -912,6 +913,7 @@ impl LauncherApp {
         self.skins.invalidate_preview();
         self.scan_game_folder();
         self.mods = ModList::scan(mod_folders(&self.config, &self.store), &self.config.mods.enabled);
+        self.installer.set_installed(self.mods.mods.iter().map(|m| m.info.manifest.id.clone()));
         self.sync_mod_validation();
         self.mod_library.changes.clear();
     }
@@ -923,6 +925,7 @@ impl LauncherApp {
         self.skins.invalidate_preview();
         self.scan_game_folder();
         self.mods = ModList::scan(mod_folders(&self.config, &self.store), &self.config.mods.enabled);
+        self.installer.set_installed(self.mods.mods.iter().map(|m| m.info.manifest.id.clone()));
         self.mod_validation.sync_changed(self.detection.install().map(|i| i.root.clone()),
             self.mods.mods.iter().map(|m| m.info.clone()).collect());
         self.mod_library.changes.clear();
@@ -940,6 +943,7 @@ impl LauncherApp {
     pub(crate) fn discover_mods(&mut self) {
         self.skins.invalidate_preview();
         self.mods = ModList::scan(mod_folders(&self.config, &self.store), &self.config.mods.enabled);
+        self.installer.set_installed(self.mods.mods.iter().map(|m| m.info.manifest.id.clone()));
         self.mod_validation.sync_discovered(self.detection.install().map(|i| i.root.clone()),
             self.mods.mods.iter().map(|m| m.info.clone()).collect());
         self.mod_library.changes.clear();
@@ -1503,6 +1507,10 @@ impl LauncherApp {
         if self.game_running() || self.installer.busy() || self.map_import_blocks_mod_changes() || self.mods.in_game_folder(id) { return; }
         let Some(entry) = self.mods.get(id) else { return };
         let (path, name) = (entry.info.path.clone(), entry.info.manifest.name.clone());
+        // (Nothing of the launcher's may hold the mod's files open: on Windows they could not
+        // go. The map library's mounted archives, and a check reading them.)
+        self.maps.release();
+        self.mod_validation.stop_active(std::time::Duration::from_secs(3));
         match ta_ui::recycle::recycle(&path) {
             Ok(Outcome::Kept) => self.notify(ta_ui::i18n::tf("{name} is left where it is", &[("name", &name)]), AMBER),
             Ok(outcome) => {
@@ -2439,6 +2447,9 @@ impl eframe::App for LauncherApp {
         // a ready update and make their results available when the launcher comes back.
         self.installs(ctx);
         self.mod_validation.set_paused(self.game_running() || self.installer.busy() || self.maps.busy());
+        // (Nothing of the launcher's holds a mod's archives open while an install may replace
+        // them: Windows would refuse the new version its place.)
+        if self.installer.busy() { self.maps.release(); }
         // A check just made that found errors in a mod that is on: said, not only badged.
         if let Some(done) = self.mod_validation.tick(ctx)
             && done.status == ta_data::validation::Status::Errors
@@ -3378,8 +3389,8 @@ mod tests {
         std::fs::create_dir_all(&empty_game).unwrap();
         let mods = dir.join("mods");
         for (name, manifest) in [
-            ("needs_base", "id = \"needs_base\"\nname = \"Needs Base\"\ndepends = [\"base\"]\n"),
-            ("base", "id = \"base\"\nname = \"Base\"\n"),
+            ("needs_base", "id = \"needs_base\"\nname = \"Needs Base\"\ndepends = [\"basics\"]\n"),
+            ("basics", "id = \"basics\"\nname = \"Basics\"\n"),
             ("broken", "id = \n"),
         ] {
             std::fs::create_dir_all(mods.join(name)).unwrap();

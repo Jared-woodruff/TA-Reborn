@@ -153,7 +153,7 @@ pub fn scan(dir: &Path) -> (Vec<ModInfo>, Vec<ModError>) {
 /// does not read is an error: the game leaves that mod out.
 pub fn read_mod(path: &Path) -> Result<Option<ModInfo>, ModError> {
     if path.is_dir() {
-        let manifest_path = path.join("mod.toml");
+        let manifest_path = manifest_path(path);
         let present = match std::fs::symlink_metadata(&manifest_path) {
             Ok(_) => true,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
@@ -167,6 +167,9 @@ pub fn read_mod(path: &Path) -> Result<Option<ModInfo>, ModError> {
             if !crate::package::safe_component(&manifest.id) {
                 return Err(ModError::Manifest { path: manifest_path, message: "mod id must be a single ordinary directory name".into() });
             }
+            if let Some((from, to)) = manifest.rename.iter().find(|(from, to)| !valid_rename(from, to)) {
+                return Err(ModError::Manifest { path: manifest_path, message: format!("rename {from} = {to}: a folder of the mod's own may stand only for one of TA's (units, guis, objects3d...)") });
+            }
             manifest
         } else {
             // (A folder's whole name: "TA.Escalation" is not "TA", nor "Mod v1.2" "Mod v1".)
@@ -174,6 +177,9 @@ pub fn read_mod(path: &Path) -> Result<Option<ModInfo>, ModError> {
             manifest.rename = kept_renames(path, &ModKind::Directory);
             manifest
         };
+        if reserved_id(&manifest.id) {
+            return Err(reserved(path, &manifest.id));
+        }
         Ok(Some(ModInfo { manifest, path: path.to_path_buf(), kind: ModKind::Directory }))
     } else if path
         .extension()
@@ -183,10 +189,29 @@ pub fn read_mod(path: &Path) -> Result<Option<ModInfo>, ModError> {
         let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
         let mut manifest = implicit_manifest(&stem);
         manifest.rename = kept_renames(path, &ModKind::Archive);
+        if reserved_id(&manifest.id) {
+            return Err(reserved(path, &manifest.id));
+        }
         Ok(Some(ModInfo { manifest, path: path.to_path_buf(), kind: ModKind::Archive }))
     } else {
         Ok(None)
     }
+}
+
+/// A mod folder's manifest: its `mod.toml`, the name in any case (`Mod.toml`): a file system
+/// that tells cases apart (Linux's) must find the one the others find, or the same mod is
+/// another there, with another id and none of what it needs.
+pub fn manifest_path(dir: &Path) -> PathBuf {
+    let plain = dir.join("mod.toml");
+    if std::fs::symlink_metadata(&plain).is_ok() { return plain; }
+    std::fs::read_dir(dir).into_iter().flatten().flatten()
+        .find(|entry| entry.file_name().to_str().is_some_and(|name| name.eq_ignore_ascii_case("mod.toml")))
+        .map_or(plain, |entry| entry.path())
+}
+
+/// A mod whose id is one of the [`RESERVED_IDS`]: left out, as one whose manifest does not read.
+fn reserved(path: &Path, id: &str) -> ModError {
+    ModError::Manifest { path: path.to_path_buf(), message: format!("the id {id} is that of the original game's or TA Reborn's own content: give the mod another (rename its folder, or set id in its mod.toml)") }
 }
 
 pub(crate) fn install_work_directory(path: &Path) -> bool {
@@ -195,6 +220,9 @@ pub(crate) fn install_work_directory(path: &Path) -> bool {
     // created by the installer. Other dotted or hidden mod folders stay usable.
     #[cfg(windows)]
     let name = name.to_ascii_lowercase();
+    // (A version an install discards on its way out, whatever is left of it: never a mod, nor a
+    // folder an install takes.)
+    if name.starts_with(crate::package::TRASH_PREFIX) { return true; }
     name.strip_prefix('.')
         .and_then(|name| name.strip_suffix(".installing").or_else(|| name.strip_suffix(".old")))
         .is_some_and(crate::package::safe_component)
@@ -401,6 +429,34 @@ pub struct GameFolderMod {
 
 /// The longest mod id the launcher installs, in letters.
 pub const MOST_ID_LETTERS: usize = 64;
+
+/// Ids no mod may take: those the original game's content (`base`) and TA Reborn's own
+/// (`reborn`) are mounted as, which the map library, the map editor and records tell apart by.
+pub const RESERVED_IDS: [&str; 2] = ["base", crate::BUILTIN_LAYER];
+
+/// Whether `id` is one of the [`RESERVED_IDS`] (in any case).
+pub fn reserved_id(id: &str) -> bool {
+    RESERVED_IDS.iter().any(|reserved| reserved.eq_ignore_ascii_case(id.trim()))
+}
+
+/// Whether `id` may be the id a mod is installed as: a single ordinary folder name of 1 to
+/// [`MOST_ID_LETTERS`] letters, none of the [`RESERVED_IDS`]. (The launcher's installs and
+/// `ta-tools mod-install` hold to it.)
+pub fn valid_id(id: &str) -> bool {
+    crate::package::safe_component(id) && (1..=MOST_ID_LETTERS).contains(&id.chars().count()) && !reserved_id(id)
+}
+
+/// Whether a manifest's `[rename]` entry is one the game can follow: a folder of the mod's own
+/// (`guiM/`, or one in another, `Roster/Army/`), each of its names an ordinary one, standing for
+/// one of TA's (`guis/`, or a folder in it).
+pub fn valid_rename(from: &str, to: &str) -> bool {
+    let parts = |path: &str| -> Option<Vec<String>> {
+        let parts: Vec<String> = path.trim().trim_end_matches(['/', '\\']).split(['/', '\\']).map(str::to_string).collect();
+        parts.iter().all(|part| crate::package::safe_component(part)).then_some(parts)
+    };
+    let (Some(_), Some(to)) = (parts(from), parts(to)) else { return false };
+    crate::package::TA_FOLDERS.contains(&to[0].to_ascii_lowercase().as_str())
+}
 
 /// Mods TA Reborn knows by the names of the archives their installers put in the game's folder (in
 /// lower case): the first made for the mod's own engine, which says the mod is there; with it, the
@@ -717,15 +773,23 @@ pub fn resolve_load_order<'a>(enabled: &[String], available: &'a [ModInfo]) -> R
 }
 
 /// The digest saved games and replays keep of a mod they were made with (`ta_config`'s
-/// `RecordMod`): of the files the game mounts from it as installed (a folder's archives and loose
-/// files at any depth, but its `mod.toml` and links; an archive mod's archive), by path (in lower
-/// case, `/` between folders), size and content, of the folders its manifest renames, and of the
-/// original game's archives it replaces, when it replaces any (its archives of their names, those it
-/// says it replaces: [`replaced_claims`]; a mod that replaces none has the digest it had before
-/// archives were replaced). An update or an edited file gives another; the same files, wherever
-/// installed, the same. (The first 16 bytes of a SHA-256: a few hundred megabytes of mod take a
-/// fraction of a second.)
+/// `RecordMod`): of the files the game reads from it as installed (a folder's archives at its top,
+/// and its files in TA's folders, or in folders its manifest renames to them, at any depth, but
+/// links and what the system leaves there, `Thumbs.db`, `desktop.ini`, `.DS_Store`; an archive
+/// mod's archive), by path (in lower case, `/` between folders), size and content, of the folders
+/// its manifest renames, and of the original game's archives it replaces, when it replaces any
+/// (its archives of their names, those it says it replaces: [`replaced_claims`]). An update or an
+/// edited file the game reads gives another; the same files, wherever installed, the same; its
+/// documents, pictures and programs, edited or added, none. (The first 16 bytes of a SHA-256: a
+/// few hundred megabytes of mod take a fraction of a second.)
 pub fn content_digest(m: &ModInfo) -> std::io::Result<[u8; 16]> {
+    content_digests(m).map(|(now, _)| now)
+}
+
+/// [`content_digest`], and the digest by the rule records were made with until it (every file of
+/// a folder but its `mod.toml`: its documents too), by which a record made then still knows the
+/// same copy of the mod: both from one reading of its files.
+pub fn content_digests(m: &ModInfo) -> std::io::Result<([u8; 16], [u8; 16])> {
     use sha2::{Digest, Sha256};
     use std::io::Read;
     let mut files: Vec<(String, PathBuf)> = Vec::new();
@@ -734,26 +798,34 @@ pub fn content_digest(m: &ModInfo) -> std::io::Result<[u8; 16]> {
         ModKind::Archive => files.push((crate::normalize(&m.path.file_name().unwrap_or_default().to_string_lossy()), m.path.clone())),
     }
     files.sort();
-    let mut hash = Sha256::new();
-    hash.update(b"TA Reborn mod content v1\0");
+    let read = |name: &str| m.kind == ModKind::Archive || read_by_game(name, &m.manifest.rename);
+    let start = |version: &[u8]| {
+        let mut hash = Sha256::new();
+        hash.update(version);
+        hash
+    };
+    let (mut now, mut before) = (start(b"TA Reborn mod content v2\0"), start(b"TA Reborn mod content v1\0"));
     let feed = |hash: &mut Sha256, text: &str| {
         hash.update((text.len() as u64).to_le_bytes());
         hash.update(text.as_bytes());
     };
-    hash.update((m.manifest.rename.len() as u64).to_le_bytes());
-    for (from, to) in &m.manifest.rename {
-        feed(&mut hash, &crate::normalize(from));
-        feed(&mut hash, &crate::normalize(to));
-    }
     let replaced = replaced_claims(m);
-    if !replaced.is_empty() {
-        hash.update(b"replaces\0");
-        hash.update((replaced.len() as u64).to_le_bytes());
-        for name in &replaced {
-            feed(&mut hash, name);
+    for hash in [&mut now, &mut before] {
+        hash.update((m.manifest.rename.len() as u64).to_le_bytes());
+        for (from, to) in &m.manifest.rename {
+            feed(hash, &crate::normalize(from));
+            feed(hash, &crate::normalize(to));
+        }
+        if !replaced.is_empty() {
+            hash.update(b"replaces\0");
+            hash.update((replaced.len() as u64).to_le_bytes());
+            for name in &replaced {
+                feed(hash, name);
+            }
         }
     }
-    hash.update((files.len() as u64).to_le_bytes());
+    now.update((files.iter().filter(|(name, _)| read(name)).count() as u64).to_le_bytes());
+    before.update((files.len() as u64).to_le_bytes());
     let mut buffer = vec![0u8; 1 << 20];
     for (name, path) in files {
         let mut file = std::fs::File::open(&path)?;
@@ -765,12 +837,33 @@ pub fn content_digest(m: &ModInfo) -> std::io::Result<[u8; 16]> {
             len += n as u64;
             content.update(&buffer[..n]);
         }
-        feed(&mut hash, &name);
-        hash.update(len.to_le_bytes());
-        hash.update(content.finalize());
+        let content = content.finalize();
+        let hashes: &mut [&mut Sha256] = if read(&name) { &mut [&mut now, &mut before] } else { &mut [&mut before] };
+        for hash in hashes.iter_mut() {
+            feed(hash, &name);
+            hash.update(len.to_le_bytes());
+            hash.update(content);
+        }
     }
-    let digest = hash.finalize();
-    Ok(digest[..16].try_into().expect("SHA-256 has 16 bytes"))
+    let first = |hash: Sha256| -> [u8; 16] { hash.finalize()[..16].try_into().expect("SHA-256 has 16 bytes") };
+    Ok((first(now), first(before)))
+}
+
+/// Whether the game reads a file of a mod's folder (its path there, normalised: `units/tank.fbi`):
+/// an archive at its top, or a file in one of TA's folders or in one its manifest renames to
+/// one of them; never what the system leaves beside them (see [`content_digest`]).
+fn read_by_game(relative: &str, renames: &BTreeMap<String, String>) -> bool {
+    let name = relative.rsplit('/').next().unwrap_or(relative);
+    if ["thumbs.db", "desktop.ini", ".ds_store"].contains(&name) { return false; }
+    match relative.split_once('/') {
+        None => relative.rsplit_once('.').is_some_and(|(_, extension)| ARCHIVE_EXTENSIONS.contains(&extension)),
+        // (A renamed folder may be one in another, `Roster/Army/`: its whole path, to a folder's end.)
+        Some((top, _)) => crate::package::TA_FOLDERS.contains(&top) || renames.keys().any(|from| {
+            let from = crate::normalize(from);
+            let from = from.trim_end_matches('/');
+            !from.is_empty() && relative.starts_with(&format!("{from}/"))
+        }),
+    }
 }
 
 /// What of the original game a mod replaces wherever it is installed, for its digest: its
@@ -903,14 +996,92 @@ mod tests {
         assert_eq!(digest, content_digest(&same).unwrap(), "the game reads names in any case");
         let edited = make("c", "[UNITINFO]{MaxDamage=900;}");
         assert_ne!(digest, content_digest(&edited).unwrap(), "a unit changed");
+        let (_, before) = content_digests(&a).unwrap();
+        // (What the game does not read: documents, and what the system leaves in a folder.)
         std::fs::write(a.path.join("readme.txt"), b"notes").unwrap();
+        std::fs::create_dir_all(a.path.join("docs")).unwrap();
+        std::fs::write(a.path.join("docs/guide.html"), b"guide").unwrap();
+        std::fs::write(a.path.join("units/Thumbs.db"), b"pictures").unwrap();
+        let (unchanged, after) = content_digests(&a).unwrap();
+        assert_eq!(digest, unchanged, "documents and the system's files are no other copy");
+        assert_ne!(before, after, "by the rule records were made with before, they were");
+        std::fs::write(a.path.join("units/tank2.fbi"), b"[UNITINFO]{}").unwrap();
         let more = content_digest(&a).unwrap();
-        assert_ne!(digest, more, "a file more");
+        assert_ne!(digest, more, "a file more the game reads");
+        std::fs::create_dir_all(a.path.join("unitsm")).unwrap();
+        std::fs::write(a.path.join("unitsm/extra.fbi"), b"[UNITINFO]{}").unwrap();
+        assert_eq!(more, content_digest(&a).unwrap(), "in a folder of its own, not read");
+        // (A folder in another renamed to one of TA's is read, and counted.)
+        let mut nested = a.clone();
+        nested.manifest.rename.insert("Roster/Army/".into(), "units/".into());
+        std::fs::create_dir_all(a.path.join("Roster/Army")).unwrap();
+        std::fs::write(a.path.join("Roster/Army/tank.fbi"), b"[UNITINFO]{MaxDamage=1;}").unwrap();
+        let army = content_digest(&nested).unwrap();
+        std::fs::write(a.path.join("Roster/Army/tank.fbi"), b"[UNITINFO]{MaxDamage=2;}").unwrap();
+        let edited = content_digest(&nested).unwrap();
+        assert_ne!(army, edited, "a unit edited in a nested renamed folder");
+        std::fs::write(a.path.join("Roster/notes.fbi"), b"beside it, not read").unwrap();
+        assert_eq!(edited, content_digest(&nested).unwrap(), "beside the renamed folder: not read");
         let mut renamed = a.clone();
         renamed.manifest.rename.insert("unitsm".into(), "units".into());
         assert_ne!(more, content_digest(&renamed).unwrap(), "its folders seen as others");
         let archive = ModInfo { manifest: implicit_manifest("pack"), path: a.path.join("pack.ufo"), kind: ModKind::Archive };
         assert_ne!(content_digest(&archive).unwrap(), [0; 16]);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// A mod may not take the ids the original game's and TA Reborn's own content are mounted as
+    /// (`base`, `reborn`), by its manifest or its name; a manifest's renames stand only for TA's
+    /// folders; ids installed are ordinary names of up to 64 letters.
+    #[test]
+    fn reserved_ids_and_renames_the_game_cannot_follow_are_refused() {
+        let root = std::env::temp_dir().join(format!("ta_mod_reserved_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let folder = |name: &str, manifest: Option<&str>| {
+            std::fs::create_dir_all(root.join(name).join("units")).unwrap();
+            if let Some(text) = manifest { std::fs::write(root.join(name).join("mod.toml"), text).unwrap(); }
+            read_mod(&root.join(name))
+        };
+        assert!(matches!(folder("Base", None), Err(ModError::Manifest { .. })), "named like the original game's layer");
+        assert!(matches!(folder("mine", Some("id = \"Reborn\"
+name = \"Mine\"
+")), Err(ModError::Manifest { .. })), "TA Reborn's own");
+        std::fs::write(root.join("reborn.ufo"), b"").unwrap();
+        assert!(matches!(read_mod(&root.join("reborn.ufo")), Err(ModError::Manifest { .. })));
+        assert!(matches!(folder("renamed", Some("id = \"renamed\"
+name = \"R\"
+[rename]
+guim = \"guis\"
+")), Ok(Some(_))), "a folder of its own for one of TA's");
+        assert!(matches!(folder("nested", Some("id = \"nested\"\nname = \"N\"\n[rename]\n\"Roster/Army/\" = \"units/\"\n")), Ok(Some(_))), "a folder in another");
+        for wrong in ["guim = \"../guis\"", "guim = \"notes\"", "\"a/../b\" = \"guis\"", "\"\" = \"guis\""] {
+            let text = format!("id = \"wrong\"
+name = \"W\"
+[rename]
+{wrong}
+");
+            assert!(matches!(folder("wrong", Some(&text)), Err(ModError::Manifest { .. })), "{wrong}");
+        }
+        assert!(valid_id("mymod") && valid_id(&"m".repeat(MOST_ID_LETTERS)));
+        assert!(!valid_id(&"m".repeat(MOST_ID_LETTERS + 1)) && !valid_id("base") && !valid_id("REBORN") && !valid_id("a/b") && !valid_id(""));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// A folder's manifest is found whatever the case of its name: on a file system that tells
+    /// cases apart the mod is the one it is elsewhere, its id and what it needs.
+    #[test]
+    fn a_manifest_is_found_in_any_case() {
+        let root = std::env::temp_dir().join(format!("ta_mod_manifest_case_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("MyMod_v1.2")).unwrap();
+        std::fs::write(root.join("MyMod_v1.2").join("Mod.TOML"), "id = \"mymod\"
+name = \"My Mod\"
+depends = [\"base_units\"]
+").unwrap();
+        let info = read_mod(&root.join("MyMod_v1.2")).unwrap().unwrap();
+        assert_eq!((info.manifest.id.as_str(), info.manifest.depends.as_slice()), ("mymod", ["base_units".to_string()].as_slice()));
+        assert!(manifest_path(&root.join("MyMod_v1.2")).is_file());
+        assert_eq!(manifest_path(&root.join("none")), root.join("none").join("mod.toml"));
         std::fs::remove_dir_all(&root).unwrap();
     }
 
@@ -1379,7 +1550,10 @@ mod replacement_tests {
             hash.update(Sha256::digest(bytes));
         }
         let before: [u8; 16] = hash.finalize()[..16].try_into().unwrap();
-        assert_eq!(content_digest(&escalation).unwrap(), before);
+        // (By the rule records were made with before the digest left out what the game does not
+        // read: theirs still know it.)
+        assert_eq!(content_digests(&escalation).unwrap().1, before);
+        assert_ne!(content_digest(&escalation).unwrap(), before, "today's digest is of another rule");
         assert!(replaced_claims(&escalation).is_empty());
         // The same files named like the original game's: a mod that replaces.
         let patch = mod_dir(&root, "patch", "", &[("rev31.gp3", &[("units/a.fbi", b"a")])]);

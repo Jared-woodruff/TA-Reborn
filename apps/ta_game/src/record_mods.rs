@@ -16,11 +16,12 @@ use ta_vfs::mods::ModInfo;
 /// The mods mounted, in load order, and their digests: worked out on a thread of their own from
 /// when they are mounted (a few hundred megabytes of mods take a fraction of a second), and waited
 /// for by a record written before they are done.
+/// (Each with its digest by the rule records were made with before, by which those know it.)
 #[derive(Clone, Default)]
 pub struct InPlay {
     mods: Arc<Vec<ModInfo>>,
-    digests: Arc<OnceLock<Vec<[u8; 16]>>>,
-    worker: Arc<Mutex<Option<std::thread::JoinHandle<Vec<[u8; 16]>>>>>,
+    digests: Arc<OnceLock<Vec<([u8; 16], [u8; 16])>>>,
+    worker: Arc<Mutex<Option<std::thread::JoinHandle<Vec<([u8; 16], [u8; 16])>>>>>,
 }
 
 impl InPlay {
@@ -41,7 +42,16 @@ impl InPlay {
             let worker = self.worker.lock().ok().and_then(|mut w| w.take());
             worker.and_then(|w| w.join().ok()).unwrap_or_else(|| digests(&self.mods))
         });
-        self.mods.iter().zip(digests).map(|(m, digest)| as_record(m, *digest)).collect()
+        self.mods.iter().zip(digests).map(|(m, (digest, _))| as_record(m, *digest)).collect()
+    }
+
+    /// Their digests by the rule records were made with before, by id: those done (none while
+    /// they are being worked out, as [`InPlay::known`] has them unknown).
+    pub fn earlier(&self) -> Vec<(String, [u8; 16])> {
+        // (`known` takes them in once they are done.)
+        let _ = self.known();
+        let Some(digests) = self.digests.get() else { return Vec::new() };
+        self.mods.iter().zip(digests).filter(|(_, (_, before))| *before != [0; 16]).map(|(m, (_, before))| (m.manifest.id.clone(), *before)).collect()
     }
 
     /// The same, now: their digests if they are done, unknown if not (for a list, which must not
@@ -61,11 +71,11 @@ fn as_record(m: &ModInfo, digest: [u8; 16]) -> RecordMod {
     RecordMod { id: m.manifest.id.clone(), name: m.manifest.name.clone(), version: m.manifest.version.clone(), digest }
 }
 
-fn digests(mods: &[ModInfo]) -> Vec<[u8; 16]> {
+fn digests(mods: &[ModInfo]) -> Vec<([u8; 16], [u8; 16])> {
     let start = std::time::Instant::now();
-    let digests = mods.iter().map(|m| ta_vfs::mods::content_digest(m).unwrap_or_else(|e| {
+    let digests = mods.iter().map(|m| ta_vfs::mods::content_digests(m).unwrap_or_else(|e| {
         log::warn!("mod {}: its files could not be read for its digest: {e}", m.manifest.id);
-        [0; 16]
+        ([0; 16], [0; 16])
     })).collect();
     if !mods.is_empty() {
         log::info!("mods' digests in {:.0} ms", start.elapsed().as_secs_f64() * 1000.0);
@@ -100,7 +110,7 @@ impl Verdict {
         Verdict {
             data: recorded == assets.expected_record_hash(version, setup),
             simulation: ta_config::records::simulation_compatible(version, metadata),
-            mods: mods.map(|mods| ta_config::records::mods::check(mods, &assets.mods.known(), installed)),
+            mods: mods.map(|mods| ta_config::records::mods::check_against(mods, &assets.mods.known(), installed, &assets.mods.earlier())),
         }
     }
 

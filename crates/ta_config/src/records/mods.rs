@@ -92,9 +92,16 @@ pub fn same_copy(a: &RecordMod, b: &RecordMod) -> Option<bool> {
 /// Checks a record's mods (`record`, in its load order) against the mods on now (`on`, in load
 /// order) and every mod installed (`installed`: on or off; digests may be unknown).
 pub fn check(record: &[RecordMod], on: &[RecordMod], installed: &[RecordMod]) -> ModCheck {
+    check_against(record, on, installed, &[])
+}
+
+/// [`check`], where `earlier` gives mods on now (by id) their digest by the rule records were made
+/// with before (`ta_vfs::mods::content_digests`): a record made then knows the same copy by it.
+pub fn check_against(record: &[RecordMod], on: &[RecordMod], installed: &[RecordMod], earlier: &[(String, [u8; 16])]) -> ModCheck {
     let needed: Vec<(RecordMod, Need)> = record.iter().map(|wanted| {
         let need = if let Some(now) = on.iter().find(|m| m.id == wanted.id) {
-            match same_copy(wanted, now) {
+            let earlier_same = wanted.digest_known() && earlier.iter().any(|(id, digest)| *id == now.id && *digest == wanted.digest);
+            match same_copy(wanted, now).map(|same| same || earlier_same) {
                 // (The same files under another version's name are the same mod to the battle.)
                 Some(true) => Need::Same,
                 Some(false) if now.version == wanted.version => Need::OtherFiles,
@@ -121,6 +128,18 @@ mod tests {
 
     fn m(id: &str, version: &str, digest: u8) -> RecordMod {
         RecordMod { id: id.into(), name: id.to_uppercase(), version: version.into(), digest: [digest; 16] }
+    }
+
+    /// A record made before the mods' digests left out what the game does not read knows the same
+    /// copy by its digest of then; another copy is another all the same.
+    #[test]
+    fn a_record_of_the_earlier_digests_knows_the_same_copy() {
+        let record = [m("a", "1", 1)];
+        let on = [m("a", "1", 2)];
+        assert_eq!(check(&record, &on, &on).needed[0].1, Need::OtherFiles);
+        assert!(check_against(&record, &on, &on, &[("a".into(), [1; 16])]).matches());
+        assert_eq!(check_against(&record, &on, &on, &[("a".into(), [3; 16])]).needed[0].1, Need::OtherFiles);
+        assert_eq!(check_against(&record, &on, &on, &[("b".into(), [1; 16])]).needed[0].1, Need::OtherFiles, "another mod's");
     }
 
     #[test]
