@@ -601,3 +601,70 @@ fn reclaiming_a_unit_takes_as_long_as_its_metal_says() {
     let expected = 100 * 20 * TICKS_PER_SECOND as u64 / 300;
     assert!(solar_ticks.abs_diff(expected) <= 4, "100 metal: twenty times that in worker time: {solar_ticks} ticks, {expected} expected");
 }
+
+/// A builder's script as Total Mayhem's advanced construction kbots have it (`ARMACK.bos`): the
+/// nano arm goes out as a job starts, raising the build stance, unless it is out already; after a
+/// job it stays out five seconds and comes in, dropping the stance, only if no new job came.
+fn arm_stays_out_script() -> crate::cob::CobProgram {
+    use crate::host::value::IN_BUILD_STANCE;
+    use ta_formats::cob::{CobFunction, CobScript, op};
+    // (Statics: 0 the arm out, 1 a job asked for.)
+    let mut s = CobScript { static_var_count: 2, ..Default::default() };
+    let stance = |code: &mut Vec<u32>, to: u32| code.extend([op::PUSH_CONSTANT, IN_BUILD_STANCE as u32, op::PUSH_CONSTANT, to, op::SET_VALUE]);
+    let ret = |code: &mut Vec<u32>| code.extend([op::PUSH_CONSTANT, 0, op::RETURN]);
+    s.functions.push(CobFunction { name: "StartBuilding".into(), offset: s.code.len() as u32 });
+    s.code.extend([op::PUSH_CONSTANT, 1, op::POP_STATIC, 1, op::PUSH_STATIC, 0, op::JUMP_IF_FALSE, 0]);
+    let out = s.code.len() - 1;
+    ret(&mut s.code);
+    s.code[out] = s.code.len() as u32;
+    stance(&mut s.code, 1);
+    s.code.extend([op::PUSH_CONSTANT, 1, op::POP_STATIC, 0]);
+    ret(&mut s.code);
+    s.functions.push(CobFunction { name: "StopBuilding".into(), offset: s.code.len() as u32 });
+    s.code.extend([op::PUSH_CONSTANT, 0, op::POP_STATIC, 1, op::PUSH_CONSTANT, 5000, op::SLEEP, op::PUSH_STATIC, 1, op::JUMP_IF_FALSE, 0]);
+    let fold = s.code.len() - 1;
+    ret(&mut s.code);
+    s.code[fold] = s.code.len() as u32;
+    stance(&mut s.code, 0);
+    s.code.extend([op::PUSH_CONSTANT, 0, op::POP_STATIC, 0]);
+    ret(&mut s.code);
+    crate::cob::CobProgram::new(s, &[])
+}
+
+/// The build stance is the builder's script's, as in TA: a building ordered while the arm of a
+/// Total Mayhem construction kbot is still out from the last job is built at once, its stance as
+/// the script left it. (The game dropped the stance as each job ended; the script, its arm still
+/// out, did not raise it again, and the kbot stood at the next building until its arm came in.)
+#[test]
+fn a_builder_whose_arm_is_still_out_builds_the_next_job_at_once() {
+    let mut sim = yard("300");
+    sim.set_starting_resources(0, Fx::from_int(10000), Fx::from_int(100000));
+    let kind = sim.types.id("BUILDER").unwrap();
+    std::sync::Arc::get_mut(&mut sim.types).unwrap().types[kind].script = Some(std::sync::Arc::new(arm_stays_out_script()));
+    let builder = put(&mut sim, "BUILDER", 0, 200, true);
+    let frame = sim.types.id("FRAME").unwrap();
+    let order = |pos: FxVec3| Command::Order { player: 0, units: vec![builder], order: Order::Build { type_id: frame, pos }, queue: false };
+    let finished = |sim: &Sim| sim.units().filter(|u| u.type_id == frame && u.is_complete()).count();
+    sim.step(&[order(FxVec3::from_ints(280, 60, 300))]);
+    assert!((0..300).any(|_| {
+        sim.step(&[]);
+        finished(&sim) == 1
+    }), "the first is built");
+    // At once, the arm still out (it stays out five seconds).
+    sim.step(&[order(FxVec3::from_ints(280, 60, 360))]);
+    let at = (0..60).find(|_| {
+        sim.step(&[]);
+        sim.units().any(|u| u.type_id == frame && !u.is_complete() && u.build_work > 0)
+    });
+    assert!(at.is_some(), "the next is built at once, without waiting for the arm to come in and go out again");
+    assert!((0..300).any(|_| {
+        sim.step(&[]);
+        finished(&sim) == 2
+    }), "and finished");
+    // Five seconds after its last job, with none since, the arm comes in and the stance drops.
+    assert!(sim.unit(builder).unwrap().in_build_stance, "the stance stays raised while the arm is out");
+    for _ in 0..(6 * TICKS_PER_SECOND) {
+        sim.step(&[]);
+    }
+    assert!(!sim.unit(builder).unwrap().in_build_stance, "and drops as the script takes the arm in");
+}

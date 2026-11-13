@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Fixed
+- Total Mayhem's construction units (kbots, vehicles, hovercraft and ships) stood still at a
+  building ordered while their nano arm was still out from the job before, and never built it:
+  it had to be ordered again once the arm had folded away, four or five seconds after a job.
+  They now build it at once. As in Total Annihilation, a builder is ready to build when its
+  script says so, also between jobs.
 - TA: Escalation's Guardian was pictured on a tall red column in the build menu, on its card and
   on its page of facts: the skirt its model reaches 73 high under the ground with, to close the
   gap under it on a slope. Pictures of units that stand on land now leave out what is under the
