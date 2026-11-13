@@ -524,3 +524,13 @@ líneas TO van sin «A» delante, pues siguen a la etiqueta (QUIEN LEA ESTO).
 | blacked-out lines | tachaduras |
 | chronicle / PLAY THE CHRONICLE / FIGHT IT (antes de los botones de campaña) | crónica / REPRODUCIR LA CRÓNICA / AL COMBATE |
 | datelines BEFORE THE WAR / AFTER | ANTES DE LA GUERRA (cabe a 8,5 px) / DESPUÉS |
+
+## Comprobación de mods (informes de validación)
+
+| English | Español |
+|---|---|
+| feature (informe de mod) | elemento |
+| build option | opción de construcción |
+| wreckage | restos |
+| faction (sidedata.tdf) | facción (side en otros textos: bando) |
+| the original game's / Reborn's own / {mod}'s | del juego original / propio de Reborn / de {mod} |

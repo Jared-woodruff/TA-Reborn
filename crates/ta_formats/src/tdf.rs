@@ -427,12 +427,43 @@ fn parse_float(s: &str) -> Option<f64> {
     s[..end].parse().ok()
 }
 
+/// A problem in a TDF file's structure that [`parse`] silently works round ([`lint`]); its
+/// words in English are its `Display`. (A section's name is as [`lint`] quotes it.)
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LintProblem {
+    /// A section's name runs to the line's end.
+    NameUnclosed(String),
+    /// A section's header without a body.
+    NoBody(String),
+    /// A `}` that closes nothing.
+    StrayClose,
+    /// An anonymous block never closed.
+    BlockUnclosed,
+    /// A section never closed: any section after it is read as part of it.
+    SectionUnclosed(String),
+    /// A `/*` comment never ended.
+    CommentUnended,
+}
+
+impl std::fmt::Display for LintProblem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LintProblem::NameUnclosed(name) => write!(f, "The section name [{name} has no closing ]."),
+            LintProblem::NoBody(name) => write!(f, "[{name}] has no {{ }} body after it: what follows is read into the section around it."),
+            LintProblem::StrayClose => f.write_str("This } closes no section."),
+            LintProblem::BlockUnclosed => f.write_str("A { opened on this line is never closed."),
+            LintProblem::SectionUnclosed(name) => write!(f, "[{name}] opened on this line is never closed: any section after it is read as part of it."),
+            LintProblem::CommentUnended => f.write_str("A /* comment opened on this line never ends: the rest of the file is read as a comment."),
+        }
+    }
+}
+
 /// Problems in a TDF file's structure that [`parse`] silently works round, with the line
 /// each is on (1-based): a section never closed (any section after it is read as part of it),
 /// a closing brace that closes nothing, a section header with no body or no `]`, and a
 /// comment never ended. Follows the parser's grammar: brackets and braces inside a value are
 /// text.
-pub fn lint(bytes: &[u8]) -> Vec<(u32, String)> {
+pub fn lint(bytes: &[u8]) -> Vec<(u32, LintProblem)> {
     let chars: Vec<char> = match bytes.strip_prefix(&UTF8_BOM).and_then(|rest| std::str::from_utf8(rest).ok()) {
         Some(text) => text.chars().collect(),
         None => bytes.iter().map(|&b| char::from(b)).collect(),
@@ -457,7 +488,7 @@ pub fn lint(bytes: &[u8]) -> Vec<(u32, String)> {
                     lint.i += 1;
                 } else {
                     // (The name ran to the line's end: nothing more to say of it.)
-                    lint.out.push((start, format!("The section name [{name} has no closing ].")));
+                    lint.out.push((start, LintProblem::NameUnclosed(name)));
                     continue;
                 }
                 lint.trivia();
@@ -465,7 +496,7 @@ pub fn lint(bytes: &[u8]) -> Vec<(u32, String)> {
                     lint.i += 1;
                     open.push((name, start));
                 } else {
-                    lint.out.push((start, format!("[{name}] has no {{ }} body after it: what follows is read into the section around it.")));
+                    lint.out.push((start, LintProblem::NoBody(name)));
                 }
             }
             // An anonymous block: the parser folds it into the section around it.
@@ -475,7 +506,7 @@ pub fn lint(bytes: &[u8]) -> Vec<(u32, String)> {
             }
             '}' => {
                 if open.pop().is_none() {
-                    lint.out.push((lint.line, "This } closes no section.".into()));
+                    lint.out.push((lint.line, LintProblem::StrayClose));
                 }
                 lint.i += 1;
             }
@@ -505,8 +536,7 @@ pub fn lint(bytes: &[u8]) -> Vec<(u32, String)> {
         }
     }
     for (name, start) in open {
-        let message = if name.is_empty() { "A { opened on this line is never closed.".to_string() } else { format!("[{name}] opened on this line is never closed: any section after it is read as part of it.") };
-        lint.out.push((start, message));
+        lint.out.push((start, if name.is_empty() { LintProblem::BlockUnclosed } else { LintProblem::SectionUnclosed(name) }));
     }
     lint.out.sort_by_key(|(line, _)| *line);
     lint.out
@@ -522,7 +552,7 @@ struct Lint {
     chars: Vec<char>,
     i: usize,
     line: u32,
-    out: Vec<(u32, String)>,
+    out: Vec<(u32, LintProblem)>,
 }
 
 impl Lint {
@@ -548,7 +578,7 @@ impl Lint {
                 loop {
                     match self.at(0) {
                         None => {
-                            self.out.push((start, "A /* comment opened on this line never ends: the rest of the file is read as a comment.".into()));
+                            self.out.push((start, LintProblem::CommentUnended));
                             return;
                         }
                         Some('*') if self.at(1) == Some('/') => {
@@ -579,14 +609,14 @@ mod tests {
         let problems = lint(b"[WEAPON_A]\n{\n  range=100;\n\n[WEAPON_B]\n{\n  range=200;\n}\n");
         assert_eq!(problems.len(), 1, "{problems:?}");
         assert_eq!(problems[0].0, 1);
-        assert!(problems[0].1.contains("[WEAPON_A] opened on this line is never closed"));
+        assert!(problems[0].1.to_string().contains("[WEAPON_A] opened on this line is never closed"));
         let problems = lint(b"[A]{x=1;}\n}\n[B]\nx=2;\n[C{y=1;}\n/* open");
         let lines: Vec<u32> = problems.iter().map(|(l, _)| *l).collect();
         assert_eq!(lines, [2, 3, 5, 6], "{problems:?}");
-        assert!(problems[0].1.contains("closes no section"));
-        assert!(problems[1].1.contains("[B] has no"));
-        assert!(problems[2].1.contains("[C{y=1;} has no closing ]"));
-        assert!(problems[3].1.contains("never ends"));
+        assert!(problems[0].1.to_string().contains("closes no section"));
+        assert!(problems[1].1.to_string().contains("[B] has no"));
+        assert!(problems[2].1.to_string().contains("[C{y=1;} has no closing ]"));
+        assert!(problems[3].1.to_string().contains("never ends"));
     }
 
     #[test]

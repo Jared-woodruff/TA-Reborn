@@ -517,3 +517,5 @@ The chronicle told plainly and a little solemn; each archive document in its own
 | FIELD COMMANDERS / TROOPER | бойові командири (УСІМ БОЙОВИМ КОМАНДИРАМ) / боєць |
 | blacked-out words | [[...]] kept, the words inside translated ([[МІЛЬЯРДИ]], [[БУДЬ-ЯКОЮ ЦІНОЮ]], [[ПОДАЛІ]]) |
 | the CORE machine remembering (its sex unknown) | its "I" takes no gendered past tense ("у рідному місті", "Смерть наздоганяла мене", "Я триваю") |
+| mod check labels: feature / faction / wreckage / build option | об'єкт / сторона / уламки / варіант будівництва |
+| empty file (blanks out a file below) | порожній файл (затирає) |

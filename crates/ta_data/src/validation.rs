@@ -12,8 +12,10 @@ use std::fmt::Write;
 
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use ta_formats::{cob::{self, CobScript}, gaf::{self, AnimSize, GafReader}, model3do::Model3do, tdf::{self, TdfDocument, TdfSection}};
+use ta_formats::{cob::{self, CobScript}, gaf::{self, AnimSize, GafReader}, model3do::Model3do, tdf::{self, LintProblem, TdfDocument, TdfSection}};
 use ta_vfs::Vfs;
+
+use crate::words::{en, enf, Fill, Words};
 
 /// Bumped whenever the checks change what they report, so cached reports are made again (5:
 /// WAV music not misplaced, a replaced definition's findings not the replacing mod's, a folder of
@@ -23,8 +25,10 @@ use ta_vfs::Vfs;
 /// weapon's explosion too large to decode whole drawn reduced, the explosions' room as drawn;
 /// 9: a script's code decoded as the VM runs it, so what a compiler left between functions is
 /// no unknown opcode; 10: a unit's script is its own, `scripts/<UnitName>.cob`, before its
-/// model's).
-pub const SCHEMA_VERSION: u32 = 11;
+/// model's; 11: as the game reads mods, every name a finding lists named; 12: each finding's words
+/// kept for the launcher to show in the player's language, `Issue::words`, a file's reading
+/// error told in words of the check's own around the reader's).
+pub const SCHEMA_VERSION: u32 = 12;
 
 /// The keys of `gamedata/sound.tdf`'s categories the game plays (`ta_audio`'s sound events), each
 /// with or without a variant number (`select1`, `select2`…), with `count0` to `count9`; the
@@ -98,7 +102,13 @@ pub struct Issue {
     /// The line of `path` it is on, where known (text files).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub line: Option<u32>,
+    /// In English: the words a finding is compared by ([`compare`]) and the copied report's.
     pub message: String,
+    /// `message`'s words, for the launcher to show in the player's language (none in a report
+    /// kept by an older version: `message` is shown).
+    #[serde(default, skip_serializing_if = "Words::is_empty")]
+    pub words: Words,
+    /// What to do, in English: a key of the languages' files (marked [`en`]).
     pub suggestion: String,
     /// Whether it counts towards the badge: the mod's own and what it causes, not what is
     /// there without it. (Inherited findings stay in the shareable report.)
@@ -112,7 +122,7 @@ const fn yes() -> bool { true }
 
 impl Default for Issue {
     fn default() -> Self {
-        Self { severity: Severity::Warning, code: String::new(), path: String::new(), layer: String::new(), source: String::new(), line: None, message: String::new(), suggestion: String::new(), affects_status: true, origin: Origin::Mod }
+        Self { severity: Severity::Warning, code: String::new(), path: String::new(), layer: String::new(), source: String::new(), line: None, message: String::new(), words: Words::default(), suggestion: String::new(), affects_status: true, origin: Origin::Mod }
     }
 }
 
@@ -144,6 +154,23 @@ pub struct Counts {
     pub textures: u64,
     pub frames: u64,
     #[serde(default)]
+    pub sounds: u64,
+    /// The mod's own (its layer's), where the check is of a mod: the counts above take in what
+    /// it plays over too.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub own: Option<Own>,
+}
+
+/// What a mod checked holds of its own ([`Counts::own`]).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Own {
+    /// Its files the game reads, and those of them that do not read.
+    pub files: u64,
+    pub failed: u64,
+    pub units: u64,
+    pub weapons: u64,
+    pub features: u64,
+    pub maps: u64,
     pub sounds: u64,
 }
 
@@ -183,7 +210,12 @@ impl Report {
     pub fn to_text(&self) -> String {
         let mut out = String::from("TA Reborn static mod validation\n");
         let _ = writeln!(out, "Validator schema: {}\nStatus: {:?}\nComplete: {}", self.schema_version, self.status(), self.complete);
-        let _ = writeln!(out, "Checked {}/{} files; {} parse/read failures; {} units, {} weapons, {} features, {} maps, {} sounds.", self.counts.files_checked, self.counts.files_total, self.counts.files_failed, self.counts.units, self.counts.weapons, self.counts.features, self.counts.maps, self.counts.sounds);
+        if let Some(own) = &self.counts.own {
+            let _ = writeln!(out, "This mod: {} files ({} not read); {} units, {} weapons, {} features, {} maps, {} sounds.", own.files, own.failed, own.units, own.weapons, own.features, own.maps, own.sounds);
+            let _ = writeln!(out, "Checked with what it plays over: {}/{} files ({} not read); {} units, {} weapons, {} features, {} maps, {} sounds.", self.counts.files_checked, self.counts.files_total, self.counts.files_failed, self.counts.units, self.counts.weapons, self.counts.features, self.counts.maps, self.counts.sounds);
+        } else {
+            let _ = writeln!(out, "Checked {}/{} files; {} parse/read failures; {} units, {} weapons, {} features, {} maps, {} sounds.", self.counts.files_checked, self.counts.files_total, self.counts.files_failed, self.counts.units, self.counts.weapons, self.counts.features, self.counts.maps, self.counts.sounds);
+        }
         out.push_str("Static checks cannot prove gameplay, balance, performance, multiplayer compatibility or rendering on a particular GPU.\n");
         for (n, issue) in self.issues.iter().enumerate() {
             let origin = match issue.origin {
@@ -273,7 +305,7 @@ const TEXTURE_BANKS: u64 = 2;
 pub fn validate(vfs: &Vfs, options: &Options, mut progress: impl FnMut(Progress<'_>) -> bool) -> Report {
     let mut scan = Scan::new(vfs, options);
     if vfs.file_count() > options.max_files {
-        scan.stop("validation.limit", "", "The effective content set exceeds the validation file budget.", "Split the content into smaller optional packs, then validate each pack.");
+        scan.stop("validation.limit", "", en("The effective content set exceeds the validation file budget."), en("Split the content into smaller optional packs, then validate each pack."));
         return scan.report;
     }
     let everything = vfs.list("", None, true);
@@ -282,21 +314,22 @@ pub fn validate(vfs: &Vfs, options: &Options, mut progress: impl FnMut(Progress<
     if let Some(target) = &options.target_layer {
         let own: Vec<&str> = everything.iter().filter(|p| vfs.origin(p).is_some_and(|o| &o.layer == target)).map(String::as_str).collect();
         if own.is_empty() {
-            scan.stop("validation.no_content", "", "No files of this mod were available to validate.", "Install the mod's TA data archives or loose files, then validate again.");
+            scan.stop("validation.no_content", "", en("No files of this mod were available to validate."), en("Install the mod's TA data archives or loose files, then validate again."));
             return scan.report;
         }
+        scan.report.counts.own = Some(Own { files: own.iter().filter(|p| read_by_game(p)).count() as u64, ..Own::default() });
         scan.packaging(&own);
         if !own.iter().any(|p| known(p)) {
             // Music, documents or pictures only: nothing of the game's data to check, and
             // nothing the mod changes in it.
             scan.report.empty = true;
-            scan.note("validation.nothing", "", "This mod holds nothing the data checks read: no units, weapons, features, maps, models, scripts, animations or sounds (music, documents and pictures are not checked).", "Nothing to do if that is what the mod is. If it should change the game's data, check that its files are in the folders the game reads (units/, weapons/, maps/…).");
+            scan.note("validation.nothing", "", Words::text(en("This mod holds nothing the data checks read: no units, weapons, features, maps, models, scripts, animations or sounds (music, documents and pictures are not checked).")), en("Nothing to do if that is what the mod is. If it should change the game's data, check that its files are in the folders the game reads (units/, weapons/, maps/…)."));
             scan.finish_scope();
             scan.report.sort();
             return scan.report;
         }
     } else if files.is_empty() {
-        scan.stop("validation.no_content", "", "No supported effective files were available to validate.", "Install the original game's or the mod's TA data archives, then validate again.");
+        scan.stop("validation.no_content", "", en("No supported effective files were available to validate."), en("Install the original game's or the mod's TA data archives, then validate again."));
         return scan.report;
     }
     let total = files.len() as u64;
@@ -309,12 +342,12 @@ pub fn validate(vfs: &Vfs, options: &Options, mut progress: impl FnMut(Progress<
             .into_iter().zip(chunk).map(|(parsed, path)| parsed.unwrap_or_else(|| parse(vfs, path, options))).collect();
         for (path, parsed) in chunk.iter().zip(parsed) {
             if !progress(Progress { checked: scan.report.counts.files_checked, total, path }) {
-                scan.stop("validation.cancelled", path, "Validation was cancelled; remaining files and references were not checked.", "Run validation again to obtain a complete report.");
+                scan.stop("validation.cancelled", path, en("Validation was cancelled; remaining files and references were not checked."), en("Run validation again to obtain a complete report."));
                 break 'files;
             }
             bytes_read = bytes_read.saturating_add(parsed.bytes);
             if bytes_read > options.max_read_bytes {
-                scan.stop("validation.limit", path, "The cumulative validation read budget was exceeded.", "Split optional content into smaller packs, then validate again.");
+                scan.stop("validation.limit", path, en("The cumulative validation read budget was exceeded."), en("Split optional content into smaller packs, then validate again."));
                 break 'files;
             }
             scan.report.counts.files_checked += 1;
@@ -340,10 +373,11 @@ pub fn checked_file(name: &str) -> bool { known(name) }
 /// `archive` (as the install names it, `ta_vfs::mods::replaced_archives`): with it on, the
 /// install's archive of that name is not read. A note: it never counts.
 pub fn replaced_archive(layer: &str, archive: &str) -> Issue {
+    let words = enf("With this mod on, the original game's {archive} is not read: the mod takes its place (an archive of its own of that name, one its mod.toml's replaces names, or one its installation is known to remove), as installing the mod in TA's folder did. What only the original's held is missing with the mod.", [("archive", Fill::name(archive))]);
     Issue {
         severity: Severity::Info, code: "packaging.replaces_original".into(), path: archive.into(), layer: layer.into(),
-        message: format!("With this mod on, the original game's {archive} is not read: the mod takes its place (an archive of its own of that name, one its mod.toml's replaces names, or one its installation is known to remove), as installing the mod in TA's folder did. What only the original's held is missing with the mod."),
-        suggestion: "Nothing to do if this is meant. To have the original's read beneath the mod instead, give the mod's archive another name, or take the name out of replaces in mod.toml.".into(),
+        message: words.english(), words,
+        suggestion: en("Nothing to do if this is meant. To have the original's read beneath the mod instead, give the mod's archive another name, or take the name out of replaces in mod.toml.").into(),
         ..Issue::default()
     }
 }
@@ -382,11 +416,11 @@ fn key(kind: &str, name: &str) -> String { format!("{kind}:{}", name.trim().to_a
 fn asset(folder: &str, name: &str, ext: &str) -> String { ta_vfs::normalize(&format!("{folder}/{}.{ext}", name.trim())) }
 fn direct(path: &str, folder: &str, ext: &str) -> bool { path.starts_with(&format!("{folder}/")) && path.matches('/').count() == 1 && path.ends_with(&format!(".{ext}")) }
 /// Whose a layer is, as a sentence names it.
-fn owner(layer: &str) -> String {
+fn owner(layer: &str) -> Words {
     match layer {
-        "base" => "the original game's".into(),
-        ta_vfs::BUILTIN_LAYER => "Reborn's own".into(),
-        _ => format!("{}'s", layer.strip_prefix("mod:").unwrap_or(layer)),
+        "base" => Words::text(en("the original game's")),
+        ta_vfs::BUILTIN_LAYER => Words::text(en("Reborn's own")),
+        _ => enf("{mod}'s", [("mod", Fill::name(layer.strip_prefix("mod:").unwrap_or(layer)))]),
     }
 }
 
@@ -405,47 +439,52 @@ fn sound_path(name: &str) -> String {
 }
 
 /// A reference's target, as a sentence names it: "unit ARMCK", "the file objects3d/x.3do".
-fn describe(reference: &str) -> String {
+fn describe(reference: &str) -> Words {
     let (kind, name) = reference.split_once(':').unwrap_or(("", reference));
-    let upper = name.to_ascii_uppercase();
+    let upper = || Fill::name(name.to_ascii_uppercase());
     match kind {
-        "file" => format!("the file {name}"),
-        "unit" => format!("unit {upper}"),
-        "weapon" => format!("weapon {upper}"),
-        "feature" => format!("feature {upper}"),
-        "side" => format!("faction {upper}"),
-        "move" => format!("movement class {upper}"),
-        "texture" => format!("texture {upper}"),
-        "sound" => format!("sound {upper} ({})", sound_path(name)),
-        "sounds" => format!("sound category {upper} (gamedata/sound.tdf)"),
-        "placed" => format!("unit or feature {upper}"),
-        "gaf" => match name.split_once('#') { Some((file, entry)) => format!("animation {} in {file}", entry.to_ascii_uppercase()), None => name.to_string() },
-        _ => reference.to_string(),
+        "file" => enf("the file {path}", [("path", Fill::name(name))]),
+        "unit" => enf("unit {name}", [("name", upper())]),
+        "weapon" => enf("weapon {name}", [("name", upper())]),
+        "feature" => enf("feature {name}", [("name", upper())]),
+        "side" => enf("faction {name}", [("name", upper())]),
+        "move" => enf("movement class {name}", [("name", upper())]),
+        "texture" => enf("texture {name}", [("name", upper())]),
+        "sound" => enf("sound {name} ({path})", [("name", upper()), ("path", Fill::name(sound_path(name)))]),
+        "sounds" => enf("sound category {name} (gamedata/sound.tdf)", [("name", upper())]),
+        "placed" => enf("unit or feature {name}", [("name", upper())]),
+        "gaf" => match name.split_once('#') { Some((file, entry)) => enf("animation {entry} in {file}", [("entry", Fill::name(entry.to_ascii_uppercase())), ("file", Fill::name(file))]), None => Words::raw(name) },
+        _ => Words::raw(reference),
     }
 }
 
 /// The folders TA's own data lives in (a mod's files belong in the same).
 const TA_FOLDERS: [&str; 20] = ["ai", "anims", "bitmaps", "camps", "download", "features", "fonts", "gamedata", "guis", "maps", "music", "objects3d", "palettes", "scripts", "sections", "sounds", "textures", "unitpics", "units", "weapons"];
 
-/// Where the game reads a kind of file from, when `path` is not there.
-fn misplaced(path: &str) -> Option<&'static str> {
+/// Where the game reads a kind of file from, when `path` is not there: the folders, one of which.
+fn misplaced(path: &str) -> Option<&'static [&'static str]> {
     let ext = path.rsplit_once('.')?.1;
     let depth = path.matches('/').count();
     let top = path.split('/').next().unwrap_or("");
-    let home = match ext {
-        "fbi" => (top == "units" && depth == 1, "units/"),
-        "3do" => (top == "objects3d", "objects3d/"),
-        "cob" => (top == "scripts", "scripts/"),
-        "gui" => (top == "guis" && depth == 1, "guis/"),
-        "tnt" | "ota" => (top == "maps" && depth == 1, "maps/"),
-        "gaf" => (matches!(top, "anims" | "textures" | "bitmaps") && depth == 1 || top == "camps", "anims/ or textures/"),
-        "fnt" => (matches!(top, "fonts" | "guis"), "fonts/"),
-        "tdf" => (matches!(top, "weapons" | "gamedata" | "download" | "maps") && depth == 1 || matches!(top, "features" | "camps"), "weapons/, features/, gamedata/, download/ or camps/"),
+    let home: (bool, &[&str]) = match ext {
+        "fbi" => (top == "units" && depth == 1, &["units/"]),
+        "3do" => (top == "objects3d", &["objects3d/"]),
+        "cob" => (top == "scripts", &["scripts/"]),
+        "gui" => (top == "guis" && depth == 1, &["guis/"]),
+        "tnt" | "ota" => (top == "maps" && depth == 1, &["maps/"]),
+        "gaf" => (matches!(top, "anims" | "textures" | "bitmaps") && depth == 1 || top == "camps", &["anims/", "textures/"]),
+        "fnt" => (matches!(top, "fonts" | "guis"), &["fonts/"]),
+        "tdf" => (matches!(top, "weapons" | "gamedata" | "download" | "maps") && depth == 1 || matches!(top, "features" | "camps"), &["weapons/", "features/", "gamedata/", "download/", "camps/"]),
         // (The music folder's tracks are WAVs too; a sound named with a folder is read from it.)
-        "wav" => (top == "sounds" || top == "camps" || top == "music" && depth == 1, "sounds/"),
+        "wav" => (top == "sounds" || top == "camps" || top == "music" && depth == 1, &["sounds/"]),
         _ => return None,
     };
     (!home.0).then_some(home.1)
+}
+
+/// Folders, as a sentence offers them: "units/", "anims/ or textures/".
+fn folders(home: &[&str]) -> Fill {
+    Fill::Either(home.iter().map(|folder| Fill::name(*folder)).collect())
 }
 
 /// A reason a sound file will not play, if any, as the game's decoder (`ta_audio::decode`) reads
@@ -454,7 +493,7 @@ fn misplaced(path: &str) -> Option<&'static str> {
 /// 768 kHz, a sample size it reads), with samples; else Ogg Vorbis, Humongous's DIGI or TALK
 /// blocks, or headerless 8-bit samples saved as `.wav` (TA's own `honk.wav` and `sing.wav`). (A
 /// test in `ta_audio` holds this to the decoder.)
-pub fn sound_problem(bytes: &[u8]) -> Option<String> {
+pub fn sound_problem(bytes: &[u8]) -> Option<Words> {
     const PCM: u16 = 0x0001;
     const MS_ADPCM: u16 = 0x0002;
     const FLOAT: u16 = 0x0003;
@@ -464,12 +503,12 @@ pub fn sound_problem(bytes: &[u8]) -> Option<String> {
     const EXTENSIBLE: u16 = 0xFFFE;
     if !(bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WAVE") {
         if bytes.starts_with(b"OggS") {
-            return (!ogg_stream_played(bytes)).then(|| "it is an Ogg file without a Vorbis or FLAC stream, the ones the game plays".into());
+            return (!ogg_stream_played(bytes)).then(|| Words::text(en("it is an Ogg file without a Vorbis or FLAC stream, the ones the game plays")));
         }
         if bytes.len() >= 8 && (bytes.starts_with(b"DIGI") || bytes.starts_with(b"TALK")) {
-            return (!humongous_samples(bytes)).then(|| "it is a Humongous sound block without its samples (no SDAT block within its length)".into());
+            return (!humongous_samples(bytes)).then(|| Words::text(en("it is a Humongous sound block without its samples (no SDAT block within its length)")));
         }
-        return (!looks_like_pcm8(bytes)).then(|| "it is neither a RIFF WAVE file nor another sound the game reads".into());
+        return (!looks_like_pcm8(bytes)).then(|| Words::text(en("it is neither a RIFF WAVE file nor another sound the game reads")));
     }
     let le16 = |b: &[u8], at: usize| u16::from_le_bytes([b[at], b[at + 1]]);
     let le32 = |b: &[u8], at: usize| u32::from_le_bytes([b[at], b[at + 1], b[at + 2], b[at + 3]]);
@@ -495,24 +534,24 @@ pub fn sound_problem(bytes: &[u8]) -> Option<String> {
             None => break,
         }
     }
-    let Some(c) = fmt else { return Some("it has no format chunk".into()) };
+    let Some(c) = fmt else { return Some(Words::text(en("it has no format chunk"))) };
     if c.len() < 14 {
-        return Some(format!("its format chunk is {} bytes long, too short to read", c.len()));
+        return Some(enf("its format chunk is {n} bytes long, too short to read", [("n", Fill::number(c.len()))]));
     }
     let (mut tag, channels, rate, block_align) = (le16(c, 0), le16(c, 2), le32(c, 4), le16(c, 12));
     let bits = if c.len() >= 16 { le16(c, 14) } else { 8 };
     if tag == EXTENSIBLE {
         let extra: &[u8] = if c.len() >= 18 { &c[18..(18 + le16(c, 16) as usize).min(c.len())] } else { &[] };
         if extra.len() < 8 {
-            return Some("its WAVE_FORMAT_EXTENSIBLE header is too short to read".into());
+            return Some(Words::text(en("its WAVE_FORMAT_EXTENSIBLE header is too short to read")));
         }
         tag = le16(extra, 6);
     }
     if channels == 0 || channels > 32 {
-        return Some(format!("it has {channels} channels (the game plays 1 to 32)"));
+        return Some(enf("it has {n} channels (the game plays 1 to 32)", [("n", Fill::number(channels))]));
     }
     if rate == 0 || rate > 768_000 {
-        return Some(format!("its sample rate is {rate} (the game plays up to 768,000)"));
+        return Some(enf("its sample rate is {rate} (the game plays up to 768,000)", [("rate", Fill::number(rate))]));
     }
     // (Bytes a sample, as the decoder works them out: from the block, else from the bits.)
     let width = || {
@@ -521,13 +560,13 @@ pub fn sound_problem(bytes: &[u8]) -> Option<String> {
         if (1..=8).contains(&from_align) && from_align >= from_bits { from_align } else { from_bits }
     };
     let problem = match tag {
-        PCM if !(1..=4).contains(&width()) => Some(format!("its samples are {bits}-bit PCM, which the game does not play (up to 32-bit)")),
-        FLOAT if !matches!(width(), 4 | 8) => Some(format!("its samples are {bits}-bit float, which the game does not play (32 or 64-bit)")),
-        IMA_ADPCM if bits != 4 => Some(format!("its IMA ADPCM is {bits}-bit, which the game does not play (4-bit)")),
+        PCM if !(1..=4).contains(&width()) => Some(enf("its samples are {bits}-bit PCM, which the game does not play (up to 32-bit)", [("bits", Fill::number(bits))])),
+        FLOAT if !matches!(width(), 4 | 8) => Some(enf("its samples are {bits}-bit float, which the game does not play (32 or 64-bit)", [("bits", Fill::number(bits))])),
+        IMA_ADPCM if bits != 4 => Some(enf("its IMA ADPCM is {bits}-bit, which the game does not play (4-bit)", [("bits", Fill::number(bits))])),
         PCM | FLOAT | ALAW | MULAW | IMA_ADPCM | MS_ADPCM => None,
-        tag => Some(format!("its codec ({tag:#06x}) is not one the game plays (PCM, ADPCM, float, A-law or µ-law)")),
+        tag => Some(enf("its codec ({tag}) is not one the game plays (PCM, ADPCM, float, A-law or µ-law)", [("tag", Fill::name(format!("{tag:#06x}")))])),
     };
-    problem.or_else(|| (!data).then(|| "it has no sample data".into()))
+    problem.or_else(|| (!data).then(|| Words::text(en("it has no sample data"))))
 }
 
 /// Whether an Ogg file opens a stream the game's decoder plays (symphonia's Ogg reader with its
@@ -599,14 +638,14 @@ enum Content {
     /// A picture, font or palette: readable, nothing more to it.
     Plain,
     /// A WAV, and what keeps it from playing, if anything.
-    Sound(Option<String>),
-    Text { doc: TdfDocument, syntax: Vec<(u32, String)> },
+    Sound(Option<Words>),
+    Text { doc: TdfDocument, syntax: Vec<(u32, LintProblem)> },
     /// An empty file: TA's way of blanking out a file of the same name below it (the original
     /// game's, or a mod's it is mounted over), nothing to read, not a broken one (`blank_notes`).
     Blank,
 }
 struct GafEntry { name: String, frames: usize, size: AnimSize }
-struct Problem { severity: Severity, code: &'static str, message: String, suggestion: &'static str }
+struct Problem { severity: Severity, code: &'static str, message: Words, suggestion: &'static str }
 
 /// Reads and decodes one file (on any thread).
 fn parse(vfs: &Vfs, path: &str, options: &Options) -> Parsed {
@@ -687,27 +726,28 @@ fn script_problems(script: &CobScript) -> Vec<Problem> {
             let end = entries.range(pc + 1..).next().copied().unwrap_or(len);
             let opcode = script.code[pc];
             let Some(n) = cob::operand_count(opcode) else {
-                problems.push(Problem { severity: Severity::Error, code: "script.opcode", message: format!("Unknown COB opcode {opcode:#010x} at word {pc}; the VM cannot execute this instruction. The remainder of this function cannot be decoded reliably."), suggestion: "Recompile the BOS script with original-TA-compatible opcodes, or report the required opcode extension to Reborn's maintainers." });
+                problems.push(Problem { severity: Severity::Error, code: "script.opcode", message: enf("Unknown COB opcode {opcode} at word {word}; the VM cannot execute this instruction. The remainder of this function cannot be decoded reliably.", [("opcode", Fill::name(format!("{opcode:#010x}"))), ("word", Fill::number(pc))]), suggestion: en("Recompile the BOS script with original-TA-compatible opcodes, or report the required opcode extension to Reborn's maintainers.") });
                 break;
             };
             if pc + 1 + n > end {
-                problems.push(Problem { severity: Severity::Error, code: "script.operands", message: format!("COB instruction {} at word {pc} is truncated or crosses the next function entry point.", cob::opcode_name(opcode)), suggestion: "Recompile this COB from its BOS source; verify function offsets and inline operand counts." });
+                problems.push(Problem { severity: Severity::Error, code: "script.operands", message: enf("COB instruction {instruction} at word {word} is truncated or crosses the next function entry point.", [("instruction", Fill::name(cob::opcode_name(opcode))), ("word", Fill::number(pc))]), suggestion: en("Recompile this COB from its BOS source; verify function offsets and inline operand counts.") });
                 break;
             }
             let arg = script.code.get(pc + 1).copied().unwrap_or(0);
             let invalid = match opcode {
-                MOVE | TURN | SPIN | STOP_SPIN | WAIT_TURN | WAIT_MOVE | MOVE_NOW | TURN_NOW => (arg as usize >= script.pieces.len() || script.code[pc + 2] > 2).then_some("piece index or axis"),
-                SHOW | HIDE | CACHE | DONT_CACHE | SHADE | DONT_SHADE | EMIT_SFX | EXPLODE => (arg as usize >= script.pieces.len()).then_some("piece index"),
-                PUSH_STATIC | POP_STATIC => (arg >= script.static_var_count).then_some("static variable index"),
+                MOVE | TURN | SPIN | STOP_SPIN | WAIT_TURN | WAIT_MOVE | MOVE_NOW | TURN_NOW => (arg as usize >= script.pieces.len() || script.code[pc + 2] > 2).then_some(en("COB instruction {instruction} at word {word} has an invalid piece index or axis.")),
+                SHOW | HIDE | CACHE | DONT_CACHE | SHADE | DONT_SHADE | EMIT_SFX | EXPLODE => (arg as usize >= script.pieces.len()).then_some(en("COB instruction {instruction} at word {word} has an invalid piece index.")),
+                PUSH_STATIC | POP_STATIC => (arg >= script.static_var_count).then_some(en("COB instruction {instruction} at word {word} has an invalid static variable index.")),
                 // A terminal label exactly past the last instruction ends the
                 // thread (VM's code.get(pc) returns None). Some BOS compilers
                 // emit this for the final else branch of Killed().
-                JUMP | JUMP_IF_FALSE => (arg as usize > len).then_some("jump destination"),
-                START_SCRIPT | CALL_SCRIPT => (arg as usize >= script.functions.len()).then_some("function index"),
+                JUMP | JUMP_IF_FALSE => (arg as usize > len).then_some(en("COB instruction {instruction} at word {word} has an invalid jump destination.")),
+                START_SCRIPT | CALL_SCRIPT => (arg as usize >= script.functions.len()).then_some(en("COB instruction {instruction} at word {word} has an invalid function index.")),
                 _ => None,
             };
-            if let Some(what) = invalid {
-                problems.push(Problem { severity: Severity::Warning, code: "script.operand_range", message: format!("COB instruction {} at word {pc} has an invalid {what}.", cob::opcode_name(opcode)), suggestion: "Recompile the script with valid piece, variable, function and jump references." });
+            if let Some(text) = invalid {
+                let message = enf(text, [("instruction", Fill::name(cob::opcode_name(opcode))), ("word", Fill::number(pc))]);
+                problems.push(Problem { severity: Severity::Warning, code: "script.operand_range", message, suggestion: en("Recompile the script with valid piece, variable, function and jump references.") });
                 // (Where a jump out of the code would lead is not followed.)
                 if matches!(opcode, JUMP | JUMP_IF_FALSE) { break; }
             }
@@ -731,16 +771,14 @@ fn script_problems(script: &CobScript) -> Vec<Problem> {
             if entries.contains(&pc) { break; }
         }
     }
-    let values = |set: &BTreeSet<i32>| set.iter().map(i32::to_string).collect::<Vec<_>>();
+    let values = |set: &BTreeSet<i32>| Fill::List(set.iter().map(|&v| Fill::number(v)).collect());
     if !unanswered_get.is_empty() {
-        let list = values(&unanswered_get);
-        let words: Vec<&str> = list.iter().map(String::as_str).collect();
-        problems.push(Problem { severity: Severity::Warning, code: "script.value", message: format!("This script asks the engine for unit value {}, which Reborn does not answer: it reads 0, so what the script does with it may not happen as in the engine it was made for.", listed(&words)), suggestion: "A later patch of TA's engine defines these values: report them, and what the mod does with them, to Reborn's maintainers." });
+        let message = enf("This script asks the engine for unit value {values}, which Reborn does not answer: it reads 0, so what the script does with it may not happen as in the engine it was made for.", [("values", values(&unanswered_get))]);
+        problems.push(Problem { severity: Severity::Warning, code: "script.value", message, suggestion: en("A later patch of TA's engine defines these values: report them, and what the mod does with them, to Reborn's maintainers.") });
     }
     if !unanswered_set.is_empty() {
-        let list = values(&unanswered_set);
-        let words: Vec<&str> = list.iter().map(String::as_str).collect();
-        problems.push(Problem { severity: Severity::Warning, code: "script.value", message: format!("This script sets unit value {}, which Reborn does not answer: setting it does nothing, so what the script means by it does not happen as in the engine it was made for.", listed(&words)), suggestion: "A later patch of TA's engine defines these values: report them, and what the mod does with them, to Reborn's maintainers." });
+        let message = enf("This script sets unit value {values}, which Reborn does not answer: setting it does nothing, so what the script means by it does not happen as in the engine it was made for.", [("values", values(&unanswered_set))]);
+        problems.push(Problem { severity: Severity::Warning, code: "script.value", message, suggestion: en("A later patch of TA's engine defines these values: report them, and what the mod does with them, to Reborn's maintainers.") });
     }
     problems
 }
@@ -762,9 +800,16 @@ fn asked(opcode: u32, recent: &[(u32, u32)]) -> Option<(bool, i32)> {
     }
 }
 
-struct Reference { key: String, what: String, severity: Severity }
+/// A definition's reference: what it is to, what it is in the definition (its words: "ARMCK
+/// model"), and how grave its going missing is.
+struct Reference { key: String, what: Words, severity: Severity }
 impl Reference {
-    fn new(kind: &str, name: &str, what: impl Into<String>, severity: Severity) -> Self { Self { key: key(kind, name), what: what.into(), severity } }
+    fn new(kind: &str, name: &str, what: Words, severity: Severity) -> Self { Self { key: key(kind, name), what, severity } }
+}
+
+/// A definition's part, as a reference names it: "{name} model".
+fn part(text: &'static str, name: &str) -> Words {
+    enf(text, [("name", Fill::name(name))])
 }
 #[derive(Default)]
 struct Record { path: String, refs: Vec<Reference>, unit: Option<UnitFacts> }
@@ -813,7 +858,7 @@ struct Scan<'a> {
     module_builders: BTreeSet<String>,
     /// The target's definitions an inherited one of the same name comes after, by the
     /// target's file: what, the later file, whose it is.
-    shadowed: BTreeMap<String, Vec<(String, String, String)>>,
+    shadowed: BTreeMap<String, Vec<(Words, String, Words)>>,
     /// What each definition uses, by its key.
     uses: BTreeMap<String, Vec<Use>>,
     /// Each definition's file, and each file's definitions (from the records, in `references`).
@@ -838,11 +883,11 @@ impl<'a> Scan<'a> {
         }
     }
 
-    fn stop(&mut self, code: &str, path: &str, message: &str, suggestion: &str) {
+    fn stop(&mut self, code: &str, path: &str, message: &'static str, suggestion: &'static str) {
         if self.halted { return; }
         self.halted = true;
         self.report.complete = false;
-        let issue = Issue { code: code.into(), path: path.into(), message: message.into(), suggestion: suggestion.into(), ..self.located(path) };
+        let issue = Issue { code: code.into(), path: path.into(), message: message.into(), words: Words::text(message), suggestion: suggestion.into(), ..self.located(path) };
         self.report.issues.push(issue);
     }
 
@@ -858,18 +903,21 @@ impl<'a> Scan<'a> {
         if self.halted { return false; }
         match self.retained.checked_add(bytes) {
             Some(n) if n <= self.options.max_retained_bytes => { self.retained = n; true }
-            _ => { self.stop("validation.limit", path, "The retained diagnostic/reference budget was exceeded. This is a partial report, not a clean validation.", "Reduce the pack's number of definitions or split optional content; rerun validation after resolving reported issues."); false }
+            _ => { self.stop("validation.limit", path, en("The retained diagnostic/reference budget was exceeded. This is a partial report, not a clean validation."), en("Reduce the pack's number of definitions or split optional content; rerun validation after resolving reported issues.")); false }
         }
     }
 
-    fn issue(&mut self, severity: Severity, code: &str, path: &str, message: String, suggestion: &str) {
-        self.issue_at(severity, code, path, None, message, suggestion);
+    fn issue(&mut self, severity: Severity, code: &str, path: &str, words: Words, suggestion: &str) {
+        self.issue_at(severity, code, path, None, words, suggestion);
     }
 
-    fn issue_at(&mut self, severity: Severity, code: &str, path: &str, line: Option<u32>, message: String, suggestion: &str) {
+    /// A finding: its words (`message`, their English), and what to do (marked [`en`]).
+    fn issue_at(&mut self, severity: Severity, code: &str, path: &str, line: Option<u32>, words: Words, suggestion: &str) {
         let located = self.located(path);
-        if self.retain(256 + code.len() + path.len() + located.layer.len() + located.source.len() + message.len() + suggestion.len(), path) {
-            self.report.issues.push(Issue { severity, code: code.into(), path: path.into(), line, message, suggestion: suggestion.into(), ..located });
+        let message = words.english();
+        // (Its words take about as much again as their English.)
+        if self.retain(256 + code.len() + path.len() + located.layer.len() + located.source.len() + 2 * message.len() + suggestion.len(), path) {
+            self.report.issues.push(Issue { severity, code: code.into(), path: path.into(), line, message, words, suggestion: suggestion.into(), ..located });
         }
     }
 
@@ -879,8 +927,8 @@ impl<'a> Scan<'a> {
     }
 
     /// A note about the whole check (no file).
-    fn note(&mut self, code: &str, path: &str, message: &str, suggestion: &str) {
-        self.issue(Severity::Info, code, path, message.into(), suggestion);
+    fn note(&mut self, code: &str, path: &str, words: Words, suggestion: &str) {
+        self.issue(Severity::Info, code, path, words, suggestion);
     }
 
     fn record(&mut self, key: String, record: Record) {
@@ -895,20 +943,20 @@ impl<'a> Scan<'a> {
             let what = describe(&key);
             if kind == "side" {
                 // (The game keeps every side section: two of one name are two sides.)
-                self.issue(Severity::Warning, "definition.duplicate", &record.path, format!("{what} is defined twice; the game keeps both, two sides of one name."), "Give each side a name of its own, or remove the one not meant to be played.");
+                self.issue(Severity::Warning, "definition.duplicate", &record.path, enf("{what} is defined twice; the game keeps both, two sides of one name.", [("what", what.into())]), en("Give each side a name of its own, or remove the one not meant to be played."));
             } else if old_path == record.path {
-                self.issue(Severity::Warning, "definition.duplicate", &record.path, format!("{what} is defined twice in this file; the game uses the later one."), "Give each definition a name of its own, or remove the one not meant to be used.");
+                self.issue(Severity::Warning, "definition.duplicate", &record.path, enf("{what} is defined twice in this file; the game uses the later one.", [("what", what.into())]), en("Give each definition a name of its own, or remove the one not meant to be used."));
             } else if old_layer == new_layer {
-                self.issue(Severity::Warning, "definition.duplicate", &record.path, format!("{what} is also defined in {old_path}; the game uses this one ({}).", record.path), "Give each definition a name of its own, or remove the one not meant to be used.");
+                self.issue(Severity::Warning, "definition.duplicate", &record.path, enf("{what} is also defined in {other}; the game uses this one ({this}).", [("what", what.into()), ("other", Fill::name(&old_path)), ("this", Fill::name(&record.path))]), en("Give each definition a name of its own, or remove the one not meant to be used."));
             } else if self.options.target_layer.as_deref() == Some(old_layer.as_str()) {
                 // (Told once a file in `references`: a file of them is common.)
-                if self.retain(160 + old_path.len() + what.len() + record.path.len(), &old_path) {
+                if self.retain(160 + old_path.len() + 2 * what.text.len() + record.path.len(), &old_path) {
                     self.shadowed.entry(old_path).or_default().push((what, record.path.clone(), owner(&new_layer)));
                 }
             }
         }
         self.attribute(first, &key);
-        let size = 256 + key.len() + record.path.len() + record.unit.as_ref().map_or(0, |u| 64 + u.name.len() + u.object.len()) + record.refs.iter().map(|r| 96 + r.key.len() + r.what.len()).sum::<usize>();
+        let size = 256 + key.len() + record.path.len() + record.unit.as_ref().map_or(0, |u| 64 + u.name.len() + u.object.len()) + record.refs.iter().map(|r| 128 + r.key.len() + r.what.text.len()).sum::<usize>();
         if self.retain(size, &record.path) { self.records.insert(key, record); }
     }
 
@@ -916,10 +964,10 @@ impl<'a> Scan<'a> {
     /// top level's are opened), data files outside their folders, and a whole mod wrapped in
     /// a folder of its own ("My Mod/units/…").
     fn packaging(&mut self, own: &[&str]) {
-        let mut misplaced_by_top: BTreeMap<&str, Vec<(&str, &'static str)>> = BTreeMap::new();
+        let mut misplaced_by_top: BTreeMap<&str, Vec<(&str, &'static [&'static str])>> = BTreeMap::new();
         for &path in own {
             if is_archive(path) && path.contains('/') {
-                self.issue(Severity::Warning, "packaging.nested_archive", path, "The game opens archives only at the mod's top level; this one, in a subfolder, is never read.".into(), "Move the archive to the mod's top level, or unpack its contents into the mod's folders.");
+                self.issue(Severity::Warning, "packaging.nested_archive", path, Words::text(en("The game opens archives only at the mod's top level; this one, in a subfolder, is never read.")), en("Move the archive to the mod's top level, or unpack its contents into the mod's folders."));
             } else if let Some(home) = misplaced(path) {
                 misplaced_by_top.entry(path.split('/').next().unwrap_or("")).or_default().push((path, home));
             }
@@ -928,39 +976,55 @@ impl<'a> Scan<'a> {
         for (top, list) in misplaced_by_top {
             let wrapped = !top.is_empty() && !TA_FOLDERS.contains(&top) && list.iter().all(|(p, _)| p.split('/').nth(1).is_some_and(|second| TA_FOLDERS.contains(&second)));
             if wrapped {
-                let message = format!("The game's folders are inside {top}/: the game reads units/, weapons/, maps/… only at the mod's top level, so nothing in it is used.");
-                self.issue(Severity::Warning, "packaging.wrapped", top, message, "Move the contents of this folder up to the mod's top level.");
+                let message = enf("The game's folders are inside {folder}: the game reads units/, weapons/, maps/… only at the mod's top level, so nothing in it is used.", [("folder", Fill::name(format!("{top}/")))]);
+                self.issue(Severity::Warning, "packaging.wrapped", top, message, en("Move the contents of this folder up to the mod's top level."));
                 // (A folder has no layer of its own: it is the files'.)
                 let layer = self.vfs.origin(list[0].0).map_or(String::new(), |o| o.layer.clone());
                 if let Some(issue) = self.report.issues.last_mut() { issue.layer = layer; }
             } else if list.len() > 3 {
                 let (first, home) = list[0];
-                self.issue(Severity::Warning, "packaging.misplaced", first, format!("{} files under {} are where the game never reads them; this one's kind is read from {home}.", list.len(), if top.is_empty() { "the mod's top level".to_string() } else { format!("{top}/") }), "Move each file to the folder the game reads its kind from.");
+                let message = if top.is_empty() {
+                    enf("{n} files at the mod's top level are where the game never reads them; this one's kind is read from {home}.", [("n", Fill::number(list.len())), ("home", folders(home))])
+                } else {
+                    enf("{n} files under {folder} are where the game never reads them; this one's kind is read from {home}.", [("n", Fill::number(list.len())), ("folder", Fill::name(format!("{top}/"))), ("home", folders(home))])
+                };
+                self.issue(Severity::Warning, "packaging.misplaced", first, message, en("Move each file to the folder the game reads its kind from."));
             } else {
                 for (path, home) in list {
                     let ext = path.rsplit_once('.').map_or("", |(_, e)| e);
-                    self.issue(Severity::Warning, "packaging.misplaced", path, format!("The game never reads this file: it reads .{ext} files from {home}."), "Move it to that folder, or remove it if it is not needed.");
+                    self.issue(Severity::Warning, "packaging.misplaced", path, enf("The game never reads this file: it reads {kind} files from {home}.", [("kind", Fill::name(format!(".{ext}"))), ("home", folders(home))]), en("Move it to that folder, or remove it if it is not needed."));
                 }
             }
         }
     }
 
+    /// Whether a file is the mod's own (its layer's), where the check is of a mod.
+    fn own(&self, path: &str) -> bool {
+        self.options.target_layer.as_ref().is_some_and(|target| self.vfs.origin(path).is_some_and(|o| &o.layer == target))
+    }
+
+    /// A file that does not read, counted (and as the mod's, where it is).
+    fn count_failure(&mut self, path: &str) {
+        self.report.counts.files_failed += 1;
+        if self.own(path) && let Some(own) = &mut self.report.counts.own { own.failed += 1; }
+    }
+
     fn file(&mut self, path: &str, parsed: Parsed) {
-        if self.options.target_layer.as_ref().is_some_and(|target| self.vfs.origin(path).is_some_and(|o| &o.layer == target)) {
+        if self.own(path) {
             if !self.retain(96 + path.len(), path) { return; }
             self.relevant.insert(path.to_string());
         }
         let content = match parsed.content {
             Ok(content) => content,
             Err(Failure::Read(e)) => {
-                self.report.counts.files_failed += 1;
-                return self.issue(Severity::Error, "file.read", path, e, "Reinstall the package and check that its archives are intact and readable.");
+                self.count_failure(path);
+                return self.issue(Severity::Error, "file.read", path, enf("This file cannot be read: {error}", [("error", Words::raw(e).into())]), en("Reinstall the package and check that its archives are intact and readable."));
             }
             Err(Failure::Invalid(e)) => {
-                self.report.counts.files_failed += 1;
-                return self.issue(Severity::Error, "format.invalid", path, e, "Re-export this asset in the original TA format, within Reborn's documented parser limits; replace truncated or corrupt files.");
+                self.count_failure(path);
+                return self.issue(Severity::Error, "format.invalid", path, unreadable(e), REEXPORT);
             }
-            Err(Failure::TooLarge) => return self.stop("validation.limit", path, "This text file exceeds the validator's per-file text budget and was not parsed.", "Split large definition files into smaller files before validating again."),
+            Err(Failure::TooLarge) => return self.stop("validation.limit", path, en("This text file exceeds the validator's per-file text budget and was not parsed."), en("Split large definition files into smaller files before validating again.")),
         };
         match content {
             Content::Model { pieces, textures } => {
@@ -977,7 +1041,7 @@ impl<'a> Scan<'a> {
                         }
                     }
                 }
-                let refs = textures.into_iter().map(|t| Reference::new("texture", &t, "Model texture", Severity::Warning)).collect();
+                let refs = textures.into_iter().map(|t| Reference::new("texture", &t, Words::text(en("Model texture")), Severity::Warning)).collect();
                 self.record(key("file", path), Record { path: path.into(), refs, ..Default::default() });
             }
             Content::Script { pieces, functions, problems } => {
@@ -1023,10 +1087,11 @@ impl<'a> Scan<'a> {
             }
             Content::Map { features } => {
                 self.report.counts.maps += 1;
-                let refs = features.iter().map(|n| Reference::new("feature", n, "Map feature", Severity::Warning)).collect();
+                if self.own(path) && let Some(own) = &mut self.report.counts.own { own.maps += 1; }
+                let refs = features.iter().map(|n| Reference::new("feature", n, Words::text(en("Map feature")), Severity::Warning)).collect();
                 self.record(key("file", path), Record { path: path.into(), refs, ..Default::default() });
                 let ota = format!("{}.ota", path.trim_end_matches(".tnt"));
-                if !self.vfs.exists(&ota) { self.issue(Severity::Warning, "map.metadata", path, "The terrain has no matching OTA metadata and cannot appear as a normal selectable map.".into(), "Include a matching maps/<name>.ota with a GlobalHeader and playable schemas."); }
+                if !self.vfs.exists(&ota) { self.issue(Severity::Warning, "map.metadata", path, Words::text(en("The terrain has no matching OTA metadata and cannot appear as a normal selectable map.")), en("Include a matching maps/<name>.ota with a GlobalHeader and playable schemas.")); }
             }
             Content::Plain => {
                 if path.ends_with(".pcx") { self.report.counts.pcx += 1; }
@@ -1039,11 +1104,12 @@ impl<'a> Scan<'a> {
             }
             Content::Sound(problem) => {
                 self.report.counts.sounds += 1;
-                if let Some(problem) = problem { self.issue(Severity::Warning, "sound.format", path, format!("This sound will not play: {problem}."), "Save it as a WAV file in PCM (8 or 16-bit) or IMA ADPCM, as TA's own sounds are."); }
+                if self.own(path) && let Some(own) = &mut self.report.counts.own { own.sounds += 1; }
+                if let Some(problem) = problem { self.issue(Severity::Warning, "sound.format", path, enf("This sound will not play: {problem}.", [("problem", problem.into())]), en("Save it as a WAV file in PCM (8 or 16-bit) or IMA ADPCM, as TA's own sounds are.")); }
             }
             Content::Text { doc, syntax } => {
                 for (line, problem) in syntax {
-                    self.issue_at(Severity::Warning, "text.syntax", path, Some(line), problem, "Correct the brackets and braces around this line: the game reads the file as it is and skips or misplaces what follows.");
+                    self.issue_at(Severity::Warning, "text.syntax", path, Some(line), lint_words(&problem), en("Correct the brackets and braces around this line: the game reads the file as it is and skips or misplaces what follows."));
                     if self.halted { return; }
                 }
                 self.text(path, &doc);
@@ -1058,28 +1124,29 @@ impl<'a> Scan<'a> {
         let (x, z) = (s.get_i64("footprintx"), s.get_i64("footprintz"));
         if x.is_some_and(|n| !range.contains(&n)) || z.is_some_and(|n| !range.contains(&n)) {
             let side = |v: Option<i64>| v.map_or("?".to_string(), |n| n.to_string());
-            self.issue(Severity::Warning, "definition.footprint", path, format!("[{}] footprint {} × {} is clamped to 1..{} cells a side by Reborn.", s.name, side(x), side(z), crate::MAX_FOOTPRINT_SIDE), "Use footprints within the supported range and regenerate the matching yard map.");
+            let words = enf("[{section}] footprint {x} × {z} is clamped to 1..{max} cells a side by Reborn.", [("section", Fill::name(&s.name)), ("x", Fill::name(side(x))), ("z", Fill::name(side(z))), ("max", Fill::number(crate::MAX_FOOTPRINT_SIDE))]);
+            self.issue(Severity::Warning, "definition.footprint", path, words, en("Use footprints within the supported range and regenerate the matching yard map."));
         }
     }
 
     fn text(&mut self, path: &str, doc: &TdfDocument) {
         if direct(path, "units", "fbi") {
-            let Some(s) = doc.section("UNITINFO") else { self.issue(Severity::Error, "unit.header", path, "Missing [UNITINFO]; this unit is skipped.".into(), "Add a UNITINFO section with a non-empty UnitName."); return; };
-            let Some(unit) = crate::UnitDef::from_tdf(s) else { self.issue(Severity::Error, "unit.name", path, "UNITINFO has no usable UnitName; this unit is skipped.".into(), "Give the unit a unique, non-empty UnitName and update its references."); return; };
+            let Some(s) = doc.section("UNITINFO") else { self.issue(Severity::Error, "unit.header", path, Words::text(en("Missing [UNITINFO]; this unit is skipped.")), en("Add a UNITINFO section with a non-empty UnitName.")); return; };
+            let Some(unit) = crate::UnitDef::from_tdf(s) else { self.issue(Severity::Error, "unit.name", path, Words::text(en("UNITINFO has no usable UnitName; this unit is skipped.")), en("Give the unit a unique, non-empty UnitName and update its references.")); return; };
             self.footprint(path, s);
             // (Its own script, else its model's, as the game runs it.)
             let vfs = self.vfs;
             let script = unit.script_path(|p| vfs.exists(p));
-            let mut refs = vec![Reference::new("file", &asset("objects3d", &unit.object, "3do"), format!("{} model", unit.name), Severity::Error), Reference::new("file", &script, format!("{} script", unit.name), Severity::Error)];
-            for (slot, w) in unit.weapons.iter().enumerate() { if let Some(w) = w { refs.push(Reference::new("weapon", w, format!("{} Weapon{}", unit.name, slot + 1), Severity::Error)); } }
-            for (name, what) in [(&unit.explode_as, "death explosion"), (&unit.self_destruct_as, "self-destruct explosion")] { optional(&mut refs, "weapon", name, format!("{} {what}", unit.name), Severity::Warning); }
-            optional(&mut refs, "feature", &unit.corpse, format!("{} wreckage", unit.name), Severity::Warning);
+            let mut refs = vec![Reference::new("file", &asset("objects3d", &unit.object, "3do"), part(en("{name} model"), &unit.name), Severity::Error), Reference::new("file", &script, part(en("{name} script"), &unit.name), Severity::Error)];
+            for (slot, w) in unit.weapons.iter().enumerate() { if let Some(w) = w { refs.push(Reference::new("weapon", w, enf("{name} {key}", [("name", Fill::name(&unit.name)), ("key", Fill::name(format!("Weapon{}", slot + 1)))]), Severity::Error)); } }
+            for (name, what) in [(&unit.explode_as, en("{name} death explosion")), (&unit.self_destruct_as, en("{name} self-destruct explosion"))] { optional(&mut refs, "weapon", name, part(what, &unit.name), Severity::Warning); }
+            optional(&mut refs, "feature", &unit.corpse, part(en("{name} wreckage"), &unit.name), Severity::Warning);
             // (A note: the game never acts on a unit's side, which only files it in the
             // encyclopaedia; TA: Escalation's units both sides build are `Side=ALL`.)
-            optional(&mut refs, "side", &unit.side, format!("{} faction", unit.name), Severity::Info);
+            optional(&mut refs, "side", &unit.side, part(en("{name} faction"), &unit.name), Severity::Info);
             // (NONE: a unit meant to be silent.)
-            if !unit.sound_category.trim().eq_ignore_ascii_case("none") { optional(&mut refs, "sounds", &unit.sound_category, format!("{} sounds", unit.name), Severity::Warning); }
-            if unit.can_move && !unit.can_fly { optional(&mut refs, "move", &unit.movement_class, format!("{} movement class", unit.name), Severity::Warning); }
+            if !unit.sound_category.trim().eq_ignore_ascii_case("none") { optional(&mut refs, "sounds", &unit.sound_category, part(en("{name} sounds"), &unit.name), Severity::Warning); }
+            if unit.can_move && !unit.can_fly { optional(&mut refs, "move", &unit.movement_class, part(en("{name} movement class"), &unit.name), Severity::Warning); }
             let facts = UnitFacts { name: unit.name.clone(), object: unit.object.clone(), script, builds: unit.worker_time > 0.0, takes_no_ground: unit.takes_no_ground, weapons: unit.weapons.clone().map(|w| w.is_some_and(|w| !w.trim().is_empty())) };
             self.record(key("unit", &unit.name), Record { path: path.into(), refs, unit: Some(facts) });
         } else if direct(path, "weapons", "tdf") {
@@ -1087,10 +1154,10 @@ impl<'a> Scan<'a> {
                 let first = self.report.issues.len();
                 let weapon = crate::WeaponDef::from_tdf(s);
                 let mut refs = Vec::new();
-                if !weapon.model.is_empty() && matches!(weapon.render_type, crate::RenderType::Model | crate::RenderType::Bomb) { refs.push(Reference::new("file", &asset("objects3d", &weapon.model, "3do"), format!("{} projectile model", weapon.name), Severity::Warning)); }
-                for (gaf, entry, label) in [(&weapon.explosion_gaf, &weapon.explosion_art, "explosion"), (&weapon.water_explosion_gaf, &weapon.water_explosion_art, "water explosion"), (&weapon.lava_explosion_gaf, &weapon.lava_explosion_art, "lava explosion")] { animation_ref(&mut refs, gaf, entry, format!("{} {label}", weapon.name)); }
-                for (sound, label) in [(&weapon.sound_start, "firing sound"), (&weapon.sound_hit, "impact sound"), (&weapon.sound_water, "water impact sound")] { optional(&mut refs, "sound", sound, format!("{} {label}", weapon.name), Severity::Warning); }
-                if let crate::RenderType::Other(n) = weapon.render_type { self.issue(Severity::Warning, "weapon.render_type", path, format!("{} uses unsupported RenderType={n}; Reborn will use its fallback projectile appearance.", weapon.name), "Use TA RenderType 0..7, or report the required extension to Reborn's maintainers."); }
+                if !weapon.model.is_empty() && matches!(weapon.render_type, crate::RenderType::Model | crate::RenderType::Bomb) { refs.push(Reference::new("file", &asset("objects3d", &weapon.model, "3do"), part(en("{name} projectile model"), &weapon.name), Severity::Warning)); }
+                for (gaf, entry, label) in [(&weapon.explosion_gaf, &weapon.explosion_art, en("{name} explosion")), (&weapon.water_explosion_gaf, &weapon.water_explosion_art, en("{name} water explosion")), (&weapon.lava_explosion_gaf, &weapon.lava_explosion_art, en("{name} lava explosion"))] { animation_ref(&mut refs, gaf, entry, part(label, &weapon.name)); }
+                for (sound, label) in [(&weapon.sound_start, en("{name} firing sound")), (&weapon.sound_hit, en("{name} impact sound")), (&weapon.sound_water, en("{name} water impact sound"))] { optional(&mut refs, "sound", sound, part(label, &weapon.name), Severity::Warning); }
+                if let crate::RenderType::Other(n) = weapon.render_type { self.issue(Severity::Warning, "weapon.render_type", path, enf("{name} uses unsupported RenderType={n}; Reborn will use its fallback projectile appearance.", [("name", Fill::name(&weapon.name)), ("n", Fill::number(n))]), en("Use TA RenderType 0..7, or report the required extension to Reborn's maintainers.")); }
                 self.attribute(first, &key("weapon", &weapon.name));
                 self.record(key("weapon", &weapon.name), Record { path: path.into(), refs, ..Default::default() });
                 if self.halted { break; }
@@ -1102,18 +1169,18 @@ impl<'a> Scan<'a> {
                 self.footprint(path, s);
                 self.attribute(first, &key("feature", &f.name));
                 let mut refs = Vec::new();
-                if !f.object.is_empty() { refs.push(Reference::new("file", &asset("objects3d", &f.object, "3do"), format!("{} feature model", f.name), Severity::Warning)); }
+                if !f.object.is_empty() { refs.push(Reference::new("file", &asset("objects3d", &f.object, "3do"), part(en("{name} feature model"), &f.name), Severity::Warning)); }
                 if f.is_sprite() {
                     // (The game draws a feature by these three; TA's others, its burn shadow, death
                     // and reclaim animations, it never reads.)
-                    for (entry, label) in [(&f.seq_name, "animation"), (&f.seq_name_shadow, "shadow"), (&f.seq_name_burn, "burn animation")] {
+                    for (entry, label, shadow) in [(&f.seq_name, en("{name} animation"), false), (&f.seq_name_shadow, en("{name} shadow"), true), (&f.seq_name_burn, en("{name} burn animation"), false)] {
                         // TA's own shrubs use EMPTY to deliberately suppress shadows.
-                        if label.contains("shadow") && entry.eq_ignore_ascii_case("empty") { continue; }
-                        animation_ref(&mut refs, &f.filename, entry, format!("{} {label}", f.name));
+                        if shadow && entry.eq_ignore_ascii_case("empty") { continue; }
+                        animation_ref(&mut refs, &f.filename, entry, part(label, &f.name));
                     }
                 }
-                for (name, label) in [(&f.feature_dead, "dead"), (&f.feature_burnt, "burnt"), (&f.feature_reclamate, "reclaimed")] { optional(&mut refs, "feature", name, format!("{} {label} replacement", f.name), Severity::Warning); }
-                optional(&mut refs, "weapon", &f.burn_weapon, format!("{} burning weapon", f.name), Severity::Warning);
+                for (name, label) in [(&f.feature_dead, en("{name} dead replacement")), (&f.feature_burnt, en("{name} burnt replacement")), (&f.feature_reclamate, en("{name} reclaimed replacement"))] { optional(&mut refs, "feature", name, part(label, &f.name), Severity::Warning); }
+                optional(&mut refs, "weapon", &f.burn_weapon, part(en("{name} burning weapon"), &f.name), Severity::Warning);
                 self.record(key("feature", &f.name), Record { path: path.into(), refs, ..Default::default() });
                 if self.halted { break; }
             }
@@ -1139,7 +1206,7 @@ impl<'a> Scan<'a> {
                     played.retain(|(key, _)| !key.eq_ignore_ascii_case(entry));
                     played.push((entry, value));
                 }
-                for (entry, value) in played { optional(&mut refs, "sound", value, format!("{} {entry} sound", s.name.to_ascii_uppercase()), Severity::Warning); }
+                for (entry, value) in played { optional(&mut refs, "sound", value, enf("{category} {key} sound", [("category", Fill::name(s.name.to_ascii_uppercase())), ("key", Fill::name(entry))]), Severity::Warning); }
                 self.record(key("sounds", &s.name), Record { path: path.into(), refs, ..Default::default() });
                 if self.halted { break; }
             }
@@ -1148,8 +1215,8 @@ impl<'a> Scan<'a> {
                 if s.name.to_ascii_lowercase().starts_with("side") {
                     let name = s.get("name").unwrap_or("");
                     let commander = s.get("commander").unwrap_or("");
-                    if name.trim().is_empty() || commander.trim().is_empty() { self.issue(Severity::Error, "side.definition", path, format!("[{}] needs a faction name and starting commander.", s.name), "Set name and commander to a valid faction and UnitName."); }
-                    let refs = vec![Reference::new("unit", commander, format!("{name} starting commander"), Severity::Error)];
+                    if name.trim().is_empty() || commander.trim().is_empty() { self.issue(Severity::Error, "side.definition", path, enf("[{section}] needs a faction name and starting commander.", [("section", Fill::name(&s.name))]), en("Set name and commander to a valid faction and UnitName.")); }
+                    let refs = vec![Reference::new("unit", commander, part(en("{name} starting commander"), name), Severity::Error)];
                     self.record(key("side", name), Record { path: path.into(), refs, ..Default::default() });
                 }
             }
@@ -1157,9 +1224,9 @@ impl<'a> Scan<'a> {
             if let Some(can_build) = doc.section("CANBUILD") {
                 for builder in &can_build.sections {
                     // (A note: the game skips a list whose builder is missing.)
-                    refs.push(Reference::new("unit", &builder.name, "Build-menu owner", Severity::Info));
+                    refs.push(Reference::new("unit", &builder.name, Words::text(en("Build-menu owner")), Severity::Info));
                     for (_, unit) in &builder.entries {
-                        optional(&mut refs, "unit", unit, format!("{} build option", builder.name), Severity::Warning);
+                        optional(&mut refs, "unit", unit, part(en("{name} build option"), &builder.name), Severity::Warning);
                         if !unit.trim().is_empty() { self.menu_entries.push((key("unit", &builder.name), key("unit", unit))); }
                     }
                 }
@@ -1172,20 +1239,20 @@ impl<'a> Scan<'a> {
                     // Community packs intentionally replace a former builder with
                     // BLANK to disable that menu entry while preserving the source.
                     if builder.trim().eq_ignore_ascii_case("blank") { continue; }
-                    refs.push(Reference::new("unit", builder, "Download build-menu owner", Severity::Warning)); refs.push(Reference::new("unit", unit, format!("{builder} build option"), Severity::Warning));
+                    refs.push(Reference::new("unit", builder, Words::text(en("Download build-menu owner")), Severity::Warning)); refs.push(Reference::new("unit", unit, part(en("{name} build option"), builder), Severity::Warning));
                     self.menu_entries.push((key("unit", builder), key("unit", unit)));
                 }
             }
             self.record(key("file", path), Record { path: path.into(), refs, ..Default::default() });
         } else if direct(path, "maps", "ota") {
-            if doc.section("GlobalHeader").is_none() { self.issue(Severity::Warning, "map.header", path, "Missing [GlobalHeader]; this map has no usable metadata.".into(), "Export a matching OTA with a GlobalHeader and the desired game-type schemas."); }
+            if doc.section("GlobalHeader").is_none() { self.issue(Severity::Warning, "map.header", path, Words::text(en("Missing [GlobalHeader]; this map has no usable metadata.")), en("Export a matching OTA with a GlobalHeader and the desired game-type schemas.")); }
             let map = crate::MapInfo::from_ota(doc);
             // (Without its terrain the game and the launcher leave the map out of their lists: its
             // description alone does no harm, a mod's for a map of a pack of its own, say.)
-            let mut refs = vec![Reference::new("file", &format!("{}.tnt", path.trim_end_matches(".ota")), "Map terrain, without which the map is left out of the lists", Severity::Warning)];
+            let mut refs = vec![Reference::new("file", &format!("{}.tnt", path.trim_end_matches(".ota")), Words::text(en("Map terrain, without which the map is left out of the lists")), Severity::Warning)];
             for schema in &map.schemas {
-                optional(&mut refs, "weapon", &schema.meteor_weapon, "Map meteor weapon", Severity::Warning);
-                for placed in &schema.placed { optional(&mut refs, "placed", &placed.what, "Map placed unit/feature", Severity::Warning); }
+                optional(&mut refs, "weapon", &schema.meteor_weapon, Words::text(en("Map meteor weapon")), Severity::Warning);
+                for placed in &schema.placed { optional(&mut refs, "placed", &placed.what, Words::text(en("Map placed unit/feature")), Severity::Warning); }
             }
             self.record(key("file", path), Record { path: path.into(), refs, ..Default::default() });
         } else if direct(path, "guis", "gui") {
@@ -1198,29 +1265,35 @@ impl<'a> Scan<'a> {
                     // commonattribs bit4 marks unit production. attribs bit32 also
                     // appears on empty IGPATCH slots (IGPATCH, IGPATCH2…) and stockpile
                     // buttons (commonattribs bit8), which are not missing unit names.
-                    if !n.is_empty() && !n.to_ascii_uppercase().starts_with("IGPATCH") && production(common) { refs.push(Reference::new("unit", n, "production button", Severity::Warning)); }
+                    // (Its builder named once the pages are settled: `references`.)
+                    if !n.is_empty() && !n.to_ascii_uppercase().starts_with("IGPATCH") && production(common) { refs.push(Reference::new("unit", n, Words::default(), Severity::Warning)); }
                 }
             }
-            if self.retain(96 + path.len() + refs.iter().map(|r| 96 + r.key.len() + r.what.len()).sum::<usize>(), path) { self.gui_pages.insert(path.into(), refs); }
+            if self.retain(96 + path.len() + refs.iter().map(|r| 128 + r.key.len()).sum::<usize>(), path) { self.gui_pages.insert(path.into(), refs); }
         } else if doc.sections.is_empty() {
-            self.issue(Severity::Info, "text.no_sections", path, "This tolerant TDF parse contains no sections; section-based consumers ignore it.".into(), "Check the intended format and section headers if this file should define game content.");
+            self.issue(Severity::Info, "text.no_sections", path, Words::text(en("This tolerant TDF parse contains no sections; section-based consumers ignore it.")), en("Check the intended format and section headers if this file should define game content."));
         }
     }
 
     fn references(&mut self) {
         for (path, list) in std::mem::take(&mut self.shadowed) {
-            let (what, later, whose) = &list[0];
+            let (what, later, whose) = list[0].clone();
             let message = if list.len() == 1 {
-                format!("{what} defined here is never used: {later} ({whose}) defines it too and comes later, so the game uses that one.")
+                enf("{what} defined here is never used: {later} ({whose}) defines it too and comes later, so the game uses that one.", [("what", what.into()), ("later", Fill::name(later)), ("whose", whose.into())])
             } else {
-                format!("{} definitions in this file are never used: other files define them too and come later, so the game uses those (for one, {what} is also in {later}, {whose}).", list.len())
+                enf("{n} definitions in this file are never used: other files define them too and come later, so the game uses those (for one, {what} is also in {later}, {whose}).", [("n", Fill::number(list.len())), ("what", what.into()), ("later", Fill::name(later)), ("whose", whose.into())])
             };
-            self.issue(Severity::Warning, "definition.shadowed", &path, message, "Replace those files in the mod (give yours their paths), or name your file so that it sorts after them.");
+            self.issue(Severity::Warning, "definition.shadowed", &path, message, en("Replace those files in the mod (give yours their paths), or name your file so that it sorts after them."));
         }
         let mut records = std::mem::take(&mut self.records);
         self.report.counts.units = records.keys().filter(|k| k.starts_with("unit:")).count() as u64;
         self.report.counts.weapons = records.keys().filter(|k| k.starts_with("weapon:")).count() as u64;
         self.report.counts.features = records.keys().filter(|k| k.starts_with("feature:")).count() as u64;
+        if self.report.counts.own.is_some() {
+            let own = |kind: &str| records.iter().filter(|(k, r)| k.starts_with(kind) && self.own(&r.path)).count() as u64;
+            let (units, weapons, features) = (own("unit:"), own("weapon:"), own("feature:"));
+            if let Some(own) = &mut self.report.counts.own { (own.units, own.weapons, own.features) = (units, weapons, features); }
+        }
         // The production pages the game reads, as it reads them: a builder's
         // guis/<name>1.gui, 2, 3… up to 16, stopping at the first missing page after the first.
         // A builder is a unit with build power (`WorkerTime`), whatever its Builder flag, as the
@@ -1236,7 +1309,7 @@ impl<'a> Scan<'a> {
                     continue;
                 };
                 options.entry(key("unit", builder)).or_default().extend(refs.iter().map(|r| r.key.clone()));
-                let refs = refs.into_iter().map(|r| Reference { what: format!("{} {}", builder.to_ascii_uppercase(), r.what), ..r }).collect();
+                let refs = refs.into_iter().map(|r| Reference { what: part(en("{name} production button"), &builder.to_ascii_uppercase()), ..r }).collect();
                 records.insert(key("gui", &path), Record { path, refs, ..Default::default() });
             }
         }
@@ -1260,7 +1333,7 @@ impl<'a> Scan<'a> {
         // a one-weapon mod for unrelated warnings on every original build option.
         self.required.insert("gamedata/sidedata.tdf".into());
         if records.keys().any(|k| k.starts_with("unit:")) && !records.keys().any(|k| k.starts_with("side:")) {
-            self.issue(Severity::Error, "side.missing", "gamedata/sidedata.tdf", "No playable side definitions were loaded.".into(), "Include gamedata/sidedata.tdf or inherit the base game's valid sides.");
+            self.issue(Severity::Error, "side.missing", "gamedata/sidedata.tdf", Words::text(en("No playable side definitions were loaded.")), en("Include gamedata/sidedata.tdf or inherit the base game's valid sides."));
         }
         for side in records.iter().filter(|(k, _)| k.starts_with("side:")).map(|(_, r)| r) {
             for commander in side.refs.iter().filter_map(|r| records.get(&r.key)) {
@@ -1275,7 +1348,7 @@ impl<'a> Scan<'a> {
         let mut effect_entries = BTreeSet::new();
         for (record_key, record) in &records {
             // (What it names that is missing: told once a thing, with every entry that names it.)
-            let mut missing: Vec<(&str, Severity, Vec<&str>)> = Vec::new();
+            let mut missing: Vec<(&str, Severity, Vec<&Words>)> = Vec::new();
             for reference in &record.refs {
                 if let Some(used) = resolve(&reference.key, self.vfs, &records, &self.blank_paths) {
                     // A unit's faction label only needs the side to exist. It does
@@ -1301,24 +1374,25 @@ impl<'a> Scan<'a> {
             // (A GAF's entries are missing where the GAF is: told once, for the file.)
             let gone: BTreeSet<&str> = missing.iter().filter_map(|(key, _, _)| key.strip_prefix("file:")).collect();
             missing.retain(|(key, _, _)| key.strip_prefix("gaf:").and_then(|entry| entry.split_once('#')).is_none_or(|(gaf, _)| !gone.contains(gaf)));
-            const HOW: &str = "Include the referenced asset/definition, correct its name, or declare and install the required mod dependency. Names are case-insensitive.";
+            const HOW: &str = en("Include the referenced asset/definition, correct its name, or declare and install the required mod dependency. Names are case-insensitive.");
             // A model's textures: told once a model, every one named.
             let textures: Vec<(&str, Severity)> = missing.iter().filter_map(|(key, severity, _)| key.strip_prefix("texture:").map(|t| (t, *severity))).collect();
             if textures.len() > 1 && !self.halted {
                 missing.retain(|(key, _, _)| !key.starts_with("texture:"));
                 let severity = textures.iter().map(|(_, s)| *s).fold(Severity::Info, Severity::graver);
-                let names: Vec<String> = textures.iter().map(|(t, _)| t.to_ascii_uppercase()).collect();
+                let names = Fill::List(textures.iter().map(|(t, _)| Fill::name(t.to_ascii_uppercase())).collect());
                 let first = self.report.issues.len();
-                self.issue(severity, "reference.missing", &record.path, format!("Model texture: textures {} are missing.", listed(&names)), HOW);
+                self.issue(severity, "reference.missing", &record.path, enf("Model texture: textures {names} are missing.", [("names", names)]), HOW);
                 self.attribute(first, record_key);
             }
             for (missing_key, severity, whats) in missing {
                 if self.halted { break; }
                 let first = self.report.issues.len();
+                let whats = Fill::List(whats.into_iter().map(|what| what.clone().into()).collect());
                 let message = if file_of(missing_key).is_some_and(|path| self.blank_paths.contains(&path)) {
-                    format!("{}: {} is an empty file here, which blanks it out: nothing of it is read.", listed(&whats), describe(missing_key))
+                    enf("{whats}: {what} is an empty file here, which blanks it out: nothing of it is read.", [("whats", whats), ("what", describe(missing_key).into())])
                 } else {
-                    format!("{}: {} is missing.", listed(&whats), describe(missing_key))
+                    enf("{whats}: {what} is missing.", [("whats", whats), ("what", describe(missing_key).into())])
                 };
                 self.issue(severity, "reference.missing", &record.path, message, HOW);
                 self.attribute(first, record_key);
@@ -1353,12 +1427,12 @@ impl<'a> Scan<'a> {
         let plan = gaf::plan(&sizes, gaf::explosion_budget(side));
         // (A rigorous lower bound: passing this check does not guarantee shelf fit.)
         let atlas = u64::from(side) * u64::from(side);
-        if plan.drawn > atlas { self.issue(Severity::Warning, "render.sprite_capacity", "", format!("Referenced weapon explosions require at least {} padded sprite texels, beyond a {side} x {side} reference atlas, even drawn reduced. Frames will be omitted at this capacity; map features, generated effects and shelf packing need additional room.", plan.drawn), "Reduce explosion frame sizes/counts or split optional effects. Test on the target GPU; this static check uses a reference atlas size."); }
+        if plan.drawn > atlas { self.issue(Severity::Warning, "render.sprite_capacity", "", enf("Referenced weapon explosions require at least {texels} padded sprite texels, beyond a {side} x {side} reference atlas, even drawn reduced. Frames will be omitted at this capacity; map features, generated effects and shelf packing need additional room.", [("texels", Fill::number(plan.drawn)), ("side", Fill::number(side))]), en("Reduce explosion frame sizes/counts or split optional effects. Test on the target GPU; this static check uses a reference atlas size.")); }
         for ((entry, frames, size), &scale) in used.iter().zip(&plan.scales) {
             let drawn = (f64::from(size.largest) / scale).ceil() as u32 + 2;
             if *frames == 0 || drawn > side {
                 let first = self.report.issues.len();
-                self.issue(Severity::Warning, "render.sprite_frames", &records[entry].path, format!("{} has no frames or contains a frame larger than the {side}-pixel reference atlas side including padding.", describe(entry)), "Include usable frames and resize oversized animation frames.");
+                self.issue(Severity::Warning, "render.sprite_frames", &records[entry].path, enf("{what} has no frames or contains a frame larger than the {side}-pixel reference atlas side including padding.", [("what", describe(entry).into()), ("side", Fill::number(side))]), en("Include usable frames and resize oversized animation frames."));
                 self.attribute(first, entry);
             }
             if self.halted { return; }
@@ -1366,10 +1440,15 @@ impl<'a> Scan<'a> {
         if plan.reduced() > 0 {
             let mut reduced: Vec<(u32, &str)> = used.iter().zip(&plan.scales).filter(|(_, s)| **s > 1.0).map(|((k, _, size), _)| (size.largest, k.rsplit_once('#').map_or(k.as_str(), |(_, e)| e))).collect();
             reduced.sort_by(|a, b| b.cmp(a));
-            let named: Vec<String> = reduced.iter().take(3).map(|(px, name)| format!("{} ({px} px)", name.to_ascii_uppercase())).collect();
-            let more = if reduced.len() > named.len() { format!(" and {} more", reduced.len() - named.len()) } else { String::new() };
-            let mi = |texels: u64| texels as f64 / f64::from(1 << 20);
-            self.note("render.sprite_reduced", "", &format!("The weapons' explosions take {:.0} Mi texels as painted, more than the {:.0} Mi the game gives them in a {side} x {side} atlas: {} of them, larger than TA's own, are drawn reduced to {:.0}% of their texels across, each as big as painted ({}{more}).", mi(plan.full), mi(gaf::explosion_budget(side)), reduced.len(), plan.density * 100.0, named.join(", ")), "Nothing to do: the game draws them so. Smaller paintings would keep more of their detail.");
+            // (The three largest, and how many more: a note, which never decides the badge.)
+            let mut named: Vec<Fill> = reduced.iter().take(3).map(|(px, name)| enf("{name} ({px} px)", [("name", Fill::name(name.to_ascii_uppercase())), ("px", Fill::number(px))]).into()).collect();
+            if reduced.len() > 3 { named.push(enf("{n} more", [("n", Fill::number(reduced.len() - 3))]).into()); }
+            let mi = |texels: u64| Fill::name(format!("{:.0}", texels as f64 / f64::from(1 << 20)));
+            let words = enf("The weapons' explosions take {full} Mi texels as painted, more than the {budget} Mi the game gives them in a {side} x {side} atlas: {n} of them, larger than TA's own, are drawn reduced to {share}% of their texels across, each as big as painted ({named}).", [
+                ("full", mi(plan.full)), ("budget", mi(gaf::explosion_budget(side))), ("side", Fill::number(side)), ("n", Fill::number(reduced.len())),
+                ("share", Fill::name(format!("{:.0}", plan.density * 100.0))), ("named", Fill::List(named)),
+            ]);
+            self.note("render.sprite_reduced", "", words, en("Nothing to do: the game draws them so. Smaller paintings would keep more of their detail."));
         }
         let gaf_file = |key: &str| key.strip_prefix("gaf:").and_then(|k| k.rsplit_once('#')).map(|(path, _)| path.to_ascii_lowercase());
         let explosion_files: BTreeSet<String> = effect_entries.iter().filter_map(|k| gaf_file(k)).collect();
@@ -1377,10 +1456,11 @@ impl<'a> Scan<'a> {
         for (path, (frames, largest, pixels)) in std::mem::take(&mut self.too_big) {
             let lower = path.to_ascii_lowercase();
             if explosion_files.contains(&lower) && !other_files.contains(&lower) && !lower.starts_with("textures/") {
-                self.issue(Severity::Info, "render.sprite_large", &path, format!("Large: {frames} frames up to {largest} pixels across, {:.0} million pixels in all, more than the game decodes at once. It reads them a frame at a time and draws them reduced, each as big as painted: a weapon's explosion is read so.", pixels as f64 / 1e6), "Nothing to do: the game draws it so. Smaller paintings would load faster and keep more of their detail.");
+                let words = enf("Large: {frames} frames up to {largest} pixels across, {millions} million pixels in all, more than the game decodes at once. It reads them a frame at a time and draws them reduced, each as big as painted: a weapon's explosion is read so.", [("frames", Fill::number(frames)), ("largest", Fill::number(largest)), ("millions", Fill::name(format!("{:.0}", pixels as f64 / 1e6)))]);
+                self.issue(Severity::Info, "render.sprite_large", &path, words, en("Nothing to do: the game draws it so. Smaller paintings would load faster and keep more of their detail."));
             } else {
-                self.report.counts.files_failed += 1;
-                self.issue(Severity::Error, "format.invalid", &path, "invalid GAF: decoded content exceeds resource limit".into(), "Re-export this asset in the original TA format, within Reborn's documented parser limits; replace truncated or corrupt files.");
+                self.count_failure(&path);
+                self.issue(Severity::Error, "format.invalid", &path, unreadable("invalid GAF: decoded content exceeds resource limit".into()), REEXPORT);
             }
             if self.halted { return; }
         }
@@ -1399,14 +1479,15 @@ impl<'a> Scan<'a> {
         }
         for paths in folders.into_values() {
             let message = match paths.as_slice() {
-                [_] => "This file is empty: TA's way of blanking out a file of the same name below it (the original game's, or that of a mod it is mounted over). The game reads nothing from it.".to_string(),
+                [_] => Words::text(en("This file is empty: TA's way of blanking out a file of the same name below it (the original game's, or that of a mod it is mounted over). The game reads nothing from it.")),
                 _ => {
-                    let named: Vec<&str> = paths.iter().take(3).map(String::as_str).collect();
-                    let more = if paths.len() > named.len() { format!(" and {} more", paths.len() - named.len()) } else { String::new() };
-                    format!("{} empty files here ({}{more}): TA's way of blanking out files of the same names below them (the original game's, or those of a mod they are mounted over). The game reads nothing from them.", paths.len(), named.join(", "))
+                    // (The first three, and how many more: a note, which never decides the badge.)
+                    let mut named: Vec<Fill> = paths.iter().take(3).map(|path| Fill::name(path.as_str())).collect();
+                    if paths.len() > 3 { named.push(enf("{n} more", [("n", Fill::number(paths.len() - 3))]).into()); }
+                    enf("{n} empty files here ({files}): TA's way of blanking out files of the same names below them (the original game's, or those of a mod they are mounted over). The game reads nothing from them.", [("n", Fill::number(paths.len())), ("files", Fill::List(named))])
                 }
             };
-            self.issue(Severity::Info, "file.blank", &paths[0], message, "Nothing to do if they are meant to remove those files. If one should hold data, export it again.");
+            self.issue(Severity::Info, "file.blank", &paths[0], message, en("Nothing to do if they are meant to remove those files. If one should hold data, export it again."));
             if self.halted { return; }
         }
     }
@@ -1423,9 +1504,12 @@ impl<'a> Scan<'a> {
                 continue;
             }
             if frames > 255 {
-                self.issue(Severity::Warning, "render.texture_frames", &path, format!("Texture {name} has {frames} frames; Reborn's model vertices address at most 255 and this entry uses fallback paint."), "Reduce this texture entry to at most 255 frames.");
+                self.issue(Severity::Warning, "render.texture_frames", &path, enf("Texture {name} has {frames} frames; Reborn's model vertices address at most 255 and this entry uses fallback paint.", [("name", Fill::name(&name)), ("frames", Fill::number(frames))]), en("Reduce this texture entry to at most 255 frames."));
             } else if layers + frames as u64 >= capacity {
-                self.issue(Severity::Warning, "render.texture_layers", &path, format!("Texture {name} ({frames} frames) falls back: the textures the models paint with fill the reference GPU profile's {TEXTURE_BANKS} arrays of {} layers ({layers} layers before it; one is reserved for fallback). Actual device limits may differ.", self.options.texture_array_layers), "Consolidate duplicate textures or reduce animation/team frame counts. Test on the target GPU; higher limits do not fix unsupported frame counts.");
+                let words = enf("Texture {name} ({frames} frames) falls back: the textures the models paint with fill the reference GPU profile's {banks} arrays of {layers} layers ({before} layers before it; one is reserved for fallback). Actual device limits may differ.", [
+                    ("name", Fill::name(&name)), ("frames", Fill::number(frames)), ("banks", Fill::number(TEXTURE_BANKS)), ("layers", Fill::number(self.options.texture_array_layers)), ("before", Fill::number(layers)),
+                ]);
+                self.issue(Severity::Warning, "render.texture_layers", &path, words, en("Consolidate duplicate textures or reduce animation/team frame counts. Test on the target GPU; higher limits do not fix unsupported frame counts."));
             } else {
                 layers += frames as u64;
             }
@@ -1440,11 +1524,11 @@ impl<'a> Scan<'a> {
             let missing: Vec<String> = script_names.difference(model_names).cloned().collect();
             let message = match missing.as_slice() {
                 [] => None,
-                [name] => Some(format!("{script} declares piece {name}, which is absent from {model}. Any animation or position query using it has no matching model part.")),
-                names => Some(format!("{script} declares pieces {}, which are absent from {model}. Any animation or position query using them has no matching model part.", listed(names))),
+                [name] => Some(enf("{script} declares piece {piece}, which is absent from {model}. Any animation or position query using it has no matching model part.", [("script", Fill::name(&script)), ("piece", Fill::name(name)), ("model", Fill::name(&model))])),
+                names => Some(enf("{script} declares pieces {pieces}, which are absent from {model}. Any animation or position query using them has no matching model part.", [("script", Fill::name(&script)), ("pieces", Fill::List(names.iter().map(|n| Fill::name(n.as_str())).collect())), ("model", Fill::name(&model))])),
             };
             if let Some(message) = message {
-                self.issue(Severity::Warning, "script.model_piece", path, message, "Confirm that these are intentional virtual/helper pieces; otherwise use matching model and COB files or align the BOS piece declarations with the model's piece names.");
+                self.issue(Severity::Warning, "script.model_piece", path, message, en("Confirm that these are intentional virtual/helper pieces; otherwise use matching model and COB files or align the BOS piece declarations with the model's piece names."));
                 if self.halted { return; }
             }
         }
@@ -1457,22 +1541,25 @@ impl<'a> Scan<'a> {
             let lacking: Vec<(usize, &str)> = QUERIES.iter().enumerate().filter(|(slot, name)| unit.weapons[*slot] && !functions.contains(&name.to_ascii_lowercase())).map(|(slot, name)| (slot, *name)).collect();
             let message = match lacking.as_slice() {
                 [] => None,
-                [(slot, name)] => Some(format!("{} has Weapon{} but its script {script} has no {name}: if the weapon fires, its shots leave from the unit's centre, not a barrel.", unit.name, slot + 1)),
+                [(slot, name)] => Some(enf("{unit} has {weapon} but its script {script} has no {function}: if the weapon fires, its shots leave from the unit's centre, not a barrel.", [
+                    ("unit", Fill::name(&unit.name)), ("weapon", Fill::name(format!("Weapon{}", slot + 1))), ("script", Fill::name(&script)), ("function", Fill::name(*name)),
+                ])),
                 many => {
-                    let slots: Vec<String> = many.iter().map(|(slot, _)| format!("Weapon{}", slot + 1)).collect();
-                    let names: Vec<&str> = many.iter().map(|(_, name)| *name).collect();
-                    Some(format!("{} has {} but its script {script} has no {}: if they fire, their shots leave from the unit's centre, not a barrel.", unit.name, listed(&slots), names.join(" or ")))
+                    let slots = Fill::List(many.iter().map(|(slot, _)| Fill::name(format!("Weapon{}", slot + 1))).collect());
+                    let names = Fill::Either(many.iter().map(|(_, name)| Fill::name(*name)).collect());
+                    Some(enf("{unit} has {weapons} but its script {script} has no {functions}: if they fire, their shots leave from the unit's centre, not a barrel.", [("unit", Fill::name(&unit.name)), ("weapons", slots), ("script", Fill::name(&script)), ("functions", names)]))
                 }
             };
             if let Some(message) = message {
-                self.issue(Severity::Info, "script.weapon", path, message, "Add the functions to the unit's BOS script, returning the pieces the shots leave from, and recompile.");
+                self.issue(Severity::Info, "script.weapon", path, message, en("Add the functions to the unit's BOS script, returning the pieces the shots leave from, and recompile."));
             }
             if unit.builds && !functions.contains("querynanopiece") && !self.module_builders.contains(record_key) {
-                self.issue(Severity::Info, "script.builder", path, format!("{} builds but its script {script} has no QueryNanoPiece: its build spray comes from the unit's centre.", unit.name), "Add QueryNanoPiece to the unit's BOS script, returning its nano-lathe piece, and recompile.");
+                self.issue(Severity::Info, "script.builder", path, enf("{unit} builds but its script {script} has no QueryNanoPiece: its build spray comes from the unit's centre.", [("unit", Fill::name(&unit.name)), ("script", Fill::name(&script))]), en("Add QueryNanoPiece to the unit's BOS script, returning its nano-lathe piece, and recompile."));
             }
         }
         if self.buildable.contains(record_key) && !self.vfs.exists(&format!("unitpics/{}.pcx", unit.name.to_ascii_lowercase())) {
-            self.issue(Severity::Info, "unit.picture", path, format!("{} can be built but has no picture (unitpics/{}.pcx): TA's classic panels and the encyclopaedia show none; Reborn's own panel draws one from its model.", unit.name, unit.name.to_ascii_lowercase()), "Add a 64 × 64 PCX of the unit to unitpics/.");
+            let words = enf("{unit} can be built but has no picture ({picture}): TA's classic panels and the encyclopaedia show none; Reborn's own panel draws one from its model.", [("unit", Fill::name(&unit.name)), ("picture", Fill::name(format!("unitpics/{}.pcx", unit.name.to_ascii_lowercase())))]);
+            self.issue(Severity::Info, "unit.picture", path, words, en("Add a 64 × 64 PCX of the unit to unitpics/."));
         }
     }
 
@@ -1521,25 +1608,24 @@ impl<'a> Scan<'a> {
     }
 }
 
-/// What names something, as a finding lists it, each once (and how many times, where more):
-/// "A", "A and B", "A, B and C", "A (3 times)". Every one is named: a finding is told inherited
-/// by its message ([`compare`]), and two lists alike in their first names are not alike. (TA:
-/// Escalation's side data lists a unit several times over on one menu, to weight the computer
-/// players' choice.)
-fn listed<S: AsRef<str>>(whats: &[S]) -> String {
-    let mut unique: Vec<(&str, usize)> = Vec::new();
-    for what in whats {
-        let what = what.as_ref();
-        match unique.iter_mut().find(|(seen, _)| *seen == what) {
-            Some((_, n)) => *n += 1,
-            None => unique.push((what, 1)),
-        }
-    }
-    let shown: Vec<String> = unique.iter().map(|(what, n)| if *n > 1 { format!("{what} ({n} times)") } else { (*what).to_string() }).collect();
-    match shown.as_slice() {
-        [] => String::new(),
-        [one] => one.clone(),
-        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+/// What to do about a file that does not read, whatever its kind.
+const REEXPORT: &str = en("Re-export this asset in the original TA format, within Reborn's documented parser limits; replace truncated or corrupt files.");
+
+/// A file the game cannot read: the reader's own words, shown as they are in every language.
+fn unreadable(error: String) -> Words {
+    enf("The game cannot read this file: {error}", [("error", Words::raw(error).into())])
+}
+
+/// A TDF file's structural problem in words (their English is the problem's own: a test holds
+/// them to each other).
+fn lint_words(problem: &LintProblem) -> Words {
+    match problem {
+        LintProblem::NameUnclosed(name) => enf("The section name [{name} has no closing ].", [("name", Fill::name(name))]),
+        LintProblem::NoBody(name) => enf("[{name}] has no { } body after it: what follows is read into the section around it.", [("name", Fill::name(name))]),
+        LintProblem::StrayClose => Words::text(en("This } closes no section.")),
+        LintProblem::BlockUnclosed => Words::text(en("A { opened on this line is never closed.")),
+        LintProblem::SectionUnclosed(name) => enf("[{name}] opened on this line is never closed: any section after it is read as part of it.", [("name", Fill::name(name))]),
+        LintProblem::CommentUnended => Words::text(en("A /* comment opened on this line never ends: the rest of the file is read as a comment.")),
     }
 }
 
@@ -1548,11 +1634,11 @@ fn file_of(reference: &str) -> Option<String> {
     reference.strip_prefix("file:").map(str::to_string).or_else(|| reference.strip_prefix("sound:").map(sound_path))
 }
 
-fn optional(refs: &mut Vec<Reference>, kind: &str, name: &str, what: impl Into<String>, severity: Severity) {
+fn optional(refs: &mut Vec<Reference>, kind: &str, name: &str, what: Words, severity: Severity) {
     if !name.trim().is_empty() { refs.push(Reference::new(kind, name, what, severity)); }
 }
 
-fn animation_ref(refs: &mut Vec<Reference>, gaf: &str, entry: &str, what: String) {
+fn animation_ref(refs: &mut Vec<Reference>, gaf: &str, entry: &str, what: Words) {
     if gaf.trim().is_empty() || entry.trim().is_empty() { return; }
     let path = asset("anims", gaf, "gaf");
     // The file edge survives failed parsing, making inherited parse errors relevant.
@@ -1575,6 +1661,46 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static NEXT: AtomicU64 = AtomicU64::new(0);
+
+    /// A list's English, as a finding gives it.
+    fn listed(items: &[&str]) -> String {
+        enf("{items}", [("items", Fill::List(items.iter().map(|item| Fill::name(*item)).collect()))]).english()
+    }
+
+    // Every report the tests make has its findings' words checked (`assert_words`).
+    fn validate_all(vfs: &Vfs) -> Report {
+        checked(super::validate_all(vfs))
+    }
+    fn validate(vfs: &Vfs, options: &Options, progress: impl FnMut(Progress<'_>) -> bool) -> Report {
+        checked(super::validate(vfs, options, progress))
+    }
+    fn checked(report: Report) -> Report {
+        assert_words(&report);
+        report
+    }
+
+    /// A finding's words: their English is its message, and every text in them, and what to do,
+    /// is one the languages' files collect (marked `en`, or `enf`'s first argument, here).
+    fn assert_words(report: &Report) {
+        let sources = [include_str!("validation.rs"), include_str!("words.rs")].concat();
+        let marked = |text: &str| sources.contains(&format!("en(\"{text}\")")) || sources.contains(&format!("enf(\"{text}\""));
+        for issue in &report.issues {
+            assert_eq!(issue.words.english(), issue.message, "{}", issue.code);
+            for text in issue.words.texts() {
+                assert!(marked(text), "{}: {text:?} is not marked for translation", issue.code);
+            }
+            assert!(issue.suggestion.is_empty() || marked(&issue.suggestion), "{}: what to do, {:?}, is not marked for translation", issue.code, issue.suggestion);
+        }
+    }
+
+    /// The words of a TDF file's structural problems are the problems' own.
+    #[test]
+    fn a_files_structure_is_told_in_the_words_of_its_problems() {
+        for problem in [LintProblem::NameUnclosed("A{x".into()), LintProblem::NoBody("B".into()), LintProblem::StrayClose, LintProblem::BlockUnclosed, LintProblem::SectionUnclosed("C".into()), LintProblem::CommentUnended] {
+            assert_eq!(lint_words(&problem).english(), problem.to_string());
+        }
+    }
+
     struct Fixture(PathBuf);
     impl Fixture {
         fn new() -> Self {
@@ -1726,8 +1852,8 @@ mod tests {
         assert_eq!(misplaced("music/track01.wav"), None);
         assert_eq!(misplaced("sounds/voices/hello.wav"), None);
         assert_eq!(misplaced("sounds/boom.wav"), None);
-        assert_eq!(misplaced("units/boom.wav"), Some("sounds/"));
-        assert_eq!(misplaced("music/extra/track01.wav"), Some("sounds/"), "the music folder's own tracks only");
+        assert_eq!(misplaced("units/boom.wav"), Some(&["sounds/"][..]));
+        assert_eq!(misplaced("music/extra/track01.wav"), Some(&["sounds/"][..]), "the music folder's own tracks only");
         // (Four samples of 8-bit PCM.)
         let mut wav = b"RIFF".to_vec();
         for (tag, bytes) in [(&b""[..], 40u32.to_le_bytes().to_vec()), (b"WAVEfmt ", 16u32.to_le_bytes().to_vec())] { wav.extend_from_slice(tag); wav.extend(bytes); }
@@ -1979,7 +2105,7 @@ mod tests {
         let report = validate(&f.vfs(&["mod"]), &Options { sprite_atlas_side: 1024, ..Default::default() }, |_| true);
         let text = report.to_text();
         let note = report.issues.iter().find(|i| i.code == "render.sprite_reduced").unwrap_or_else(|| panic!("{text}"));
-        assert!(note.severity == Severity::Info && note.message.contains("2 of them") && note.message.contains("BIGGER (600 px), BIG (300 px)"), "{text}");
+        assert!(note.severity == Severity::Info && note.message.contains("2 of them") && note.message.contains("(BIGGER (600 px) and BIG (300 px))"), "{text}");
         assert!(!report.issues.iter().any(|i| matches!(i.code.as_str(), "render.sprite_capacity" | "render.sprite_frames")), "{text}");
         // Within the reference atlas's budget, nothing is reduced.
         let report = validate_all(&f.vfs(&["mod"]));
@@ -2126,8 +2252,8 @@ mod tests {
             b
         };
         assert_eq!(sound_problem(&wav(1, 1, 16)), None);
-        assert!(sound_problem(&wav(0x11, 1, 3)).is_some_and(|p| p.contains("IMA ADPCM")));
-        assert!(sound_problem(&wav(1, 0, 16)).is_some_and(|p| p.contains("0 channels")));
+        assert!(sound_problem(&wav(0x11, 1, 3)).is_some_and(|p| p.english().contains("IMA ADPCM")));
+        assert!(sound_problem(&wav(1, 0, 16)).is_some_and(|p| p.english().contains("0 channels")));
         assert!(sound_problem(b"DIGI\0\0\0\x10HSHD").is_some(), "no samples");
         let mut digi = b"DIGI\0\0\0\x1cHSHD\0\0\0\x08SDAT\0\0\0\x0c".to_vec();
         digi.extend([128u8; 4]);

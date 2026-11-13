@@ -563,3 +563,8 @@ fragment's speaker and the clone's letter keep their plain voice; the field manu
 | stamps RESTRICTED / CLASSIFIED / FOR TRAINING USE / UNDELIVERED | VERTRAULICH / GEHEIM / FÜR AUSBILDUNGSZWECKE / UNZUSTELLBAR |
 | stamps INTERCEPTED / FLAGGED FOR CORRECTION / SEALED UNTIL NEEDED | ABGEFANGEN / ZUR KORREKTUR VORGEMERKT / NUR IM ERNSTFALL ÖFFNEN |
 | INTERCEPT (a document) / SURVEY / THREAT ASSESSMENT / Subject: | ABHÖRPROTOKOLL / VERMESSUNG / BEDROHUNGSBEWERTUNG / Betreff: |
+
+Mod check (findings): feature = Objekt; wreckage = Wrack; faction = Fraktion; build option = Bauoption;
+labels are hyphen compounds ("{name}-Modell", "{name}-Skript"); "{what} fehlt." with nominative
+descriptions ("Einheit {name}", "die Datei {path}"); list joins ", " / " und " / " oder ";
+"({count}-mal)"; "{n} weitere"; sound problems continue "Dieser Sound wird nicht abgespielt: sie ...".

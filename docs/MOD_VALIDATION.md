@@ -107,6 +107,19 @@ and each gives its file, its line where it has one, the archive it came from, it
 **HOW TO FIX** a click away. Notes never count: they are worth knowing (a unit with no build
 picture, a weapon with no muzzle in its script).
 
+Findings and what to do about them are shown in the interface's language. The check keeps each
+finding's words as an English text with placeholders and what fills them: names, which are
+shown as they are, words of their own, and lists, which each language joins its own way
+(`ta_data::words`). The launcher translates them as it shows them. `ta-tools i18n` collects the
+texts marked `en`, and `enf`'s first argument, from the check's sources. The English words are
+what a finding is compared by, and what the copied report and `ta-tools validate-mod` give, so
+a report shared with a mod's author reads the same in any language. A file reader's own error
+(a damaged archive's, a model's) is shown as the reader gives it, inside a translated sentence.
+
+Under the findings, the report gives the mod's own files, units, maps and sounds, then how many
+files it was checked with (its own and those of what it plays over, most of them the original
+game's).
+
 ## What is checked
 
 - **Every file the game reads, decoded:** 3DO models, COB scripts (every instruction the game
@@ -173,7 +186,11 @@ dependencies, fingerprints inputs and keeps the reports under `cache/mod-validat
 - the checks' version, not the launcher's build, keys the cache, so a rebuild keeps reports;
 - baselines are kept by their own fingerprint (`baseline-*.json`, the newest eight);
 - after an install or a removal the changed mods are checked again, and every mod depending
-  on one, however indirectly.
+  on one, however indirectly;
+- on a visit to the Mods page (at most every ten seconds), every mod shown as checked has its
+  fingerprint taken again in the background, from the kept digests, so a file edited by hand in
+  one of a mod's folders, which changes neither the folder nor its manifest, brings a recheck.
+  The badge stays as it is unless the files differ.
 
 A mod that is one archive the game cannot open, or a folder whose content is all in such
 archives, is an error of its own, not an incomplete check. Archive problems of the original game

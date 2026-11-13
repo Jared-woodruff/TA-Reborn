@@ -533,3 +533,11 @@ has no gender ("J'ai péri", "la ville de ma naissance"). The field manual and r
 | stamps RESTRICTED / CLASSIFIED / FOR TRAINING USE / UNDELIVERED | CONFIDENTIEL / SECRET DÉFENSE / POUR L'INSTRUCTION / NON DISTRIBUÉE |
 | stamps INTERCEPTED / FLAGGED FOR CORRECTION / SEALED UNTIL NEEDED | INTERCEPTÉ / SIGNALÉ POUR CORRECTION / À OUVRIR EN CAS DE BESOIN |
 | INTERCEPT (a document) / SURVEY / THREAT ASSESSMENT / Subject: | INTERCEPTION / ÉTUDE / ÉVALUATION DE LA MENACE / Objet : |
+
+## Mod check findings (assembled pieces)
+
+| English | fr |
+|---|---|
+| feature / faction / build option / wreckage | élément de décor / camp / option de construction / épave |
+| "{whats}: {what} is missing." | "{whats} : {what} manque." (labels as "modèle de {name}", descriptions with their article: "l’unité {name}") |
+| {list} and/or {item}; ({count} times); {n} more | et / ou; ({count} fois); {n} de plus |

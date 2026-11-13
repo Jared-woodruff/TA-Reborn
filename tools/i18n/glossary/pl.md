@@ -294,6 +294,8 @@ locative modzie.
 | line {n} (in a file) / in {archive} | wiersz {n} / w archiwum {archive} |
 | {checked} of {total} files | „Pliki: {checked} z {total}”, „Pliki oryginalnej gry: {checked} z {total}” |
 | the Mods page | strona MODY (as strona GRAJ) |
+| feature (map object) / build option / wreckage / faction | obiekt / opcja budowy / wrak / frakcja |
+| whose (a definition's) | z oryginalnej gry / z moda {mod} / własne Reborna; findings read „{whats}: brak – {what}.”, „{what}: zdefiniowano dwukrotnie…” (nominative labels) |
 
 ## Conquest (briefing, galaxy, debrief, battle strip)
 

@@ -14,6 +14,7 @@ pub mod mission;
 pub mod unit;
 pub mod weapon;
 pub mod validation;
+pub mod words;
 mod skin_catalogue;
 pub use skin_catalogue::skin_catalogue;
 

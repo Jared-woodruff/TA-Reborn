@@ -442,3 +442,6 @@ Record: 紀錄 as a noun, 記錄 as a verb.
 | stamps RECOVERED / BY ORDER OF THE COUNCIL / TRANSMITTED ON ALL BANDS / RESTRICTED / FOR TRAINING USE | 已尋獲 / 奉議會之命 / 全頻段廣播 / 限閱 / 訓練專用 |
 | stamps UNDELIVERED / INTERCEPTED / FLAGGED FOR CORRECTION / SEALED UNTIL NEEDED / CLASSIFIED | 未送達 / 已截獲 / 標記待修正 / 必要時啟封 / 機密 |
 | FIGHT IT (caption before the campaigns that fight a chapter) | 親身參戰 |
+
+Mod check (findings): build option 建造選項, wreckage 殘骸, faction 陣營, feature 地物, texture 材質,
+script 腳本, piece 零件, archive 壓縮檔, manifest 資訊清單; lists 「、」「和」「或」.

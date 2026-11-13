@@ -24,6 +24,12 @@ use crate::widgets::{self, ActionButton};
 /// Findings a group shows before SHOW ALL.
 const GROUP_PREVIEW: usize = 25;
 
+/// A finding's words in the player's language (a report an older version kept has none: its
+/// English then, translated where it is one of the check's own fixed sentences).
+fn issue_words(issue: &Issue) -> String {
+    if issue.words.is_empty() { t(&issue.message).to_string() } else { issue.words.render(&|text| t(text).to_string()) }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ReportTab { Automated, Review }
 
@@ -307,7 +313,7 @@ fn automated_report(ui: &mut Ui, installed: bool, status: &ValidationStatus, sav
         }
         ValidationStatus::Queued => wrapped(ui, t("Waiting for background validation."), SKY),
         ValidationStatus::Stale => wrapped(ui, t("This saved report is out of date. Run validation again for the current files and Reborn version."), AMBER),
-        ValidationStatus::Failed(error) => wrapped(ui, tf("Validation could not complete: {error}", &[("error", error)]), RED),
+        ValidationStatus::Failed(error) => wrapped(ui, tf("Validation could not complete: {error}", &[("error", &t(error))]), RED),
         ValidationStatus::Unknown => wrapped(ui, if installed { t("No local check yet. Choose VALIDATE MOD to check this installation.") }
             else { t("Install this mod to validate its files. The project review is available before installation.") }, TEXT),
         ValidationStatus::Ready(_) => {}
@@ -339,7 +345,7 @@ fn automated_report(ui: &mut Ui, installed: bool, status: &ValidationStatus, sav
     let mut groups: std::collections::BTreeMap<Group, Vec<(usize, &Issue)>> = std::collections::BTreeMap::new();
     for (index, issue) in saved.report.issues.iter().enumerate() {
         if !view.shown.shows(issue) { continue; }
-        if !search.is_empty() && ![&issue.message, &issue.path, &issue.code, &issue.source].iter().any(|s| s.to_lowercase().contains(&search)) { continue; }
+        if !search.is_empty() && ![&issue_words(issue), &issue.message, &issue.path, &issue.code, &issue.source].iter().any(|s| s.to_lowercase().contains(&search)) { continue; }
         groups.entry(Group::of(issue)).or_default().push((index, issue));
     }
     if groups.is_empty() {
@@ -380,7 +386,14 @@ fn coverage(ui: &mut Ui, saved: &SavedReport, view: &ReportView) {
     let counts = &saved.report.counts;
     let layers: Vec<String> = saved.scope.iter().map(|layer| scope_label(layer)).collect();
     wrapped(ui, tf("Scope: {layers}", &[("layers", &layers.join(" → "))]), STEEL_DIM);
-    wrapped(ui, tf("{files} files · {units} units · {maps} maps · {sounds} sounds", &[("files", &grouped(counts.files_checked)), ("units", &grouped(counts.units)), ("maps", &grouped(counts.maps)), ("sounds", &grouped(counts.sounds))]), STEEL_DIM);
+    // (The mod's own, and what it was checked with: the original game's files are most of them.)
+    match &counts.own {
+        Some(own) => {
+            wrapped(ui, tf("This mod: {files} files · {units} units · {maps} maps · {sounds} sounds", &[("files", &grouped(own.files)), ("units", &grouped(own.units)), ("maps", &grouped(own.maps)), ("sounds", &grouped(own.sounds))]), STEEL_DIM);
+            wrapped(ui, tf("Checked with what it plays over: {files} files", &[("files", &grouped(counts.files_checked))]), STEEL_DIM);
+        }
+        None => wrapped(ui, tf("{files} files · {units} units · {maps} maps · {sounds} sounds", &[("files", &grouped(counts.files_checked)), ("units", &grouped(counts.units)), ("maps", &grouped(counts.maps)), ("sounds", &grouped(counts.sounds))]), STEEL_DIM),
+    }
     let hidden = saved.report.issues.iter().filter(|i| !i.affects_status).count();
     if !view.shown.inherited && hidden > 0 {
         wrapped(ui, tf("{n} findings in the original game, Reborn or a dependency are there without this mod too, and hidden: INHERITED shows them.", &[("n", &grouped(hidden as u64))]), STEEL_DIM);
@@ -433,7 +446,7 @@ fn issue_card(ui: &mut Ui, issue: &Issue, open: bool) -> bool {
                 Origin::Mod => {}
             }
         });
-        ui.add(egui::Label::new(RichText::new(&issue.message).color(if issue.affects_status { TEXT } else { STEEL })).wrap());
+        ui.add(egui::Label::new(RichText::new(issue_words(issue)).color(if issue.affects_status { TEXT } else { STEEL })).wrap());
         // Where: the file, its line, the archive it came from; the code for searching.
         let mut place = Vec::new();
         if !issue.path.is_empty() { place.push(issue.path.clone()); }
@@ -446,7 +459,7 @@ fn issue_card(ui: &mut Ui, issue: &Issue, open: bool) -> bool {
             let link = ui.add(egui::Label::new(RichText::new(label).font(strong(11.0)).color(SKY).extra_letter_spacing(ta_ui::i18n::tracking(1.0))).sense(Sense::click()))
                 .on_hover_cursor(egui::CursorIcon::PointingHand);
             if link.clicked() { toggled = true; }
-            if open { wrapped(ui, &issue.suggestion, SKY); }
+            if open { wrapped(ui, t(&issue.suggestion), SKY); }
         }
     });
     // The severity's bar down the card's left edge.

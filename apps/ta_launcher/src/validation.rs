@@ -17,6 +17,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use ta_data::validation::{self, Issue, Options, Report, Severity, Status};
+use ta_data::words::{Fill, Words, enf};
+use ta_ui::i18n::n;
 use ta_vfs::{Vfs, mods::{ModInfo, ModKind}};
 
 const CACHE_VERSION: u32 = 3;
@@ -62,6 +64,8 @@ struct Entry { status: ValidationStatus, report: Option<SavedReport> }
 struct Active {
     id: String,
     force: bool,
+    /// A look unseen ([`Request::verify`]) that has not found a change (yet).
+    verify: bool,
     generation: u64,
     cancel: Arc<AtomicBool>,
     receiver: mpsc::Receiver<Event>,
@@ -69,12 +73,16 @@ struct Active {
     /// What the worker is doing, and how far through it is (0..1) where it knows.
     progress: Option<(String, Option<f32>)>,
 }
-enum Event { Progress(String, Option<f32>), Finished(Result<SavedReport, String>) }
+/// What the worker tells: how far it is, that the content changed since its kept check (a
+/// look unseen becomes a check), and its result.
+enum Event { Progress(String, Option<f32>), Changed, Finished(Result<SavedReport, String>) }
 
 /// A check that finished with a report made just now (not from the cache).
 pub struct Finished { pub id: String, pub status: Status }
+/// A mod to check: `force`, reading every file again; `verify`, a look unseen for a change made
+/// by hand (its badge stays as it is unless its files differ from its kept check).
 #[derive(Clone)]
-struct Request { id: String, force: bool }
+struct Request { id: String, force: bool, verify: bool }
 
 /// Content digests by file stamp (path, size, times), kept between launches in
 /// `digests.json`: a file whose stamp is unchanged is not read again. An explicit rescan
@@ -102,6 +110,8 @@ pub struct ModValidation {
     memo: DigestMemo,
     /// Each mod's install as last seen (a reinstall with the same manifest changes it).
     stamps: BTreeMap<String, ModStamp>,
+    /// When the mods checked were last looked at unseen ([`ModValidation::verify`]).
+    verified: Option<Instant>,
     paused: bool,
     stopped: bool,
 }
@@ -112,7 +122,7 @@ impl ModValidation {
         Self {
             selected: None, cache_dir, base: None, mods: Arc::default(), entries: BTreeMap::new(),
             queue: VecDeque::new(), active: None, generation: 0, memo, stamps: BTreeMap::new(),
-            paused: false, stopped: false,
+            verified: None, paused: false, stopped: false,
         }
     }
 
@@ -133,7 +143,7 @@ impl ModValidation {
         for id in ids {
             let entry = self.entries.entry(id.clone()).or_insert(Entry { status: ValidationStatus::Queued, report: None });
             entry.status = if entry.report.is_some() { ValidationStatus::Stale } else { ValidationStatus::Queued };
-            self.queue.push_back(Request { id, force: false });
+            self.queue.push_back(Request { id, force: false, verify: false });
         }
         self.stamps = mods.iter().map(|m| (m.manifest.id.clone(), mod_stamp(m))).collect();
         self.mods = Arc::new(mods);
@@ -144,8 +154,24 @@ impl ModValidation {
     /// Explicit refresh/install/edit operations still use `sync` to detect byte changes
     /// whose manifest, length and timestamps may have been preserved.
     pub fn sync_discovered(&mut self, base: Option<PathBuf>, mods: Vec<ModInfo>) {
-        if self.base == base && same_inventory(&self.mods, &mods) { return; }
+        if self.base == base && same_inventory(&self.mods, &mods) { return self.verify(); }
         self.sync(base, mods, false);
+    }
+
+    /// A look unseen for mods changed by hand since their checks (a file edited in a subfolder
+    /// changes neither the folder nor its manifest): each mod shown as checked has its files'
+    /// fingerprint taken again in the background, from the digests kept (only files whose size
+    /// or time changed are read), and is checked again only where it differs. At most every ten
+    /// seconds.
+    fn verify(&mut self) {
+        if self.stopped || self.verified.is_some_and(|at| at.elapsed() < Duration::from_secs(10)) { return; }
+        self.verified = Some(Instant::now());
+        for (id, entry) in &self.entries {
+            if matches!(entry.status, ValidationStatus::Ready(_)) && entry.report.is_some()
+                && !self.queue.iter().any(|r| &r.id == id) && self.active.as_ref().is_none_or(|a| &a.id != id) {
+                self.queue.push_back(Request { id: id.clone(), force: false, verify: true });
+            }
+        }
     }
 
     /// After an install, a removal or a game: the mods unchanged since they were last seen
@@ -181,7 +207,7 @@ impl ModValidation {
         for id in &affected {
             let entry = self.entries.entry(id.clone()).or_insert(Entry { status: ValidationStatus::Queued, report: None });
             entry.status = if entry.report.is_some() { ValidationStatus::Stale } else { ValidationStatus::Queued };
-            self.queue.push_back(Request { id: id.clone(), force: false });
+            self.queue.push_back(Request { id: id.clone(), force: false, verify: false });
         }
         self.stamps = stamps;
         self.mods = Arc::new(mods);
@@ -192,7 +218,7 @@ impl ModValidation {
         let Some(entry) = self.entries.get_mut(id) else { return; };
         entry.status = if entry.report.is_some() { ValidationStatus::Stale } else { ValidationStatus::Queued };
         self.queue.retain(|request| request.id != id);
-        self.queue.push_front(Request { id: id.into(), force: true });
+        self.queue.push_front(Request { id: id.into(), force: true, verify: false });
         // Explicit rechecks must read the mod's content again, including files whose
         // metadata an external editor preserved (the original game's are kept).
         if let Some(module) = self.mods.iter().find(|m| m.manifest.id == id) && let Ok(mut digests) = self.memo.lock() {
@@ -208,8 +234,9 @@ impl ModValidation {
             if let Some(active) = &self.active {
                 active.cancel.store(true, Ordering::Relaxed);
                 if self.entries.contains_key(&active.id) && !self.queue.iter().any(|r| r.id == active.id) {
-                    self.queue.push_front(Request { id: active.id.clone(), force: active.force });
-                    if let Some(entry) = self.entries.get_mut(&active.id) {
+                    self.queue.push_front(Request { id: active.id.clone(), force: active.force, verify: active.verify });
+                    // (A look unseen that found nothing yet leaves the badge as it was.)
+                    if let Some(entry) = self.entries.get_mut(&active.id) && !active.verify {
                         entry.status = if entry.report.is_some() { ValidationStatus::Stale } else { ValidationStatus::Queued };
                     }
                 }
@@ -248,6 +275,11 @@ impl ModValidation {
             while let Ok(event) = active.receiver.try_recv() {
                 match event {
                     Event::Progress(text, fraction) => active.progress = Some((text, fraction)),
+                    // (A look unseen found a change: a check, and shown as one.)
+                    Event::Changed => if active.verify {
+                        active.verify = false;
+                        if let Some(entry) = self.entries.get_mut(&active.id) { entry.status = ValidationStatus::Checking; }
+                    },
                     Event::Finished(result) => finished = Some(result),
                 }
             }
@@ -257,7 +289,7 @@ impl ModValidation {
                 while let Ok(event) = active.receiver.try_recv() {
                     if let Event::Finished(result) = event { finished = Some(result); }
                 }
-                if finished.is_none() { finished = Some(Err("The validation worker stopped unexpectedly. Run validation again.".into())); }
+                if finished.is_none() { finished = Some(Err(n("The validation worker stopped unexpectedly. Run validation again.").into())); }
             }
         }
         if let Some(result) = finished {
@@ -283,7 +315,7 @@ impl ModValidation {
         if self.stopped || self.paused || self.active.is_some() { return fresh; }
         let Some(request) = self.queue.pop_front() else { return fresh; };
         let Some(entry) = self.entries.get_mut(&request.id) else { return fresh; };
-        entry.status = ValidationStatus::Checking;
+        if !request.verify { entry.status = ValidationStatus::Checking; }
         let (sender, receiver) = mpsc::channel();
         let cancel = Arc::new(AtomicBool::new(false));
         let work_cancel = cancel.clone();
@@ -293,10 +325,15 @@ impl ModValidation {
         let memo = self.memo.clone();
         let generation = self.generation;
         let id = request.id.clone();
-        let force = request.force;
+        let (force, verify) = (request.force, request.verify);
         let repaint = ctx.clone();
         let worker = std::thread::spawn(move || {
             let mut last_progress = Instant::now() - Duration::from_secs(1);
+            let told = sender.clone();
+            let mut changed = || {
+                let _ = told.send(Event::Changed);
+                repaint.request_repaint();
+            };
             let mut progress = |message: String, fraction: Option<f32>| {
                 if last_progress.elapsed() >= Duration::from_millis(150) {
                     let _ = sender.send(Event::Progress(message, fraction));
@@ -305,12 +342,12 @@ impl ModValidation {
                 }
             };
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(||
-                run(&request, base.as_deref(), &mods, &cache, &memo, &work_cancel, &mut progress)
-            )).unwrap_or_else(|_| Err("The validation worker stopped unexpectedly. Run validation again and include this mod in a bug report if the problem persists.".into()));
+                run(&request, base.as_deref(), &mods, &cache, &memo, &work_cancel, &mut progress, &mut changed)
+            )).unwrap_or_else(|_| Err(n("The validation worker stopped unexpectedly. Run validation again and include this mod in a bug report if the problem persists.").into()));
             let _ = sender.send(Event::Finished(result));
             repaint.request_repaint();
         });
-        self.active = Some(Active { id, force, generation, cancel, receiver, worker, progress: None });
+        self.active = Some(Active { id, force, verify, generation, cancel, receiver, worker, progress: None });
         ctx.request_repaint();
         fresh
     }
@@ -363,28 +400,37 @@ fn same_inventory(left: &[ModInfo], right: &[ModInfo]) -> bool {
     }))
 }
 
-fn dependency_order<'a>(id: &str, mods: &'a [ModInfo]) -> Result<Vec<&'a ModInfo>, String> {
+fn dependency_order<'a>(id: &str, mods: &'a [ModInfo]) -> Result<Vec<&'a ModInfo>, Words> {
     let by_id: BTreeMap<_, _> = mods.iter().map(|m| (m.manifest.id.as_str(), m)).collect();
     let mut required = BTreeSet::new();
     let mut pending = vec![id.to_string()];
     while let Some(id) = pending.pop() {
         if !required.insert(id.clone()) { continue; }
-        let Some(module) = by_id.get(id.as_str()) else { return Err(format!("Required mod '{id}' is not installed.")); };
-        if required.len() > 1000 { return Err("The dependency set exceeds 1,000 mods.".into()); }
+        let Some(module) = by_id.get(id.as_str()) else { return Err(enf(n("Required mod '{id}' is not installed."), [("id", Fill::name(&id))])); };
+        if required.len() > 1000 { return Err(Words::text(n("The dependency set exceeds 1,000 mods."))); }
         pending.extend(module.manifest.depends.iter().cloned());
     }
-    ta_vfs::mods::resolve_load_order(&required.into_iter().collect::<Vec<_>>(), mods).map_err(|e| e.to_string())
+    ta_vfs::mods::resolve_load_order(&required.into_iter().collect::<Vec<_>>(), mods).map_err(|e| Words::raw(e.to_string()))
+}
+
+/// Words the worker gives in English: shown translated where the languages' files have them
+/// (its own fixed ones, marked `n`), else as they are (a system's own words, a path).
+fn said(text: String) -> Words {
+    Words { text, ..Words::default() }
 }
 
 /// Manifest IDs are user-defined and may legitimately be "base" or "reborn".
 /// Keep validation ownership distinct from those inherited VFS layers.
 fn mod_layer(id: &str) -> String { format!("mod:{id}") }
 
+/// Checks a mod (or takes its kept check, where its content is as it was then): `changed` is told
+/// when its content is not as it was at its kept check, before it is checked again.
+#[allow(clippy::too_many_arguments)]
 fn run(
     request: &Request, base: Option<&Path>, mods: &[ModInfo], cache: &Path, memo: &DigestMemo,
-    cancel: &AtomicBool, progress: &mut impl FnMut(String, Option<f32>),
+    cancel: &AtomicBool, progress: &mut impl FnMut(String, Option<f32>), changed: &mut impl FnMut(),
 ) -> Result<SavedReport, String> {
-    let target = mods.iter().find(|m| m.manifest.id == request.id).ok_or("The mod is no longer installed.")?;
+    let target = mods.iter().find(|m| m.manifest.id == request.id).ok_or(n("The mod is no longer installed."))?;
     let target_layer = mod_layer(&target.manifest.id);
     let mut saved = SavedReport {
         mod_id: target.manifest.id.clone(), name: target.manifest.name.clone(), version: target.manifest.version.clone(),
@@ -396,13 +442,13 @@ fn run(
     check_cancel(cancel)?;
     let order = match dependency_order(&request.id, mods) {
         Ok(order) => order,
-        Err(error) => { saved.scope.push(scope_label(target)); return Ok(failure(saved, "DEPENDENCY", &error)); }
+        Err(error) => { saved.scope.push(scope_label(target)); return Ok(failure(saved, "DEPENDENCY", error)); }
     };
     saved.scope.extend(order.iter().map(|m| scope_label(m)));
     for module in &order {
-        if let Err(error) = check_manifest(module) { return Ok(failure(saved, "MANIFEST_CHANGED", &error)); }
+        if let Err(error) = check_manifest(module) { return Ok(failure(saved, "MANIFEST_CHANGED", error)); }
     }
-    let Some(base) = base else { return Ok(failure(saved, "BASE_MISSING", "The original Total Annihilation installation is not configured.")); };
+    let Some(base) = base else { return Ok(failure(saved, "BASE_MISSING", Words::text(n("The original Total Annihilation installation is not configured.")))); };
     let builtin = ta_vfs::builtin_dir();
     if builtin.is_none() { saved.scope.retain(|s| s != "Reborn built-in content"); }
     let mut roots = vec![("base".into(), base.to_path_buf(), true)];
@@ -412,19 +458,20 @@ fn run(
     progress(ta_ui::i18n::t("Reading content fingerprints").to_string(), None);
     let before = match snapshot(&roots, cancel) {
         Ok(snapshot) => snapshot,
-        Err(error) => { check_cancel(cancel)?; return Ok(failure(saved, "SOURCE_UNREADABLE", &without_folders(&error, &folders))); }
+        Err(error) => { check_cancel(cancel)?; return Ok(failure(saved, "SOURCE_UNREADABLE", said(without_folders(&error, &folders)))); }
     };
     saved.fingerprint = match fingerprint(&before, &order, memo, cancel, None) {
         Ok(hash) => hash,
-        Err(error) => { check_cancel(cancel)?; return Ok(failure(saved, "SOURCE_UNREADABLE", &without_folders(&error, &folders))); }
+        Err(error) => { check_cancel(cancel)?; return Ok(failure(saved, "SOURCE_UNREADABLE", said(without_folders(&error, &folders)))); }
     };
     let cache_path = cache.join(cache_name(&saved.mod_id));
     if !request.force {
         if let Some(cached) = read_cache(&cache_path, &saved) {
             if snapshot(&roots, cancel)? == before { check_cancel(cancel)?; return Ok(cached); }
-            return Err("Content changed while its cached report was checked. Run validation again.".into());
+            return Err(n("Content changed while its cached report was checked. Run validation again.").into());
         }
     }
+    changed();
     // The same content without the mod, checked once and kept: what is wrong there already
     // is not this mod's doing, what is wrong only with it is (validation::compare).
     let dependencies: Vec<&ModInfo> = order.iter().copied().filter(|m| m.manifest.id != request.id).collect();
@@ -436,8 +483,8 @@ fn run(
             progress(ta_ui::i18n::t("Checking the original game without the mod (once)").to_string(), None);
             let vfs = match mount(base, builtin.as_deref(), &dependencies, None, &mut Vec::new(), cancel) {
                 Ok(vfs) => vfs,
-                Err(Mount::Cancelled) => return Err("Validation cancelled.".into()),
-                Err(Mount::Failed(code, error)) => return Ok(failure(saved, code, &without_folders(&error, &folders))),
+                Err(Mount::Cancelled) => return Err(n("Validation cancelled.").into()),
+                Err(Mount::Failed(code, error)) => return Ok(failure(saved, code, said(without_folders(&error, &folders)))),
                 Err(Mount::Unreadable(_)) => unreachable!("only the target's archive is reported as unreadable"),
             };
             let report = validation::validate(&vfs, &Options::default(), |p| {
@@ -453,8 +500,8 @@ fn run(
     progress(ta_ui::i18n::t("Mounting the original game and required dependencies").to_string(), None);
     let vfs = match mount(base, builtin.as_deref(), &order, Some(&target_layer), &mut issues, cancel) {
         Ok(vfs) => vfs,
-        Err(Mount::Cancelled) => return Err("Validation cancelled.".into()),
-        Err(Mount::Failed(code, error)) => return Ok(failure(saved, code, &without_folders(&error, &folders))),
+        Err(Mount::Cancelled) => return Err(n("Validation cancelled.").into()),
+        Err(Mount::Failed(code, error)) => return Ok(failure(saved, code, said(without_folders(&error, &folders)))),
         Err(Mount::Unreadable(issue)) => {
             // The mod is one archive the game cannot open: that is the whole report.
             saved.report = Report { target_layer: Some(target_layer), complete: true, issues: vec![*issue], ..Report::default() };
@@ -475,7 +522,7 @@ fn run(
     merge_issues(&mut saved.report, issues);
     check_cancel(cancel)?;
     if snapshot(&roots, cancel)? != before {
-        return Err("Content changed during validation. Run validation again after installation or editing finishes.".into());
+        return Err(n("Content changed during validation. Run validation again after installation or editing finishes.").into());
     }
     // The UI rejects cancelled generations too; this final gate also prevents a
     // stopped job from doing routine cache writes after shutdown or a rescan.
@@ -573,13 +620,13 @@ fn mount(base: &Path, builtin: Option<&Path>, modules: &[&ModInfo], target: Opti
     Ok(mounted.vfs)
 }
 
-fn failure(mut saved: SavedReport, code: &str, message: &str) -> SavedReport {
+fn failure(mut saved: SavedReport, code: &str, words: Words) -> SavedReport {
     // Preflight problems prevented a full scan. Preserve the concrete error while
     // keeping both the badge and copied report explicit about incomplete coverage.
     saved.report.complete = false;
     saved.report.issues.push(Issue {
-        severity: Severity::Error, code: code.into(), layer: mod_layer(&saved.mod_id), message: message.into(),
-        suggestion: "Restore the required files or dependencies, then run validation again.".into(), affects_status: true,
+        severity: Severity::Error, code: code.into(), layer: mod_layer(&saved.mod_id), message: words.english(), words,
+        suggestion: n("Restore the required files or dependencies, then run validation again.").into(), affects_status: true,
         ..Issue::default()
     });
     saved
@@ -596,24 +643,26 @@ fn merge_issues(report: &mut Report, issues: Vec<Issue>) {
 
 /// Discovery runs before this worker. Do not use its old dependency/rename table if
 /// an external editor changed the manifest while another mod was being checked.
-fn check_manifest(module: &ModInfo) -> Result<(), String> {
+fn check_manifest(module: &ModInfo) -> Result<(), Words> {
     if module.kind != ModKind::Directory { return Ok(()); }
+    let id = || Fill::name(&module.manifest.id);
     let path = module.path.join("mod.toml");
     match std::fs::symlink_metadata(&path) {
-        Ok(metadata) if is_link(&metadata) || metadata.len() > 1024 * 1024 => return Err(format!("The manifest for '{}' is linked or exceeds 1 MiB. Rescan the mod library after correcting it.", module.manifest.id)),
+        Ok(metadata) if is_link(&metadata) || metadata.len() > 1024 * 1024 => return Err(enf(n("The manifest for '{id}' is linked or exceeds 1 MiB. Rescan the mod library after correcting it."), [("id", id())])),
         Ok(_) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error.to_string()),
+        Err(error) => return Err(Words::raw(error.to_string())),
     }
     // Read as the game reads it (a folder without one named by its whole name, its id in lower
     // case as the scan makes it: a copy of that here would drift from it).
     let disk = match ta_vfs::mods::read_mod(&module.path) {
         Ok(Some(found)) => found.manifest,
-        Ok(None) => return Err(format!("'{}' is no longer a mod folder. Rescan the mod library.", module.manifest.id)),
-        Err(error) => return Err(format!("The manifest for '{}' is invalid: {error}", module.manifest.id)),
+        Ok(None) => return Err(enf(n("'{id}' is no longer a mod folder. Rescan the mod library."), [("id", id())])),
+        Err(error) => return Err(enf(n("The manifest for '{id}' is invalid: {error}"), [("id", id()), ("error", Words::raw(error.to_string()).into())])),
     };
-    if serde_json::to_vec(&disk).map_err(|e| e.to_string())? != serde_json::to_vec(&module.manifest).map_err(|e| e.to_string())? {
-        return Err(format!("The manifest for '{}' changed after discovery. Rescan the mod library before validating it.", module.manifest.id));
+    let json = |manifest: &ta_vfs::mods::ModManifest| serde_json::to_vec(manifest).map_err(|e| Words::raw(e.to_string()));
+    if json(&disk)? != json(&module.manifest)? {
+        return Err(enf(n("The manifest for '{id}' changed after discovery. Rescan the mod library before validating it."), [("id", id())]));
     }
     Ok(())
 }
@@ -636,10 +685,11 @@ fn check_archives(path: &Path, layer: &str, single: bool, target: Option<&str>, 
             // skipped for every mod alike.)
             let own = target.is_none_or(|target| target == layer);
             let name = archive.file_name().unwrap_or_default().to_string_lossy().into_owned();
+            let words = enf(n("The game skips this archive because it cannot be read: {error}"), [("error", Words::raw(without_folders(&error.to_string(), &[path])).into())]);
             issues.push(Issue {
                 severity: Severity::Error, code: "ARCHIVE_UNREADABLE".into(), path: name.clone(), layer: layer.into(),
-                message: format!("The game skips this archive because it cannot be read: {}", without_folders(&error.to_string(), &[path])),
-                suggestion: "Replace the corrupt archive. Remove it only if it is an intentional empty placeholder.".into(),
+                message: words.english(), words,
+                suggestion: n("Replace the corrupt archive. Remove it only if it is an intentional empty placeholder.").into(),
                 affects_status: own, origin: if own { validation::Origin::Mod } else { validation::Origin::Inherited }, ..Issue::default()
             });
         }
@@ -651,7 +701,7 @@ fn is_archive(path: &Path) -> bool {
     path.extension().and_then(|s| s.to_str()).is_some_and(|s| ta_vfs::ARCHIVE_EXTENSIONS.contains(&s.to_ascii_lowercase().as_str()))
 }
 fn check_cancel(cancel: &AtomicBool) -> Result<(), String> {
-    if cancel.load(Ordering::Relaxed) { Err("Validation cancelled.".into()) } else { Ok(()) }
+    if cancel.load(Ordering::Relaxed) { Err(n("Validation cancelled.").into()) } else { Ok(()) }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -661,7 +711,7 @@ type Snapshot = Vec<(String, Vec<FileStamp>)>;
 fn snapshot(roots: &[(String, PathBuf, bool)], cancel: &AtomicBool) -> Result<Snapshot, String> {
     fn visit(path: &Path, depth: usize, skip_root_files: bool, files: &mut Vec<FileStamp>, total: &mut u64, limit: usize, cancel: &AtomicBool) -> Result<(), String> {
         check_cancel(cancel)?;
-        if depth > 64 || files.len() >= limit { return Err("Content exceeds the validation directory/file limit.".into()); }
+        if depth > 64 || files.len() >= limit { return Err(n("Content exceeds the validation directory/file limit.").into()); }
         // (A root may be a link, the game on another drive behind a junction: what is below it
         // may not.)
         let metadata = if depth == 0 { std::fs::metadata(path) } else { std::fs::symlink_metadata(path) }.map_err(|e| format!("{}: {e}", path.display()))?;
@@ -671,7 +721,7 @@ fn snapshot(roots: &[(String, PathBuf, bool)], cancel: &AtomicBool) -> Result<Sn
         if !directory && !metadata.is_file() { return Err(format!("Content is not a regular file: {}", path.display())); }
         if !directory {
             *total = total.saturating_add(metadata.len());
-            if *total > MAX_BYTES { return Err("Content exceeds the 64 GiB validation limit.".into()); }
+            if *total > MAX_BYTES { return Err(n("Content exceeds the 64 GiB validation limit.").into()); }
         }
         let time = |time: std::io::Result<SystemTime>| time.ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |t| t.as_nanos());
         // Only what the game reads (the music, movies and documents beside it changing
@@ -684,7 +734,7 @@ fn snapshot(roots: &[(String, PathBuf, bool)], cancel: &AtomicBool) -> Result<Sn
             let entries = std::fs::read_dir(path).map_err(|e| e.to_string())?;
             let mut children = Vec::new();
             for entry in entries {
-                if children.len() + files.len() >= limit { return Err("Content exceeds the validation file limit.".into()); }
+                if children.len() + files.len() >= limit { return Err(n("Content exceeds the validation file limit.").into()); }
                 let entry = entry.map_err(|e| e.to_string())?;
                 // Base-game root files are not in the loose VFS. In particular, do
                 // not hash the original executable, its movies or installers.
@@ -754,10 +804,10 @@ fn fingerprint(snapshot: &Snapshot, order: &[&ModInfo], memo: &DigestMemo, cance
                     let n = file.read(&mut buffer).map_err(|e| e.to_string())?;
                     if n == 0 { break; }
                     bytes = bytes.saturating_add(n as u64);
-                    if bytes > stamp.len { return Err("Content changed while it was being fingerprinted.".into()); }
+                    if bytes > stamp.len { return Err(ta_ui::i18n::n("Content changed while it was being fingerprinted.").into()); }
                     content.update(&buffer[..n]);
                 }
-                if bytes != stamp.len { return Err("Content changed while it was being fingerprinted.".into()); }
+                if bytes != stamp.len { return Err(ta_ui::i18n::n("Content changed while it was being fingerprinted.").into()); }
                 let digest = format!("{:x}", content.finalize());
                 let mut digests = memo.lock().map_err(|_| "Content fingerprint cache was interrupted.")?;
                 digests.known.insert(stamp.clone(), digest.clone());
@@ -889,9 +939,9 @@ mod tests {
         let mods = vec![a, module("b", Path::new("b"), &["c"]), module("c", Path::new("c"), &[]), module("unrelated", Path::new("u"), &[])];
         let ids: Vec<_> = dependency_order("a", &mods).unwrap().iter().map(|m| m.manifest.id.as_str()).collect();
         assert_eq!(ids, ["c", "b", "a"]);
-        assert!(dependency_order("a", &mods[..2]).unwrap_err().contains("'c'"));
+        assert!(dependency_order("a", &mods[..2]).unwrap_err().english().contains("'c'"));
         let cycle = vec![module("a", Path::new("a"), &["b"]), module("b", Path::new("b"), &["a"])];
-        assert!(dependency_order("a", &cycle).unwrap_err().contains("cycle"));
+        assert!(dependency_order("a", &cycle).unwrap_err().english().contains("cycle"));
     }
 
     #[test]
@@ -954,7 +1004,7 @@ mod tests {
         let broken = module("broken", &folder, &[]);
         std::fs::write(folder.join("mod.toml"), toml::to_string(&broken.manifest).unwrap()).unwrap();
         std::fs::write(folder.join("content.ufo"), b"HAPI and nothing a reader can use").unwrap();
-        let result = run(&Request { id: "broken".into(), force: true }, Some(&base), std::slice::from_ref(&broken), &dir.0.join("cache"), &Arc::default(), &AtomicBool::new(false), &mut |_, _| {}).unwrap();
+        let result = run(&Request { id: "broken".into(), force: true, verify: false }, Some(&base), std::slice::from_ref(&broken), &dir.0.join("cache"), &Arc::default(), &AtomicBool::new(false), &mut |_, _| {}, &mut || {}).unwrap();
         assert!(result.report.complete, "{}", result.to_text());
         assert_eq!(result.report.status(), Status::Errors, "{}", result.to_text());
         assert!(result.report.issues.iter().any(|i| i.code == "ARCHIVE_UNREADABLE" && i.affects_status));
@@ -977,7 +1027,7 @@ mod tests {
         ta_vfs::test_archive::write(&folder.join("REV31.GP3"), &[("units/armcom.fbi", b"[UNITINFO]{UnitName=ARMCOM;Objectname=ARMCOM;}")]);
         // (Kept by a hand install: an empty placeholder, which blanks the original's on purpose.)
         std::fs::write(folder.join("btdata.ccx"), b"").unwrap();
-        let result = run(&Request { id: "enhanced".into(), force: true }, Some(&base), std::slice::from_ref(&enhanced), &dir.0.join("cache"), &Arc::default(), &AtomicBool::new(false), &mut |_, _| {}).unwrap();
+        let result = run(&Request { id: "enhanced".into(), force: true, verify: false }, Some(&base), std::slice::from_ref(&enhanced), &dir.0.join("cache"), &Arc::default(), &AtomicBool::new(false), &mut |_, _| {}, &mut || {}).unwrap();
         assert!(result.report.complete, "{}", result.to_text());
         assert!(!result.report.issues.iter().any(|i| i.path.starts_with("units/armsub") || i.path.starts_with("units/armhp")), "the original's units in the archives it replaces are not read: {}", result.to_text());
         assert!(result.report.issues.iter().any(|i| i.path.starts_with("units/corsub") && i.message.contains("CORE_TORPEDO")), "the original's other archives are: {}", result.to_text());
@@ -993,7 +1043,7 @@ mod tests {
     #[test]
     fn missing_dependencies_produce_a_copyable_error_report() {
         let mods = vec![module("test", Path::new("unused"), &["missing"] )];
-        let result = run(&Request { id: "test".into(), force: false }, None, &mods, Path::new("unused-cache"), &Arc::default(), &AtomicBool::new(false), &mut |_, _| {}).unwrap();
+        let result = run(&Request { id: "test".into(), force: false, verify: false }, None, &mods, Path::new("unused-cache"), &Arc::default(), &AtomicBool::new(false), &mut |_, _| {}, &mut || {}).unwrap();
         assert_eq!(result.report.status(), Status::Incomplete);
         assert!(!result.report.complete);
         assert!(result.to_text().contains("missing"));
@@ -1011,7 +1061,7 @@ mod tests {
         let mut edited = discovered.manifest.clone();
         edited.depends.push("new-required-mod".into());
         std::fs::write(&path, toml::to_string(&edited).unwrap()).unwrap();
-        assert!(check_manifest(&discovered).unwrap_err().contains("changed after discovery"));
+        assert!(check_manifest(&discovered).unwrap_err().english().contains("changed after discovery"));
         std::fs::remove_file(&path).unwrap();
         assert!(check_manifest(&discovered).is_err());
     }
@@ -1120,7 +1170,7 @@ mod tests {
         let (sender, receiver) = mpsc::channel();
         sender.send(Event::Finished(Ok(report("old")))).unwrap();
         validation.active = Some(Active {
-            id: "old".into(), force: false, generation: validation.generation, cancel: Arc::new(AtomicBool::new(false)), receiver,
+            id: "old".into(), force: false, verify: false, generation: validation.generation, cancel: Arc::new(AtomicBool::new(false)), receiver,
             worker: std::thread::spawn(|| {}), progress: None,
         });
         validation.sync(None, vec![module("new", &dir.0, &[])], true);
@@ -1138,7 +1188,7 @@ mod tests {
         let (sender, receiver) = mpsc::channel();
         sender.send(Event::Finished(Ok(report("new")))).unwrap();
         validation.active = Some(Active {
-            id: "new".into(), force: false, generation: validation.generation, cancel: Arc::new(AtomicBool::new(false)), receiver,
+            id: "new".into(), force: false, verify: false, generation: validation.generation, cancel: Arc::new(AtomicBool::new(false)), receiver,
             worker: std::thread::spawn(|| {}), progress: None,
         });
         let mut replacement = module("new", &dir.0, &[]);
@@ -1216,7 +1266,7 @@ mod tests {
         ready.report = Some(report("ready"));
         let (_sender, receiver) = mpsc::channel();
         validation.active = Some(Active {
-            id: "active".into(), force: false, generation: validation.generation, cancel: Arc::new(AtomicBool::new(false)), receiver,
+            id: "active".into(), force: false, verify: false, generation: validation.generation, cancel: Arc::new(AtomicBool::new(false)), receiver,
             worker: std::thread::spawn(|| {}), progress: Some(("5 / 20".into(), Some(0.25))),
         });
         let generation = validation.generation;
@@ -1227,11 +1277,15 @@ mod tests {
         assert_eq!(validation.generation, generation);
         assert!(Arc::ptr_eq(&memo, &validation.memo));
         assert!(!validation.active.as_ref().unwrap().cancel.load(Ordering::Relaxed));
-        assert!(validation.queue.is_empty());
+        // (A look unseen at the mod shown as checked, for a change made by hand: its badge kept.)
+        assert!(validation.queue.len() == 1 && validation.queue[0].id == "ready" && validation.queue[0].verify && !validation.queue[0].force);
         assert_eq!(validation.status("active"), ValidationStatus::Checking);
         assert_eq!(validation.status("ready"), ValidationStatus::Ready(Status::Clean));
         assert_eq!(validation.progress("active").map(|p| p.0).as_deref(), Some("5 / 20"));
         assert_eq!(validation.fraction(), Some(0.25));
+        validation.sync_discovered(None, mods.clone());
+        assert_eq!(validation.queue.len(), 1, "looked at once, not again within seconds");
+        validation.queue.clear();
 
         let mut edited = mods.clone();
         edited[0].manifest.depends.push("ready".into());
@@ -1248,6 +1302,29 @@ mod tests {
         assert_ne!(validation.generation, generation);
         assert_eq!(validation.status("new"), ValidationStatus::Queued);
         assert_eq!(validation.queue.len(), 3);
+    }
+
+    /// A look unseen keeps a mod's badge while it finds nothing, and shows a check once the mod's
+    /// files turn out changed (a file edited by hand in one of its folders).
+    #[test]
+    fn a_look_unseen_shows_a_check_only_when_the_files_changed() {
+        let mut validation = ModValidation::new(PathBuf::from("unused-cache"));
+        validation.sync(None, vec![module("edited", Path::new("not-on-disk-e"), &[])], false);
+        validation.queue.clear();
+        let entry = validation.entries.get_mut("edited").unwrap();
+        entry.status = ValidationStatus::Ready(Status::Clean);
+        entry.report = Some(report("edited"));
+        let (sender, receiver) = mpsc::channel();
+        validation.active = Some(Active {
+            id: "edited".into(), force: false, verify: true, generation: validation.generation, cancel: Arc::new(AtomicBool::new(false)), receiver,
+            worker: std::thread::spawn(|| std::thread::sleep(Duration::from_millis(500))), progress: None,
+        });
+        validation.tick(&egui::Context::default());
+        assert_eq!(validation.status("edited"), ValidationStatus::Ready(Status::Clean), "nothing found yet: the badge as it was");
+        sender.send(Event::Changed).unwrap();
+        validation.tick(&egui::Context::default());
+        assert_eq!(validation.status("edited"), ValidationStatus::Checking, "its files changed: checked again, and shown so");
+        assert!(!validation.active.as_ref().unwrap().verify);
     }
 
     #[test]

@@ -485,3 +485,5 @@ gente"). `[[...]]` (blacked out): keep the brackets, translate the words inside.
 | blacked-out lines | tarjas pretas |
 | chronicle / PLAY THE CHRONICLE / FIGHT IT (before the campaign buttons) | crônica / REPRODUZIR A CRÔNICA / AO COMBATE |
 | datelines BEFORE THE WAR / AFTER | ANTES DA GUERRA / DEPOIS |
+| faction / build option / wreckage | facção / opção de construção / destroço |
+| archive (mod file) | arquivo compactado |
