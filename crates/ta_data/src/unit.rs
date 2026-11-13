@@ -17,6 +17,20 @@ pub struct UnitDef {
     pub object: String,
     pub footprint_x: u32,
     pub footprint_z: u32,
+    /// It takes no ground on the map's grid: its file gives it no footprint (`FootprintX=0` or
+    /// `FootprintZ=0`), or it is a mobile unit that cannot get going ([`UnitDef::cannot_get_going`]),
+    /// which TA kept off the grid as it kept every mobile unit. The mods' upgrade modules and
+    /// upgrades are such units (Total Mayhem's `ARMGEOUP` and its underwater moho mines' 1x1
+    /// `ARMUMOHOUP`, TA: Escalation's `ALL_L2`): made where their building or factory stands,
+    /// they hold nothing up. (Its footprint is still at least one cell, for its size.)
+    pub takes_no_ground: bool,
+    /// Its file gives it a speed and an acceleration of none (`BMcode=1`, `MaxVelocity=1`,
+    /// `Acceleration=0`): to TA a mobile unit, that never gets going. The mods' upgrade modules
+    /// are such units (Total Mayhem's `ARMGEOUP`, TA: Escalation's `ARMHLT_UPGRADE`); none of TA's
+    /// own is, and every one of them gives its acceleration. It stands where it was made, and takes
+    /// no ground ([`UnitDef::takes_no_ground`]). (A file that gives no acceleration at all is
+    /// moved as it always was, slowly.)
+    pub cannot_get_going: bool,
     pub build_cost_energy: f64,
     pub build_cost_metal: f64,
     /// Build time in worker-time units; a builder with `worker_time` W finishes in
@@ -161,6 +175,7 @@ impl UnitDef {
         let weapon = |k: &str| s.get(k).map(|w| w.trim().to_ascii_uppercase()).filter(|w| !w.is_empty());
         let bmcode = s.get_i32_or("BMcode", 0);
         let can_fly = b("CanFly", false);
+        let cannot_get_going = !can_fly && f("MaxVelocity", 0.0) > 0.0 && s.get("Acceleration").is_some() && f("Acceleration", 0.0) <= 0.0;
         Some(UnitDef {
             display_name: st("Name"),
             description: st("Description"),
@@ -168,6 +183,8 @@ impl UnitDef {
             object: s.get("Objectname").map(|o| o.trim().to_string()).filter(|o| !o.is_empty()).unwrap_or_else(|| name.to_ascii_lowercase()),
             footprint_x: crate::footprint_side(s, "FootprintX"),
             footprint_z: crate::footprint_side(s, "FootprintZ"),
+            takes_no_ground: s.get_i64_or("FootprintX", 1) <= 0 || s.get_i64_or("FootprintZ", 1) <= 0 || cannot_get_going,
+            cannot_get_going,
             build_cost_energy: f("BuildCostEnergy", 0.0),
             build_cost_metal: f("BuildCostMetal", 0.0),
             build_time: f("BuildTime", 1.0).max(1.0),
@@ -197,7 +214,8 @@ impl UnitDef {
             cloak_cost: f("CloakCost", 0.0),
             cloak_cost_moving: f("CloakCostMoving", 0.0),
             min_cloak_distance: f("MinCloakDistance", 0.0),
-            init_cloaked: b("InitCloaked", false),
+            // (TA's units spell it `init_cloaked`: Core Contingency's mines.)
+            init_cloaked: b("init_cloaked", b("InitCloaked", false)),
             can_move: b("CanMove", bmcode != 0),
             can_fly,
             can_hover: b("CanHover", false),
@@ -309,5 +327,32 @@ mod tests {
         let x = read("[UNITINFO]{UnitName=X; MaxDamage=0; BuildTime=.5; MaxVelocity=2.5 fast; Builder=yes; WorkerTime=-;}").unwrap();
         assert_eq!((x.max_damage, x.build_time, x.max_velocity, x.worker_time), (1.0, 1.0, 2.5, 0.0), "at least a point of damage and a tick of building");
         assert!(!x.builder, "yes is no number: 0, as TA read it");
+    }
+
+    /// The mods' upgrade modules: a footprint of none, or a speed with an acceleration of none (a
+    /// mobile unit to TA, that never gets going), takes no ground; a speed with no acceleration
+    /// given moves as before.
+    #[test]
+    fn a_module_takes_no_ground() {
+        let module = read("[UNITINFO]{UnitName=ARMGEOUP; FootprintX=0; FootprintZ=0; BMcode=1; MaxVelocity=1; Acceleration=0;}").unwrap();
+        assert!(module.takes_no_ground && module.cannot_get_going);
+        let underwater = read("[UNITINFO]{UnitName=ARMUMOHOUP; FootprintX=1; FootprintZ=1; MaxVelocity=1; Acceleration=0;}").unwrap();
+        assert!(underwater.takes_no_ground && underwater.cannot_get_going, "a 1x1 one that never gets going");
+        let upgrade = read("[UNITINFO]{UnitName=ALL_L2; FootprintX=0; FootprintZ=0; canmove=0; MaxVelocity=1; Acceleration=0;}").unwrap();
+        assert!(upgrade.takes_no_ground);
+        let tank = read("[UNITINFO]{UnitName=TANK; FootprintX=2; FootprintZ=2; MaxVelocity=1; Acceleration=0.1;}").unwrap();
+        assert!(!tank.takes_no_ground && !tank.cannot_get_going);
+        let unsaid = read("[UNITINFO]{UnitName=TANK; FootprintX=2; FootprintZ=2; MaxVelocity=1;}").unwrap();
+        assert!(!unsaid.takes_no_ground && !unsaid.cannot_get_going, "no acceleration given: moved as it always was");
+        let plane = read("[UNITINFO]{UnitName=PLANE; CanFly=1; MaxVelocity=8; Acceleration=0;}").unwrap();
+        assert!(!plane.cannot_get_going);
+    }
+
+    /// TA's units spell the initial cloak `init_cloaked` (Core Contingency's mines).
+    #[test]
+    fn mines_start_cloaked_as_their_files_say() {
+        assert!(read("[UNITINFO]{UnitName=CORMINE1; CloakCost=5; init_cloaked=1;}").unwrap().init_cloaked);
+        assert!(read("[UNITINFO]{UnitName=X; InitCloaked=1;}").unwrap().init_cloaked);
+        assert!(!read("[UNITINFO]{UnitName=X; CloakCost=5;}").unwrap().init_cloaked);
     }
 }

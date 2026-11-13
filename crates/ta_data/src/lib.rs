@@ -256,7 +256,10 @@ impl GameData {
             }
         };
         for u in &self.units {
-            if !u.builder {
+            // Any unit with build power has the menu its pages lay out, whatever its Builder flag:
+            // the mods' buildings make their own upgrade modules so (Total Mayhem's geothermal
+            // plants and moho mines, TA: Escalation's Aegis: `Builder=0` with a `WorkerTime`).
+            if !u.builder && u.worker_time <= 0.0 {
                 continue;
             }
             for page in 1..=16u32 {

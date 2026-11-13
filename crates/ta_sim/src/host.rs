@@ -43,6 +43,10 @@ pub mod value {
     pub const UNIT_BUILD_PERCENT_LEFT: i32 = 73;
     pub const UNIT_ALLIED: i32 = 74;
     pub const UNIT_IS_ON_THIS_COMP: i32 = 75;
+    /// Whether the unit is cloaked, from a later patch: Total Mayhem's mines cloak themselves
+    /// with it while they wait, and uncloak to go off. (Free: TA's cloak costs the energy the
+    /// unit's `CloakCost` says, which a mine's file does not.)
+    pub const UNIT_CLOAKED: i32 = 111;
 }
 
 /// How much of a unit is left to build, as TA's scripts are told it (`BUILD_PERCENT_LEFT`): 0
@@ -224,6 +228,7 @@ impl CobHost for UnitHost<'_> {
             BUGGER_OFF => 0,
             ARMORED => u.armored as i32,
             VETERAN_LEVEL => u.kills.saturating_mul(100).min(i32::MAX as u64) as i32,
+            UNIT_CLOAKED => u.cloak_on as i32,
             // Script ids are the units' places, from 1.
             MIN_ID => 1,
             MAX_ID => self.max_id,
@@ -275,6 +280,7 @@ impl CobHost for UnitHost<'_> {
                 }
             }
             ARMORED => u.armored = v != 0,
+            UNIT_CLOAKED => u.cloak_on = v != 0,
             _ => {}
         }
     }

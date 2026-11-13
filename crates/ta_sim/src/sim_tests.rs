@@ -2307,3 +2307,244 @@ fn scripts_ask_about_units_by_id_as_ta_31_answered() {
     assert_eq!(&s[10..12], [1, 0], "a unit there is this computer's; none at all is not");
     assert_eq!(s[12], 0);
 }
+
+/// A script as a mod's upgradeable building has it. Readied to build: Total Mayhem's geothermal
+/// plant readies itself when switched on, and switches itself off a moment later (`Activate`);
+/// TA: Escalation's Sentinel, which has no Activate, readies itself as it is made (`Create`). It is
+/// not ready while it builds (`StartBuilding`), to build with no nano spray; when done it takes on
+/// the unit in the next place, the module it made, and armours itself (`StopBuilding`).
+fn upgradeable_building_script(readies_when_made: bool) -> crate::cob::CobProgram {
+    use crate::host::value::*;
+    use ta_formats::cob::{CobFunction, CobScript, op};
+    let mut script = CobScript { pieces: vec!["pad".into()], ..Default::default() };
+    let set = |code: &mut Vec<u32>, value: i32, to: u32| code.extend([op::PUSH_CONSTANT, value as u32, op::PUSH_CONSTANT, to, op::SET_VALUE]);
+    if readies_when_made {
+        script.functions.push(CobFunction { name: "Create".into(), offset: script.code.len() as u32 });
+        set(&mut script.code, IN_BUILD_STANCE, 1);
+        script.code.extend([op::PUSH_CONSTANT, 0, op::RETURN]);
+    } else {
+        script.functions.push(CobFunction { name: "Activate".into(), offset: script.code.len() as u32 });
+        set(&mut script.code, IN_BUILD_STANCE, 1);
+        script.code.extend([op::PUSH_CONSTANT, 70, op::SLEEP]);
+        set(&mut script.code, ACTIVATION, 0);
+        script.code.extend([op::PUSH_CONSTANT, 0, op::RETURN]);
+    }
+    script.functions.push(CobFunction { name: "StartBuilding".into(), offset: script.code.len() as u32 });
+    set(&mut script.code, IN_BUILD_STANCE, 0);
+    script.code.extend([op::PUSH_CONSTANT, 0, op::RETURN]);
+    // attach-unit (get MY_ID + 1) to pad; set ARMORED to 1
+    script.functions.push(CobFunction { name: "StopBuilding".into(), offset: script.code.len() as u32 });
+    script.code.extend([op::PUSH_CONSTANT, MY_ID as u32, op::GET_UNIT_VALUE, op::PUSH_CONSTANT, 1, op::ADD, op::PUSH_CONSTANT, 0, op::PUSH_CONSTANT, 0, op::ATTACH_UNIT]);
+    set(&mut script.code, ARMORED, 1);
+    script.code.extend([op::PUSH_CONSTANT, 0, op::RETURN]);
+    crate::cob::CobProgram::new(script, &["pad".into()])
+}
+
+/// The mods' upgradeable buildings (Total Mayhem's geothermal plants and moho mines, TA:
+/// Escalation's Aegis) have build power but no Builder flag, and a menu page offering their
+/// upgrade module (no footprint, energy of its own): they make it, at their full rate though their
+/// scripts switch them off and leave the build stance as they build, then take it on. The module
+/// takes no ground, and on its building it makes its energy still (TA: Escalation's fusion
+/// reactor upgrade: +250).
+#[test]
+fn a_building_makes_its_own_upgrade_module_and_takes_it_on() {
+    let gui = concat!(
+        "[GADGET0]{[COMMON]{id=0;name=HEADER;xpos=0;ypos=128;width=128;height=640;}}\n",
+        "[GADGET1]{[COMMON]{id=1;name=MODULE;xpos=0;ypos=0;width=64;height=64;attribs=32;commonattribs=4;}}",
+    );
+    let data = data_of(&[
+        unit("PLANT", "Builder=0; WorkerTime=300; FootprintX=4; FootprintZ=4; BuildTime=1000; BuildCostMetal=100;"),
+        unit("MODULE", "FootprintX=0; FootprintZ=0; BuildTime=300; BuildCostMetal=10; BuildCostEnergy=10; EnergyMake=50;"),
+        ("guis/plant1.gui".to_string(), gui.to_string()),
+    ]);
+    let mut sim = sim_of(data, 1);
+    let (plant_type, module_type) = (sim.types.id("PLANT").unwrap(), sim.types.id("MODULE").unwrap());
+    let t = sim.types.get(plant_type);
+    assert!(t.is_builder && t.is_factory && t.build_options == [module_type], "it builds what its page offers");
+    assert!(!sim.types.makes_units(t), "no factory to the player: it makes no unit that moves");
+    Arc::get_mut(&mut sim.types).unwrap().types[plant_type].script = Some(Arc::new(upgradeable_building_script(false)));
+    let plant = sim.spawn_unit(plant_type, 0, FxVec3::from_ints(400, 60, 400), 0, true).unwrap();
+    let occupant = |sim: &Sim| sim.world.occupant(400 / 16, 400 / 16);
+    let before = occupant(&sim);
+    sim.step(&[Command::Produce { player: 0, factory: plant, type_id: module_type, count: 1 }]);
+    let (mut module, mut ticks) = (None, 0);
+    for tick in 0..600 {
+        sim.step(&[]);
+        module = sim.units().find(|u| u.type_id == module_type).map(|u| u.id);
+        if module.is_some_and(|m| sim.unit(m).unwrap().carried_by.is_some()) {
+            ticks = tick;
+            break;
+        }
+    }
+    let module = module.expect("the module is made");
+    let m = sim.unit(module).unwrap();
+    assert!(m.is_complete(), "finished, though the plant switched itself off and left its stance");
+    // (A second of work at its rate, `BuildTime` 300 by `WorkerTime` 300, and a few ticks to start.)
+    assert!(ticks <= 40, "built at its full rate: {ticks} ticks");
+    assert!(!sim.unit(plant).unwrap().activated, "left switched off, as its script switched it");
+    assert_eq!(m.carried_by, Some(plant), "the plant took it on");
+    assert_eq!(occupant(&sim), before, "it takes no ground");
+    for _ in 0..5 {
+        sim.step(&[]);
+    }
+    assert!(sim.players[0].economy.energy_income >= Fx::from_int(49), "its energy counts on its building: {:?}", sim.players[0].economy.energy_income);
+}
+
+/// A factory makes a unit that cannot move where it makes its units (TA: Escalation's labs, their
+/// Level 2 upgrade): it stays there, and the next unit is made and goes out.
+#[test]
+fn a_factory_makes_an_upgrade_that_cannot_move_and_goes_on() {
+    use crate::host::value::*;
+    use ta_formats::cob::{CobFunction, CobScript, op};
+    let data = data_of(&[
+        unit("FACTORY", "Builder=1; WorkerTime=300; FootprintX=4; FootprintZ=4; BuildTime=1000; BuildCostMetal=100;"),
+        unit("UPGRADE", "FootprintX=0; FootprintZ=0; BuildTime=300; BuildCostMetal=10;"),
+        unit("TANK", "CanMove=1; MaxVelocity=1; BuildTime=300; BuildCostMetal=10;"),
+    ]);
+    let mut sim = sim_of(with_menu(data, "FACTORY", &["UPGRADE", "TANK"]), 1);
+    let (factory_type, upgrade_type, tank_type) = (sim.types.id("FACTORY").unwrap(), sim.types.id("UPGRADE").unwrap(), sim.types.id("TANK").unwrap());
+    assert!(sim.types.makes_units(sim.types.get(factory_type)), "a factory, its upgrade beside its tanks");
+    let mut script = CobScript::default();
+    script.functions.push(CobFunction { name: "Activate".into(), offset: 0 });
+    script.code.extend([op::PUSH_CONSTANT, IN_BUILD_STANCE as u32, op::PUSH_CONSTANT, 1, op::SET_VALUE, op::PUSH_CONSTANT, 0, op::RETURN]);
+    Arc::get_mut(&mut sim.types).unwrap().types[factory_type].script = Some(Arc::new(crate::cob::CobProgram::new(script, &[])));
+    let factory = sim.spawn_unit(factory_type, 0, FxVec3::from_ints(400, 60, 400), 0, true).unwrap();
+    sim.step(&[
+        Command::Produce { player: 0, factory, type_id: upgrade_type, count: 1 },
+        Command::Produce { player: 0, factory, type_id: tank_type, count: 1 },
+    ]);
+    let mut tank_done = false;
+    for _ in 0..900 {
+        sim.step(&[]);
+        tank_done = sim.units().any(|u| u.type_id == tank_type && u.is_complete());
+        if tank_done {
+            break;
+        }
+    }
+    let upgrade = sim.units().find(|u| u.type_id == upgrade_type).expect("the upgrade is made");
+    assert!(upgrade.is_complete() && upgrade.orders.is_empty(), "made, and sent nowhere");
+    assert!(upgrade.pos.within_xz(FxVec3::from_ints(400, 60, 400), Fx::from_int(40)), "where it was made");
+    assert!(tank_done, "the next unit is made, the upgrade holding nothing up");
+    for _ in 0..3 {
+        sim.step(&[]);
+    }
+    assert!(sim.unit(factory).unwrap().factory_queue.is_empty(), "and the factory is done");
+}
+
+/// A building whose script readies it as it is made, and leaves the stance as it starts (TA:
+/// Escalation's Sentinel, no Activate), makes the module its menu offers: one that cannot get
+/// going (a speed, an acceleration of none: to TA a mobile unit), with a cell of footprint
+/// (Total Mayhem's underwater moho mine's). It is made just on the pad, takes no ground, stays
+/// there for the building's script to take on, and goes with the building, though it is armoured
+/// untouchable (TA: Escalation's heavy fusion reactor's: `DamageModifier=0`).
+#[test]
+fn a_tower_makes_a_module_that_cannot_get_going_and_it_goes_with_the_tower() {
+    let data = data_of(&[
+        unit("TOWER", "Builder=1; WorkerTime=300; FootprintX=4; FootprintZ=4; BuildTime=1000; BuildCostMetal=100;"),
+        unit("MODULE", "BMcode=1; MaxVelocity=1; Acceleration=0; FootprintX=1; FootprintZ=1; BuildTime=300; BuildCostMetal=10; DamageModifier=0;"),
+    ]);
+    let mut sim = sim_of(with_menu(data, "TOWER", &["MODULE"]), 1);
+    let (tower_type, module_type) = (sim.types.id("TOWER").unwrap(), sim.types.id("MODULE").unwrap());
+    let mt = sim.types.get(module_type);
+    assert!(mt.locomotion == Locomotion::Static && mt.def.takes_no_ground, "it stands, taking no ground");
+    Arc::get_mut(&mut sim.types).unwrap().types[tower_type].script = Some(Arc::new(upgradeable_building_script(true)));
+    let tower = sim.spawn_unit(tower_type, 0, FxVec3::from_ints(400, 60, 400), 0, true).unwrap();
+    let pad = sim.unit(tower).unwrap().pos;
+    let ground = |sim: &Sim| (20..30).flat_map(|z| (20..30).map(move |x| (x, z))).map(|(x, z)| sim.world.occupant(x, z)).collect::<Vec<_>>();
+    let cells = ground(&sim);
+    sim.step(&[Command::Produce { player: 0, factory: tower, type_id: module_type, count: 1 }]);
+    let mut module = None;
+    for _ in 0..600 {
+        sim.step(&[]);
+        if module.is_none() && let Some(m) = sim.units().find(|u| u.type_id == module_type) {
+            assert!(m.pos.within_xz(pad, Fx::ONE), "made just on the pad, not on a cell of its own: {:?} by {pad:?}", m.pos);
+            module = Some(m.id);
+        }
+        if module.is_some_and(|m| sim.unit(m).unwrap().carried_by.is_some()) {
+            break;
+        }
+    }
+    let module = module.expect("the module is made");
+    let m = sim.unit(module).unwrap();
+    assert!(m.is_complete() && m.carried_by == Some(tower), "made out of the tower's stance, and taken on");
+    assert!(sim.unit(tower).unwrap().armored, "the tower upgraded");
+    assert_eq!(ground(&sim), cells, "it takes no ground");
+    sim.unit_mut(module).unwrap().armored = true;
+    let health = sim.types.get(tower_type).max_health;
+    sim.damage_unit(tower, health * 2, tower, FxVec3::ZERO);
+    for _ in 0..5 {
+        sim.step(&[]);
+    }
+    assert!(sim.unit(module).is_none_or(|m| m.dead), "it goes with the tower, untouchable as it is");
+}
+
+/// A mod's building that makes its own upgrade, switched on when built (`ActivateWhenBuilt=1`), is
+/// switched on as it is finished, and stays on with nothing to make: on is its work (Total
+/// Mayhem's moho mines extract, TA: Escalation's repair pads repair). A factory as TA's are
+/// (`TEDClass=PLANT`) opens only for work.
+#[test]
+fn a_building_that_builds_is_switched_on_as_built_and_a_plant_opens_for_work() {
+    let data = data_of(&[
+        unit("MINE", "Builder=0; WorkerTime=200; FootprintX=2; FootprintZ=2; ActivateWhenBuilt=1; OnOffable=1; TEDClass=METAL;"),
+        unit("PLANT", "Builder=1; WorkerTime=200; FootprintX=4; FootprintZ=4; ActivateWhenBuilt=1; TEDClass=PLANT;"),
+        unit("MODULE", "FootprintX=0; FootprintZ=0; BuildTime=300;"),
+    ]);
+    let data = with_menu(with_menu(data, "MINE", &["MODULE"]), "PLANT", &["MODULE"]);
+    let mut sim = sim_of(data, 1);
+    let (mine, plant) = (sim.types.id("MINE").unwrap(), sim.types.id("PLANT").unwrap());
+    assert!(sim.types.get(mine).is_factory && !sim.types.get(mine).is_plant() && sim.types.get(plant).is_plant());
+    let mine = sim.spawn_unit(mine, 0, FxVec3::from_ints(300, 60, 300), 0, true).unwrap();
+    let plant = sim.spawn_unit(plant, 0, FxVec3::from_ints(600, 60, 600), 0, true).unwrap();
+    for _ in 0..30 {
+        sim.step(&[]);
+    }
+    assert!(sim.unit(mine).unwrap().activated, "the mine is on, as its file says, with nothing to make");
+    assert!(!sim.unit(plant).unwrap().activated, "the factory waits for work");
+}
+
+/// A unit without build power offers nothing to build: Total Mayhem lists a missile pseudo-unit
+/// for its silos (`MAKENUKEARM`, for its computer players); TA's silos make their missiles on
+/// their own.
+#[test]
+fn a_unit_without_build_power_offers_nothing_to_build() {
+    let data = with_menu(data_of(&[unit("SILO", "Builder=1;"), unit("MISSILE", "")]), "SILO", &["MISSILE"]);
+    let sim = sim_of(data, 1);
+    let silo = sim.types.get(sim.types.id("SILO").unwrap());
+    assert!(!silo.is_builder && silo.build_options.is_empty());
+}
+
+/// A script cloaks its own unit (`UNIT_CLOAKED`, a later patch's: Total Mayhem's mines while they
+/// wait), at no cost when its file gives none, and uncloaks it.
+#[test]
+fn a_script_cloaks_its_own_unit() {
+    use crate::host::value::*;
+    use ta_formats::cob::{CobFunction, CobScript, op};
+    let data = data_of(&[unit("MINE", "")]);
+    let mut sim = sim_of(data, 1);
+    let mut script = CobScript { static_var_count: 1, ..Default::default() };
+    for (name, on) in [("Hide", 1), ("Show", 0)] {
+        script.functions.push(CobFunction { name: name.into(), offset: script.code.len() as u32 });
+        script.code.extend([op::PUSH_CONSTANT, UNIT_CLOAKED as u32, op::PUSH_CONSTANT, on, op::SET_VALUE, op::PUSH_CONSTANT, 0, op::RETURN]);
+    }
+    script.functions.push(CobFunction { name: "Ask".into(), offset: script.code.len() as u32 });
+    script.code.extend([op::PUSH_CONSTANT, UNIT_CLOAKED as u32, op::GET_UNIT_VALUE, op::POP_STATIC, 0, op::PUSH_CONSTANT, 0, op::RETURN]);
+    Arc::get_mut(&mut sim.types).unwrap().types[0].script = Some(Arc::new(crate::cob::CobProgram::new(script, &[])));
+    let mine = sim.spawn_unit(0, 0, FxVec3::from_ints(400, 60, 400), 0, true).unwrap();
+    let call = |sim: &mut Sim, name: &str| {
+        sim.with_script(mine, |cob, host| {
+            cob.call(host, name, &[]).expect("runs");
+        })
+    };
+    call(&mut sim, "Hide");
+    for _ in 0..3 {
+        sim.step(&[]);
+    }
+    assert!(sim.unit(mine).unwrap().cloaked, "cloaked by its script");
+    call(&mut sim, "Ask");
+    assert_eq!(sim.unit(mine).unwrap().cob.as_ref().unwrap().statics[0], 1);
+    call(&mut sim, "Show");
+    for _ in 0..3 {
+        sim.step(&[]);
+    }
+    assert!(!sim.unit(mine).unwrap().cloaked, "and uncloaked");
+}

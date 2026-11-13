@@ -481,6 +481,48 @@ Escalation also replaces `fx.gaf`'s Explode2-Explode4 and Nuke1 with shield bubb
   change was made there alone; TA: Escalation asks them in 326 of its 550 scripts. Every
   computer plays the whole battle here, so every unit is each one's own: the change is made in
   every copy alike. Spring's engine took the same numbers up to 74; its 75 is `MAX_SPEED`.
+* The mods' upgrades (Total Mayhem 11.3, TA: Escalation 10.2), as their files and scripts have
+  them; none of TA's own units is built so:
+  * A building makes its own upgrade module, as a factory makes a unit: TM's geothermal plants
+    and moho mines and ESC's Aegis are `Builder=0` with a `WorkerTime` and a menu page offering
+    it, ESC's towers and reactors `Builder=1`. A unit with build power builds what its menu
+    offers whatever its Builder flag; one without builds nothing (TM lists a missile
+    pseudo-unit, `MAKENUKEARM`, on its silos' menus for its computer players).
+  * A module is given no footprint (`FootprintX=0`), or is `BMcode=1` with `MaxVelocity=1` and
+    `Acceleration=0` (TM's underwater moho mines' 1x1 `ARMUMOHOUP`, ESC's `ARMHLT_UPGRADE`): to
+    TA a mobile unit, off the map's grid, that never gets going. None of TA's 821 unit files
+    gives a speed without an acceleration; a file that gives no acceleration at all is moved as
+    it always was. It takes no ground and stands just where it was made, on the building's pad.
+  * Building it, the scripts leave the build stance (`StartBuilding` sets INBUILDSTANCE to 0:
+    no nano spray), and TM's geothermal plant switches itself off as well (its `Activate`
+    readies it, then sets ACTIVATION to 0 70 ms later); ESC's Sentinel has no `Activate` and is
+    readied in `Create`. TA built on: a factory needs its stance to start a unit, not to keep
+    building it.
+  * Done, `StopBuilding` goes through every id for a finished unit of the module's height
+    (`UNIT_HEIGHT`, the highest point of its model at rest, exactly: TM's `[29.2]` is
+    4,784,128, its `ARMGEOUP`'s; ESC's Sentinel's 1,269,760 its `ARMHLT_UPGRADE`'s) within a few
+    paces of one of its pieces (TM's 20 px, ESC's 5 px) and `attach-unit`s it to its pad. A unit
+    that carries none takes on its own player's finished, loose units so. On its building a
+    module makes and stores what its file says (ESC's fusion reactors' +250 energy, its heavy
+    fusion reactors' `EnergyUse=-1250`, switched on by the module's own `Create`), changes sides
+    with it and goes with it, whatever shields it (ESC's armour themselves `DamageModifier=0`);
+    the building's script shows its new pieces and sets ARMORED.
+  * ESC's levels: the advanced and experimental labs make `ALL_L2` and `ALL_L3` (`canmove=0`, no
+    footprint), which stand on the pad. Each unit born there afterwards looks once, in
+    `Create`, for a finished one of its team within 62.5 px (`ALL_L2` 222,167 high, or an
+    `ARMNOMAD`), and takes the level: 14 of its scripts look for `ALL_L2`, 16 for `ALL_L3`.
+  * ESC's shields: an Aegis (`ARMSHGEN`, 160 high, `[64]`) armours its side's units round it.
+    171 of the mod's scripts go through every id now and then for an allied one by its height,
+    and set their own ARMORED (their `DamageModifier`) while one stands near: an Annihilator, a
+    Light Laser Tower and a Sentinel beside one are armoured, the same far off are not, and the
+    tower drops it once the Aegis is gone (`mod_upgrades.rs`'s `mod_shield_report`).
+  * Two of ESC 10.2's Arm scripts look for the Core module's height: the Repair Pad's for
+    `CORASP_UPGRADE`'s 3,009,819 (its own module is 1,711,415), Big Bertha's for
+    `CORINT_UPGRADE`'s 3,781,490 (its own 1,820,443). Their modules are made and stand by,
+    never taken on, as they did in TA.
+  * TM's mines cloak themselves (`UNIT_CLOAKED` 111, from a later patch; free, their files
+    giving no `CloakCost`). TA's own mines (Core Contingency's) start cloaked from
+    `init_cloaked=1`, as TA spells it.
 * Aiming, as the shipped `Aim*` scripts expect it (`crates/ta_sim/src/combat.rs`;
   `tests/play_review.rs` plays the units named here):
   * A script ends an aim it no longer needs itself: every `Aim*` starts `signal SIG_AIM;
@@ -560,7 +602,14 @@ Escalation also replaces `fx.gaf`'s Explode2-Explode4 and Nuke1 with shield bubb
 * A builder finishes a unit in `BuildTime / WorkerTime` seconds: up to the Vulcan's and
   Buzzsaw's 88,000 to 190,000 ticks from a single advanced constructor.
 * Factories set `CanMove=1` (they accept rally orders) — immobility is `MaxVelocity=0`.
-* Solar collectors have *negative* `EnergyUse` (production while open).
+* Solar collectors have *negative* `EnergyUse` (production while open). `EnergyUse` counts only
+  while the unit is switched on (`ActivateWhenBuilt`, the player, or its script's ACTIVATION):
+  TM's fusion reactor, `EnergyMake=1050` and `EnergyUse=-1050` and nothing to switch it on, makes
+  1,050 ("Produces Energy (1K)"). A unit with no `EnergyUse` and no switch extracts and makes
+  metal as it stands. A factory that is `TEDClass=PLANT` (every one of TA's, none of them
+  `ActivateWhenBuilt`) opens for work and closes up idle; a mod's other building that builds is
+  switched on when built as its file says, and keeps its switch, its work being on (TM's moho
+  mines extract, ESC's repair pads repair).
 * Radar towers have `EnergyMake=5` and `EnergyUse=5` (net zero).
 * Plain ground has the schema's `SurfaceMetal`: 1 to 5 on most maps, 20 to 40 on lava
   worlds, 250 to 255 on metal worlds (Metal Heck, Metal Isles, Core Prime). Deposit cells

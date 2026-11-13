@@ -19,6 +19,15 @@ pub struct UnitFlows {
     pub energy_use: Fx,
 }
 
+impl std::ops::AddAssign for UnitFlows {
+    fn add_assign(&mut self, other: UnitFlows) {
+        self.metal_make += other.metal_make;
+        self.metal_use += other.metal_use;
+        self.energy_make += other.energy_make;
+        self.energy_use += other.energy_use;
+    }
+}
+
 impl UnitFlows {
     /// The smallest rate worth showing, a second's twentieth of a unit.
     const SHOWN: Fx = Fx(65536 / 20);
@@ -42,19 +51,38 @@ impl Sim {
     /// What `u` makes and uses a second now: a finished unit's production and upkeep (while it is
     /// switched on and the upkeep was paid: an extractor or metal maker short of energy makes and
     /// uses nothing), what its cloak costs, and what its build job or missile stockpile draws at full pace.
+    /// A building's are its own and those of the modules it has taken on (a mod's upgrade: TA:
+    /// Escalation's fusion reactor's +250 energy), which the economy counts as it would standing
+    /// (`Sim::economy_end`); a module's own are none, counted in its building's, and a transport's
+    /// passengers make and use nothing.
     pub fn unit_flows(&self, u: &Unit) -> UnitFlows {
+        if u.carried_by.is_some() {
+            return UnitFlows::default();
+        }
+        let mut f = self.own_flows(u);
+        if self.unit_type(u).transport_capacity == 0 {
+            for module in u.cargo.iter().filter_map(|&m| self.unit(m)).filter(|m| m.carried_by == Some(u.id)) {
+                f += self.own_flows(module);
+            }
+        }
+        f
+    }
+
+    /// What `u` itself makes and uses a second, as [`Sim::unit_flows`] has it: a module on its
+    /// building as though it stood (it has no cloak to pay for, nor builds).
+    fn own_flows(&self, u: &Unit) -> UnitFlows {
         let t = self.unit_type(u);
         let mut f = UnitFlows::default();
-        if u.dead || u.carried_by.is_some() || self.tick < u.paralyzed_until {
+        if u.dead || self.tick < u.paralyzed_until {
             return f;
         }
         if u.is_complete() {
             // (As the economy takes it: upkeep is paid while switched on, which TA does when a
             // unit is built or the player does; what is neither idles for free.)
-            let active = u.activated || !t.def.on_offable && t.energy_use <= Fx::ZERO;
+            let active = u.activated || !t.def.on_offable && t.energy_use.is_zero();
             f = self.flows_of(u.type_id, active, u.upkeep_paid, u.occupied_origin);
         }
-        if u.cloak_on && t.def.cloak_cost > 0.0 {
+        if u.cloak_on && t.def.cloak_cost > 0.0 && u.carried_by.is_none() {
             let cost = if u.moving && t.def.cloak_cost_moving > 0.0 { t.def.cloak_cost_moving } else { t.def.cloak_cost };
             f.energy_use += Fx::from_f64(cost);
         }
@@ -234,6 +262,38 @@ mod tests {
         assert_eq!(ghost.metal_make, sim.extraction_at(t, at), "the placement ghost says what it would make there");
         near(ghost.energy_use, 3);
         near(sim.type_flows(sim.types.id("SOLAR").unwrap(), at).energy_make, 20);
+    }
+
+    /// A building's figures take in the module it has taken on (a mod's upgrade), which the economy
+    /// counts as standing; a transport's passenger makes nothing, in the figures or the economy;
+    /// and every unit's figures still add up to the economy's.
+    #[test]
+    fn a_building_shows_what_its_module_makes() {
+        let mut sim = sim(&[
+            unit("REACTOR", "EnergyMake=1000;"),
+            unit("MODULE", "EnergyMake=250; EnergyStorage=200; FootprintX=0; FootprintZ=0;"),
+            unit("TRANSPORT", "TransportCapacity=1; CanMove=1; MaxVelocity=2; Acceleration=0.1;"),
+            unit("PASSENGER", "EnergyMake=25; CanMove=1; MaxVelocity=1; Acceleration=0.1;"),
+        ]);
+        let id = |sim: &Sim, name: &str| sim.types.id(name).unwrap();
+        let reactor = sim.spawn_unit(id(&sim, "REACTOR"), 0, FxVec3::from_ints(300, 60, 300), 0, true).unwrap();
+        let module = sim.spawn_unit(id(&sim, "MODULE"), 0, FxVec3::from_ints(300, 60, 300), 0, true).unwrap();
+        let transport = sim.spawn_unit(id(&sim, "TRANSPORT"), 0, FxVec3::from_ints(600, 60, 300), 0, true).unwrap();
+        let passenger = sim.spawn_unit(id(&sim, "PASSENGER"), 0, FxVec3::from_ints(600, 60, 300), 0, true).unwrap();
+        sim.attach(reactor, module, None);
+        sim.attach(transport, passenger, None);
+        sim.step(&[]);
+        sim.step(&[]);
+        let figures = |id| sim.unit_flows(sim.unit(id).unwrap());
+        let near = |a: Fx, b: i64| assert!((a - Fx::from_int(b)).0.abs() < 40, "{a:?} against {b}");
+        near(figures(reactor).energy_make, 1250);
+        assert!(!figures(module).any(), "the module's are its building's");
+        assert!(!figures(transport).any() && !figures(passenger).any(), "a passenger makes nothing");
+        let mut energy_make = Fx::ZERO;
+        for id in [reactor, module, transport, passenger] {
+            energy_make += figures(id).energy_make;
+        }
+        assert_eq!(energy_make, sim.players[0].economy.energy_income, "the figures add up to the economy's");
     }
 
     /// A builder's draw is the cost of what it builds, a second's share of it at its pace.

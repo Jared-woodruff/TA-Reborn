@@ -130,8 +130,18 @@ pub const RECORD_VERSION: u32 = 46;
 /// pads switched off are not used, pads mend only the aircraft on their decks, and a plane sent
 /// onto a pad looks for it as far as it flies on before stopping; 87, scripts asking TA 3.1's
 /// questions about units by id (`MIN_ID`, `MAX_ID`, `MY_ID`, `UNIT_TEAM`,
-/// `UNIT_BUILD_PERCENT_LEFT`, `UNIT_ALLIED`, `UNIT_IS_ON_THIS_COMP`) are answered, not told 0.
-pub const SIMULATION_VERSION: u32 = 87;
+/// `UNIT_BUILD_PERCENT_LEFT`, `UNIT_ALLIED`, `UNIT_IS_ON_THIS_COMP`) are answered, not told 0;
+/// 88, mods' buildings make their own upgrade modules: a unit with build power builds what its
+/// menu offers whatever its Builder flag, and one without builds nothing; a factory builds on
+/// what it has started out of its stance and switched off; a unit with a speed and an
+/// acceleration of none stands where it was made, and it or one given no footprint takes no
+/// ground; one that cannot move is not sent out of its factory's yard and holds nothing up; a
+/// unit that carries none takes on its own finished units its script attaches, which work on it
+/// and go with it whatever shields them; only PLANT factories close up when idle, and a mod's other
+/// building that builds is switched on when built as its file says; EnergyUse counts
+/// only while switched on (Total Mayhem's fusion reactor makes 1,050, not 2,100); scripts cloak
+/// their units (`UNIT_CLOAKED`); Core Contingency's mines start cloaked (`init_cloaked`).
+pub const SIMULATION_VERSION: u32 = 88;
 /// Records shorter than one year of simulated time are supported. Shared with the
 /// launcher's metadata reader so impossible durations cannot start endless save catch-up.
 pub const MAX_RECORD_TICKS: u64 = 30 * 3600 * 24 * 365;

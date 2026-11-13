@@ -429,7 +429,10 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   factory's walls until then, `Unit::factory`; the factory keeps it in its `yard`), whatever
   its route, or has stopped inside it (given another order there: to guard the factory, say),
   and the pad is clear: their own side's units standing still on it are sent off it
-  (`Sim::step_aside`) to carry on from there, others are waited for. Taking the unit in
+  (`Sim::step_aside`) to carry on from there, others are waited for. A factory needs its build
+  stance to start a unit, not to keep building it (the mods' buildings leave it to build their
+  modules with no spray), and a unit that cannot move is not sent out and holds nothing up
+  (ESC's `ALL_L2` stays on its lab's pad). Taking the unit in
   production off the queue takes its frame apart, its metal back. The unit in production rides
   the factory's pad (`QueryBuildInfo`'s piece, `Sim::follow_build_pad`), but a ship is built at
   the surface, where it floats once done (a shipyard's pad is under the water, the Core's yard
@@ -474,6 +477,13 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   without letting go (the spot is out of the boom's reach) has the passenger set down on
   the spot directly (`ThreadTag::Transport` tells when the script is done). Passengers
   leave collisions, targeting and orders, and die with their transport.
+* **Modules** (the mods' upgrades, docs/FORMATS.md): a unit that carries none takes on its own
+  player's finished, loose units its script attaches (a building the module it made on its pad).
+  A module takes no ground and stands where it was made (`UnitDef::takes_no_ground`,
+  `UnitDef::cannot_get_going`); on its building it makes and stores what its file says
+  (`economy_end` counts only a transport's cargo out; `Sim::unit_flows` shows it in the
+  building's figures, none of its own), and it goes with it, captured or killed, whatever shields
+  it.
 * **Cloak** (`CloakCost`): energy per tick while cloaked (more while moving); cloaked units
   are hidden from enemies unless one is within `MinCloakDistance`; firing reveals them.
 * **Veterancy**: kills earn experience (victim value / killer value); veterans reload up to
