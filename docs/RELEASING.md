@@ -42,7 +42,9 @@ Vulkan drivers are required. macOS uses Metal. The launcher uses OpenGL.
    their checksums and source revisions, and attaches the complete package set to the draft.
    Then it publishes the draft as the latest release, once it holds exactly the set, each file
    at its full size, and only then deletes the release that was the latest before it, keeping
-   its tag. A failure in any target, or in the upload, leaves the draft unpublished and the
+   its tag. Older version tags are deleted then: only the new release's tag and the previous
+   version's stay (a tag that cannot be deleted is reported, not fatal; tags naming no version
+   are left alone). A failure in any target, or in the upload, leaves the draft unpublished and the
    previous release as it was, as does a latest release that is not older than this one (an
    older version's build finishing after a newer one's never replaces it; publications run
    one at a time). A tag/version mismatch fails early. Publishing a release by hand no longer

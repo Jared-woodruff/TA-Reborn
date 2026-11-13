@@ -67,7 +67,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: python tools/release/release.py publish --dir dist/publish
-      - name: Publish the complete draft, then delete the previous release (its tag stays)
+      - name: Publish the complete draft, then delete the previous release (its tag stays) and older tags
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}

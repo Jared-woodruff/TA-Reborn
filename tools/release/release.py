@@ -251,6 +251,28 @@ def promote(folder, ver, repository, tag):
     return previous
 
 
+def prune_tags(repository, tag):
+    """Once `tag` is published, deletes the version tags older than it but the previous
+    version's: the new release's tag and the previous release's stay (the newest older tag that
+    is no pre-release), older ones and older pre-releases go (the project keeps its tags that
+    tidy). Tags naming no version are left alone. A tag that cannot be deleted (a protected one)
+    is reported, not fatal: the release is out by then. Returns the tags deleted."""
+    mine = version_key(tag)
+    if mine is None:
+        return []
+    names = subprocess.check_output(['gh', 'api', f'repos/{repository}/tags', '--paginate', '--jq', '.[].name'], text=True).split()
+    older = sorted({name for name in names if (key := version_key(name)) is not None and key < mine}, key=version_key)
+    releases = [name for name in older if version_key(name)[3] == 1]
+    previous = releases[-1] if releases else None
+    deleted = []
+    for name in (name for name in older if name != previous):
+        if subprocess.run(['gh', 'api', '-X', 'DELETE', f'repos/{repository}/git/refs/tags/{name}']).returncode == 0:
+            deleted.append(name)
+        else:
+            print(f'warning: could not delete the tag {name}')
+    return deleted
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
@@ -285,7 +307,9 @@ def main():
         print(f'Building {name} into its draft')
     elif args.command == 'promote':
         retired = promote(args.dir, ver, os.environ['GITHUB_REPOSITORY'], os.environ['RELEASE_TAG'])
-        print(f"Published {os.environ['RELEASE_TAG']}; deleted the previous release: {', '.join(retired) or 'none'} (tags kept)")
+        pruned = prune_tags(os.environ['GITHUB_REPOSITORY'], os.environ['RELEASE_TAG'])
+        print(f"Published {os.environ['RELEASE_TAG']}; deleted the previous release: {', '.join(retired) or 'none'} "
+              f"(its tag kept); deleted older tags: {', '.join(pruned) or 'none'}")
 
 
 if __name__ == '__main__':
