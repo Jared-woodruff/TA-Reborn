@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 1.0.4 — 2026-11-13
+
+The launcher now works with a gamepad, the Steam Deck's controls included, and the first start on
+a Steam Deck sets the game up for it. TA: Escalation, Total Mayhem and the other mods made for
+TA's later engines now load however they were installed, show their whole build menus, and their
+upgrades work. Damaged aircraft repair at pads by themselves, buildings clear the plants under
+them, and the mod check judges mods as the game reads them, in the interface's language.
 
 ### Added
 - The mod check's findings, and what to do about each, are shown in the interface's language,
