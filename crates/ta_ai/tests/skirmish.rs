@@ -125,7 +125,8 @@ fn ai_vs_ai_plays_a_game() {
         })
         .collect();
     let seed: u64 = std::env::var("TA_TEST_SEED").ok().and_then(|v| v.parse().ok()).unwrap_or(7);
-    let mut sim = Sim::new(types.clone(), data, &map, &info, 0, &players, seed);
+    // (As the game plays it: the game's features and the map's own alone.)
+    let mut sim = Sim::new(types.clone(), data.for_map(&vfs, &map_name), &map, &info, 0, &players, seed);
     sim.unit_limit = 1500;
     // `TA_TEST_GIVE_WAY=1`: units give way (the skirmish rule; off by default here, so the
     // baselines stay comparable).

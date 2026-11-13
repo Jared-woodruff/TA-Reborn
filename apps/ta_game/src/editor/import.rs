@@ -268,6 +268,7 @@ mod tests {
         let source = ta_formats::tnt::TntMap {
             width: 4, height: 4, sea_level: 0, tiles: vec![Box::new([0; TILE_SIZE * TILE_SIZE])], tile_map: vec![0; 4],
             heights: vec![40; 16], features: vec![ta_formats::tnt::FEATURE_NONE; 16], feature_names: Vec::new(), minimap: Default::default(),
+            flags: Vec::new(),
         };
         let mut doc = MapDoc::new_blank(&new, &source, None);
         let before = doc.tnt.tiles.len();

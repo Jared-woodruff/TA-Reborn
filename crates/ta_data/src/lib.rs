@@ -74,10 +74,12 @@ pub struct SideDef {
     pub metal_color: u8,
 }
 
+#[derive(Clone)]
 pub struct GameData {
     pub palette: Palette,
     pub units: Vec<UnitDef>,
     pub weapons: Vec<WeaponDef>,
+    /// The game's own features, then the maps' own ([`GameData::for_map`]).
     pub features: Vec<FeatureDef>,
     pub move_classes: Vec<MoveClass>,
     pub sides: Vec<SideDef>,
@@ -85,6 +87,8 @@ pub struct GameData {
     weapon_index: FxHashMap<String, usize>,
     feature_index: FxHashMap<String, usize>,
     move_index: FxHashMap<String, usize>,
+    /// How many of `features` are the game's own (the rest are maps' own).
+    game_features: usize,
 }
 
 fn read_tdf(vfs: &Vfs, path: &str) -> Option<TdfDocument> {
@@ -184,6 +188,7 @@ impl GameData {
                 }
             }
         }
+        let game_features = features.len();
 
         let mut move_classes = Vec::new();
         let mut move_index = FxHashMap::default();
@@ -230,7 +235,16 @@ impl GameData {
             weapon_index,
             feature_index,
             move_index,
+            game_features,
         };
+        // Maps' own features (`maps/<map>.features`: a map converted from Supreme Commander names
+        // its trees and rocks there, TA's art under its own names and worth), every map's, for
+        // what shows maps (the editor): a battle plays with its own map's alone (`for_map`).
+        for p in vfs.list("maps", Some("features"), false) {
+            if let Some(doc) = read_tdf(vfs, &p) {
+                data.add_map_features(&doc);
+            }
+        }
         data.build_menus(vfs, side_doc.as_ref());
         log::info!(
             "game data: {} units, {} weapons, {} features, {} movement classes, {} sides",
@@ -241,6 +255,38 @@ impl GameData {
             data.sides.len()
         );
         data
+    }
+
+    /// The data a battle on map `map` plays with: the game's own features, then the map's own
+    /// (`maps/<map>.features`) and no other map's. A feature's number goes into the simulation
+    /// (its checksum, and a saved game played again), so it must not hang on which other maps a
+    /// player has: a battle's players match on the game's data and on this map's files alone.
+    pub fn for_map(self: &std::sync::Arc<Self>, vfs: &Vfs, map: &str) -> std::sync::Arc<GameData> {
+        let own = read_tdf(vfs, &format!("maps/{map}.features"));
+        if own.is_none() && self.features.len() == self.game_features {
+            return std::sync::Arc::clone(self);
+        }
+        let mut data = GameData::clone(self);
+        let game = data.game_features;
+        data.features.truncate(game);
+        data.feature_index.retain(|_, i| *i < game);
+        if let Some(doc) = own {
+            data.add_map_features(&doc);
+        }
+        std::sync::Arc::new(data)
+    }
+
+    /// A map's own features, added after the game's (never in place of one of them; one a map
+    /// before named too is kept as it was).
+    fn add_map_features(&mut self, doc: &TdfDocument) {
+        for s in &doc.sections {
+            let world = s.get("rebornworld").unwrap_or("all").trim().to_ascii_lowercase();
+            let f = FeatureDef::from_tdf(s, &world);
+            if let std::collections::hash_map::Entry::Vacant(slot) = self.feature_index.entry(f.name.to_ascii_lowercase()) {
+                slot.insert(self.features.len());
+                self.features.push(f);
+            }
+        }
     }
 
     /// A builder's menu, what TA offered its player, comes from two places, merged in menu
@@ -481,5 +527,77 @@ mod compatibility_tests {
         assert_ne!(without, original, "a missing file changes the digest");
         assert_ne!(unreadable, without, "nor as a file that was never there");
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// A map's own features (`maps/<map>.features`, a converted map's) are the game's features
+    /// too, of the world their file names, after the game's own: one named like one of the game's
+    /// leaves the game's as it was.
+    #[test]
+    fn a_maps_own_features_join_the_games_and_never_replace_them() {
+        let root = std::env::temp_dir().join(format!("ta_data_map_features_{}", std::process::id()));
+        let files = [
+            ("features/green/trees.tdf", "[Tree1]{description=Tree;category=trees;footprintx=1;footprintz=1;energy=250;blocking=1;}"),
+            ("maps/ridge (SC).features", "[SC1_Green_T1]{description=Tree;category=trees;footprintx=1;footprintz=1;energy=10;metal=1;blocking=0;rebornworld=green;} [Tree1]{energy=1;}"),
+            ("maps/ridge (SC).tnt", "terrain"),
+        ];
+        for (path, text) in files {
+            let p = root.join(path);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, text).unwrap();
+        }
+        let mut vfs = Vfs::new();
+        vfs.mount_mod_dir(&root, "test").unwrap();
+        let data = std::sync::Arc::new(GameData::load(&vfs));
+        let battle = data.for_map(&vfs, "ridge (SC)");
+        std::fs::remove_dir_all(&root).ok();
+        for data in [&data, &battle] {
+            let own = data.feature("SC1_Green_T1").expect("the map's own tree");
+            assert_eq!((own.blocking, own.energy, own.metal, own.world.as_str()), (false, 10.0, 1.0, "green"));
+            assert_eq!(data.feature("Tree1").unwrap().energy, 250.0, "the game's own tree is as it was");
+        }
+    }
+
+    /// A battle's features are numbered the same whichever other maps a player has: the game's,
+    /// then its map's own alone (players match on the game's data and that map's files only).
+    #[test]
+    fn a_battles_features_are_the_games_and_its_maps_alone() {
+        let root = std::env::temp_dir().join(format!("ta_data_battle_features_{}", std::process::id()));
+        let game = root.join("game");
+        let other = root.join("other");
+        let files = [
+            (&game, "features/green/trees.tdf", "[Tree1]{description=Tree;footprintx=1;footprintz=1;energy=250;}"),
+            (&game, "maps/beta (SC).features", "[SC1_Green_T2]{footprintx=1;footprintz=1;energy=20;} [SC1_Green_R1L]{footprintx=3;footprintz=3;metal=60;}"),
+            (&game, "maps/beta (SC).tnt", "terrain"),
+            (&game, "maps/plain.tnt", "terrain"),
+            // A map whose name comes first, with features of its own (one beta has too).
+            (&other, "maps/alpha (SC).features", "[SC1_Green_A1]{footprintx=2;footprintz=2;} [SC1_Green_R1L]{footprintx=3;footprintz=3;metal=60;}"),
+            (&other, "maps/alpha (SC).tnt", "terrain"),
+        ];
+        for (dir, path, text) in files {
+            let p = dir.join(path);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, text).unwrap();
+        }
+        let load = |with_other: bool| {
+            let mut vfs = Vfs::new();
+            vfs.mount_mod_dir(&game, "game").unwrap();
+            if with_other {
+                vfs.mount_mod_dir(&other, "other").unwrap();
+            }
+            let data = std::sync::Arc::new(GameData::load(&vfs));
+            (data.for_map(&vfs, "beta (SC)"), data.for_map(&vfs, "plain"), data)
+        };
+        let (beta_alone, plain_alone, session_alone) = load(false);
+        let (beta, plain, session) = load(true);
+        std::fs::remove_dir_all(&root).ok();
+        assert!(session.feature("SC1_Green_A1").is_some() && session_alone.feature("SC1_Green_A1").is_none(), "the session knows every map's");
+        let numbers = |data: &GameData| ["Tree1", "SC1_Green_T2", "SC1_Green_R1L"].map(|n| data.feature_id(n));
+        assert_eq!(numbers(&beta), numbers(&beta_alone), "another map's features change no number");
+        assert_eq!(numbers(&beta), [Some(0), Some(1), Some(2)]);
+        assert_eq!(beta.features.len(), 3);
+        assert!(beta.feature("SC1_Green_A1").is_none(), "nor are they in the battle");
+        // A map without features of its own: the game's alone, the same either way.
+        assert_eq!((plain.features.len(), plain_alone.features.len()), (1, 1));
+        assert_eq!(plain.feature_id("Tree1"), Some(0));
     }
 }

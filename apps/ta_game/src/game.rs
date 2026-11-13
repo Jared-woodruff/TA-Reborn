@@ -666,7 +666,8 @@ impl Game {
         // (A map bigger than the graphics card's textures: said so, instead of a black battle.)
         renderer.map_fits(&map).map_err(anyhow::Error::msg)?;
 
-        let mut sim = Sim::new(assets.types.clone(), assets.data.clone(), &map, &info, schema_index, &players, setup.seed);
+        // (The game's features and this map's own alone: their numbers the same for every player.)
+        let mut sim = Sim::new(assets.types.clone(), assets.data.for_map(vfs, map_name), &map, &info, schema_index, &players, setup.seed);
         let (ore_w, ore_h, ore) = crate::ore::deposits(&sim);
         for (i, slot) in setup.players.iter().enumerate() {
             sim.set_team(i as u8, slot.team);
@@ -740,7 +741,7 @@ impl Game {
         // to the previous scene, so an invalid scenario can return safely to its menu.
         renderer.load_map(&map, &assets.data.palette);
         // (TA Reborn's own maps were drawn without TA's hatching.)
-        let painted_by_ta = vfs.origin(&map_path).is_none_or(|o| o.layer != ta_vfs::BUILTIN_LAYER);
+        let painted_by_ta = !info.reborn_art && vfs.origin(&map_path).is_none_or(|o| o.layer != ta_vfs::BUILTIN_LAYER);
         renderer.set_ground_world(&info.planet, painted_by_ta);
         // Lava and acid worlds say so in their OTA; otherwise the sea is classified from the art.
         // The painted art decides mist (void) seas and lava; a lava world's OTA flag turns
@@ -4352,7 +4353,7 @@ mod tests {
         let data = std::sync::Arc::new(data);
         let map = ta_formats::tnt::TntMap { width: 32, height: 32, sea_level: 0,
             heights: vec![60; 32 * 32], features: vec![ta_formats::tnt::FEATURE_NONE; 32 * 32],
-            tiles: vec![], tile_map: vec![], feature_names: vec![], minimap: Default::default() };
+            tiles: vec![], tile_map: vec![], feature_names: vec![], minimap: Default::default(), flags: Vec::new() };
         let start = FxVec3::from_ints(256, 60, 256);
         let player = ta_sim::PlayerSetup { side: "ARM".into(), color: 0, start, metal: Fx::ZERO, energy: Fx::ZERO, ai: false };
         let make = || Sim::new(types.clone(), data.clone(), &map, &ta_data::MapInfo::default(), 0, std::slice::from_ref(&player), 7);

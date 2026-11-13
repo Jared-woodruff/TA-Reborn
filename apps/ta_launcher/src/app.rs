@@ -139,6 +139,14 @@ fn page_label(page: Page) -> &'static str {
 pub enum Action {
     Play,
     Maps(crate::maps::Action),
+    /// Opens the dialog that imports Supreme Commander's maps (and looks for the game).
+    SupcomOpen,
+    /// Picks the folder Supreme Commander: Forged Alliance is installed in.
+    SupcomBrowse,
+    /// Makes the chosen Supreme Commander maps into TA maps.
+    SupcomImport,
+    /// Stops the import after the map being made.
+    SupcomStop,
     Rescan,
     BrowseInstall,
     /// Forgets the configured game folder and detects the install automatically.
@@ -262,6 +270,8 @@ pub struct LauncherApp {
     pub(crate) game_folder_mods: Vec<ta_vfs::mods::GameFolderMod>,
     pub(crate) mod_validation: crate::validation::ModValidation,
     pub(crate) maps: crate::maps::Library,
+    /// Supreme Commander: Forged Alliance's maps, imported.
+    pub(crate) supcom: crate::supcom::Import,
     pub(crate) skins: crate::skins::Library,
     pub(crate) game: GameState,
     /// The last folder picked with "Browse…" that is not a valid install, and what it lacks.
@@ -332,6 +342,8 @@ pub struct LauncherApp {
     /// close anyway.
     confirm_close: bool,
     close_confirmed: bool,
+    /// CLOSE ANYWAY during a Supreme Commander import: the launcher closes once it has stopped.
+    close_after_import: bool,
     /// END GAME's question is up; and the game was ended so (not a crash to report).
     confirm_end_game: bool,
     ending_game: bool,
@@ -534,6 +546,7 @@ impl LauncherApp {
             order_before_play: None,
             confirm_close: false,
             close_confirmed: false,
+            close_after_import: false,
             confirm_end_game: false,
             ending_game: false,
             pretend_at_risk: false,
@@ -588,6 +601,7 @@ impl LauncherApp {
             mods,
             mod_validation,
             maps: Default::default(),
+            supcom: Default::default(),
             game: GameState::Idle,
             browse_error: None,
             actions: match (args.autoplay, args.autobenchmark) {
@@ -689,6 +703,14 @@ impl LauncherApp {
                 if let Some(record) = record { self.open_battle(record, flag); }
             }
             ("maps-list", _) => self.maps.view = crate::maps::View::List,
+            // (The dialog that imports Supreme Commander's maps, the game looked for.)
+            ("supcom", maps) => {
+                self.supcom.show(&self.store.dir().join("mods"));
+                if !maps.is_empty() {
+                    self.supcom.auto_start = Some(maps.split(',').map(|m| m.trim().to_string()).filter(|m| !m.is_empty()).collect());
+                    if let Some(capture) = &mut self.capture { capture.wait_for_validation(); }
+                }
+            }
             ("maps-details", _) => self.maps.details_open = true,
             ("progress", _) => self.show_progress = true,
             ("search", query) => match self.page {
@@ -981,6 +1003,19 @@ impl LauncherApp {
         }
         match action {
             Action::Maps(action) => self.maps_action(action),
+            Action::SupcomOpen => self.supcom.show(&self.store.dir().join("mods")),
+            Action::SupcomBrowse => {
+                if let Some(dir) = rfd::FileDialog::new().set_title(ta_ui::i18n::t("Supreme Commander: Forged Alliance's folder")).pick_folder()
+                    && !self.supcom.pick(&dir, &self.store.dir().join("mods"))
+                {
+                    self.notify(ta_ui::i18n::tf("Supreme Commander: Forged Alliance is not in {folder}: choose the folder it is installed in (it holds gamedata and maps).", &[("folder", &dir.display())]), AMBER);
+                }
+            }
+            Action::SupcomImport => match (self.supcom_blocked(), self.detection.install().map(|i| i.root.clone())) {
+                (None, Some(ta)) => self.supcom.start(ta, self.store.dir()),
+                (why, _) => self.notify(why.unwrap_or_else(|| ta_ui::i18n::t("Find your Total Annihilation install on the Play page first.")), AMBER),
+            },
+            Action::SupcomStop => self.supcom.stop(),
             Action::ShowModReport(id) => self.mod_validation.selected = Some(id),
             Action::ValidateMod(id) => {
                 // Mod authors may have just changed a manifest or added a dependency.
@@ -1347,6 +1382,12 @@ impl LauncherApp {
             self.notify("Wait for map operations to finish before starting the game.", AMBER);
             return;
         }
+        // (The pack of Supreme Commander's maps is replaced when they are made: not while the game
+        // reads it.)
+        if self.supcom.importing() {
+            self.notify("Wait for the Supreme Commander maps being made, then start the game.", AMBER);
+            return;
+        }
         // The game reads config.toml when it starts, so write pending edits first.
         let saved = self.store.flush(&mut self.config).and_then(|()| {
             self.sync_profile_name();
@@ -1685,6 +1726,9 @@ impl LauncherApp {
         if self.maps.busy() {
             risks.push(n("Maps are still being imported."));
         }
+        if self.supcom.importing() {
+            risks.push(n("Supreme Commander maps are still being made: closing keeps the maps made so far, and leaves out the one in hand."));
+        }
         if self.pretend_at_risk && risks.is_empty() {
             risks.push(n("A mod is still downloading or installing: it would start over."));
         }
@@ -1754,7 +1798,19 @@ impl LauncherApp {
             self.confirm_close = false;
         }
         if close {
-            self.confirm_close = false;
+            self.close_anyway(ctx);
+        }
+    }
+
+    /// CLOSE ANYWAY: the launcher closes; during a Supreme Commander import, once the maps made
+    /// are installed (the one in hand left out), the window answering meanwhile.
+    fn close_anyway(&mut self, ctx: &egui::Context) {
+        self.confirm_close = false;
+        if self.supcom.importing() {
+            self.supcom.abandon();
+            self.close_after_import = true;
+            self.notify("Closing once the Supreme Commander maps made so far are installed.", AMBER);
+        } else {
             self.close_confirmed = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
@@ -2459,6 +2515,26 @@ impl eframe::App for LauncherApp {
             self.notify(ta_ui::i18n::tf("{mod}: the data check found errors. MOD INFO on the Mods page lists them.", &[("mod", &name)]), RED);
         }
         self.maps_tick(ctx);
+        if let Some(outcome) = self.supcom.poll(ctx)
+            && !outcome.imported.is_empty()
+        {
+            modlist::set_enabled(&mut self.config.mods.enabled, crate::supcom::PACK_ID, true);
+            self.refresh_mods();
+            self.maps.needs_scan = true;
+            self.supcom.rescan(&self.store.dir().join("mods"));
+            if !self.supcom.open {
+                self.notify(ta_ui::i18n::tf("Imported {n} Supreme Commander maps: they are in the map library, and in skirmish.", &[("n", &outcome.imported.len())]), GREEN);
+            }
+        }
+        // CLOSE ANYWAY during the import: closed now it has stopped (its maps turned on above).
+        if self.close_after_import && !self.supcom.importing() {
+            self.close_after_import = false;
+            self.close_confirmed = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+        if self.supcom_blocked().is_none() && self.supcom.take_auto_start() {
+            self.actions.push(Action::SupcomImport);
+        }
         if self.skins.poll() {
             if let Some((side, id)) = self.skins.take_selected() {
                 match side {
@@ -2555,6 +2631,7 @@ impl eframe::App for LauncherApp {
         self.conversion_dialog(&ctx);
         self.battle_dialog(&ctx);
         self.mod_folders_dialog(&ctx);
+        self.supcom_dialog(&ctx);
         self.whats_new_dialog(&ctx);
         self.mod_report_dialog(&ctx);
         self.paint_drop_target(&ctx);
@@ -2621,7 +2698,7 @@ impl eframe::App for LauncherApp {
             .filter(|entry| entry.bundled_image().is_some()).all(|entry| self.media.pictures.contains_key(entry.id))
             && (self.page != Page::Mods || self.mod_library.changes.idle());
         if let Some(capture) = &mut self.capture {
-            capture.tick(&ctx, !self.battles.loading() && !self.hero.loading() && !self.worlds.loading() && !self.skins.busy() && self.mod_validation.selected.as_ref().is_none_or(|id| !matches!(self.mod_validation.status(id), crate::validation::ValidationStatus::Queued | crate::validation::ValidationStatus::Checking)) && (self.page != Page::Skins || self.skins.preview_ready()) && (self.page != Page::Maps || self.maps.ready()) && self.profiles.capture_ready(self.page == Page::Profile) && bundled_pictures_ready);
+            capture.tick(&ctx, !self.battles.loading() && !self.hero.loading() && !self.worlds.loading() && !self.skins.busy() && self.mod_validation.selected.as_ref().is_none_or(|id| !matches!(self.mod_validation.status(id), crate::validation::ValidationStatus::Queued | crate::validation::ValidationStatus::Checking)) && (self.page != Page::Skins || self.skins.preview_ready()) && (self.page != Page::Maps || self.maps.ready()) && self.profiles.capture_ready(self.page == Page::Profile) && bundled_pictures_ready && self.supcom.capture_ready());
         }
         let pictures = crate::catalogue::MODS.iter().filter(|e| !e.image.is_empty() || e.bundled_image().is_some()).count();
         let ready = self.sounds.ready() && self.media.pictures.len() >= pictures && !self.battles.loading() && !self.hero.loading() && !self.worlds.loading()
@@ -2634,6 +2711,10 @@ impl eframe::App for LauncherApp {
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.mod_validation.shutdown();
+        // (An import under way installs the maps it made: they are turned on, as in logic().)
+        if self.supcom.finish_on_exit().is_some_and(|outcome| !outcome.imported.is_empty()) {
+            modlist::set_enabled(&mut self.config.mods.enabled, crate::supcom::PACK_ID, true);
+        }
         self.installer.shutdown();
         // A publication may finish after the final UI frame or while shutdown waits.
         // Apply its on/off decision before flushing the profile, just as in logic().
@@ -3856,6 +3937,53 @@ name = \"{}\"
         let output = frame(&ctx, &mut app, close());
         assert!(!cancelled(&output));
         drop(app);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Closing during a Supreme Commander import: asked first; CLOSE ANYWAY ends it (the map in
+    /// hand left out) and closes once it has, its maps turned on, the window answering meanwhile.
+    #[test]
+    fn closing_during_a_supreme_commander_import_closes_once_it_has_stopped() {
+        let dir = temp_dir("close_supcom_import");
+        let (ctx, mut app) = launcher(&dir.join("config.toml"), &["--pretend-missing"]);
+        app.skins.shutdown();
+        let close = || {
+            let mut input = RawInput::default();
+            input.viewports.insert(egui::ViewportId::ROOT, egui::ViewportInfo { events: vec![egui::ViewportEvent::Close], ..Default::default() });
+            input
+        };
+        let sent = |output: &egui::FullOutput, command: &egui::ViewportCommand| output.viewport_output.get(&egui::ViewportId::ROOT)
+            .is_some_and(|viewport| viewport.commands.contains(command));
+        app.supcom.pretend_importing(&["scmp_009"]);
+        assert_eq!(app.work_at_risk().len(), 1);
+        let output = frame(&ctx, &mut app, close());
+        assert!(sent(&output, &egui::ViewportCommand::CancelClose) && app.confirm_close, "the close waits for an answer");
+        app.close_anyway(&ctx);
+        assert!(!app.close_confirmed && app.close_after_import, "not closed before the maps made are installed");
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut output = frame(&ctx, &mut app, RawInput::default());
+        while !sent(&output, &egui::ViewportCommand::Close) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(5));
+            output = frame(&ctx, &mut app, RawInput::default());
+        }
+        assert!(sent(&output, &egui::ViewportCommand::Close), "closed once the import stopped");
+        assert!(app.close_confirmed && !app.supcom.importing());
+        assert!(app.config.mods.enabled.iter().any(|id| id == crate::supcom::PACK_ID), "the maps made are turned on");
+        drop(app);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Closed without the question (the system shutting down) during an import: on_exit waits for
+    /// it and turns on the maps it made.
+    #[test]
+    fn an_import_ending_at_exit_turns_its_maps_on() {
+        let dir = temp_dir("exit_supcom_import");
+        let path = dir.join("config.toml");
+        let (_, mut app) = launcher(&path, &["--pretend-missing"]);
+        app.skins.shutdown();
+        app.supcom.pretend_importing(&["scmp_009"]);
+        app.on_exit(None);
+        assert!(Config::try_load_from(&path).unwrap().mods.enabled.iter().any(|id| id == crate::supcom::PACK_ID));
         let _ = std::fs::remove_dir_all(dir);
     }
 

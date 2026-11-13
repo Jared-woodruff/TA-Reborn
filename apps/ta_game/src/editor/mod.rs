@@ -1594,6 +1594,7 @@ mod interaction_tests {
             tiles: vec![Box::new([1; ta_formats::tnt::TILE_SIZE * ta_formats::tnt::TILE_SIZE])],
             tile_map: vec![0], heights: vec![40; 4], features: vec![ta_formats::tnt::FEATURE_NONE; 4],
             feature_names: Vec::new(), minimap: Default::default(),
+            flags: Vec::new(),
         };
         let form = NewMap { width_steps: 1, height_steps: 1, height: 40, ..Default::default() };
         let doc = MapDoc::new_blank(&form, &palette, Some(&ta_data::MapInfo::default()));

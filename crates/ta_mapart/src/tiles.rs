@@ -15,6 +15,102 @@
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 
+/// How colours go to OKLab and back. [`Exact`] uses the platform's own powers and roots (TA
+/// Reborn's own maps were made with it); [`Portable`] only arithmetic whose results IEEE fixes
+/// to the bit, so a map made from the same picture is the same, byte for byte, on every
+/// platform (players compare their maps' bytes before a battle).
+pub trait Colour: Copy + Send + Sync + 'static {
+    fn oklab(c: [f32; 3]) -> [f32; 3];
+    fn srgb(lab: [f32; 3]) -> [f32; 3];
+}
+
+/// [`oklab`] and [`srgb`] as they are.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Exact;
+
+impl Colour for Exact {
+    fn oklab(c: [f32; 3]) -> [f32; 3] {
+        oklab(c)
+    }
+    fn srgb(lab: [f32; 3]) -> [f32; 3] {
+        srgb(lab)
+    }
+}
+
+/// [`oklab`] and [`srgb`] with every power and root taken by Newton's method, in f64, a fixed
+/// number of steps: within a unit in the last place of the exact values, and the same on every
+/// platform.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Portable;
+
+impl Colour for Portable {
+    fn oklab(c: [f32; 3]) -> [f32; 3] {
+        let lin = |v: f32| {
+            let v = v as f64;
+            if v <= 0.04045 {
+                v / 12.92
+            } else {
+                // a^2.4 = a² · (a²)^(1/5)
+                let a = (v + 0.055) / 1.055;
+                let a2 = a * a;
+                a2 * root(a2, 5)
+            }
+        };
+        let (r, g, b) = (lin(c[0]), lin(c[1]), lin(c[2]));
+        let l = root(0.412_221_470_8 * r + 0.536_332_536_3 * g + 0.051_445_992_9 * b, 3);
+        let m = root(0.211_903_498_2 * r + 0.680_699_545_1 * g + 0.107_396_956_6 * b, 3);
+        let s = root(0.088_302_461_9 * r + 0.281_718_837_6 * g + 0.629_978_700_5 * b, 3);
+        [
+            (0.210_454_255_3 * l + 0.793_617_785_0 * m - 0.004_072_046_8 * s) as f32,
+            (1.977_998_495_1 * l - 2.428_592_205_0 * m + 0.450_593_709_9 * s) as f32,
+            (0.025_904_037_1 * l + 0.782_771_766_2 * m - 0.808_675_766_0 * s) as f32,
+        ]
+    }
+
+    fn srgb(lab: [f32; 3]) -> [f32; 3] {
+        let (a, b, c) = (lab[0] as f64, lab[1] as f64, lab[2] as f64);
+        let l = a + 0.396_337_777_4 * b + 0.215_803_757_3 * c;
+        let m = a - 0.105_561_345_8 * b - 0.063_854_172_8 * c;
+        let s = a - 0.089_484_177_5 * b - 1.291_485_548_0 * c;
+        let (l, m, s) = (l * l * l, m * m * m, s * s * s);
+        let lin = [
+            4.076_741_662_1 * l - 3.307_711_591_3 * m + 0.230_969_929_2 * s,
+            -1.268_438_004_6 * l + 2.609_757_401_1 * m - 0.341_319_396_5 * s,
+            -0.004_196_086_3 * l - 0.703_418_614_7 * m + 1.707_614_701_0 * s,
+        ];
+        lin.map(|v| {
+            let v = v.clamp(0.0, 1.0);
+            // v^(1/2.4) = (v^(1/12))^5, and v^(1/12) = √√∛v.
+            let out = if v <= 0.003_130_8 { v * 12.92 } else {
+                let t = root(v, 3).sqrt().sqrt();
+                1.055 * (t * t * t * t * t) - 0.055
+            };
+            out as f32
+        })
+    }
+}
+
+/// `x`'s `n`th root (n 3 or 5; a negative `x`'s is negative) by Newton's method from a guess its
+/// exponent gives: the same bits on every platform.
+fn root(x: f64, n: i32) -> f64 {
+    if x == 0.0 || !x.is_finite() {
+        return if x.is_finite() { 0.0 } else { x };
+    }
+    let (sign, a) = if x < 0.0 { (-1.0, -x) } else { (1.0, x) };
+    // a = f·2^e with f in [1, 2): the guess 2^(e/n) is within a factor of 2.
+    let e = ((a.to_bits() >> 52) & 0x7ff) as i64 - 1023;
+    let mut y = f64::from_bits(((e.div_euclid(n as i64) + 1023) as u64) << 52);
+    let k = n as f64;
+    for _ in 0..12 {
+        let mut p = 1.0;
+        for _ in 0..n - 1 {
+            p *= y;
+        }
+        y = ((k - 1.0) * y + a / p) / k;
+    }
+    sign * y
+}
+
 /// sRGB (0 to 1) to OKLab.
 pub fn oklab(c: [f32; 3]) -> [f32; 3] {
     let lin = |v: f32| if v <= 0.04045 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) };
@@ -47,7 +143,12 @@ const EAST: usize = 3;
 
 /// A tile's description from its 32 x 32 colours (sRGB, row by row).
 pub fn describe(pixels: &[[f32; 3]]) -> Desc {
-    let lab: Vec<[f32; 3]> = pixels.iter().map(|&c| oklab(c)).collect();
+    describe_in::<Exact>(pixels)
+}
+
+/// [`describe`] with the colours taken to OKLab as `C` takes them.
+pub fn describe_in<C: Colour>(pixels: &[[f32; 3]]) -> Desc {
+    let lab: Vec<[f32; 3]> = pixels.iter().map(|&c| C::oklab(c)).collect();
     let mut mean = [0.0f32; 3];
     for c in &lab {
         for k in 0..3 {
@@ -368,6 +469,11 @@ pub fn settle(descs: &[Desc], shown: &[Desc], assign: &[u32]) -> Vec<[f32; 48]> 
 /// [`Desc::edge`] and [`settle`] give it): in full over the 4 pixels along each side, fading
 /// out 8 pixels in, and from the middle of each stretch along it to the next.
 pub fn shift(pixels: &mut [[f32; 3]], delta: &[f32; 48]) {
+    shift_in::<Exact>(pixels, delta)
+}
+
+/// [`shift`] with the colours taken to OKLab and back as `C` takes them.
+pub fn shift_in<C: Colour>(pixels: &mut [[f32; 3]], delta: &[f32; 48]) {
     // The change near `side`, `a` pixels along it and `d` in from it.
     let edge = |side: usize, a: f32, d: f32| -> [f32; 3] {
         let w = 1.0 - ((d - 4.0) / 4.0).clamp(0.0, 1.0);
@@ -382,13 +488,13 @@ pub fn shift(pixels: &mut [[f32; 3]], delta: &[f32; 48]) {
     for y in 0..32 {
         for x in 0..32 {
             let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
-            let mut lab = oklab(pixels[y * 32 + x]);
+            let mut lab = C::oklab(pixels[y * 32 + x]);
             for c in [edge(NORTH, px, py), edge(SOUTH, px, 32.0 - py), edge(WEST, py, px), edge(EAST, py, 32.0 - px)] {
                 for k in 0..3 {
                     lab[k] += c[k];
                 }
             }
-            pixels[y * 32 + x] = srgb(lab);
+            pixels[y * 32 + x] = C::srgb(lab);
         }
     }
 }
@@ -597,12 +703,17 @@ pub struct PaletteLut {
 
 impl PaletteLut {
     pub fn new(colors: [[u8; 3]; 256], allowed: impl Fn(usize) -> bool) -> PaletteLut {
-        let entries: Vec<(usize, [f32; 3])> = (0..256).filter(|&i| allowed(i)).map(|i| (i, oklab(colors[i].map(|v| v as f32 / 255.0)))).collect();
+        Self::new_in::<Exact>(colors, allowed)
+    }
+
+    /// [`PaletteLut::new`] with the colours taken to OKLab as `C` takes them.
+    pub fn new_in<C: Colour>(colors: [[u8; 3]; 256], allowed: impl Fn(usize) -> bool) -> PaletteLut {
+        let entries: Vec<(usize, [f32; 3])> = (0..256).filter(|&i| allowed(i)).map(|i| (i, C::oklab(colors[i].map(|v| v as f32 / 255.0)))).collect();
         let lut = (0..64 * 64 * 64usize)
             .into_par_iter()
             .map(|k| {
                 let c = [(k >> 12) & 63, (k >> 6) & 63, k & 63].map(|v| (v as f32 * 4.0 + 2.0) / 255.0);
-                let l = oklab(c);
+                let l = C::oklab(c);
                 let mut best = (f32::MAX, 0usize);
                 for &(i, e) in &entries {
                     let d = (l[0] - e[0]).powi(2) + (l[1] - e[1]).powi(2) * 1.4 + (l[2] - e[2]).powi(2) * 1.4;
@@ -830,5 +941,29 @@ mod tests {
     fn oklab_of_white_is_one() {
         let w = oklab([1.0, 1.0, 1.0]);
         assert!((w[0] - 1.0).abs() < 1e-3 && w[1].abs() < 1e-3 && w[2].abs() < 1e-3);
+    }
+
+    /// The portable colour maths agrees with the platform's to within its own rounding, and goes
+    /// there and back; its roots are exact on exact powers.
+    #[test]
+    fn portable_colours_agree_with_the_exact_ones() {
+        for r in 0..=16 {
+            for g in 0..=16 {
+                for b in 0..=16 {
+                    let c = [r as f32 / 16.0, g as f32 / 16.0, b as f32 / 16.0];
+                    let (e, p) = (Exact::oklab(c), Portable::oklab(c));
+                    assert!((0..3).all(|k| (e[k] - p[k]).abs() < 2e-6), "{c:?}: {e:?} against {p:?}");
+                    let back = Portable::srgb(p);
+                    assert!((0..3).all(|k| (back[k] - c[k]).abs() < 1e-4), "{c:?} -> {back:?}");
+                    let es = Exact::srgb(e);
+                    assert!((0..3).all(|k| (back[k] - es[k]).abs() < 2e-4), "{c:?}: {back:?} against {es:?}");
+                }
+            }
+        }
+        assert_eq!(root(27.0, 3), 3.0);
+        assert_eq!(root(-8.0, 3), -2.0);
+        assert_eq!(root(32.0, 5), 2.0);
+        assert_eq!(root(0.0, 3), 0.0);
+        assert!((root(1e-9, 3) - 1e-3).abs() < 1e-15);
     }
 }

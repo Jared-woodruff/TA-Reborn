@@ -26,6 +26,8 @@ ta_net = { path = "crates/ta_net" }
 ta_ui = { path = "crates/ta_ui" }
 ta_skins = { path = "crates/ta_skins" }
 ta_mp4 = { path = "crates/ta_mp4" }
+ta_mapart = { path = "crates/ta_mapart" }
+ta_supcom = { path = "crates/ta_supcom" }
 
 # Graphics, windowing, UI (versions pinned together: egui 0.36 targets wgpu 30 / winit 0.30)
 wgpu = "30.0.1"

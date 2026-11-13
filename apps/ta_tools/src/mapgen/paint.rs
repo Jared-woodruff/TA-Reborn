@@ -279,45 +279,7 @@ pub fn scale(c: [f32; 3], k: f32) -> [f32; 3] {
 }
 
 /// For each art row of the columns `x0..x0 + width` (pixels), the ground seen there in TA's
-/// view: its z and height. Marching from north to south, nearer (more southern) ground drawn
-/// over farther; ground rising faster than two units a pixel towards the south faces away and is
-/// hidden. Rows `0..rows`.
+/// view: its z and height ([`ta_mapart::slant::columns`]). Rows `0..rows`.
 pub fn view_columns(g: &Ground, x0: usize, width: usize, rows: usize) -> Vec<Vec<(f32, f32)>> {
-    (x0..x0 + width)
-        .map(|x| {
-            let xf = x as f32 + 0.5;
-            let mut out = vec![(f32::NAN, 0.0f32); rows];
-            let step = 0.5;
-            let mut z = -160.0f32;
-            let mut prev: Option<(f32, f32, f32)> = None;
-            let end = rows as f32 + 320.0;
-            while z < end {
-                let h = g.h(xf, z.max(0.0));
-                let row = z - h / 2.0;
-                if let Some((pz, ph, prow)) = prev
-                    && row > prow
-                {
-                    let (r0, r1) = (prow.ceil().max(0.0) as i64, (row.floor() as i64).min(rows as i64 - 1));
-                    for r in r0..=r1 {
-                        let t = (r as f32 - prow) / (row - prow);
-                        out[r as usize] = (lerp(pz, z, t), lerp(ph, h, t));
-                    }
-                }
-                prev = Some((z, h, row));
-                z += step;
-            }
-            // (Rows the march never reached take the ground below them.)
-            for r in (0..rows.saturating_sub(1)).rev() {
-                if out[r].0.is_nan() {
-                    out[r] = out[r + 1];
-                }
-            }
-            for r in 1..rows {
-                if out[r].0.is_nan() {
-                    out[r] = out[r - 1];
-                }
-            }
-            out
-        })
-        .collect()
+    ta_mapart::slant::columns(|x, z| g.h(x, z), x0, width, rows)
 }

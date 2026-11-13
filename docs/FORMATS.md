@@ -200,6 +200,25 @@ recognises; TA's own files never begin with one.
   65,536 tiles (all a u16 tile index reaches).
 * Start positions: `GlobalHeader/Schema N/specials/specialN { specialwhat=StartPosK; XPos; ZPos }`
   (in any order; Coast To Coast lists StartPos3 first).
+* **TA Reborn's marks per cell** (`TntMap::flags`, `CELL_*` bits): in the attribute's spare 4th
+  byte, read only when the header's last word is `FLAGS_MAGIC` (`"RBCF"`, where TA writes 0),
+  so no other tool's stray bytes are ever read as marks; a map without marks is written as TA
+  writes it. `CELL_CLIFF` (1): the simulation takes the cell as steep as a slope can be (slope
+  255), so nothing with a slope limit crosses it or builds on it. Maps converted from Supreme
+  Commander carry the game's own cliffs this way, whatever their heights became (docs/SUPCOM_MAPS.md);
+  the map editor keeps them.
+* **A map's own features** (`maps/<stem>.features`): a TDF of feature definitions, loaded after
+  the game's own (`features/`) and never in place of one of them; `rebornworld` names the
+  world a definition is of. Under `maps/`, they are no part of the data multiplayer peers
+  compare, and the map's digest and its battles' cover them (`Compatibility::map_digest`,
+  `for_match`; a map without the file keeps the digest it always had). A battle's data holds the
+  game's features and its own map's alone, in that order (`GameData::for_map`): no other map's
+  shifts their numbers, which the simulation goes by. The game's data for menus and the editor
+  holds every map's. The map editor saves a copy's beside it. Converted maps name their trees,
+  bushes and rocks there (`SC1_Green_T1`).
+* **OTA keys TA Reborn reads besides TA's**: `rebornart=1` (the art was painted by TA Reborn's
+  own tools: the renderer cleans no TA painter's hatching from it); a converted map's
+  `supcommap` (its Supreme Commander folder) and `supcomversion` (the converter's version).
 
 * **Minimap**: declared 252×252 even for maps that are not square (some campaign maps
   declare, and store, 252×256). It shows the art of all but the last 2 columns and the last

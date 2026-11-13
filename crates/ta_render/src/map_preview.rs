@@ -215,6 +215,7 @@ mod tests {
             features: vec![0; (cells * cells) as usize],
             feature_names: Vec::new(),
             minimap: ta_formats::image::IndexedImage::new(1, 1, 0),
+            flags: Vec::new(),
         }
     }
 

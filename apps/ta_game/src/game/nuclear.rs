@@ -94,7 +94,7 @@ mod tests {
         let mut data = ta_data::GameData::load(&ta_vfs::Vfs::new());
         data.weapons.push(ta_data::WeaponDef { stockpile: true, targetable: true, area_of_effect: 512.0, ..Default::default() });
         let types = Arc::new(UnitTypes::compile(&data, &|_| None));
-        let map = ta_formats::tnt::TntMap { width: 32, height: 32, sea_level: 0, heights: vec![60; 32 * 32], features: vec![ta_formats::tnt::FEATURE_NONE; 32 * 32], tiles: Vec::new(), tile_map: Vec::new(), feature_names: Vec::new(), minimap: Default::default() };
+        let map = ta_formats::tnt::TntMap { width: 32, height: 32, sea_level: 0, heights: vec![60; 32 * 32], features: vec![ta_formats::tnt::FEATURE_NONE; 32 * 32], tiles: Vec::new(), tile_map: Vec::new(), feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
         let players: Vec<_> = (0..4).map(|color| PlayerSetup { side: "ARM".into(), color, start: FxVec3::ZERO, metal: Fx::ZERO, energy: Fx::ZERO, ai: false }).collect();
         let mut sim = Sim::new(types, Arc::new(data), &map, &ta_data::MapInfo::default(), 0, &players, 7);
         sim.set_team(1, 0);
@@ -157,7 +157,7 @@ mod tests {
         data.units.push(ta_data::UnitDef::from_tdf(&ta_formats::tdf::parse(unit).sections[0]).unwrap());
         let types = Arc::new(UnitTypes::compile(&data, &|_| None));
         let side = 300;
-        let map = ta_formats::tnt::TntMap { width: side, height: side, sea_level: 0, heights: vec![60; (side * side) as usize], features: vec![ta_formats::tnt::FEATURE_NONE; (side * side) as usize], tiles: Vec::new(), tile_map: Vec::new(), feature_names: Vec::new(), minimap: Default::default() };
+        let map = ta_formats::tnt::TntMap { width: side, height: side, sea_level: 0, heights: vec![60; (side * side) as usize], features: vec![ta_formats::tnt::FEATURE_NONE; (side * side) as usize], tiles: Vec::new(), tile_map: Vec::new(), feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
         let players: Vec<_> = (0..2).map(|color| PlayerSetup { side: "ARM".into(), color, start: FxVec3::ZERO, metal: Fx::ZERO, energy: Fx::ZERO, ai: false }).collect();
         Sim::new(types, Arc::new(data), &map, &ta_data::MapInfo::default(), 0, &players, 7)
     }

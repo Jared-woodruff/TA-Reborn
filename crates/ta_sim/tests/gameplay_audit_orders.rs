@@ -39,7 +39,7 @@ fn fixture() -> Sim {
     }, &[])));
     let types = Arc::new(types);
     std::fs::remove_dir_all(&dir).unwrap();
-    let map = TntMap { width: 64, height: 64, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![60; 64 * 64], features: vec![FEATURE_NONE; 64 * 64], feature_names: Vec::new(), minimap: Default::default() };
+    let map = TntMap { width: 64, height: 64, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![60; 64 * 64], features: vec![FEATURE_NONE; 64 * 64], feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
     let players: Vec<_> = (0..2).map(|i| PlayerSetup { side: "ARM".into(), color: i, start: FxVec3::ZERO, metal: Fx::from_int(1000), energy: Fx::from_int(1000), ai: false }).collect();
     let mut sim = Sim::new(types, data, &map, &MapInfo::default(), 0, &players, 7);
     for p in &mut sim.players {

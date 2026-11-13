@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 ta_vfs.workspace = true
+ta_supcom.workspace = true
 ta_config.workspace = true
 ta_skins.workspace = true
 ta_render.workspace = true

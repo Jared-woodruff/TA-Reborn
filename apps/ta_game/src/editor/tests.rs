@@ -26,6 +26,7 @@ fn palette_map(count: u8) -> TntMap {
         features: vec![FEATURE_NONE; (w * h) as usize],
         feature_names: Vec::new(),
         minimap: Default::default(),
+        flags: Vec::new(),
     }
 }
 
@@ -679,4 +680,27 @@ fn a_planets_features_are_its_worlds() {
         assert!(world_matches("Earth", world), "{world}");
     }
     assert!(!world_matches("Earth", "crystal") && !world_matches("Earth", "lava") && !world_matches("Earth", "metal"));
+}
+
+/// A converted map's own features (`maps/<map>.features`) and its cliffs go with a copy of it:
+/// saved beside the copy under its name, the cliffs in its terrain as they were.
+#[test]
+fn a_copy_of_a_converted_map_keeps_its_own_features_and_cliffs() {
+    let root = std::env::temp_dir().join(format!("ta_editor_own_features_{}", ta_config::profiles::new_id()));
+    let mut doc = blank();
+    doc.features = Some(b"[SC1_Green_T1]{energy=10;blocking=0;}".to_vec());
+    let cells = (doc.tnt.width * doc.tnt.height) as usize;
+    doc.tnt.flags = vec![0; cells];
+    doc.tnt.flags[3] = ta_formats::tnt::CELL_CLIFF;
+    let palette = ta_formats::image::Palette::default();
+    let saved = save::write_mod(&doc, &palette, &root, "Tester").unwrap();
+    assert_eq!(std::fs::read(saved.dir.join("maps/Test Map.features")).unwrap(), b"[SC1_Green_T1]{energy=10;blocking=0;}");
+    let tnt = ta_formats::tnt::TntMap::parse(&std::fs::read(saved.dir.join("maps/Test Map.tnt")).unwrap()).unwrap();
+    assert_eq!(tnt.flags_at(3, 0), ta_formats::tnt::CELL_CLIFF);
+    // A map of TA's own has none.
+    doc.features = None;
+    doc.props.name = "Plain Copy".into();
+    let plain = save::write_mod(&doc, &palette, &root, "Tester").unwrap();
+    assert!(!plain.dir.join("maps/Plain Copy.features").exists());
+    std::fs::remove_dir_all(&root).unwrap();
 }

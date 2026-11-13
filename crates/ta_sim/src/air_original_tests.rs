@@ -17,7 +17,7 @@ pub(super) fn original() -> Option<&'static Original> {
 }
 
 pub(super) fn field(data: &Arc<ta_data::GameData>, types: &Arc<UnitTypes>, water: bool) -> Sim {
-    let map = ta_formats::tnt::TntMap { width: 128, height: 128, sea_level: if water { 150 } else { 0 }, heights: vec![60; 128 * 128], features: vec![ta_formats::tnt::FEATURE_NONE; 128 * 128], tiles: Vec::new(), tile_map: Vec::new(), feature_names: Vec::new(), minimap: Default::default() };
+    let map = ta_formats::tnt::TntMap { width: 128, height: 128, sea_level: if water { 150 } else { 0 }, heights: vec![60; 128 * 128], features: vec![ta_formats::tnt::FEATURE_NONE; 128 * 128], tiles: Vec::new(), tile_map: Vec::new(), feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
     let players = [PlayerSetup { side: "ARM".into(), color: 0, start: FxVec3::ZERO, metal: Fx::ZERO, energy: Fx::ZERO, ai: false }];
     let mut sim = Sim::new(types.clone(), data.clone(), &map, &ta_data::MapInfo::default(), 0, &players, 73);
     sim.players[0].endless = true;
@@ -144,7 +144,7 @@ fn landing_ground_survey() {
 
 /// A dry 128 × 128-cell field whose heights by column `height(x)` gives.
 fn shaped_field(data: &Arc<ta_data::GameData>, types: &Arc<UnitTypes>, height: impl Fn(usize) -> u8) -> Sim {
-    let mut map = ta_formats::tnt::TntMap { width: 128, height: 128, sea_level: 0, heights: vec![0; 128 * 128], features: vec![ta_formats::tnt::FEATURE_NONE; 128 * 128], tiles: Vec::new(), tile_map: Vec::new(), feature_names: Vec::new(), minimap: Default::default() };
+    let mut map = ta_formats::tnt::TntMap { width: 128, height: 128, sea_level: 0, heights: vec![0; 128 * 128], features: vec![ta_formats::tnt::FEATURE_NONE; 128 * 128], tiles: Vec::new(), tile_map: Vec::new(), feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
     for (i, h) in map.heights.iter_mut().enumerate() {
         *h = height(i % 128);
     }

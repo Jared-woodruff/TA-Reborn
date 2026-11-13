@@ -35,6 +35,7 @@ fn synthetic() -> Sim {
         heights: (0..32).flat_map(|_| (0..96).map(|x| if x < 32 { 20 } else if x < 64 { 80 } else { 120 })).collect(),
         features: vec![FEATURE_NONE; 96 * 32], feature_names: vec![],
         tiles: vec![], tile_map: vec![], minimap: IndexedImage::new(1, 1, 0),
+        flags: Vec::new(),
     };
     Sim::new(types, data, &map, &MapInfo::default(), 0, &players(), 42)
 }

@@ -15,7 +15,7 @@ fn weapon(name: &str, keys: &str) -> (String, String) {
 }
 
 fn game(files: &[(String, String)]) -> Sim {
-    let map = TntMap { width: 64, height: 64, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![60; 64 * 64], features: vec![FEATURE_NONE; 64 * 64], feature_names: Vec::new(), minimap: Default::default() };
+    let map = TntMap { width: 64, height: 64, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![60; 64 * 64], features: vec![FEATURE_NONE; 64 * 64], feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
     game_on(files, map)
 }
 
@@ -394,7 +394,7 @@ fn interception_prevents_a_warhead_detonating_in_the_same_tick() {
 #[test]
 fn fast_projectiles_hit_the_near_face_of_a_ridge_between_tick_endpoints() {
     for reverse in [false, true] {
-        let mut map = TntMap { width: 64, height: 64, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![60; 64 * 64], features: vec![FEATURE_NONE; 64 * 64], feature_names: Vec::new(), minimap: Default::default() };
+        let mut map = TntMap { width: 64, height: 64, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![60; 64 * 64], features: vec![FEATURE_NONE; 64 * 64], feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
         for z in 0..64 { map.heights[z * 64 + 15] = 120; }
         let mut sim = game_on(&[unit("GUN", "Weapon1=SHOT;"), weapon("SHOT", "commandfire=1;")], map);
         let shooter = spawn(&mut sim, "GUN", 0, 100, 300);
@@ -416,7 +416,7 @@ fn fast_projectiles_hit_the_near_face_of_a_ridge_between_tick_endpoints() {
 
 #[test]
 fn projectiles_hit_a_triangle_ridge_inside_a_single_map_cell() {
-    let mut map = TntMap { width: 64, height: 64, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![60; 64 * 64], features: vec![FEATURE_NONE; 64 * 64], feature_names: Vec::new(), minimap: Default::default() };
+    let mut map = TntMap { width: 64, height: 64, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![60; 64 * 64], features: vec![FEATURE_NONE; 64 * 64], feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
     map.heights[10 * 64 + 10] = 120;
     map.heights[11 * 64 + 11] = 120;
     let mut sim = game_on(&[unit("GUN", "Weapon1=SHOT;"), weapon("SHOT", "commandfire=1;")], map);

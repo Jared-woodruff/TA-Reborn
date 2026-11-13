@@ -333,7 +333,7 @@ mod tests {
             ("units/tower.fbi", "[UNITINFO]{UnitName=TOWER;MaxDamage=1000;BuildTime=100;FootprintX=2;FootprintZ=2;SightDistance=0;}"),
         ]));
         let types = std::sync::Arc::new(ta_sim::UnitTypes::compile(&data, &|_| None));
-        let map = ta_formats::tnt::TntMap { width: 128, height: 128, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![10; 128 * 128], features: vec![ta_formats::tnt::FEATURE_NONE; 128 * 128], feature_names: Vec::new(), minimap: Default::default() };
+        let map = ta_formats::tnt::TntMap { width: 128, height: 128, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![10; 128 * 128], features: vec![ta_formats::tnt::FEATURE_NONE; 128 * 128], feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
         let players: Vec<_> = (0..2).map(|color| ta_sim::PlayerSetup { side: "ARM".into(), color, start: FxVec3::ZERO, metal: Fx::from_int(1000), energy: Fx::from_int(1000), ai: false }).collect();
         let mut sim = Sim::new(types, data, &map, &ta_data::MapInfo::default(), 0, &players, 7);
         let (eye, tower) = (sim.types.id("EYE").unwrap(), sim.types.id("TOWER").unwrap());

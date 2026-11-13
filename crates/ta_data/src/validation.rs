@@ -28,8 +28,9 @@ use crate::words::{en, enf, Fill, Words};
 /// model's; 11: as the game reads mods, every name a finding lists named; 12: each finding's words
 /// kept for the launcher to show in the player's language, `Issue::words`, a file's reading
 /// error told in words of the check's own around the reader's; 13: what a mod uses of TA's later
-/// engines and how the game plays it, `Report::engine`).
-pub const SCHEMA_VERSION: u32 = 13;
+/// engines and how the game plays it, `Report::engine`; 14: a map's own features,
+/// `maps/<map>.features`, checked as definitions and known to its terrain).
+pub const SCHEMA_VERSION: u32 = 14;
 
 /// The keys of `gamedata/sound.tdf`'s categories the game plays (`ta_audio`'s sound events), each
 /// with or without a variant number (`select1`, `select2`…), with `count0` to `count9`; the
@@ -448,7 +449,7 @@ pub fn content_unreadable(report: &mut Report, unreadable: &[Issue]) {
 }
 
 fn severity_order(s: Severity) -> u8 { match s { Severity::Error => 0, Severity::Warning => 1, Severity::Info => 2 } }
-fn known(p: &str) -> bool { p.rsplit_once('.').is_some_and(|(_, e)| matches!(e, "3do" | "cob" | "gaf" | "tnt" | "pcx" | "tdf" | "fbi" | "gui" | "ota" | "fnt" | "pal" | "wav")) }
+fn known(p: &str) -> bool { p.rsplit_once('.').is_some_and(|(_, e)| matches!(e, "3do" | "cob" | "gaf" | "tnt" | "pcx" | "tdf" | "fbi" | "gui" | "ota" | "fnt" | "pal" | "wav" | "features")) }
 
 /// Whether a page's button makes units, as the game reads the page: its `commonattribs` bit 4;
 /// on a hand-made page without them (the game reads its buttons all, keeping those that name
@@ -526,7 +527,8 @@ fn misplaced(path: &str) -> Option<&'static [&'static str]> {
         "3do" => (top == "objects3d", &["objects3d/"]),
         "cob" => (top == "scripts", &["scripts/"]),
         "gui" => (top == "guis" && depth == 1, &["guis/"]),
-        "tnt" | "ota" => (top == "maps" && depth == 1, &["maps/"]),
+        // (A map's own features, `maps/<map>.features`: a converted map's.)
+        "tnt" | "ota" | "features" => (top == "maps" && depth == 1, &["maps/"]),
         "gaf" => (matches!(top, "anims" | "textures" | "bitmaps") && depth == 1 || top == "camps", &["anims/", "textures/"]),
         "fnt" => (matches!(top, "fonts" | "guis"), &["fonts/"]),
         "tdf" => (matches!(top, "weapons" | "gamedata" | "download" | "maps") && depth == 1 || matches!(top, "features" | "camps"), &["weapons/", "features/", "gamedata/", "download/", "camps/"]),
@@ -1033,6 +1035,18 @@ impl<'a> Scan<'a> {
 
     fn record(&mut self, key: String, record: Record) {
         let first = self.report.issues.len();
+        // Maps' own features (`maps/<map>.features`): each map carries those it names, so many maps
+        // define one alike; the game keeps the first of them, and never one in place of one of its
+        // own (`GameData::load`).
+        let own_map = |p: &str| p.starts_with("maps/") && p.ends_with(".features");
+        if own_map(&record.path) && let Some(old) = self.records.get(&key) {
+            if !own_map(&old.path) {
+                let (what, other) = (describe(&key), old.path.clone());
+                self.issue(Severity::Warning, "definition.duplicate", &record.path, enf("{what} is also one of the game's own ({other}); the game keeps its own, and the map's is not used.", [("what", what.into()), ("other", Fill::name(&other))]), en("Give the map's feature a name of its own."));
+                self.attribute(first, &key);
+            }
+            return;
+        }
         // The game keeps the last of two definitions of one name, in path order (as here),
         // whatever their layers. One content's two is dead content, a slip when files are
         // copied; a mod's replacing the original game's is how mods change it, unless the
@@ -1271,7 +1285,7 @@ impl<'a> Scan<'a> {
                 self.record(key("weapon", &weapon.name), Record { path: path.into(), refs, ..Default::default() });
                 if self.halted { break; }
             }
-        } else if path.starts_with("features/") && path.ends_with(".tdf") {
+        } else if (path.starts_with("features/") && path.ends_with(".tdf")) || (path.starts_with("maps/") && path.ends_with(".features")) {
             for s in &doc.sections {
                 let first = self.report.issues.len();
                 let f = crate::FeatureDef::from_tdf(s, "all");
@@ -2386,7 +2400,7 @@ mod tests {
     #[test]
     fn map_features_and_missing_terrain_are_reported() {
         let f = Fixture::new();
-        let map = ta_formats::tnt::TntMap { width: 2, height: 2, sea_level: 0, tiles: vec![Box::new([0; 1024])], tile_map: vec![0], heights: vec![0; 4], features: vec![0, 65535, 65535, 65535], feature_names: vec!["missing_tree".into()], minimap: ta_formats::image::IndexedImage::new(1, 1, 0) };
+        let map = ta_formats::tnt::TntMap { width: 2, height: 2, sea_level: 0, tiles: vec![Box::new([0; 1024])], tile_map: vec![0], heights: vec![0; 4], features: vec![0, 65535, 65535, 65535], feature_names: vec!["missing_tree".into()], minimap: ta_formats::image::IndexedImage::new(1, 1, 0), flags: Vec::new() };
         f.put("mod", "maps/test.tnt", map.write().unwrap());
         f.put("mod", "maps/test.ota", b"[GlobalHeader]{missionname=Test;}");
         f.put("mod", "maps/orphan.ota", b"[GlobalHeader]{missionname=Orphan;}");
@@ -2395,6 +2409,29 @@ mod tests {
         assert!(report.issues.iter().any(|i| i.message.contains("feature MISSING_TREE")));
         // (A description without its terrain is left out of the lists: a warning, not an error.)
         assert!(report.issues.iter().any(|i| i.message.contains("the file maps/orphan.tnt") && i.message.contains("left out of the lists") && i.severity == Severity::Warning));
+    }
+
+    /// A map's own features (`maps/<map>.features`, a converted map's) are definitions its terrain
+    /// may name: none missing. Two maps carry the same ones alike, which is no finding; one named
+    /// like one of the game's own is (the game keeps its own).
+    #[test]
+    fn a_maps_own_features_are_known_to_it_and_shared_alike() {
+        let f = Fixture::new();
+        let map = |names: &[&str]| ta_formats::tnt::TntMap { width: 2, height: 2, sea_level: 0, tiles: vec![Box::new([0; 1024])], tile_map: vec![0], heights: vec![0; 4], features: vec![0, 65535, 65535, 65535], feature_names: names.iter().map(|n| n.to_string()).collect(), minimap: ta_formats::image::IndexedImage::new(1, 1, 0), flags: Vec::new() }.write().unwrap();
+        f.put("base", "features/green/trees.tdf", b"[Tree1]{description=Tree;category=trees;footprintx=1;footprintz=1;}");
+        let own = "[SC1_Green_T1]{description=Tree;category=trees;footprintx=1;footprintz=1;blocking=0;rebornworld=green;}";
+        for name in ["ridge (sc)", "valley (sc)"] {
+            f.put("mod", &format!("maps/{name}.tnt"), map(&["SC1_Green_T1"]));
+            f.put("mod", &format!("maps/{name}.ota"), b"[GlobalHeader]{missionname=Converted;}");
+            f.put("mod", &format!("maps/{name}.features"), own.as_bytes());
+        }
+        let report = validate_all(&f.vfs(&["base", "mod"]));
+        assert!(!report.issues.iter().any(|i| i.message.contains("SC1_GREEN_T1")), "{}", report.to_text());
+        assert_eq!(report.counts.maps, 2);
+        // One named like the game's own tree: told.
+        f.put("mod", "maps/ridge (sc).features", "[Tree1]{description=Tree;category=trees;footprintx=1;footprintz=1;}".as_bytes());
+        let report = validate_all(&f.vfs(&["base", "mod"]));
+        assert!(report.issues.iter().any(|i| i.code == "definition.duplicate" && i.message.contains("the game keeps its own")), "{}", report.to_text());
     }
 
     /// The original game's slips are no mod's: a mod's copy of one of its files carries the same

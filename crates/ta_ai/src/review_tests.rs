@@ -8,7 +8,7 @@ fn put(sim: &mut Sim, name: &str, owner: u8, x: i64, z: i64) -> UnitId {
 
 fn ocean(base: Sim, seam: bool) -> Sim {
     let heights = (0..4096).map(|i| if !seam || (32..48).contains(&(i % 64)) { 0 } else { 60 }).collect();
-    let map = TntMap { width: 64, height: 64, sea_level: 50, heights, features: vec![FEATURE_NONE; 4096], tiles: vec![], tile_map: vec![], feature_names: vec![], minimap: Default::default() };
+    let map = TntMap { width: 64, height: 64, sea_level: 50, heights, features: vec![FEATURE_NONE; 4096], tiles: vec![], tile_map: vec![], feature_names: vec![], minimap: Default::default(), flags: Vec::new() };
     let setup: Vec<_> = (0..2).map(|color| PlayerSetup { side: "ARM".into(), color, start: FxVec3::ZERO, metal: fx(1000), energy: fx(1000), ai: false }).collect();
     let mut sim = Sim::new(base.types.clone(), base.data.clone(), &map, &MapInfo::default(), 0, &setup, 7);
     sim.los_enabled = false;

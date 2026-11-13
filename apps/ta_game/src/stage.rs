@@ -2960,7 +2960,7 @@ altitude = 0",
                 ai: true,
             })
             .collect();
-        let mut sim = Sim::new(assets.types.clone(), assets.data.clone(), &map, &info, 0, &players, setup.seed);
+        let mut sim = Sim::new(assets.types.clone(), assets.data.for_map(vfs, &setup.map), &map, &info, 0, &players, setup.seed);
         for (i, s) in setup.players.iter().enumerate() {
             sim.set_team(i as u8, s.team);
         }

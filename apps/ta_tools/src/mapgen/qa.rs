@@ -110,6 +110,7 @@ fn fleet_maps_connect_submarines_in_generated_and_shipped_terrain() {
                     heights: land.height.data.iter().map(|h| h.round().clamp(0.0, 255.0) as u8).collect(),
                     features: vec![ta_formats::tnt::FEATURE_NONE; land.w * land.h],
                     tiles: Vec::new(), tile_map: Vec::new(), feature_names: Vec::new(), minimap: ta_formats::image::IndexedImage::new(0, 0, 0),
+                    flags: Vec::new(),
                 };
                 (map, land.starts)
             } else {

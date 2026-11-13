@@ -3,6 +3,17 @@
 ## Unreleased
 
 ### Added
+- Supreme Commander: Forged Alliance's maps in TA Reborn. With the game installed (GOG's or Steam's,
+  or in a folder you choose), the Maps page's SUPREME COMMANDER… lists its skirmish maps, and your
+  own downloaded and Forged Alliance Forever maps, with the game's pictures of them, and makes the
+  ones you choose into TA Reborn maps on your computer, from your copy of the game. Their land, the
+  ground as the game paints it, their cliffs (which still stop tanks however low the land became),
+  their forests (passable, as in the game) and rocks, their mass points (metal deposits), hydrocarbon
+  points (geothermal vents) and starting places come with them, in a map pack shown in the map
+  library and in skirmish. The computer players play them. See
+  [docs/SUPCOM_MAPS.md](docs/SUPCOM_MAPS.md).
+- `ta-tools supcom` makes Supreme Commander's maps into TA's, with pictures of each beside the
+  game's own.
 - A mod's compatibility report now opens on an OVERVIEW: what the check found, in a word and a
   sentence, with its errors, warnings and notes, each a way into those findings; what the mod
   holds; the findings to fix first; and what the project saw of it in play. A mod's details in

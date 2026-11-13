@@ -69,7 +69,7 @@ fn fixture_map(count: u8, cells: u32, edit: impl FnOnce(&mut GameData)) -> Sim {
     let data = Arc::new(data);
     let types = Arc::new(UnitTypes::compile(&data, &|_| None));
     let n = (cells * cells) as usize;
-    let map = TntMap { width: cells, height: cells, sea_level: 0, heights: vec![60; n], features: vec![FEATURE_NONE; n], tiles: vec![], tile_map: vec![], feature_names: vec![], minimap: Default::default() };
+    let map = TntMap { width: cells, height: cells, sea_level: 0, heights: vec![60; n], features: vec![FEATURE_NONE; n], tiles: vec![], tile_map: vec![], feature_names: vec![], minimap: Default::default(), flags: Vec::new() };
     let players: Vec<_> = (0..count).map(|color| PlayerSetup { side: "ARM".into(), color, start: FxVec3::ZERO, metal: fx(1000), energy: fx(1000), ai: false }).collect();
     Sim::new(types, data, &map, &MapInfo::default(), 0, &players, 7)
 }
@@ -159,7 +159,7 @@ fn defeating_a_land_enemy_replans_for_the_remaining_island_enemy() {
     for z in 0..128 {
         for x in 62..67 { heights[z * 128 + x] = 0; }
     }
-    let map = TntMap { width: 128, height: 128, sea_level: 50, heights, features: vec![FEATURE_NONE; 16384], tiles: vec![], tile_map: vec![], feature_names: vec![], minimap: Default::default() };
+    let map = TntMap { width: 128, height: 128, sea_level: 50, heights, features: vec![FEATURE_NONE; 16384], tiles: vec![], tile_map: vec![], feature_names: vec![], minimap: Default::default(), flags: Vec::new() };
     let players: Vec<_> = [(150, 150), (800, 150), (1800, 1800)].iter().enumerate().map(|(i, &(x, z))| PlayerSetup {
         side: "ARM".into(), color: i as u8, start: FxVec3::from_ints(x, 60, z), metal: fx(1000), energy: fx(1000), ai: true,
     }).collect();
@@ -203,7 +203,7 @@ fn naval_plans_use_long_range_ships_and_follow_enemy_base_changes() {
         data.weapons[bomb].range = 1000.0;
     });
     let heights = (0..4096).map(|i| if i % 64 < 30 { 0 } else { 60 }).collect();
-    let map = TntMap { width: 64, height: 64, sea_level: 50, heights, features: vec![FEATURE_NONE; 4096], tiles: vec![], tile_map: vec![], feature_names: vec![], minimap: Default::default() };
+    let map = TntMap { width: 64, height: 64, sea_level: 50, heights, features: vec![FEATURE_NONE; 4096], tiles: vec![], tile_map: vec![], feature_names: vec![], minimap: Default::default(), flags: Vec::new() };
     let players: Vec<_> = [(800, 200), (800, 900)].iter().enumerate().map(|(i, &(x, z))| PlayerSetup {
         side: "ARM".into(), color: i as u8, start: FxVec3::from_ints(x, 60, z), metal: fx(1000), energy: fx(1000), ai: true,
     }).collect();

@@ -64,7 +64,7 @@ fn a_copied_game_plays_on_exactly_as_the_game() {
             ai: true,
         })
         .collect();
-    let mut sim = Sim::new(types.clone(), data, &map, &info, 0, &players, 11);
+    let mut sim = Sim::new(types.clone(), data.for_map(&vfs, &map_name), &map, &info, 0, &players, 11);
     // The rule "modern movement" (units give way, group orders as formations) unless
     // `TA_TEST_GIVE_WAY=0`: its state must copy too.
     sim.local_avoidance = std::env::var("TA_TEST_GIVE_WAY").map_or(true, |v| v != "0");

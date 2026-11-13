@@ -1,0 +1,12 @@
+[package]
+name = "ta_mapart"
+description = "A map's art in TA's form: painted ground seen as TA's camera saw it, cut into 32-pixel tiles within a budget and dithered into TA's palette"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+rayon.workspace = true
+rustc-hash.workspace = true

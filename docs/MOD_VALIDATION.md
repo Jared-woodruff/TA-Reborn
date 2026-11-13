@@ -187,12 +187,16 @@ original game's).
   players' build lists (side data's CANBUILD, told as theirs: a unit only they name is on no
   menu, so no panel misses its picture); maps to their
   terrain (without it the map is left out of the lists: a warning), meteors, placed units and
-  features. A file naming the same missing thing several times is told it once, with all that
+  features (a map's own among them: `maps/<map>.features`, checked as feature definitions, as
+  maps converted from Supreme Commander carry them; docs/SUPCOM_MAPS.md). A file naming the same missing thing several times is told it once, with all that
   name it, and a model's missing textures are one finding. A unit's faction missing from the
   side data, and a menu list whose builder is missing, are notes: the game never acts on a
   unit's side, and skips such a list.
 - **Duplicates:** a name defined twice in one content (the game keeps the later, in path
-  order); a mod's definition the original game's comes after, so it is never used.
+  order); a mod's definition the original game's comes after, so it is never used. Maps' own
+  features are the exception: each map carries those it names, so many define one alike (the
+  game keeps the first, no finding); one named like one of the game's own is told (the game keeps
+  its own).
 - **Scripts' operands:** a piece, axis, variable or function out of range, or a jump out of
   the code, is a warning: the game works round it (the instruction does nothing, the thread
   ends).

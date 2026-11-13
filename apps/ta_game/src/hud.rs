@@ -3103,7 +3103,7 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
         let types = std::sync::Arc::new(ta_sim::UnitTypes::compile(&data, &|_| None));
         let side = 64;
-        let map = ta_formats::tnt::TntMap { width: side, height: side, sea_level: 0, heights: vec![60; (side * side) as usize], features: vec![ta_formats::tnt::FEATURE_NONE; (side * side) as usize], tiles: Vec::new(), tile_map: Vec::new(), feature_names: Vec::new(), minimap: Default::default() };
+        let map = ta_formats::tnt::TntMap { width: side, height: side, sea_level: 0, heights: vec![60; (side * side) as usize], features: vec![ta_formats::tnt::FEATURE_NONE; (side * side) as usize], tiles: Vec::new(), tile_map: Vec::new(), feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
         let players = [ta_sim::PlayerSetup { side: "ARM".into(), color: 0, start: ta_sim::FxVec3::ZERO, metal: ta_sim::Fx::ZERO, energy: ta_sim::Fx::ZERO, ai: false }];
         let mut sim = ta_sim::Sim::new(types, std::sync::Arc::new(data), &map, &ta_data::MapInfo::default(), 0, &players, 7);
         let id = sim.spawn_unit(sim.types.id("SILO").unwrap(), 0, ta_sim::FxVec3::from_ints(400, 60, 400), 0, true).unwrap();

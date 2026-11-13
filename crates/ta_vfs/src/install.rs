@@ -144,7 +144,8 @@ pub fn find_file_ci(dir: &Path, name: &str) -> Option<PathBuf> {
         .map(|e| e.path())
 }
 
-pub(crate) fn find_dir_ci(dir: &Path, name: &str) -> Option<PathBuf> {
+/// Finds a folder in `dir` ignoring case.
+pub fn find_dir_ci(dir: &Path, name: &str) -> Option<PathBuf> {
     std::fs::read_dir(dir)
         .ok()?
         .filter_map(|e| e.ok())
@@ -284,7 +285,7 @@ fn steam_manifest_for(root: &Path) -> Option<PathBuf> {
 }
 
 /// A value of Valve's key-value text (`"key"  "value"` a line): the first `key`'s.
-fn acf_value(text: &str, key: &str) -> Option<String> {
+pub fn acf_value(text: &str, key: &str) -> Option<String> {
     text.lines().find_map(|line| {
         let mut quoted = line.split('"').skip(1).step_by(2);
         if quoted.next()?.eq_ignore_ascii_case(key) { quoted.next().map(|v| v.replace("\\\\", "\\")) } else { None }
@@ -293,28 +294,105 @@ fn acf_value(text: &str, key: &str) -> Option<String> {
 
 /// Where Steam keeps the game in a library: the folder its app manifest names, else Steam's
 /// usual one.
+#[cfg(test)]
 fn steam_game_dir(library: &Path) -> PathBuf {
-    let steamapps = library.join("steamapps");
-    let named = find_file_ci(&steamapps, &format!("appmanifest_{STEAM_APP_ID}.acf"))
-        .and_then(|m| std::fs::read_to_string(m).ok())
-        .and_then(|text| acf_value(&text, "installdir"));
-    steamapps.join("common").join(named.unwrap_or_else(|| STEAM_DIR.to_string()))
+    steam_app_dir(library, STEAM_APP_ID, STEAM_DIR)
 }
 
+/// Where Steam keeps app `app` in a library: the folder its app manifest names, else `usual`.
+pub fn steam_app_dir(library: &Path, app: u32, usual: &str) -> PathBuf {
+    let steamapps = library.join("steamapps");
+    let named = find_file_ci(&steamapps, &format!("appmanifest_{app}.acf"))
+        .and_then(|m| std::fs::read_to_string(m).ok())
+        .and_then(|text| acf_value(&text, "installdir"));
+    steamapps.join("common").join(named.unwrap_or_else(|| usual.to_string()))
+}
+
+/// Where Steam may keep app `app` (in its folder `usual` unless its manifest names another): its
+/// uninstall key's folder (Windows), then the app's folder in every library of every Steam there
+/// is (this user's, the machine's, its usual folder; off Windows the native, Flatpak and macOS
+/// ones), each once.
+pub fn steam_app_folders(app: u32, usual: &str) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    let push = |dir: PathBuf, out: &mut Vec<PathBuf>| {
+        if !out.iter().any(|o| same_place(o, &dir)) {
+            out.push(dir);
+        }
+    };
+    #[cfg(windows)]
+    {
+        use winreg::HKLM;
+        for key in [
+            format!(r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Steam App {app}"),
+            format!(r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Steam App {app}"),
+        ] {
+            if let Ok(k) = HKLM.open_subkey(key) && let Ok(p) = k.get_value::<String, _>("InstallLocation") {
+                push(PathBuf::from(p), &mut out);
+            }
+        }
+    }
+    for root in steam_roots() {
+        for lib in steam_libraries(&root) {
+            push(steam_app_dir(&lib, app, usual), &mut out);
+        }
+    }
+    out
+}
+
+/// Every Steam there may be: this user's (where it really is), the machine's, else its usual
+/// folder (Windows); the native, Flatpak and macOS ones elsewhere.
+pub fn steam_roots() -> Vec<PathBuf> {
+    #[cfg(windows)]
+    {
+        use winreg::{HKCU, HKLM};
+        let mut roots: Vec<PathBuf> = Vec::new();
+        if let Ok(p) = HKCU.open_subkey(r"Software\Valve\Steam").and_then(|k| k.get_value::<String, _>("SteamPath")) {
+            roots.push(PathBuf::from(p));
+        }
+        for key in [r"SOFTWARE\WOW6432Node\Valve\Steam", r"SOFTWARE\Valve\Steam"] {
+            if let Ok(p) = HKLM.open_subkey(key).and_then(|k| k.get_value::<String, _>("InstallPath")) {
+                roots.push(PathBuf::from(p));
+            }
+        }
+        roots.push(PathBuf::from(r"C:\Program Files (x86)\Steam"));
+        roots
+    }
+    #[cfg(not(windows))]
+    {
+        std::env::var_os("HOME").map_or_else(Vec::new, |home| unix_steam_roots(Path::new(&home)))
+    }
+}
+
+/// Whether two paths name one folder (on Windows whatever their case and slashes).
+fn same_place(a: &Path, b: &Path) -> bool {
+    if cfg!(windows) {
+        let key = |p: &Path| p.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_ascii_lowercase();
+        key(a) == key(b)
+    } else {
+        a == b
+    }
+}
+
+/// The folders GOG's registry key for product `id` names (the offline installer's and Galaxy's).
 #[cfg(windows)]
-fn gog_registry_paths() -> Vec<PathBuf> {
+pub fn gog_registry_folders(id: &str) -> Vec<PathBuf> {
     use winreg::{HKCU, HKLM};
     let mut out = Vec::new();
     for (hive, key) in [
-        (HKLM, format!(r"SOFTWARE\WOW6432Node\GOG.com\Games\{GOG_GAME_ID}")),
-        (HKLM, format!(r"SOFTWARE\GOG.com\Games\{GOG_GAME_ID}")),
-        (HKCU, format!(r"SOFTWARE\GOG.com\Games\{GOG_GAME_ID}")),
+        (HKLM, format!(r"SOFTWARE\WOW6432Node\GOG.com\Games\{id}")),
+        (HKLM, format!(r"SOFTWARE\GOG.com\Games\{id}")),
+        (HKCU, format!(r"SOFTWARE\GOG.com\Games\{id}")),
     ] {
         if let Ok(k) = hive.open_subkey(&key) && let Ok(p) = k.get_value::<String, _>("path") {
             out.push(PathBuf::from(p));
         }
     }
     out
+}
+
+#[cfg(windows)]
+fn gog_registry_paths() -> Vec<PathBuf> {
+    gog_registry_folders(GOG_GAME_ID)
 }
 
 /// Elsewhere the Windows game lives in a Wine prefix, or where Heroic put it ([`unix_gog_paths`]).
@@ -334,11 +412,23 @@ fn gog_registry_paths() -> Vec<PathBuf> {
 #[cfg(any(not(windows), test))]
 fn unix_gog_paths(home: &Path, wine_prefix: Option<PathBuf>, config: Option<&Path>) -> Vec<PathBuf> {
     let mut out = heroic_paths(home, config);
+    for drive_c in wine_drives(home, wine_prefix) {
+        out.extend(drive_c_folders(&drive_c));
+    }
+    // Heroic installs GOG games natively under ~/Games/Heroic/<title>.
+    out.push(home.join("Games/Heroic/Total Annihilation"));
+    out.push(home.join("Games/Heroic/Total Annihilation Commander Pack"));
+    out
+}
+
+/// The `drive_c` folders of the Wine prefixes under `home`: `wine_prefix` (`WINEPREFIX`) first,
+/// `~/.wine`, and every prefix one level down in the usual homes of Lutris, Bottles, Heroic and
+/// CrossOver (a Windows game's install on Linux and macOS).
+pub fn wine_drives(home: &Path, wine_prefix: Option<PathBuf>) -> Vec<PathBuf> {
     let mut prefixes = vec![home.join(".wine")];
     if let Some(p) = wine_prefix {
         prefixes.insert(0, p);
     }
-    // Every prefix one level down in the usual homes of Lutris, Bottles and Heroic.
     for parent in [
         home.join("Games"),
         home.join("Games/Heroic/Prefixes"),
@@ -351,13 +441,7 @@ fn unix_gog_paths(home: &Path, wine_prefix: Option<PathBuf>, config: Option<&Pat
             prefixes.extend(entries.flatten().map(|e| e.path()));
         }
     }
-    for prefix in prefixes {
-        out.extend(drive_c_folders(&prefix.join("drive_c")));
-    }
-    // Heroic installs GOG games natively under ~/Games/Heroic/<title>.
-    out.push(home.join("Games/Heroic/Total Annihilation"));
-    out.push(home.join("Games/Heroic/Total Annihilation Commander Pack"));
-    out
+    prefixes.into_iter().map(|p| p.join("drive_c")).collect()
 }
 
 /// Where GOG's installer, GOG Galaxy and TA's CD put the game on a Windows system's drive: in a
@@ -382,8 +466,7 @@ fn drive_c_folders(drive_c: &Path) -> impl Iterator<Item = PathBuf> + '_ {
 /// `relative` ('/' between its names) under `base`, each folder found whatever the case of its
 /// name (Linux tells "TotalA" from "TOTALA", and Windows' installers write either); as written
 /// from the first that is missing.
-#[cfg(any(not(windows), test))]
-fn join_ci(base: &Path, relative: &str) -> PathBuf {
+pub fn join_ci(base: &Path, relative: &str) -> PathBuf {
     let mut path = base.to_path_buf();
     for name in relative.split('/') {
         let exact = path.join(name);
@@ -396,12 +479,18 @@ fn join_ci(base: &Path, relative: &str) -> PathBuf {
 /// else `~/.config`, and in its Flatpak's): the Commander Pack's folder, wherever it was put.
 #[cfg(any(not(windows), test))]
 fn heroic_paths(home: &Path, config: Option<&Path>) -> Vec<PathBuf> {
+    heroic_folders(home, config, GOG_GAME_ID)
+}
+
+/// Heroic's records of its GOG installs (`heroic/gog_store/installed.json` in `config`, else
+/// `~/.config`, and in its Flatpak's): GOG product `id`'s folder, wherever it was put.
+pub fn heroic_folders(home: &Path, config: Option<&Path>, id: &str) -> Vec<PathBuf> {
     let native = config.map_or_else(|| home.join(".config"), Path::to_path_buf);
     let flatpak = home.join(".var/app/com.heroicgameslauncher.hgl/config");
     let mut out = Vec::new();
     for dir in [native, flatpak] {
         let record = std::fs::read_to_string(dir.join("heroic").join("gog_store").join("installed.json"));
-        if let Some(path) = record.ok().and_then(|text| heroic_install_path(&text))
+        if let Some(path) = record.ok().and_then(|text| heroic_install_path_of(&text, id))
             && !out.contains(&path)
         {
             out.push(path);
@@ -412,8 +501,13 @@ fn heroic_paths(home: &Path, config: Option<&Path>) -> Vec<PathBuf> {
 
 /// The Commander Pack's folder in the text of Heroic's `installed.json`
 /// (`{"installed": [{"appName": "1207658880", "install_path": "...", ...}, ...]}`).
-#[cfg(any(not(windows), test))]
+#[cfg(test)]
 fn heroic_install_path(text: &str) -> Option<PathBuf> {
+    heroic_install_path_of(text, GOG_GAME_ID)
+}
+
+/// GOG product `id`'s folder in the text of Heroic's `installed.json`.
+fn heroic_install_path_of(text: &str, id: &str) -> Option<PathBuf> {
     use serde_json::Value;
     let installed = serde_json::from_str::<Value>(text).ok()?.get("installed")?.clone();
     let entries: Vec<Value> = match installed {
@@ -422,8 +516,8 @@ fn heroic_install_path(text: &str) -> Option<PathBuf> {
         _ => return None,
     };
     let ours = |entry: &&Value| match entry.get("appName") {
-        Some(Value::String(id)) => id == GOG_GAME_ID,
-        Some(Value::Number(id)) => id.to_string() == GOG_GAME_ID,
+        Some(Value::String(name)) => name == id,
+        Some(Value::Number(name)) => name.to_string() == id,
         _ => false,
     };
     let path = entries.iter().find(ours)?.get("install_path")?.as_str()?;
@@ -447,6 +541,16 @@ fn proton_prefix_paths() -> Vec<PathBuf> {
 /// through Proton has a prefix: listing seven guesses for each would bury the search's list).
 #[cfg(any(not(windows), test))]
 fn proton_paths(home: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for drive_c in proton_drives(home) {
+        out.extend(drive_c_folders(&drive_c).filter(|folder| folder.is_dir()));
+    }
+    out
+}
+
+/// The `drive_c` folders of every Proton prefix in the Steam libraries under `home`
+/// (`<library>/steamapps/compatdata/<app>/pfx/drive_c`), each library once, in order.
+pub fn proton_drives(home: &Path) -> Vec<PathBuf> {
     // (`~/.steam/steam` is usually a link to `~/.local/share/Steam`: each library once.)
     let (mut libraries, mut seen) = (Vec::new(), Vec::new());
     for root in unix_steam_roots(home) {
@@ -463,80 +567,26 @@ fn proton_paths(home: &Path) -> Vec<PathBuf> {
         let Ok(apps) = std::fs::read_dir(library.join("steamapps").join("compatdata")) else { continue };
         let mut drives: Vec<PathBuf> = apps.flatten().map(|app| app.path().join("pfx").join("drive_c")).filter(|c| c.is_dir()).collect();
         drives.sort();
-        for drive_c in drives {
-            out.extend(drive_c_folders(&drive_c).filter(|folder| folder.is_dir()));
-        }
+        out.extend(drives);
     }
     out
 }
 
-#[cfg(windows)]
+/// The Steam release's folders: its uninstall key's, then the one in every library of every
+/// Steam there is ([`steam_app_folders`]).
 fn steam_paths() -> Vec<PathBuf> {
-    use winreg::{HKCU, HKLM};
-    let mut out = Vec::new();
-    for key in [
-        format!(r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Steam App {STEAM_APP_ID}"),
-        format!(r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Steam App {STEAM_APP_ID}"),
-    ] {
-        if let Ok(k) = HKLM.open_subkey(key) && let Ok(p) = k.get_value::<String, _>("InstallLocation") {
-            out.push(PathBuf::from(p));
-        }
-    }
-    // Steam itself: this user's (where it really is), the machine's, else its usual folder;
-    // every library each lists.
-    let mut roots: Vec<PathBuf> = Vec::new();
-    if let Ok(p) = HKCU.open_subkey(r"Software\Valve\Steam").and_then(|k| k.get_value::<String, _>("SteamPath")) {
-        roots.push(PathBuf::from(p));
-    }
-    for key in [r"SOFTWARE\WOW6432Node\Valve\Steam", r"SOFTWARE\Valve\Steam"] {
-        if let Ok(p) = HKLM.open_subkey(key).and_then(|k| k.get_value::<String, _>("InstallPath")) {
-            roots.push(PathBuf::from(p));
-        }
-    }
-    roots.push(PathBuf::from(r"C:\Program Files (x86)\Steam"));
-    for root in roots {
-        for lib in steam_libraries(&root) {
-            let dir = steam_game_dir(&lib);
-            if !out.iter().any(|o| same_path(o, &dir)) {
-                out.push(dir);
-            }
-        }
-    }
-    out
-}
-
-/// Whether two paths name one folder (Windows: whatever their case and slashes).
-#[cfg(windows)]
-fn same_path(a: &Path, b: &Path) -> bool {
-    let key = |p: &Path| p.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_ascii_lowercase();
-    key(a) == key(b)
-}
-
-/// Steam (run through Proton): the native client, the Flatpak one, and the libraries they
-/// list (the Steam Deck's SD card included).
-#[cfg(not(windows))]
-fn steam_paths() -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
-        for root in unix_steam_roots(&home) {
-            for lib in steam_libraries(&root) {
-                out.push(steam_game_dir(&lib));
-            }
-        }
-    }
-    out
+    steam_app_folders(STEAM_APP_ID, STEAM_DIR)
 }
 
 /// Native Steam homes on Linux (including Flatpak) and macOS. Original Windows game
 /// files can be supplied through a compatibility install or selected explicitly.
-#[cfg(any(not(windows), test))]
-fn unix_steam_roots(home: &Path) -> Vec<PathBuf> {
+pub fn unix_steam_roots(home: &Path) -> Vec<PathBuf> {
     [".local/share/Steam", ".steam/steam", ".var/app/com.valvesoftware.Steam/.local/share/Steam", "Library/Application Support/Steam"]
         .into_iter().map(|path| home.join(path)).collect()
 }
 
 /// Parses the `"path"` entries of Steam's `libraryfolders.vdf`.
-fn steam_libraries(steam_root: &Path) -> Vec<PathBuf> {
+pub fn steam_libraries(steam_root: &Path) -> Vec<PathBuf> {
     let mut libs = vec![steam_root.to_path_buf()];
     if let Ok(vdf) = std::fs::read_to_string(steam_root.join("steamapps").join("libraryfolders.vdf")) {
         for line in vdf.lines() {

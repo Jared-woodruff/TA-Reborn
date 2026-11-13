@@ -149,8 +149,10 @@ pub const RECORD_VERSION: u32 = 46;
 /// arm is still out from the last), and a job has begun once it is the builder's, whatever the
 /// stance; 91, a builder's menu is its GUI pages and download entries, the 3.1 patch's
 /// `[CANBUILD]` lists the computer players' (`UnitType::ai_build_options`): a player's
-/// constructors on a duty build what their menus offer.
-pub const SIMULATION_VERSION: u32 = 91;
+/// constructors on a duty build what their menus offer; 92, a cell a map marks as a cliff
+/// (`ta_formats::tnt::CELL_CLIFF`: a map converted from Supreme Commander) is as steep as a
+/// slope can be.
+pub const SIMULATION_VERSION: u32 = 92;
 /// Records shorter than one year of simulated time are supported. Shared with the
 /// launcher's metadata reader so impossible durations cannot start endless save catch-up.
 pub const MAX_RECORD_TICKS: u64 = 30 * 3600 * 24 * 365;

@@ -163,6 +163,9 @@ pub struct MapDoc {
     pub origin: String,
     /// A new map's tile palette: the map whose tiles it started with (file stem).
     pub tiles_from: Option<String>,
+    /// The map's own features (`maps/<name>.features`, a converted map's trees and rocks), saved
+    /// beside it again: a copy names them too.
+    pub features: Option<Vec<u8>>,
     /// Tile graphics already in `tnt.tiles`, by content hash (tiles imported from another map
     /// are shared, not duplicated).
     tile_lookup: HashMap<u64, Vec<u16>>,
@@ -175,7 +178,7 @@ fn tile_hash(tile: &Tile) -> u64 {
 
 impl MapDoc {
     fn with(tnt: TntMap, props: MapProps, starts: Vec<[f32; 2]>, ota: Option<TdfDocument>, origin: String) -> MapDoc {
-        let mut doc = MapDoc { tnt, props, starts, ota, origin, tiles_from: None, tile_lookup: HashMap::new() };
+        let mut doc = MapDoc { tnt, props, starts, ota, origin, tiles_from: None, features: None, tile_lookup: HashMap::new() };
         doc.rebuild_tile_lookup();
         doc
     }
@@ -200,7 +203,9 @@ impl MapDoc {
         }
         let starts = info.schemas.first().map(|s| s.start_positions.iter().map(|&(_, x, z)| [x, z]).take(MAX_STARTS).collect()).unwrap_or_default();
         let origin = props.name.clone();
-        Ok(MapDoc::with(tnt, props, starts, ota, origin))
+        let mut doc = MapDoc::with(tnt, props, starts, ota, origin);
+        doc.features = vfs.read_opt(&format!("maps/{name}.features"));
+        Ok(doc)
     }
 
     /// A new, flat map: `new`'s size, sea level and height, tiled with the most used tile of
@@ -226,6 +231,7 @@ impl MapDoc {
             features: vec![FEATURE_NONE; (w * h) as usize],
             feature_names: Vec::new(),
             minimap: Default::default(),
+            flags: Vec::new(),
         };
         tnt.minimap = ta_formats::image::IndexedImage::new(1, 1, 0);
         let mut props = palette_info.map_or_else(MapProps::default, MapProps::from_info);
@@ -477,6 +483,8 @@ impl MapDoc {
             features,
             feature_names: names,
             minimap: Default::default(),
+            // (A converted map's cliffs stay where they were, whatever was edited.)
+            flags: t.flags.clone(),
         };
         out.minimap = out.build_minimap(palette);
         out

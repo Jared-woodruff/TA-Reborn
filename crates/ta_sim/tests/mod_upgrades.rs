@@ -26,7 +26,7 @@ use ta_sim::{Command, Fx, FxVec3, Locomotion, Mutators, PlayerSetup, Sim, UnitTy
 
 fn flat_map() -> TntMap {
     let cells = 96 * 96;
-    TntMap { width: 96, height: 96, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![60; cells], features: vec![FEATURE_NONE; cells], feature_names: Vec::new(), minimap: Default::default() }
+    TntMap { width: 96, height: 96, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![60; cells], features: vec![FEATURE_NONE; cells], feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() }
 }
 
 /// The game and the mod `TA_TEST_MOD` names, mounted as the game mounts them.

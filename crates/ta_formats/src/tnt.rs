@@ -7,6 +7,11 @@
 //! (1024 bytes per tile), `tile count`, `feature type count`, `feature names ptr`
 //! (132-byte records: i32 index + 128-byte name), `sea level`, `minimap ptr`, then `1` and
 //! four zeros (64 bytes). [`TntMap::write`] produces the same layout.
+//!
+//! TA Reborn's one addition: marks per cell ([`TntMap::flags`], `CELL_*` bits) in each cell's
+//! spare 4th attribute byte, which TA writes 0 and never reads. The header's last word
+//! ([`FLAGS_MAGIC`]) says the bytes are marks, so a map whose spare bytes hold anything else is
+//! never read as marked. A map without marks is written as TA writes it.
 
 use crate::bin::{fixed_str, i32_at, slice, u16_at, u8_at};
 use crate::image::{IndexedImage, Palette};
@@ -37,6 +42,13 @@ pub const FEATURE_COVERED: u16 = 0xFFFE;
 /// Impassable "void" cells, drawn black.
 pub const FEATURE_VOID: u16 = 0xFFFC;
 
+/// The header's last word on a map whose cells' spare bytes are TA Reborn's marks
+/// ([`TntMap::flags`]).
+pub const FLAGS_MAGIC: i32 = i32::from_le_bytes(*b"RBCF");
+/// A cliff: too steep for anything that minds slopes to cross, and for building on (a map
+/// converted from another game keeps its cliffs, whatever its heights became).
+pub const CELL_CLIFF: u8 = 1;
+
 #[derive(Clone, Debug)]
 pub struct TntMap {
     /// Width and height in 16-pixel cells.
@@ -53,6 +65,9 @@ pub struct TntMap {
     pub features: Vec<u16>,
     pub feature_names: Vec<String>,
     pub minimap: IndexedImage,
+    /// TA Reborn's marks per cell (`CELL_*` bits), `width × height`; empty when the map has
+    /// none (every map of TA's).
+    pub flags: Vec<u8>,
 }
 
 /// Shared bounds validation for full terrain loads and lightweight library previews.
@@ -60,6 +75,8 @@ struct Header {
     width: u32, height: u32, sea_level: i32,
     tile_map_ptr: usize, attr_ptr: usize, tile_gfx_ptr: usize,
     tile_count: usize, feature_count: usize, feature_ptr: usize, minimap_ptr: usize,
+    /// The cells' spare bytes are TA Reborn's marks ([`FLAGS_MAGIC`]).
+    flagged: bool,
 }
 
 impl Header {
@@ -85,6 +102,7 @@ impl Header {
         let feature_ptr = ptr(32)?;
         let sea_level = i32_at(data, 36)?;
         let minimap_ptr = ptr(40)?;
+        let flagged = i32_at(data, 60).is_ok_and(|word| word == FLAGS_MAGIC);
         if tile_count == 0 {
             return Err(FormatError::invalid("TNT", "map has no graphic tiles"));
         }
@@ -103,7 +121,7 @@ impl Header {
             return Err(FormatError::invalid("TNT", format!("{width}x{height} map, {tile_count} tiles and {feature_count} features do not fit in {} bytes", data.len())));
         }
         Ok(Self { width, height, sea_level, tile_map_ptr, attr_ptr, tile_gfx_ptr,
-            tile_count, feature_count, feature_ptr, minimap_ptr })
+            tile_count, feature_count, feature_ptr, minimap_ptr, flagged })
     }
 }
 
@@ -132,7 +150,7 @@ impl TntMap {
 
     pub fn parse(data: &[u8]) -> Result<TntMap> {
         let Header { width, height, sea_level, tile_map_ptr, attr_ptr, tile_gfx_ptr,
-            tile_count, feature_count, feature_ptr, minimap_ptr } = Header::parse(data)?;
+            tile_count, feature_count, feature_ptr, minimap_ptr, flagged } = Header::parse(data)?;
         let tw = (width / 2) as usize;
         let th = (height / 2) as usize;
         let cells = width as usize * height as usize;
@@ -144,10 +162,18 @@ impl TntMap {
 
         let mut heights = Vec::with_capacity(cells);
         let mut features = Vec::with_capacity(cells);
+        let mut flags = Vec::with_capacity(if flagged { cells } else { 0 });
         for i in 0..cells {
             let o = attr_ptr + i * 4;
             heights.push(u8_at(data, o)?);
             features.push(u16_at(data, o + 1)?);
+            if flagged {
+                // (The last cell's spare byte may be missing.)
+                flags.push(u8_at(data, o + 3).unwrap_or(0));
+            }
+        }
+        if flags.iter().all(|&f| f == 0) {
+            flags = Vec::new();
         }
 
         let mut tiles = Vec::with_capacity(tile_count);
@@ -171,7 +197,14 @@ impl TntMap {
 
         let minimap = crop_minimap(parse_minimap(data, minimap_ptr).unwrap_or_default(), width, height);
 
-        Ok(TntMap { width, height, sea_level, tiles, tile_map, heights, features, feature_names, minimap })
+        Ok(TntMap { width, height, sea_level, tiles, tile_map, heights, features, feature_names, minimap, flags })
+    }
+
+    /// The marks of a cell (`CELL_*` bits; 0 off the map or on a map without marks).
+    #[inline]
+    pub fn flags_at(&self, cx: u32, cz: u32) -> u8 {
+        if cx >= self.width || cz >= self.height { return 0; }
+        self.flags.get((cz * self.width + cx) as usize).copied().unwrap_or(0)
     }
 
     pub fn width_px(&self) -> u32 {
@@ -211,14 +244,17 @@ impl TntMap {
             return Err(invalid(format!("bad size {w}x{h} (cells, must be even)")));
         }
         let (tw, th) = (w / 2, h / 2);
-        if self.tile_map.len() != tw * th || self.heights.len() != w * h || self.features.len() != w * h {
+        if self.tile_map.len() != tw * th || self.heights.len() != w * h || self.features.len() != w * h || !(self.flags.is_empty() || self.flags.len() == w * h) {
             return Err(invalid(format!(
-                "grid sizes {} tiles, {} heights, {} features do not match {w}x{h} cells",
+                "grid sizes {} tiles, {} heights, {} features, {} marks do not match {w}x{h} cells",
                 self.tile_map.len(),
                 self.heights.len(),
-                self.features.len()
+                self.features.len(),
+                self.flags.len()
             )));
         }
+        // (Marks only when a cell has one: a map without is TA's, byte for byte.)
+        let flagged = self.flags.iter().any(|&f| f != 0);
         if self.tiles.is_empty() || self.tiles.len() > MAX_TILES {
             return Err(invalid(format!("{} tiles", self.tiles.len())));
         }
@@ -272,7 +308,7 @@ impl TntMap {
             0,
             0,
             0,
-            0,
+            if flagged { FLAGS_MAGIC } else { 0 },
         ];
         for v in header {
             out.extend_from_slice(&v.to_le_bytes());
@@ -281,10 +317,10 @@ impl TntMap {
             out.extend_from_slice(&t.to_le_bytes());
         }
         out.resize(attr_ptr, 0);
-        for (&height, &feature) in self.heights.iter().zip(&self.features) {
+        for (i, (&height, &feature)) in self.heights.iter().zip(&self.features).enumerate() {
             out.push(height);
             out.extend_from_slice(&feature.to_le_bytes());
-            out.push(0);
+            out.push(if flagged { self.flags[i] } else { 0 });
         }
         for tile in &self.tiles {
             out.extend_from_slice(&tile[..]);
@@ -489,7 +525,34 @@ mod size_tests {
             features: vec![FEATURE_NONE; cells],
             feature_names: Vec::new(),
             minimap: IndexedImage::new(1, 1, 3),
+            flags: Vec::new(),
         }
+    }
+
+    /// A map's marks (a converted map's cliffs) read back as written; a map without any is
+    /// written as TA writes maps; spare bytes a map's header does not call marks are not read.
+    #[test]
+    fn a_maps_cell_marks_read_back_and_only_where_the_header_says_so() {
+        let mut map = flat(4, 4);
+        let plain = map.write().unwrap();
+        assert_eq!(i32_at(&plain, 60).unwrap(), 0, "no marks: TA's header");
+        map.flags = vec![0; 16];
+        assert_eq!(map.write().unwrap(), plain, "marks all clear: TA's bytes");
+        map.flags[5] = CELL_CLIFF;
+        map.flags[15] = CELL_CLIFF;
+        let marked = map.write().unwrap();
+        assert_eq!(i32_at(&marked, 60).unwrap(), FLAGS_MAGIC);
+        let again = TntMap::parse(&marked).unwrap();
+        assert_eq!(again.flags, map.flags);
+        assert_eq!((again.flags_at(1, 1), again.flags_at(0, 0), again.flags_at(9, 9)), (CELL_CLIFF, 0, 0));
+        assert_eq!(again.heights, map.heights, "the heights and features beside them are as they were");
+        // The same spare bytes under TA's header: a map of another tool's, read unmarked.
+        let mut stray = marked.clone();
+        stray[60..64].copy_from_slice(&[0; 4]);
+        assert!(TntMap::parse(&stray).unwrap().flags.is_empty());
+        // Marks of the wrong size are refused.
+        map.flags = vec![CELL_CLIFF; 3];
+        assert!(map.write().is_err());
     }
 
     #[test]

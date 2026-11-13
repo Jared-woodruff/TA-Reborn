@@ -16,6 +16,7 @@ fn fixture() -> (Sim, [UnitId; 2]) {
         width: 32, height: 32, sea_level: 0, heights: vec![60; 32 * 32],
         features: vec![ta_formats::tnt::FEATURE_NONE; 32 * 32], tiles: vec![],
         tile_map: vec![], feature_names: vec![], minimap: Default::default(),
+        flags: Vec::new(),
     };
     let players: Vec<_> = (0..2).map(|p| PlayerSetup {
         side: "ARM".into(), color: p, start: FxVec3::from_ints(80 + p as i64 * 160, 60, 80),

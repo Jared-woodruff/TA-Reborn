@@ -17,6 +17,8 @@ ta_vfs.workspace = true
 ta_data.workspace = true
 ta_ui.workspace = true
 ta_config.workspace = true
+ta_mapart.workspace = true
+ta_supcom.workspace = true
 anyhow.workspace = true
 # Language files (`i18n`).
 toml.workspace = true
