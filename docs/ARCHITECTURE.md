@@ -481,8 +481,9 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   player's finished, loose units its script attaches (a building the module it made on its pad).
   A module takes no ground and stands where it was made (`UnitDef::takes_no_ground`,
   `UnitDef::cannot_get_going`); on its building it makes and stores what its file says
-  (`economy_end` counts only a transport's cargo out), and it goes with it, captured or killed,
-  whatever shields it.
+  (`economy_end` counts only a transport's cargo out; `Sim::unit_flows` shows it in the
+  building's figures, none of its own), and it goes with it, captured or killed, whatever shields
+  it.
 * **Cloak** (`CloakCost`): energy per tick while cloaked (more while moving); cloaked units
   are hidden from enemies unless one is within `MinCloakDistance`; firing reveals them.
 * **Veterancy**: kills earn experience (victim value / killer value); veterans reload up to
