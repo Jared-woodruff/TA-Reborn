@@ -370,6 +370,17 @@ impl WeaponSounds {
 mod tests {
     use super::*;
 
+    /// The mod check reads a sound category's keys as the game plays them
+    /// (`ta_data::validation::PLAYED_SOUND_KEYS`): every event's, no other.
+    #[test]
+    fn the_mod_check_knows_the_sounds_the_game_plays() {
+        let mut ours: Vec<&str> = SoundEvent::SIMPLE.iter().map(|e| e.base_key()).collect();
+        let mut check: Vec<&str> = ta_data::validation::PLAYED_SOUND_KEYS.to_vec();
+        ours.sort_unstable();
+        check.sort_unstable();
+        assert_eq!(ours, check);
+    }
+
     const SOUND_TDF: &str = "// unit sounds\n\
         [ARM_COM]\t\t// Ship\n\t{\n\tselect1=kcarmsel;\n\tunitcomplete=kcarmmov;\n\tok1=kcarmmov;\n\
         \tarrived1=kcarmstp;\n\tcant1=cantdo4;\n\tunderattack=warning2;\n\tbuild=nanlath1;\n\

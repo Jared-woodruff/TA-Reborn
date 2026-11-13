@@ -241,7 +241,9 @@ fn validate_mod(path: &Path, json: bool, fail_on: &str, inherited: bool) -> Resu
     // the mod, its dependencies' replacements alone.)
     let dependencies: Vec<&ta_vfs::mods::ModInfo> = plan.order.iter().filter(|m| !target(m)).collect();
     let install = ta_vfs::install::discover(None)?.root;
-    let baseline_vfs = game_vfs(&install, &dependencies, &|m| m.manifest.id.clone())?;
+    // (Every mod's layer named as the launcher names it, `mod:<id>`: a dependency called `base`
+    // or `reborn` is no layer of the original game's or TA Reborn's.)
+    let baseline_vfs = game_vfs(&install, &dependencies, &|m| format!("mod:{}", m.manifest.id))?;
     baseline_vfs.mods.map_err(|e| anyhow::anyhow!("{e}"))?;
     eprintln!("Checking the original game without the mod…");
     let baseline = validation::validate(&baseline_vfs.vfs, &Options::default(), |_| true);
@@ -254,18 +256,20 @@ fn validate_mod(path: &Path, json: bool, fail_on: &str, inherited: bool) -> Resu
     };
     let mut archives = Vec::new();
     if path.is_dir() {
-        // (An empty placeholder named like one of the install's archives blanks that one on
-        // purpose: no archive the game fails to read.)
+        // (An empty placeholder named like one of the install's archives, or one TA's releases
+        // install that this install lacks, blanks that one on purpose: no archive the game fails
+        // to read.)
         let replaced = ta_vfs::mods::replaced_archives(&install, &[&module]);
+        let claims = ta_vfs::mods::replaced_claims(&module);
         for entry in std::fs::read_dir(path)?.flatten() {
             let file = entry.path();
             let archive = file.extension().and_then(|e| e.to_str()).is_some_and(|e| ta_vfs::ARCHIVE_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()));
-            let blank = || file.file_name().is_some_and(|n| replaced.iter().any(|r| r.eq_ignore_ascii_case(&n.to_string_lossy()))) && ta_vfs::package::is_placeholder(&file);
+            let blank = || file.file_name().is_some_and(|n| replaced.iter().any(|r| r.eq_ignore_ascii_case(&n.to_string_lossy())) || claims.contains(&n.to_string_lossy().to_lowercase())) && ta_vfs::package::is_placeholder(&file);
             if archive && file.is_file() && let Err(error) = ta_formats::hpi::HpiArchive::open(&file) && !blank() { archives.push(unreadable(&file, error.to_string())); }
         }
     }
     let order: Vec<&ta_vfs::mods::ModInfo> = plan.order.iter().collect();
-    let mounted = game_vfs(&install, &order, &|m| if target(m) { layer.clone() } else { m.manifest.id.clone() })?;
+    let mounted = game_vfs(&install, &order, &|m| if target(m) { layer.clone() } else { format!("mod:{}", m.manifest.id) })?;
     let unopened = match mounted.mods {
         Ok(_) => None,
         // One archive the game cannot open: that is the whole report (the reader's own words,
