@@ -110,9 +110,13 @@ binary to produce an ARM64 package. Packagers check executable headers before st
 
 ```powershell
 # Windows; omit -Target to build the native host into target/release.
-./installer/build_installer.ps1 -Target x86_64-pc-windows-msvc -DistDir dist/windows-x64
-./installer/build_installer.ps1 -Target aarch64-pc-windows-msvc -DistDir dist/windows-arm64
+./installer/build_installer.ps1 -Compress -Target x86_64-pc-windows-msvc -DistDir dist/windows-x64
+./installer/build_installer.ps1 -Compress -Target aarch64-pc-windows-msvc -DistDir dist/windows-arm64
 ```
+
+`-Compress` makes packages to publish (solid LZMA, compressed archives), as the release workflow
+does: without it the setup and the archives store their files as they are, a build to try out on
+this computer in seconds rather than the ten minutes compression takes.
 
 Windows cross-builds also need Visual C++ and Windows SDK ARM64 components and a runnable
 host `ta-tools.exe` for notices (`-HostTools`). NSIS 3.13 builds the installer; a small

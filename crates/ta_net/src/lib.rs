@@ -78,10 +78,11 @@ pub use transport::{Client, Host, HostEvent};
 /// 89: hovering aircraft circle over the sea too; 90: damaged aircraft on a mission go to a free
 /// repair deck, pads switched off unused, pads mend only the aircraft on their decks; 91:
 /// scripts' questions about units by id answered, as TA 3.1 did; 92: mods' buildings make and
-/// take on their own upgrade modules, EnergyUse only while switched on, mines start cloaked.)
+/// take on their own upgrade modules, EnergyUse only while switched on, mines start cloaked; 93:
+/// a building clears its footprint of the loose features under it.)
 /// [`Msg::Hello`] and [`Refusal::Version`] keep their layout, so builds of other protocols are
 /// still told why they cannot meet.
-pub const PROTOCOL: u32 = 92;
+pub const PROTOCOL: u32 = 93;
 pub const DEFAULT_PORT: u16 = 7890;
 /// Ticks between state hash reports (which double as progress reports).
 pub const HASH_INTERVAL: u64 = 15;

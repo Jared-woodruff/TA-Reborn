@@ -25,8 +25,14 @@
 ; it up later in the launcher.
 
 Unicode true
-SetCompressor /SOLID /FINAL lzma
-SetCompressorDictSize 64
+; A release compresses; a build to try out stores the files as they are, in seconds rather than
+; the minutes LZMA takes (build_installer.ps1 without -Compress defines NO_COMPRESSION).
+!ifdef NO_COMPRESSION
+  SetCompress off
+!else
+  SetCompressor /SOLID /FINAL lzma
+  SetCompressorDictSize 64
+!endif
 ManifestDPIAware true
 ; A scalable Windows UI font keeps the wizard's text as crisp as its artwork.
 SetFont "Segoe UI" 9

@@ -424,7 +424,7 @@ Worth trying, even if not all of them land.
 2. `cargo run -p ta_game -- --map "Coast To Coast" --demo battle --screenshot scratch/x.png
    --frames 300` and look at the picture; the same with `--classic`.
 3. A two-process multiplayer game (`--host` and `--join`) reaching identical checksums.
-4. Commit, then `installer/build_installer.ps1` (no warning about uncommitted changes; with
+4. Commit, then `installer/build_installer.ps1 -Compress` (no warning about uncommitted changes; with
    `-SignScript` once there is a code-signing certificate); install and play from the
    Start menu shortcut, and open a replay by double-clicking it. For the first release
    under the name TA Reborn, install it over TA Remastered 1.9.0: it should replace that
