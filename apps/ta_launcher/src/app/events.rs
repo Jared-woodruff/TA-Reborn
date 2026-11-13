@@ -70,13 +70,14 @@ impl LauncherApp {
             self.autoupdate = false;
             self.start_update();
         }
+        let game_running = self.game_running();
         let Some(download) = &mut self.download else { return };
         if download.poll() {
             ctx.request_repaint();
         }
         match &download.step {
             Step::Downloading { .. } | Step::Checking => ctx.request_repaint_after(Duration::from_millis(150)),
-            Step::Ready(setup) if self.update_go && !self.profiles.dialog_open() && !self.game.is_running() && !self.installer.busy() && !self.skins.busy() && !self.maps.busy()
+            Step::Ready(setup) if self.update_go && !self.profiles.dialog_open() && !game_running && !self.installer.busy() && !self.skins.busy() && !self.maps.busy()
                 && self.skins.editor.as_ref().is_none_or(|e| !e.changed()) => {
                 self.update_go = false;
                 // Setup closes/replaces this process. Do not rely on on_exit,
@@ -213,7 +214,7 @@ impl LauncherApp {
 
     pub(crate) fn dialog_open(&self) -> bool {
         self.profiles.dialog_open() || self.show_shortcuts || self.whats_new.is_some()
-            || self.confirm_uninstall.is_some() || self.mod_validation.selected.is_some() || self.conversion_prompt.is_some() || self.battle_prompt.is_some() || self.show_mod_folders
+            || self.confirm_uninstall.is_some() || self.confirm_replace.is_some() || self.mod_validation.selected.is_some() || self.conversion_prompt.is_some() || self.battle_prompt.is_some() || self.show_mod_folders
             || self.confirm_close || self.confirm_end_game || self.show_progress
             || self.skins.ask.is_some()
     }
@@ -235,8 +236,9 @@ impl LauncherApp {
         if wanted != self.pad.is_some() {
             self.pad = wanted.then(|| crate::pad::Pad::start(ctx));
         }
+        let game_running = self.game_running();
         let Some(pad) = &mut self.pad else { return };
-        pad.listen(raw.focused && !self.game.is_running());
+        pad.listen(raw.focused && !game_running);
         let readings = pad.take();
         let moved = crate::pad::mouse_moved(&raw.events);
         let mouse = moved.or_else(|| ctx.input(|i| i.pointer.latest_pos()));
@@ -290,7 +292,7 @@ impl LauncherApp {
             let enter = !focused && i.consume_key(Modifiers::NONE, Key::Enter);
             (enter, i.consume_key(Modifiers::NONE, Key::F5))
         });
-        if enter && self.page == Page::Play && self.detection.install().is_some() && !self.game.is_running() {
+        if enter && self.page == Page::Play && self.detection.install().is_some() && !self.game_running() {
             ta_ui::sound::play(ctx, ta_ui::sound::UiSound::BigButton);
             self.push(Action::Play);
         }
@@ -314,7 +316,8 @@ impl LauncherApp {
             return;
         };
         let (name, path) = (entry.info.manifest.name.clone(), entry.info.path.clone());
-        let catalogued = crate::catalogue::get(&id).is_some();
+        // (A catalogue mod downloaded by hand has no GET button to install it again.)
+        let catalogued = crate::catalogue::get(&id).is_some_and(|entry| entry.file.is_some_and(|file| file.can_download()));
         let title = tf("REMOVE {name}?", &[("name", &name.to_uppercase())]);
         let mut remove = false;
         let response = ta_ui::panel::modal(ctx, "launcher_uninstall", Panel::new(&title).exit(Exit::Close).width((ctx.content_rect().width() - 80.0).clamp(1.0, 560.0)).max_height((ctx.content_rect().height() - 24.0).max(1.0)).accent(RED), true, |ui| {
@@ -329,7 +332,7 @@ impl LauncherApp {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 10.0;
-                remove = ui.add_enabled(!self.game.is_running() && !self.installer.busy(), ActionButton::danger("REMOVE")).clicked();
+                remove = ui.add_enabled(!self.game_running() && !self.installer.busy(), ActionButton::danger("REMOVE")).clicked();
                 if ui.add(ActionButton::secondary("KEEP")).clicked() {
                     self.confirm_uninstall = None;
                 }
@@ -340,6 +343,48 @@ impl LauncherApp {
             self.uninstall(&id);
         } else if response.exit {
             self.confirm_uninstall = None;
+        }
+    }
+
+    /// The question before a package the player brought takes the place of the installed mod of
+    /// its id.
+    pub(super) fn replace_dialog(&mut self, ctx: &egui::Context) {
+        let Some(source) = self.confirm_replace.clone() else { return };
+        let Some(entry) = self.mods.get(source.id()) else {
+            // (No longer installed: nothing in its way.)
+            self.confirm_replace = None;
+            self.installer.start(source);
+            return;
+        };
+        let (name, version, path) = (entry.info.manifest.name.clone(), entry.info.manifest.version.clone(), entry.info.path.clone());
+        let version = if version.trim().is_empty() || version == "unverified" { t("Unknown").to_string() } else { version };
+        let file = match &source {
+            crate::getmods::Source::Package { path, .. } | crate::getmods::Source::Classic { path, .. } => path.file_name().map_or(String::new(), |n| n.to_string_lossy().into_owned()),
+            _ => String::new(),
+        };
+        let title = tf("REPLACE {name}?", &[("name", &name.to_uppercase())]);
+        let mut replace = false;
+        let response = ta_ui::panel::modal(ctx, "launcher_replace", Panel::new(&title).exit(Exit::Close).width((ctx.content_rect().width() - 80.0).clamp(1.0, 560.0)).max_height((ctx.content_rect().height() - 24.0).max(1.0)).accent(AMBER), true, |ui| {
+            ui.spacing_mut().item_spacing.y = 8.0;
+            let text = tf("{file} would take the place of the {name} installed now (version {version}): its files would be removed.", &[("file", &file), ("name", &name), ("version", &version)]);
+            ui.add(egui::Label::new(RichText::new(text).color(TEXT)).wrap());
+            ui.add(egui::Label::new(RichText::new(path.display().to_string()).font(mono(12.0)).color(STEEL)).wrap());
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 10.0;
+                replace = ui.add_enabled(!self.game_running() && !self.installer.busy(), ActionButton::danger("REPLACE")).clicked();
+                if ui.add(ActionButton::secondary("KEEP")).clicked() {
+                    self.confirm_replace = None;
+                }
+            });
+        });
+        if replace {
+            self.confirm_replace = None;
+            if !self.game_holds_mods(Some(source.id())) {
+                self.installer.start(source);
+            }
+        } else if response.exit {
+            self.confirm_replace = None;
         }
     }
 

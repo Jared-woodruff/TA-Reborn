@@ -56,14 +56,14 @@ impl LauncherApp {
         match action {
             Action::Rescan => { self.refresh_mods(); self.rescan_maps(); }
             Action::Browse => {
-                if self.maps.busy() || self.installer.busy() || self.game.is_running() { return; }
+                if self.maps.busy() || self.installer.busy() || self.game_running() { return; }
                 if let Some(path) = rfd::FileDialog::new().set_title(ta_ui::i18n::t("Import map archive"))
                     .add_filter(ta_ui::i18n::t("Map archives"), &["ufo", "hpi", "ccx", "gp3", "gpf", "zip", "7z", "rar"]).pick_file() {
                     self.maps_action(Action::Import(path));
                 }
             }
             Action::Import(path) => {
-                if self.game.is_running() {
+                if self.game_running() {
                     self.notify("Close the game first: maps cannot be imported while it runs", AMBER);
                     return;
                 }
@@ -74,7 +74,7 @@ impl LauncherApp {
                 self.maps.import(path, self.store.dir().join("mods"));
             }
             Action::Toggle(key) => {
-                if self.game.is_running() || self.maps.busy() { return; }
+                if self.game_running() || self.maps.busy() { return; }
                 if let Some(entry) = self.maps.catalogue.entries.iter().find(|entry| entry.key == key)
                     && entry.active && !entry.shadowed && !entry.campaign && entry.players >= 2 {
                     let enabled = !self.config.maps.is_enabled(&entry.layer, &entry.stem);

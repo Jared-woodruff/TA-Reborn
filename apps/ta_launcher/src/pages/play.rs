@@ -578,7 +578,7 @@ impl LauncherApp {
         match choice {
             BattleChoice::Switch => {
                 log::info!("{}: its mods turned on ({:?})", prompt.record.path.display(), prompt.check.load_order());
-                self.config.mods.enabled = prompt.check.load_order();
+                self.order_before_play = Some(std::mem::replace(&mut self.config.mods.enabled, prompt.check.load_order()));
                 self.mods.refresh(&self.config.mods.enabled);
                 self.push(Action::PlayWith(args(false)));
             }

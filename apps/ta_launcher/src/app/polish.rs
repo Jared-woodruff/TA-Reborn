@@ -158,14 +158,14 @@ impl LauncherApp {
         if let Some(status) = self.maps.status() {
             items.push(Activity { mods_tab: None, page: Page::Maps, text: t(status).to_string(), progress: None, color: AMBER, update: false, work: true });
         }
-        if self.mod_validation.busy() && !self.game.is_running() && !self.installer.busy() && !self.maps.busy() {
+        if self.mod_validation.busy() && !self.game_running() && !self.installer.busy() && !self.maps.busy() {
             items.push(Activity { mods_tab: Some(ModsTab::Library), page: Page::Mods,
                 text: t("VALIDATING MODS…").to_string(), progress: self.mod_validation.fraction(), color: SKY, update: false, work: true });
         }
         if let Some(status) = self.skins.status() {
             items.push(Activity { mods_tab: None, page: Page::Skins, text: t(status).to_string(), progress: None, color: AMBER, update: false, work: true });
         }
-        if self.game.is_running() {
+        if self.game_running() {
             let benchmark = self.benchmarks.running.is_some();
             items.push(Activity { mods_tab: None, page: if benchmark { Page::Benchmark } else { Page::Play },
                 text: t(if benchmark { "BENCHMARK RUNNING" } else { "GAME RUNNING" }).to_string(), progress: None, color: AMBER, update: false, work: false });

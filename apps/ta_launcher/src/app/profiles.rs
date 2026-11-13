@@ -322,6 +322,7 @@ impl LauncherApp {
 
     pub(super) fn profile_dialog(&mut self, ctx: &egui::Context) {
         if self.profiles.confirm_delete.is_some() { self.delete_profile_dialog(ctx); return; }
+        let game_running = self.game_running();
         let Some(editor) = &mut self.profiles.editor else { return };
         let required = self.profiles.active.is_none() && self.profiles.required;
         let width = (ctx.content_rect().width() - 76.0).clamp(180.0, 460.0);
@@ -329,7 +330,7 @@ impl LauncherApp {
             .exit(if required { Exit::None } else { Exit::Close });
         let response = ta_ui::panel::modal(ctx, "commander_setup", panel, !required, |ui| {
             if let Some(error) = &self.profiles.error { ui.colored_label(RED, tf("Could not load profile: {error}", &[("error", error)])); }
-            ui.add_enabled_ui(!self.game.is_running() && !self.installer.busy() && !self.skins.busy() && !self.maps.busy(), |ui| editor.show(ui)).inner
+            ui.add_enabled_ui(!game_running && !self.installer.busy() && !self.skins.busy() && !self.maps.busy(), |ui| editor.show(ui)).inner
         });
         if let Some(draft) = response.inner { self.save_profile(draft); }
         else if response.exit && !required { self.profiles.editor = None; }

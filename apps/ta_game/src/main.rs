@@ -517,7 +517,9 @@ fn run() -> Result<()> {
     args.resolve_record_file()?;
     // `--demo stage`: the scene file (`TA_STAGE`), read before anything asks for it.
     stage::init(args.demo.as_deref())?;
-    let profile_root = std::env::var_os("TA_PROFILE_ROOT").map(PathBuf::from).unwrap_or_else(ta_config::config_dir);
+    let profile_root = ta_config::running::profile_root();
+    // (A launcher knows a game runs by this, though it did not start it: `ta_config::running`.)
+    ta_config::running::hold(&profile_root);
     let profile_id = args.profile.clone().or_else(|| std::env::var("TA_PROFILE_ID").ok());
     let profile = ta_config::profiles::initialize(profile_root, profile_id.as_deref())?;
     let mut config = ta_config::Config::load();

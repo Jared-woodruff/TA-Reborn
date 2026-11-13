@@ -108,6 +108,32 @@
 - If the launcher crashes in a graphics driver, it now saves `launcher-crash.txt` naming the
   driver and says so, as the game does.
 - Opening a skin whose scale has more than two decimals no longer marks it as changed.
+- The launcher only knew a game was running when it had started that game itself. With a game it
+  had not started (one running when the launcher was opened, or one the game had started again
+  with a battle's mods), the launcher would update, add or remove mods under it, start a second
+  game, or run an update of TA Reborn over it. The game now marks that it is running, and the
+  launcher waits for any game as it waits for its own.
+- Installing a mod from a file named like one already installed (a mod folder of your own, or an
+  archive of Total Mayhem that is not its tested release) replaced the installed copy without a
+  word, its files removed for good. The launcher now asks first. A package that would go behind
+  the copy in TA Reborn's own mods folder is refused, as an update of that copy is.
+- Mods added from Total Annihilation's folder showed an update waiting that nothing could clear
+  (TA: Escalation's "Updates waiting: 1"). An update now counts only where the launcher can
+  install it, over a copy of a known version. The mod's details still offer UPDATE.
+- WHAT IT CHANGES no longer says a mod added from Total Annihilation's folder takes the place of
+  its own archives there.
+- PLAY on a mod's card and USE ITS MODS no longer change the load order when the game does not
+  start (another game running, an install under way, a mod missing one it needs).
+- A drag in the load order let go while the order was out of sight no longer moves a mod the next
+  time it is shown, and an install finishing during a drag no longer moves the wrong mod.
+- The launcher no longer opens every archive in Total Annihilation's folder each time it visits
+  the Mods and Maps pages or starts the game: it looks again only when the folder changes, so a
+  folder holding many map packs no longer slows it down.
+- The REMOVE question no longer promises a GET button for mods that are downloaded by hand.
+- Dropping a mod's file again while it installs now says to wait. The extra mods folder can no
+  longer be set to Total Annihilation's own folder, where every one of TA's archives showed as a
+  mod. The usual reasons a mod's package cannot be installed (no program to unpack it, an archive
+  only partly unpacked, no TA content in it) are now in the interface's language.
 
 ## 1.0.3 — 2026-11-12
 

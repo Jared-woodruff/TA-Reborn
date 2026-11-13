@@ -386,14 +386,14 @@ fn install(
             if within(&path, mods_dir) {
                 return Err(tf("{path} is in your mods folder already, so it is installed: turn it on in the library", &[("path", &path.display())]).into());
             }
-            let plan = ta_vfs::package::plan(&path).map_err(|e| e.to_string())?;
+            let plan = ta_vfs::package::plan(&path).map_err(|e| package_error(&e))?;
             let own = match own_manifest(&plan.root)? { Some(own) => Some(own), None => own_manifest(&path)? };
             (copy_planned(&plan, &temp, cancelled)
                 .map_err(|e| if e.kind() == std::io::ErrorKind::Interrupted { Failure::Cancelled } else { Failure::Error(e.to_string()) })?, own)
         } else {
-            let unpacker = ta_vfs::package::Unpacker::find().ok_or_else(|| ta_vfs::package::PackageError::NoUnpacker.to_string())?;
+            let unpacker = ta_vfs::package::Unpacker::find().ok_or_else(|| package_error(&ta_vfs::package::PackageError::NoUnpacker))?;
             unpacker.unpack_cancellable(&path, &temp, cancelled).map_err(unpack_failure)?;
-            let plan = ta_vfs::package::plan(&temp).map_err(|e| e.to_string())?;
+            let plan = ta_vfs::package::plan(&temp).map_err(|e| package_error(&e))?;
             let own = match own_manifest(&plan.root)? { Some(own) => Some(own), None => own_manifest(&temp)? };
             (plan, own)
         };
@@ -501,7 +501,7 @@ fn publish_install(
         Ok(guard)
     }).map_err(|error| match error {
         PackageError::Io { source, .. } if source.kind() == std::io::ErrorKind::Interrupted => Failure::Cancelled,
-        error => Failure::Error(error.to_string()),
+        error => Failure::Error(package_error(&error)),
     })
 }
 
@@ -518,7 +518,23 @@ fn game_holds(game: &AtomicBool, installed: &Path, name: &str) -> Result<(), Fai
 fn unpack_failure(e: ta_vfs::package::PackageError) -> Failure {
     match e {
         ta_vfs::package::PackageError::Cancelled => Failure::Cancelled,
-        e => Failure::Error(e.to_string()),
+        e => Failure::Error(package_error(&e)),
+    }
+}
+
+/// A package's failure in the interface's language: those a player meets (no program to unpack
+/// it, an archive only partly unpacked, none of TA's content in it, the unpacker's own failure).
+/// Others are as they are: a file system's error, in the system's words, or a refusal of what an
+/// unsafe package holds.
+pub fn package_error(e: &ta_vfs::package::PackageError) -> String {
+    use ta_ui::i18n::{t, tf};
+    use ta_vfs::package::PackageError as E;
+    match e {
+        E::NoUnpacker => t("No program to unpack archives was found: install 7-Zip from 7-zip.org.").to_string(),
+        E::Incomplete { file } => tf("Only part of {file} could be unpacked: install 7-Zip (7-zip.org) and try again.", &[("file", file)]),
+        E::NoContent => t("No Total Annihilation content was found in the package.").to_string(),
+        E::Unpack { tool, file, message } => tf("{tool} could not unpack {file}: {message}", &[("tool", tool), ("file", file), ("message", message)]),
+        other => other.to_string(),
     }
 }
 
@@ -632,10 +648,10 @@ fn install_catalogue(
     };
     if cancelled() { return Err(Failure::Cancelled); }
     send(Stage::Unpacking);
-    let unpacker = ta_vfs::package::Unpacker::find().ok_or_else(|| ta_vfs::package::PackageError::NoUnpacker.to_string())?;
+    let unpacker = ta_vfs::package::Unpacker::find().ok_or_else(|| package_error(&ta_vfs::package::PackageError::NoUnpacker))?;
     let unpacked = workspace.0.join("unpacked");
     unpacker.unpack_cancellable(&archive, &unpacked, cancelled).map_err(unpack_failure)?;
-    let plan = ta_vfs::package::plan(&unpacked).map_err(|e| e.to_string())?;
+    let plan = ta_vfs::package::plan(&unpacked).map_err(|e| package_error(&e))?;
     let manifest = ta_vfs::mods::ModManifest {
         id: entry.id.into(), name: entry.name.into(), version: file.map_or("unverified", |file| file.version).into(),
         description: entry.pitch.into(), authors: vec![entry.team.into()],

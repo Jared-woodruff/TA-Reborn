@@ -290,8 +290,8 @@ impl LauncherApp {
         }
         // (A hidden mod's update is on its own card, in HIDDEN: UPDATE ALL leaves it.)
         let updates: Vec<&'static Entry> = crate::catalogue::MODS.iter().filter(|entry| {
-            entry.file.is_some_and(|file| file.can_download()) && self.installer.stages.get(entry.id).is_none_or(|stage| !stage.active())
-                && mod_library::update(entry, self.mods.updatable_version(entry.id)).is_some() && !self.config.mods.is_hidden(entry.id)
+            self.installer.stages.get(entry.id).is_none_or(|stage| !stage.active())
+                && mod_library::waiting_update(entry, self.mods.updatable_version(entry.id)).is_some() && !self.config.mods.is_hidden(entry.id)
         }).collect();
         let (library, hidden) = mod_library::counts(&self.mods, &self.config.mods.hidden);
         let hidden_view = self.mod_library.hidden_view;
@@ -606,7 +606,7 @@ impl LauncherApp {
     fn mod_card_words(&self, item: &Item) -> (String, Vec<Color32>, Option<&'static str>) {
         let installed = self.mods.get(&item.id);
         let version = installed.map(|entry| entry.info.manifest.version.as_str());
-        let update = item.catalogue.and_then(|entry| mod_library::update(entry, self.mods.updatable_version(&item.id)));
+        let update = item.catalogue.and_then(|entry| mod_library::waiting_update(entry, self.mods.updatable_version(&item.id)));
         let on = self.config.mods.enabled.contains(&item.id);
         let stage = self.installer.stages.get(&item.id).filter(|stage| stage.active());
         let detail = if let Some(stage) = stage {

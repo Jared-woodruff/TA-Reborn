@@ -13,6 +13,7 @@ pub mod hardware;
 pub mod maps;
 pub mod profiles;
 pub mod records;
+pub mod running;
 mod validation;
 
 pub const APP_DIR_NAME: &str = "TA Reborn";

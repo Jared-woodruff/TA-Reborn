@@ -21,7 +21,7 @@ enum RowAction { Switch, Edit, Delete }
 impl LauncherApp {
     /// Why profiles cannot be switched, edited or deleted now, if they cannot.
     pub(super) fn profile_blocked(&self) -> Option<&'static str> {
-        if self.game.is_running() {
+        if self.game_running() {
             Some(t("Close the game first: commanders are switched between games."))
         } else if self.installer.busy() {
             Some(t("Wait for the mod being installed"))
