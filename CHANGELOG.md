@@ -3,6 +3,9 @@
 ## Unreleased
 
 ### Added
+- The mod check's findings, and what to do about each, are shown in the interface's language,
+  as is the rest of the mod's report. The copied report stays in English, for sharing with a
+  mod's author.
 - The launcher now works with a gamepad, the Steam Deck's controls included: the d-pad or left
   stick moves between controls, A uses them, B goes back, the bumpers turn the pages, the right
   stick moves the pointer and the triggers scroll. X opens a card's menu, Y the search, and View
@@ -46,6 +49,15 @@
   building now clears its footprint of the plants, stones and scars lying loose there as its
   construction starts, as a mission's buildings do when they are placed. Wreckage keeps its
   metal under it, and the sea floor's anemones and corals stay.
+- The mod check's report counted the whole game as the mod's: "6,128 files · 549 units" and "3
+  parse/read failures" were the original game's with the mod's. It now gives the mod's own
+  files, units, maps and sounds, and says how many files it was checked with.
+- A mod changed by hand (a file edited in one of its folders) kept its old badge until the
+  launcher was restarted or the mod was checked again by hand. Visiting the Mods page now
+  notices the change and checks the mod again.
+- The launcher's messages about a mod check that could not run, and the load order's problems
+  (a manifest that does not read, two mods of one name in a folder, mods that need each other
+  too deeply), were in English whatever the interface's language.
 - With the classic interface, TA: Escalation, Total Mayhem and the other mods made for the
   patched engines of later years showed only four of a builder's buildings, the same two
   repeated down the panel, with no page arrows and no orders: most of the tech tree could not

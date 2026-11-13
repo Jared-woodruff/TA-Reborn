@@ -22,6 +22,12 @@ const TRANSLATING: &[&str] = &[
 const FIRST_ONLY: &[&str] = &["tf"];
 /// Where the interface's sources are, from the repository root.
 const SOURCES: &[&str] = &["apps/ta_game/src", "apps/ta_launcher/src", "crates/ta_ui/src"];
+/// The mod check's words (`ta_data`, which has no `t`: the launcher translates its findings):
+/// in these files only the texts marked `en`, and `enf`'s first argument, count (their other
+/// calls, `doc.section("UNITINFO")`, are no text).
+const DATA_SOURCES: &[&str] = &["crates/ta_data/src/validation.rs", "crates/ta_data/src/words.rs"];
+const DATA_TRANSLATING: &[&str] = &["en", "enf"];
+const DATA_FIRST_ONLY: &[&str] = &["enf"];
 
 pub fn run(lang_dir: &Path) -> Result<()> {
     let root = std::env::current_dir()?;
@@ -42,6 +48,16 @@ pub fn run(lang_dir: &Path) -> Result<()> {
         if !strings.is_empty() {
             let rel = f.strip_prefix(&root).unwrap_or(f).to_string_lossy().replace('\\', "/");
             groups.push((rel, strings));
+        }
+    }
+    for rel in DATA_SOURCES {
+        let f = root.join(rel);
+        let text = std::fs::read_to_string(&f).with_context(|| f.display().to_string())?;
+        // (Not their tests' words.)
+        let code = text.split("#[cfg(test)]").next().unwrap_or(&text);
+        let strings: Vec<String> = scan_with(code, DATA_TRANSLATING, DATA_FIRST_ONLY).into_iter().filter(|s| seen.insert(s.clone())).collect();
+        if !strings.is_empty() {
+            groups.push((rel.to_string(), strings));
         }
     }
     // The keys' descriptions, which the settings and the controls reference show (they live in
@@ -158,6 +174,12 @@ fn render(name: &str, groups: &[(String, Vec<String>)], old: &BTreeMap<String, S
 
 /// The translatable string literals of a Rust source file, in order.
 fn scan(src: &str) -> Vec<String> {
+    scan_with(src, TRANSLATING, FIRST_ONLY)
+}
+
+/// The string literals passed to the calls `translating` names (only the first argument of those
+/// `first_only` names), in order.
+fn scan_with(src: &str, translating: &[&str], first_only: &[&str]) -> Vec<String> {
     let b = src.as_bytes();
     let mut found = Vec::new();
     // Open calls and groups: (name, strings seen directly in it).
@@ -184,14 +206,14 @@ fn scan(src: &str) -> Vec<String> {
             }
             b'"' => {
                 let (s, end) = string_literal(src, i);
-                record(&mut stack, s, &mut found);
+                record(&mut stack, s, &mut found, translating, first_only);
                 i = end;
                 path.clear();
                 continue;
             }
             b'r' if (b.get(i + 1) == Some(&b'"') || b.get(i + 1) == Some(&b'#')) && !prev_is_ident(b, i) => {
                 if let Some((s, end)) = raw_literal(src, i) {
-                    record(&mut stack, s, &mut found);
+                    record(&mut stack, s, &mut found, translating, first_only);
                     i = end;
                     path.clear();
                     continue;
@@ -273,7 +295,7 @@ fn prev_is_ident(b: &[u8], i: usize) -> bool {
 
 /// Records `s` when the innermost call around it (looking through groups, blocks and
 /// `Some`) translates it.
-fn record(stack: &mut [(String, usize)], s: String, found: &mut Vec<String>) {
+fn record(stack: &mut [(String, usize)], s: String, found: &mut Vec<String>, translating: &[&str], first_only: &[&str]) {
     let direct = stack.len();
     for k in (0..stack.len()).rev() {
         let name = stack[k].0.as_str();
@@ -281,9 +303,9 @@ fn record(stack: &mut [(String, usize)], s: String, found: &mut Vec<String>) {
             continue;
         }
         let last = name.rsplit("::").next().unwrap_or(name);
-        let translating = TRANSLATING.iter().any(|&f| if f.contains("::") { name.ends_with(f) } else { last == f });
-        if translating {
-            let first_only = FIRST_ONLY.contains(&last);
+        let translates = translating.iter().any(|&f| if f.contains("::") { name.ends_with(f) } else { last == f });
+        if translates {
+            let first_only = first_only.contains(&last);
             let is_first = stack[k].1 == 0 && k + 1 == direct;
             stack[k].1 += 1;
             if (!first_only || is_first) && !s.trim().is_empty() && s.chars().any(|c| c.is_alphabetic()) {
@@ -387,5 +409,18 @@ mod tests {
             got,
             ["START", "LEVEL", "A hint", "LOW", "HIGH", "OPTIONS", "SOUND · GRAPHICS", "{n} units", "ON", "OFF", "Build extractors.", "Line two continues", "raw \"quoted\""]
         );
+    }
+
+    /// The mod check's words: `en` and `enf`'s text only, what fills them and the file's other
+    /// calls (a section's name) not.
+    #[test]
+    fn finds_the_mod_checks_words() {
+        let src = r##"
+            let Some(s) = doc.section("UNITINFO") else { return };
+            self.issue(Severity::Error, "unit.header", path, Words::text(en("Missing [UNITINFO]; this unit is skipped.")), en("Add a UNITINFO section."));
+            let words = enf("{whats}: {what} is missing.", [("whats", Fill::List(whats)), ("what", describe(key).into())]);
+            const HOW: &str = en("Include the asset.");
+        "##;
+        assert_eq!(super::scan_with(src, super::DATA_TRANSLATING, super::DATA_FIRST_ONLY), ["Missing [UNITINFO]; this unit is skipped.", "Add a UNITINFO section.", "{whats}: {what} is missing.", "Include the asset."]);
     }
 }

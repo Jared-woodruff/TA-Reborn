@@ -489,3 +489,6 @@ The memory fragment's speaker has no gender (nacqui, ho trovato la morte, mi è 
 | stamps RESTRICTED / CLASSIFIED / FOR TRAINING USE / UNDELIVERED | RISERVATO / SEGRETO / AD USO ADDESTRATIVO / NON RECAPITATA |
 | stamps INTERCEPTED / FLAGGED FOR CORRECTION / SEALED UNTIL NEEDED | INTERCETTATO / SEGNALATO PER CORREZIONE / SIGILLATO FINO AL BISOGNO |
 | INTERCEPT (a document) / SURVEY / THREAT ASSESSMENT / Subject: | INTERCETTAZIONE / RICOGNIZIONE / VALUTAZIONE DELLA MINACCIA / Oggetto: |
+| build option (mod report) | opzione di costruzione |
+| wreckage (mod report) | relitto |
+| mod check findings: noun phrases | lowercase with article ("l'unità {name}", "modello di {name}"); whose: "del gioco originale", "di Reborn", "della mod {mod}" |

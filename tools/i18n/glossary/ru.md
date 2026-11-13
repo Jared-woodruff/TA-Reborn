@@ -470,3 +470,7 @@ The chronicle told plainly and a little solemn; each archive document in its own
 | FIELD COMMANDERS / TROOPER | БОЕВЫЕ КОМАНДИРЫ (полевой командир reads as a warlord) / боец |
 | blacked-out words | [[...]] kept, the words inside translated ([[МИЛЛИАРДЫ]], [[ЛЮБОЙ ЦЕНОЙ]], [[ПОДАЛЬШЕ]]) |
 | the CORE machine remembering (its sex unknown) | its "I" takes no gendered past tense ("в родном городе", "Смерть настигала меня", "Я длюсь") |
+| faction (in mod reports) | сторона |
+| build option | вариант постройки |
+| wreckage | обломки |
+| feature (map object) | объект |

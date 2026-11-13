@@ -68,6 +68,24 @@ pub fn mod_folders(app_dir: Option<&Path>, user_config_dir: &Path, extra: Option
         .collect()
 }
 
+/// A mod's problem in the player's words (and language): `name` names a mod by its id, and
+/// `broken` holds the scan's problems (a manifest that does not read tells why a mod is not
+/// found).
+fn problem_words(e: &ModError, broken: &[ModError], name: &dyn Fn(&str) -> String) -> String {
+    match e {
+        ModError::Missing(id) => match mods::broken_manifest(id, broken) {
+            Some(ModError::Manifest { path, message }) => tf("{name} is on, but its manifest {file} does not read: {error}", &[("name", &name(id)), ("file", &mods::shown_path(path)), ("error", &message.trim())]),
+            _ => tf("{name} is on, but it is not installed", &[("name", &name(id))]),
+        },
+        ModError::MissingDependency { module, dependency } => tf("{name} needs {other}, which is not on", &[("name", &name(module)), ("other", &name(dependency))]),
+        ModError::Cycle(ids) => tf("These mods each need another loaded before them: {mods}", &[("mods", ids)]),
+        ModError::Depth(ids) => tf("These mods need one another more than 64 deep: {mods}", &[("mods", ids)]),
+        ModError::Unreadable { id, message } => tf("{name} could not be read: {error}", &[("name", &name(id)), ("error", message)]),
+        ModError::Manifest { path, message } => tf("The manifest {file} does not read: {error}", &[("file", &mods::shown_path(path)), ("error", &message.trim())]),
+        ModError::Duplicate { id, path } => tf("Two mods in one folder are called {id}: {ignored} is left out", &[("id", id), ("ignored", &path.display())]),
+    }
+}
+
 impl ModList {
     /// Scans `folders` (earlier folders win when two mods share an id).
     pub fn scan(folders: Vec<ModFolder>, enabled: &[String]) -> ModList {
@@ -79,7 +97,8 @@ impl ModList {
                 continue;
             }
             let (found, errors) = mods::scan(&folder.path);
-            problems.extend(errors.iter().map(|e| e.to_string()));
+            // (The mods by their ids: their names are not known yet.)
+            problems.extend(errors.iter().map(|e| problem_words(e, &[], &|id| id.to_string())));
             broken.extend(errors);
             for info in found {
                 if let Some(first) = mods.iter().find(|m| m.info.manifest.id == info.manifest.id) {
@@ -141,17 +160,7 @@ impl ModList {
 
     /// A load order's problem in the player's words (and language), the mods by their names.
     fn describe(&self, e: &ModError) -> String {
-        let name = |id: &str| self.get(id).map_or(id.to_string(), |m| m.info.manifest.name.clone());
-        match e {
-            ModError::Missing(id) => match mods::broken_manifest(id, &self.broken) {
-                Some(ModError::Manifest { path, message }) => tf("{name} is on, but its manifest {file} does not read: {error}", &[("name", &name(id)), ("file", &mods::shown_path(path)), ("error", &message.trim())]),
-                _ => tf("{name} is on, but it is not installed", &[("name", &name(id))]),
-            },
-            ModError::MissingDependency { module, dependency } => tf("{name} needs {other}, which is not on", &[("name", &name(module)), ("other", &name(dependency))]),
-            ModError::Cycle(ids) => tf("These mods each need another loaded before them: {mods}", &[("mods", ids)]),
-            ModError::Unreadable { id, message } => tf("{name} could not be read: {error}", &[("name", &name(id)), ("error", message)]),
-            ModError::Manifest { .. } | ModError::Depth(_) | ModError::Duplicate { .. } => e.to_string(),
-        }
+        problem_words(e, &self.broken, &|id| self.get(id).map_or(id.to_string(), |m| m.info.manifest.name.clone()))
     }
 
     /// Dependencies of `id` that are installed but not enabled (candidates for a quick fix).
