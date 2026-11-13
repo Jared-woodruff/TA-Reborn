@@ -225,9 +225,10 @@ the same on any computer, references resolved, then each finding's origin settle
 dependencies, fingerprints inputs and keeps the reports under `cache/mod-validation`:
 
 - the fingerprint covers only the files the game reads (archives and the kinds the checks
-  decode), with their digests kept between launches by size and times (`digests.json`), and
-  what each mod replaces of the original game; an explicit rescan reads every file again, and
-  CHECK AGAIN reads its mod's;
+  decode) and those whose presence the report notes (programs and their libraries, files in
+  `ai/`: `validation::noted_file`), with their digests kept between launches by size and times
+  (`digests.json`), and what each mod replaces of the original game; an explicit rescan reads
+  every file again, and CHECK AGAIN reads its mod's;
 - the checks' version, not the launcher's build, keys the cache, so a rebuild keeps reports;
 - baselines are kept by their own fingerprint (`baseline-*.json`, the newest eight);
 - after an install or a removal the changed mods are checked again, and every mod depending

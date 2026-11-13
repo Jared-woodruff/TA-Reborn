@@ -369,6 +369,9 @@ pub fn validate(vfs: &Vfs, options: &Options, mut progress: impl FnMut(Progress<
             // nothing the mod changes in it.
             scan.report.empty = true;
             scan.note("validation.nothing", "", Words::text(en("This mod holds nothing the data checks read: no units, weapons, features, maps, models, scripts, animations or sounds (music, documents and pictures are not checked).")), en("Nothing to do if that is what the mod is. If it should change the game's data, check that its files are in the folders the game reads (units/, weapons/, maps/…)."));
+            // (What it brings that TA Reborn does not use is still told: a patch alone, an
+            // engine's DLL, TA's own computer players' files.)
+            scan.engine_uses();
             scan.finish_scope();
             scan.report.sort();
             return scan.report;
@@ -414,6 +417,12 @@ pub fn validate(vfs: &Vfs, options: &Options, mut progress: impl FnMut(Progress<
 /// Whether the checks read a file of this (lower-case) name: with the game's archives, what a
 /// content fingerprint must cover.
 pub fn checked_file(name: &str) -> bool { known(name) }
+
+/// Whether what a mod uses of TA's later engines (`Report::engine`) is told from a file of this
+/// (lower-case) name in a folder of this (lower-case) name by its presence alone: a program or a
+/// library of one, or a file of TA's own computer players (`ai/`). With [`checked_file`], what a
+/// content fingerprint must cover, its adding or removing being another report.
+pub fn noted_file(folder: &str, name: &str) -> bool { is_program(name) || folder == "ai" }
 
 /// The note that the mod checked (its layer `layer`) replaces the original game's archive
 /// `archive` (as the install names it, `ta_vfs::mods::replaced_archives`): with it on, the
@@ -2767,6 +2776,16 @@ mod tests {
         g.valid("plain");
         let plain = validate(&g.vfs(&["base", "plain"]), &Options { target_layer: Some("plain".into()), ..Default::default() }, |_| true);
         assert!(plain.engine.is_empty(), "{:?}", plain.engine);
+        // A mod of a patch and TA's own computer players' files alone: nothing for the data checks,
+        // and what it brings is told all the same.
+        let h = Fixture::new();
+        h.valid("base");
+        h.put("patch", "TotalA.exe", b"MZ");
+        h.put("patch", "ai/boost.txt", b"AIBOOST");
+        let patch = validate(&h.vfs(&["base", "patch"]), &Options { target_layer: Some("patch".into()), ..Default::default() }, |_| true);
+        assert!(patch.empty && patch.status() == Status::Empty, "{}", patch.to_text());
+        let codes: Vec<&str> = patch.engine.iter().map(|e| e.code.as_str()).collect();
+        assert_eq!(codes, ["engine.ai_profiles", "engine.programs"], "{}", patch.to_text());
         // A report kept before there were any reads as one with none.
         let old: Report = serde_json::from_str(r#"{"schema_version":12,"target_layer":"mod","complete":true,"counts":{"files_total":0,"files_checked":0,"files_failed":0,"units":0,"weapons":0,"features":0,"maps":0,"models":0,"scripts":0,"gafs":0,"pcx":0,"textures":0,"frames":0},"issues":[]}"#).unwrap();
         assert!(old.engine.is_empty());
