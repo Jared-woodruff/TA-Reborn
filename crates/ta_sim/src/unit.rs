@@ -171,6 +171,9 @@ pub struct Unit {
     /// The last economy tick charged its upkeep (or it has none): its conditional output (an
     /// extractor's, a metal maker's) came too. Without the energy, neither (`Sim::economy_end`).
     pub upkeep_paid: bool,
+    /// Ready to build (`INBUILDSTANCE`): the work goes on only while it is. A builder with a
+    /// `StartBuilding` script has it as its script sets it, as in TA, also between jobs
+    /// ([`Unit::stance_is_scripted`]); the game raises and drops a builder's without one.
     pub in_build_stance: bool,
     pub yard_open: bool,
     pub armored: bool,
@@ -443,6 +446,14 @@ impl Unit {
 impl Unit {
     pub fn is_complete(&self) -> bool {
         self.build_progress >= Fx::ONE
+    }
+
+    /// Whether its build stance is its script's to raise and drop (it has `StartBuilding`), as
+    /// in TA: the game leaves it as the script last set it, also after a job. TA's scripts drop
+    /// it in `StopBuilding`; Total Mayhem's construction kbots keep their nano arm out a while
+    /// after a job, the stance raised, and do not raise it again for a job that comes meanwhile.
+    pub fn stance_is_scripted(&self) -> bool {
+        self.cob.as_ref().is_some_and(|c| c.has_function("StartBuilding"))
     }
 
     /// Physical model root. Naval movement keeps a surface anchor; submarine

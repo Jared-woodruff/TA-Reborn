@@ -395,7 +395,8 @@ impl SkirmishAi {
     pub(crate) fn check_stuck(&mut self, s: &Survey, b: &Unit, out: &mut Vec<Command>) -> bool {
         let Some(front) = b.orders.front() else { return false };
         let watched = matches!(front, Order::Build { .. } | Order::Reclaim(_) | Order::Repair(_));
-        if !watched || b.build.is_some() || b.in_build_stance {
+        // (At work once it has its job: a script may leave its stance raised between jobs.)
+        if !watched || b.build.is_some() {
             self.stuck.retain(|e| e.0 != b.id);
             return false;
         }

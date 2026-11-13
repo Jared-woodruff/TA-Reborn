@@ -144,8 +144,11 @@ pub const RECORD_VERSION: u32 = 46;
 /// their units (`UNIT_CLOAKED`); Core Contingency's mines start cloaked (`init_cloaked`); 89, a
 /// building put over what lies loose on the ground clears its footprint of it (the features that
 /// do not block and are neither wreckage holding metal nor deposits, vents or indestructible:
-/// TA's ferns, fronds, small stones and scars).
-pub const SIMULATION_VERSION: u32 = 89;
+/// TA's ferns, fronds, small stones and scars); 90, a builder's build stance is its script's, as in
+/// TA, also between jobs (Total Mayhem's construction kbots build a job that comes while their
+/// arm is still out from the last), and a job has begun once it is the builder's, whatever the
+/// stance.
+pub const SIMULATION_VERSION: u32 = 90;
 /// Records shorter than one year of simulated time are supported. Shared with the
 /// launcher's metadata reader so impossible durations cannot start endless save catch-up.
 pub const MAX_RECORD_TICKS: u64 = 30 * 3600 * 24 * 365;

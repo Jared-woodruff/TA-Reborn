@@ -96,7 +96,7 @@ impl Sim {
             f.metal_use += tt.cost_metal.share(per_second, tt.build_work.max(1));
             f.energy_use += tt.cost_energy.share(per_second, tt.build_work.max(1));
         }
-        if working && u.in_build_stance && let Some(crate::unit::Order::Resurrect(feature)) = u.orders.front()
+        if working && u.in_build_stance && u.build.is_some() && let Some(crate::unit::Order::Resurrect(feature)) = u.orders.front()
             && let Some(type_id) = self.wreck_type(*feature).filter(|&t| self.is_allowed(t))
         {
             let rate = self.mutator_work_rate(self.perk_work_rate(u.id, t.work_rate));

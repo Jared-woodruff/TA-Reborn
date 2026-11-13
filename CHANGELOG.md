@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Total Mayhem's construction units (kbots, vehicles, hovercraft and ships) stood still at a
+  building ordered while their nano arm was still out from the job before, and never built it:
+  it had to be ordered again once the arm had folded away, four or five seconds after a job.
+  They now build it at once. As in Total Annihilation, a builder is ready to build when its
+  script says so, also between jobs.
+
 ## 1.0.4 — 2026-11-13
 
 The launcher now works with a gamepad, the Steam Deck's controls included, and the first start on
