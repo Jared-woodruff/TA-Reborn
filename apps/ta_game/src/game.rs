@@ -2816,7 +2816,8 @@ impl Game {
         };
         match mode {
             CommandMode::DGun => self.selection_has_dgun(),
-            CommandMode::Unload => self.selection.iter().any(|&id| self.sim.unit(id).is_some_and(|u| !u.cargo.is_empty())),
+            // (A transport: a mod's building carries the module it upgraded with, for good.)
+            CommandMode::Unload => self.selection.iter().any(|&id| self.sim.unit(id).is_some_and(|u| !u.cargo.is_empty() && self.sim.unit_type(u).transport_capacity > 0)),
             CommandMode::AreaMex => self.area_extractor_type().is_some(),
             _ => any(&|t| type_supports_mode(&self.sim, t, mode)),
         }
@@ -3304,7 +3305,7 @@ impl Game {
         self.sim
             .units()
             .filter(|u| u.owner == self.local_player && u.is_complete() && !u.dead && u.factory_queue.is_empty() && u.build.is_none())
-            .filter(|u| self.sim.unit_type(u).is_factory)
+            .filter(|u| self.sim.types.makes_units(self.sim.unit_type(u)))
             .map(|u| u.id)
             .collect()
     }
@@ -3419,7 +3420,7 @@ impl Game {
             .filter(|&id| Some(id) != exclude)
             .filter(|&id| match order {
                 Order::Capture(_) => can(id, &|_, t| t.def.can_capture),
-                Order::Unload(_) => can(id, &|u, _| !u.cargo.is_empty()),
+                Order::Unload(_) => can(id, &|u, t| !u.cargo.is_empty() && t.transport_capacity > 0),
                 Order::Resurrect(_) => can(id, &|_, t| t.def.can_resurrect),
                 Order::Reclaim(_) | Order::ReclaimUnit(_) => can(id, &|_, t| t.def.can_reclaim),
                 Order::Repair(_) => can(id, &|_, t| t.is_builder && !t.is_factory),

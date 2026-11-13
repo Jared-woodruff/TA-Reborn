@@ -138,7 +138,7 @@ pub(crate) fn factory_kind(sim: &Sim, t: &UnitType) -> Locomotion {
 fn basic_role(sim: &Sim, t: &UnitType) -> Role {
     let weapons: Vec<&WeaponType> = t.weapons.iter().flatten().map(|&w| sim.weapon_types.get(w)).collect();
     if t.locomotion == Locomotion::Static {
-        if t.is_factory && t.build_options.iter().any(|&o| sim.types.get(o).locomotion != Locomotion::Static) {
+        if sim.types.makes_units(t) {
             // Some conversions give factories their own resource income. Production
             // remains their primary job; treating them as generators prevents armies.
             Role::Factory
@@ -150,7 +150,7 @@ fn basic_role(sim: &Sim, t: &UnitType) -> Role {
             // Net producers only: radar towers make and use the same amount.
             Role::Generator
         } else if t.is_factory {
-            if t.build_options.iter().any(|&o| sim.types.get(o).locomotion != Locomotion::Static) { Role::Factory } else { Role::Other }
+            if sim.types.makes_units(t) { Role::Factory } else { Role::Other }
         } else if weapons.iter().any(|w| w.def.stockpile && w.def.command_fire && w.def.targetable) {
             Role::Silo
         } else if weapons.iter().any(|w| w.def.interceptor) {

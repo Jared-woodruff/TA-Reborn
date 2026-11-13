@@ -51,7 +51,7 @@ impl Sim {
         if u.is_complete() {
             // (As the economy takes it: upkeep is paid while switched on, which TA does when a
             // unit is built or the player does; what is neither idles for free.)
-            let active = u.activated || !t.def.on_offable && t.energy_use <= Fx::ZERO;
+            let active = u.activated || !t.def.on_offable && t.energy_use.is_zero();
             f = self.flows_of(u.type_id, active, u.upkeep_paid, u.occupied_origin);
         }
         if u.cloak_on && t.def.cloak_cost > 0.0 {

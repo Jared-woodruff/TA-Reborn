@@ -64,6 +64,26 @@
   plant finds its upgrade module by them), so what those scripts do never happened. They are now
   answered as TA 3.1 answered them. TA's own scripts never ask them: the original game plays as
   before.
+- The upgrades of Total Mayhem and TA: Escalation can now be built, and they work. Total Mayhem's
+  geothermal plants and moho mines, and TA: Escalation's towers, reactors, geothermal plants,
+  Aegis and repair pads, offer an upgrade in their menus: some offered nothing to build, and the
+  others started the upgrade and never finished it. Each now builds its upgrade and takes it on,
+  with what it gives, as in the mods' own engines: Total Mayhem's geothermal plant then makes 400
+  energy a second instead of 250 and is armoured, TA: Escalation's fusion reactors make 250 more.
+  TA: Escalation's advanced and experimental labs make a Level 2 or Level 3 upgrade that stays on
+  the lab's pad, and the units the lab makes after it come out at that level.
+- Total Mayhem's moho mines and TA: Escalation's repair pads are switched on when they are
+  built, as their files say. TA: Escalation's repair pads were switched off as soon as they were
+  built, and repaired nothing.
+- Buildings whose menus offer only their own upgrade, such as TA: Escalation's towers and
+  reactors, were counted among your idle factories (IDLE FACTORIES on the top bar, and the
+  coach's advice). They no longer are.
+- Total Mayhem's fusion reactors made twice their energy, 2,100 a second instead of 1,050. A
+  unit's energy use now counts only while it is switched on, as in Total Annihilation; TA's own
+  units are unchanged.
+- Total Mayhem's mines now cloak themselves while they wait, as their scripts ask.
+- Core Contingency's mines now start cloaked, as their files say: the enemy sees one only when
+  a unit comes within a few paces of it. Before, they could be seen from anywhere.
 - On the Skins page, at some window widths and interface sizes, "Use the same skin for both
   sides" was squeezed into a column a letter wide, or the search and the skins below it went
   out of reach. It now goes on a line of its own when it does not fit beside the skins.

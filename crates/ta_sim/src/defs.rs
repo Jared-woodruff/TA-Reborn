@@ -279,6 +279,14 @@ impl UnitType {
         self.radius.max(self.model.height.max(Fx::from_int(8)) / 2).max(Fx::from_int(8)) * 3 / 4
     }
 
+    /// A factory as TA's are, `TEDClass=PLANT` every one: it opens when it has work and closes up
+    /// when it has none, never switched on as it is finished. A mod's other building that builds
+    /// (one making its own upgrade module) keeps its switch as its file and its script set it, its
+    /// work being on: Total Mayhem's moho mines extract, TA: Escalation's repair pads repair.
+    pub fn is_plant(&self) -> bool {
+        self.is_factory && self.def.tedclass.eq_ignore_ascii_case("PLANT")
+    }
+
     /// Whether it stands level whatever the ground under it: TA's `Upright=1` units (most
     /// kbots) and big walkers ([`big_walker`]). The rest tilt with the slope under their
     /// footprint (`Sim::settle`).
@@ -370,9 +378,10 @@ impl UnitTypes {
                 .map(|mi| script.as_ref().and_then(|s| s.piece_map.iter().position(|&m| m == Some(mi))))
                 .collect();
 
+            // (A unit that cannot get going stands where it was made: `UnitDef::cannot_get_going`.)
             let locomotion = if u.can_fly {
                 Locomotion::Air
-            } else if !u.can_move || u.max_velocity <= 0.0 {
+            } else if !u.can_move || u.max_velocity <= 0.0 || u.cannot_get_going {
                 Locomotion::Static
             } else if u.can_hover {
                 Locomotion::Hover
@@ -383,14 +392,24 @@ impl UnitTypes {
             };
             let fp = (u.footprint_x.clamp(1, ta_data::MAX_FOOTPRINT_SIDE), u.footprint_z.clamp(1, ta_data::MAX_FOOTPRINT_SIDE));
             let radius = Fx::from_f64((fp.0.max(fp.1) as f64) * 8.0);
-            let blocking_cells = yard_blocking(&u.yard_map, fp, false);
-            let open_yard_cells = yard_blocking(&u.yard_map, fp, true);
-            let is_builder = u.builder && u.worker_time > 0.0;
+            // (A unit given no footprint takes no ground: `UnitDef::takes_no_ground`.)
+            let (blocking_cells, open_yard_cells) = if u.takes_no_ground {
+                (vec![false; (fp.0 * fp.1) as usize], vec![false; (fp.0 * fp.1) as usize])
+            } else {
+                (yard_blocking(&u.yard_map, fp, false), yard_blocking(&u.yard_map, fp, true))
+            };
             let build_time = Fx::from_f64(u.build_time);
             let weapons: [Option<usize>; 3] = std::array::from_fn(|i| u.weapons[i].as_deref().and_then(|w| data.weapon_id(w)));
             let move_class = data.move_classes.iter().position(|m| m.name == u.movement_class);
             let big_walker = big_walker(u, &model, move_class.map(|c| &data.move_classes[c]), locomotion);
-            let build_options: Vec<_> = u.build_options.iter().filter_map(|b| data.unit_id(b)).collect();
+            // A unit builds with build power (`WorkerTime`): what its menu offers, whatever its
+            // Builder flag says (the mods' buildings that make their own upgrade modules have
+            // none). Without power it builds nothing: a silo's missile button is TA's stockpile
+            // (built on its own), and a pseudo-unit a mod lists for one (Total Mayhem's
+            // `MAKENUKEARM` for its computer players) is no build option.
+            let can_build = u.worker_time > 0.0;
+            let build_options: Vec<_> = if can_build { u.build_options.iter().filter_map(|b| data.unit_id(b)).collect() } else { Vec::new() };
+            let is_builder = can_build && (u.builder || !build_options.is_empty());
             let is_factory = is_builder && locomotion == Locomotion::Static && !build_options.is_empty();
             types.push(UnitType {
                 id,
@@ -462,6 +481,13 @@ impl UnitTypes {
 
     pub fn get(&self, id: usize) -> &UnitType {
         &self.types[id]
+    }
+
+    /// Whether `t` is a factory that makes units that move: not a building whose menu holds only
+    /// its own upgrade module (a mod's geothermal plant or tower), which is no factory to the
+    /// player (its idle factories) nor to the computer players.
+    pub fn makes_units(&self, t: &UnitType) -> bool {
+        t.is_factory && t.build_options.iter().any(|&o| self.get(o).locomotion != Locomotion::Static)
     }
 
     /// The set of the `Category` tokens in `list` (a unit's `Category` or `BadTargetCategory`

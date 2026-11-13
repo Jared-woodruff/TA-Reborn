@@ -1056,7 +1056,9 @@ impl Sim {
         pos.y = self.ground_level(t, pos);
 
         let mut occupied_origin = None;
-        if t.locomotion == Locomotion::Static {
+        // (One that takes no ground stays just where it is put: a mod's module, where the script
+        // of the building that made it looks for it, within a few paces of its pad.)
+        if t.locomotion == Locomotion::Static && !t.def.takes_no_ground {
             let anchor = World::pos_to_anchor(pos, t.footprint);
             let origin = World::footprint_origin(anchor, t.footprint);
             self.world.occupy_yard(slot, origin, t.footprint, &t.blocking_cells, &t.open_yard_cells, false);
@@ -1112,7 +1114,7 @@ impl Sim {
         let t = self.types.get(type_id);
         let mut pos = pos;
         pos.y = self.ground_level(t, pos);
-        if t.locomotion == Locomotion::Static {
+        if t.locomotion == Locomotion::Static && !t.def.takes_no_ground {
             let anchor = World::pos_to_anchor(pos, t.footprint);
             let mut p = self.world.anchor_to_pos(anchor, t.footprint);
             p.y = self.ground_level(t, p).max(p.y);
@@ -1255,7 +1257,13 @@ impl Sim {
                             // Repositioning a passenger already aboard remains valid.
                             let allowed = self.unit(u).is_some_and(|cargo| cargo.carried_by == Some(transport))
                                 || self.unit(transport).is_some_and(|t| !t.dead && t.orders.front() == Some(&Order::Load(u))
-                                    && self.unit(u).is_some_and(|cargo| !cargo.dead && cargo.owner == t.owner));
+                                    && self.unit(u).is_some_and(|cargo| !cargo.dead && cargo.owner == t.owner))
+                                // A unit that carries none takes on what its script attaches of its
+                                // own player's, finished and loose: an upgrade module onto the
+                                // building that made it (Total Mayhem's geothermal plants and moho
+                                // mines, TA: Escalation's fusion reactors and towers).
+                                || self.unit(transport).is_some_and(|t| !t.dead && self.types.get(t.type_id).transport_capacity == 0
+                                    && self.unit(u).is_some_and(|m| !m.dead && m.is_complete() && m.carried_by.is_none() && m.owner == t.owner));
                             if allowed {
                                 let model_piece = self.cob_to_model_piece(transport, piece);
                                 self.attach(transport, u, model_piece);
@@ -1386,6 +1394,13 @@ impl Sim {
         if !alive {
             let max = self.unit(id).map(|u| self.types.get(u.type_id).max_health).unwrap_or(Fx::ONE);
             self.damage_unit(id, max * 10, id, FxVec3::ZERO);
+            // (It goes whatever shields it: a mod's module on the building it upgraded may armour
+            // itself untouchable, TA: Escalation's heavy fusion reactor's, `DamageModifier=0`.)
+            if let Some(u) = self.unit_mut(id) && !u.dead {
+                u.health = Fx::ZERO;
+                u.dead = true;
+                u.killer = Some(id);
+            }
             return;
         }
         let Some(pos) = self.carried_position(id) else { return };
@@ -1601,7 +1616,8 @@ impl Sim {
         u.finished = true;
         let type_id = u.type_id;
         let t = self.types.get(type_id);
-        let activate = t.def.activate_when_built && !t.is_factory;
+        // (A factory opens when it has work: `UnitType::is_plant`.)
+        let activate = t.def.activate_when_built && !t.is_plant();
         // (TA's `NoAutoFire=1` units are set to hold fire as they are finished, whatever they
         // were set to while they were built, anti-nukes excepted: see `initial_fire_state`.)
         let hold_fire = t.def.no_auto_fire && !t.weapons.iter().flatten().any(|&w| self.weapon_types.get(w).def.interceptor);
@@ -2266,7 +2282,8 @@ impl Sim {
             if let Some(tc) = tc {
                 self.stats.weapons_ns += tc.elapsed().as_nanos() as u64 * PHASE_SAMPLE;
             }
-            if t.def.cloak_cost > 0.0 {
+            // (A script may cloak a unit its file gives no cloak cost: `UNIT_CLOAKED`.)
+            if t.def.cloak_cost > 0.0 || self.unit(id).is_some_and(|u| u.cloak_on || u.cloaked) {
                 self.update_cloak(id, t);
             }
             if t.def.is_airbase {
@@ -4534,11 +4551,12 @@ impl Sim {
                 return;
             };
             if target.is_complete() {
-                // Release the finished unit: walk out of the yard to the rally point.
+                // Release the finished unit: walk out of the yard to the rally point (one that
+                // cannot move, a module or an upgrade, stays where it was made).
                 let unit_id = job.target;
                 let tt = types.get(target.type_id);
                 let rally = self.unit(id).map(|f| f.rally.clone()).unwrap_or_default();
-                if let Some(nu) = self.unit_mut(unit_id) && nu.orders.is_empty() {
+                if tt.locomotion != Locomotion::Static && let Some(nu) = self.unit_mut(unit_id) && nu.orders.is_empty() {
                     nu.orders.push_back(Order::Move(exit));
                     for o in &rally {
                         queue_order(&mut nu.orders, o, true, exit);
@@ -4555,15 +4573,20 @@ impl Sim {
                 self.start_script(id, "StopBuilding", &[]);
                 return;
             }
-            let in_stance = self.unit(id).is_some_and(|f| f.in_build_stance);
-            if in_stance {
-                self.apply_build_power(id, t, job.target);
-            }
+            // A unit under way is built on whatever the factory's script does with its stance or
+            // its switch since: the stance readies a factory to start one (and shows its nano
+            // spray). The mods' buildings that make their own upgrade drop it as they start, to
+            // build with no spray, and TA built on: Total Mayhem's geothermal plant, which also
+            // switches itself off a moment after it readies; TA: Escalation's Sentinel, which has
+            // no Activate at all.
+            self.apply_build_power(id, t, job.target);
             return;
         }
 
         if !has_queue {
-            if self.unit(id).is_some_and(|f| f.activated) && !leaving {
+            // A factory closes up with nothing to make, as TA's do; another unit that builds stays
+            // as it is (`UnitType::is_plant`).
+            if self.unit(id).is_some_and(|f| f.activated) && !leaving && t.is_plant() {
                 self.set_active(id, false);
             }
             return;
@@ -4662,6 +4685,11 @@ impl Sim {
                 return true;
             }
             let ut = self.types.get(u.type_id);
+            // (One that cannot move stays where it was made, holding nothing up.)
+            if ut.locomotion == Locomotion::Static {
+                gone.push(id);
+                return false;
+            }
             let (ux, uz) = World::footprint_origin(World::pos_to_anchor(u.pos, ut.footprint), ut.footprint);
             let out = ux >= fx + fw as i32 || uz >= fz + fh as i32 || ux + ut.footprint.0 as i32 <= fx || uz + ut.footprint.1 as i32 <= fz;
             if out {
@@ -5157,7 +5185,18 @@ impl Sim {
         let tidal = self.tidal;
         let resources = self.mutators.resources;
         let per_tick = |v: Fx| v / TICKS_PER_SECOND;
-        for u in self.units.iter_mut().flatten() {
+        // A transport's cargo makes and pays nothing; a module on the building that took it on (a
+        // unit that carries none: TA: Escalation's fusion reactor shield upgrade, +250 energy)
+        // works as it would standing. (The cargo's slots, in order: none, mostly.)
+        let cargo: Vec<usize> = self
+            .units
+            .iter()
+            .enumerate()
+            .filter(|(_, u)| u.as_ref().and_then(|u| u.carried_by).is_some_and(|c| self.unit(c).is_none_or(|c| types.get(c.type_id).transport_capacity > 0)))
+            .map(|(slot, _)| slot)
+            .collect();
+        for (slot, u) in self.units.iter_mut().enumerate() {
+            let Some(u) = u else { continue };
             if !u.is_complete() || u.dead {
                 continue;
             }
@@ -5165,7 +5204,7 @@ impl Sim {
             let o = u.owner as usize;
             metal_cap[o] += t.metal_storage;
             energy_cap[o] += t.energy_storage;
-            if u.carried_by.is_some() || self.tick < u.paralyzed_until {
+            if cargo.binary_search(&slot).is_ok() || self.tick < u.paralyzed_until {
                 u.upkeep_paid = false;
                 continue;
             }
@@ -5178,11 +5217,14 @@ impl Sim {
             if t.tidal_generator > Fx::ZERO {
                 energy_in += per_tick(tidal * t.tidal_generator);
             }
-            // Upkeep (positive EnergyUse) is only paid while activated, which TA does when a
-            // unit is built (ActivateWhenBuilt) or by the player (OnOffable); units that are
-            // neither, like the Galactic Gate, idle for free.
-            let active = u.activated || !t.def.on_offable && t.energy_use <= Fx::ZERO;
-            // Negative EnergyUse is production while active (solar collectors).
+            // EnergyUse counts only while the unit is switched on, which TA does when it is built
+            // (ActivateWhenBuilt), the player does (OnOffable) or its script does (ACTIVATION):
+            // upkeep is paid then, and a negative one is production then (solar collectors). One
+            // that is none idles for free (the Galactic Gate), and makes no more than its
+            // EnergyMake: Total Mayhem's fusion reactor, 1,050 ("Produces Energy (1K)", its
+            // EnergyUse of -1,050 never switched on), TA: Escalation's 1,000. A unit with no
+            // EnergyUse and no switch extracts and makes metal as it stands.
+            let active = u.activated || !t.def.on_offable && t.energy_use.is_zero();
             let mut upkeep = Fx::ZERO;
             if active {
                 if t.energy_use < Fx::ZERO {

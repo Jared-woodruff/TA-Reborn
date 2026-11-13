@@ -281,6 +281,8 @@ fn a_commander_closes_to_laser_range_to_attack() {
         let site = sim.find_build_site(vt, start + FxVec3::from_ints(450, 0, 0), 8).unwrap();
         let v = sim.spawn_unit(vt, 1, site, 0, true).unwrap();
         sim.step(&[
+            // (TA's mines start cloaked, `init_cloaked=1`: this one is shown, a target in plain view.)
+            Command::SetCloak { player: 1, units: vec![v], on: false },
             Command::SetStates { player: 1, units: vec![v], fire: Some(0), movement: Some(0) },
             Command::SetStates { player: 0, units: vec![commander], fire: Some(0), movement: None },
         ]);

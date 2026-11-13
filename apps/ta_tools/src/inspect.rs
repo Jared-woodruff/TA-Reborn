@@ -298,7 +298,8 @@ pub fn check_data(vfs: &Vfs, unit: Option<&str>, menus: bool) -> Result<()> {
     }
     let builders: Vec<&ta_data::UnitDef> = data.units.iter().filter(|u| u.builder).collect();
     if menus {
-        for u in &builders {
+        // (Every unit with a menu: one with build power and no Builder flag has one too.)
+        for u in data.units.iter().filter(|u| u.builder || !u.build_options.is_empty()) {
             println!("menu {} {}: {}", u.name, u.build_options.len(), u.build_options.join(" "));
         }
     }
