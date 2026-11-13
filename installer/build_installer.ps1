@@ -18,6 +18,10 @@
     This script never installs anything. If NSIS is missing it explains how to get it and
     stops after step 3.
 
+    Only a release compresses (-Compress, or any run on GitHub Actions): a build for trying
+    out on this computer stores the setup's and the archives' files as they are, which takes
+    seconds rather than the ten minutes LZMA takes over the whole game (the files are larger).
+
 .PARAMETER SkipBuild
     Reuse the existing release binaries instead of running cargo.
 
@@ -57,11 +61,18 @@
     signtool and your code-signing certificate). It signs both programs, the uninstaller and
     the setup. Without it nothing is signed.
 
+.PARAMETER Compress
+    Compress the setup (solid LZMA) and the archives, as a release does. Runs on GitHub Actions
+    always do. Without it the files are stored as they are: a build to try out locally.
+
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File installer\build_installer.ps1
 
 .EXAMPLE
     .\installer\build_installer.ps1 -SkipBuild -StageOnly
+
+.EXAMPLE
+    .\installer\build_installer.ps1 -Compress
 #>
 [CmdletBinding()]
 param(
@@ -75,7 +86,8 @@ param(
     [string]$DistDir,
     [string]$DxcArchive,
     [string]$DxcSha256,
-    [string]$SignScript
+    [string]$SignScript,
+    [switch]$Compress
 )
 
 $ErrorActionPreference = 'Stop'
@@ -83,6 +95,8 @@ Set-StrictMode -Version Latest
 
 $InstallerDir = $PSScriptRoot
 $RepoRoot = Split-Path -Parent $InstallerDir
+# A release compresses; a build to try out here does not (see the description).
+$Compressed = $Compress -or $env:GITHUB_ACTIONS -eq 'true'
 . (Join-Path $InstallerDir 'windows_package.ps1')
 
 function Write-Step([string]$Message) {
@@ -161,6 +175,7 @@ if ($SignScript) {
 # with the folder's own name unless -ContentsOnly.
 function New-Zip([string]$Folder, [string]$ZipPath, [switch]$ContentsOnly) {
     Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+    $ZipLevel = if ($Compressed) { [System.IO.Compression.CompressionLevel]::Optimal } else { [System.IO.Compression.CompressionLevel]::NoCompression }
     [void](Assert-PackagePath $ZipPath $DistDir)
     Assert-PlainPackageTree $Folder
     if (Test-Path -LiteralPath $ZipPath) { Remove-Item -LiteralPath $ZipPath -Force }
@@ -169,7 +184,7 @@ function New-Zip([string]$Folder, [string]$ZipPath, [switch]$ContentsOnly) {
     try {
         foreach ($file in Get-ChildItem -LiteralPath $Folder -Recurse -File) {
             $name = $file.FullName.Substring($base.Length).TrimStart('\').Replace('\', '/')
-            [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $file.FullName, $name, [System.IO.Compression.CompressionLevel]::Optimal)
+            [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $file.FullName, $name, $ZipLevel)
         }
     } finally {
         $zip.Dispose()
@@ -408,6 +423,10 @@ $script = Join-Path $InstallerDir 'ta_reborn.nsi'
 $nsisArgs = @('/V3', "/DAPP_VERSION=$Version", "/DAPP_ARCH=$($targetInfo.Arch)", "/DSTAGE_DIR=$StageDir", "/DOUTPUT_FILE=$setup")
 # The installer signs its uninstaller and itself with the same script (!uninstfinalize, !finalize).
 if ($SignScript) { $nsisArgs += "/DSIGN_SCRIPT=$SignScript" }
+if (-not $Compressed) {
+    Write-Host '    (stored, not compressed: a build to try out; -Compress for a release)'
+    $nsisArgs += '/DNO_COMPRESSION'
+}
 & $makensis @nsisArgs $script
 if ($LASTEXITCODE -ne 0) { throw "makensis failed (exit code $LASTEXITCODE)." }
 if (-not (Test-Path -LiteralPath $setup -PathType Leaf)) { throw "makensis did not produce $setup." }

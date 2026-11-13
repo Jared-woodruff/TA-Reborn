@@ -37,6 +37,10 @@ From the repository root:
 powershell -ExecutionPolicy Bypass -File installer\build_installer.ps1
 ```
 
+That is a build to try out: the setup and the archives store their files as they are, which takes
+seconds. Add `-Compress` for packages to publish (solid LZMA and compressed archives, about ten
+minutes more); the release workflow passes it, and any run on GitHub Actions compresses.
+
 The script
 
 1. runs `cargo build --release -p ta_game -p ta_launcher -p ta_tools` (warning when the working
