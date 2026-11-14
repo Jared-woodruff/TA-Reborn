@@ -136,6 +136,79 @@ fn spawn(sim: &mut Sim, name: &str, owner: u8, x: i64, z: i64) -> UnitId {
     sim.spawn_unit(sim.types.id(name).unwrap(), owner, FxVec3::from_ints(x, 0, z), 0, true).unwrap()
 }
 
+#[test]
+fn idle_turrets_retarget_after_an_enemy_leaves_firing_range() {
+    for departing_x in [620, 640] {
+        let mut sim = game();
+        sim.los_enabled = false;
+        let gun = spawn(&mut sim, "GUN", 0, 200, 300);
+        let departing = spawn(&mut sim, "TARGET", 1, departing_x, 300);
+        let reachable = spawn(&mut sim, "TARGET", 1, 200, 600);
+        sim.unit_mut(departing).unwrap().fire_state = 0;
+        sim.unit_mut(reachable).unwrap().fire_state = 0;
+        sim.unit_mut(gun).unwrap().retarget(0, Some(Target::Unit(departing)));
+        let mut fired = false;
+        for _ in 0..60 {
+            sim.step(&[]);
+            fired |= sim.take_events().iter().any(|e| matches!(e, SimEvent::WeaponFired { unit, .. } if *unit == gun));
+        }
+        assert!(fired, "target at x={departing_x}");
+        assert_eq!(sim.unit(gun).unwrap().weapons[0].target, Some(Target::Unit(reachable)));
+    }
+}
+
+#[test]
+fn attack_move_closes_on_a_retained_target_outside_firing_range() {
+    let mut sim = game_of(&[
+        ("GUN", "Weapon1=LASER; CanMove=1; MaxVelocity=2; Acceleration=1; BrakeRate=1; TurnRate=3000;"),
+        ("TARGET", ""),
+    ]);
+    sim.los_enabled = false;
+    let gun = spawn(&mut sim, "GUN", 0, 200, 300);
+    let target = spawn(&mut sim, "TARGET", 1, 620, 300);
+    sim.unit_mut(target).unwrap().fire_state = 0;
+    sim.unit_mut(gun).unwrap().retarget(0, Some(Target::Unit(target)));
+    let types = sim.types.clone();
+    let weapons = sim.weapon_types.clone();
+    let dest = FxVec3::from_ints(900, 0, 300);
+    let t = types.get(sim.unit(gun).unwrap().type_id);
+    sim.advance_engaging(gun, t, dest, None);
+    assert_eq!(sim.unit(gun).unwrap().move_request, Some(dest));
+    sim.update_weapons(gun, &types, &weapons);
+    assert!(sim.projectiles.is_empty());
+    sim.step(&[crate::Command::Order { player: 0, units: vec![gun], order: Order::Fight(dest), queue: false }]);
+    let mut fired = false;
+    for _ in 0..180 {
+        sim.step(&[]);
+        fired |= sim.take_events().iter().any(|e| matches!(e, SimEvent::WeaponFired { unit, .. } if *unit == gun));
+    }
+    assert!(fired);
+    assert!(sim.unit(gun).unwrap().pos.x < sim.unit(target).unwrap().pos.x);
+}
+
+#[test]
+fn explicit_attack_orders_keep_the_target_outside_firing_range() {
+    for departing_x in [620, 680] {
+        let mut sim = game();
+        sim.los_enabled = false;
+        let gun = spawn(&mut sim, "GUN", 0, 200, 300);
+        let ordered = spawn(&mut sim, "TARGET", 1, departing_x, 300);
+        let reachable = spawn(&mut sim, "TARGET", 1, 200, 600);
+        for id in [ordered, reachable] {
+            sim.unit_mut(id).unwrap().fire_state = 0;
+        }
+        sim.unit_mut(gun).unwrap().orders.push_back(Order::Attack(Target::Unit(ordered)));
+        let mut fired = false;
+        for _ in 0..60 {
+            sim.step(&[]);
+            fired |= sim.take_events().iter().any(|e| matches!(e, SimEvent::WeaponFired { unit, .. } if *unit == gun));
+        }
+        assert!(!fired);
+        assert_eq!(sim.unit(gun).unwrap().weapons[0].target, Some(Target::Unit(ordered)));
+        assert!(matches!(sim.unit(gun).unwrap().orders.front(), Some(Order::Attack(Target::Unit(t))) if *t == ordered));
+    }
+}
+
 /// TA's units take a bad target on last: when it is the only enemy in reach (a missile tower
 /// with no aircraft about fires on a tank), and they turn to a better one as soon as one comes
 /// into reach. With the player's `+shootall` a bad target counts as any other: the nearest first.

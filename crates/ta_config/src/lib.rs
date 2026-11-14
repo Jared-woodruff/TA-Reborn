@@ -156,7 +156,7 @@ pub const RECORD_VERSION: u32 = 46;
 /// from the gun, and runs on along the ground or the water it meets; 94, capturing takes four
 /// times the target's cost in work, never more than two minutes of a Commander's (TA's Galactic
 /// Gate took 51).
-pub const SIMULATION_VERSION: u32 = 94;
+pub const SIMULATION_VERSION: u32 = 95;
 /// Records shorter than one year of simulated time are supported. Shared with the
 /// launcher's metadata reader so impossible durations cannot start endless save catch-up.
 pub const MAX_RECORD_TICKS: u64 = 30 * 3600 * 24 * 365;

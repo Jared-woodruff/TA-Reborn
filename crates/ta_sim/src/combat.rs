@@ -586,7 +586,7 @@ impl Sim {
             let from = self.aim_from_point(id, slot);
             let dist = from.distance_xz(tp);
             let reach = w.range + self.target_radius(target);
-            if dist > reach + Fx::from_int(16) {
+            if forced == Some(target) && dist > reach + Fx::from_int(16) {
                 continue;
             }
             // Heading relative to the body; pitch from a ballistic solution when needed.
@@ -595,7 +595,7 @@ impl Sim {
             // Under the water only torpedoes and depth charges reach (an ordered target is
             // left to the order: the unit has nothing to hit it with).
             let under = matches!(target, Target::Unit(tid) if !w.water && self.unit(tid).is_some_and(|tu| self.submerged(tu)));
-            let pitch = if under { None } else { self.launch_pitch(w, to) };
+            let pitch = if under || forced != Some(target) && dist > reach { None } else { self.launch_pitch(w, to) };
             let Some(pitch) = pitch else {
                 // Out of the shells' reach (or under the water): an automatic target is passed
                 // over for a while, for one it can hit.
@@ -1819,12 +1819,20 @@ impl Sim {
             self.halt(id);
             return true;
         }
-        let engaged = u.weapons.iter().zip(t.weapons.iter()).any(|(ws, w)| {
-            w.is_some_and(|wid| {
-                let weapon = self.weapon_types.get(wid);
-                self.weapon_can_fire_from(u, weapon) && ws.target.is_some_and(|tg| self.target_known(tg, u.owner) && self.target_point(tg).is_some_and(|p| u.pos.within_xz(p, weapon.range + Fx::from_int(24))))
-            })
+        let targets = u.weapons.map(|ws| ws.target);
+        let owner = u.owner;
+        let weapons = self.weapon_types.clone();
+        let engaged = targets.into_iter().zip(t.weapons).enumerate().any(|(slot, (target, weapon))| {
+            let (Some(target), Some(wid)) = (target, weapon) else { return false };
+            let weapon = weapons.get(wid);
+            if !self.unit(id).is_some_and(|u| self.weapon_can_fire_from(u, weapon)) || !self.target_known(target, owner) {
+                return false;
+            }
+            let Some(tp) = self.weapon_target_point(weapon, target) else { return false };
+            let from = self.aim_from_point(id, slot);
+            from.within_xz(tp, weapon.range + self.target_radius(target)) && self.launch_pitch(weapon, tp - from).is_some()
         });
+        let Some(u) = self.unit(id) else { return false };
         let planned = u.move_request == Some(dest);
         let arrived = planned && u.path_goal.is_none();
         if engaged {
