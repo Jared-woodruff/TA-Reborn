@@ -223,6 +223,7 @@ impl Sim {
                         }
                     }
                 }
+                self.damage_features_along(p.prev_pos, p.pos, w);
             }
             let impact = if intercepting && (w.def.interceptor || w.def.targetable) { impacts[index] }
                 else { self.projectile_impact(p, w, &mut near) };

@@ -613,6 +613,40 @@ fn piercing_shots_sweep_their_damage_area_and_hit_each_unit_once() {
 }
 
 #[test]
+fn dgun_sweeps_destroy_trees_and_rocks_without_stopping_the_shot() {
+    let mut data = data_of(&[
+        unit("SHOOTER", "Weapon1=SHOT;"),
+        weapon_file("SHOT", "rendertype=3; areaofeffect=48; noexplode=1; commandfire=1; firestarter=100;"),
+        ("features/all/targets.tdf".into(), "[TREE] { damage=1000; height=40; blocking=1; flamable=1; burnmin=10; burnmax=10; } [ROCK] { damage=1000; blocking=1; } [PERMANENT] { damage=1000; blocking=1; indestructible=1; }".into()),
+    ]);
+    let weapon = data.weapon_id("SHOT").unwrap();
+    data.weapons[weapon].default_damage = 30000.0;
+    let mut sim = sim_of(data, 1);
+    let shooter = sim.spawn_unit(sim.types.id("SHOOTER").unwrap(), 0, FxVec3::from_ints(200, 60, 300), 0, true).unwrap();
+    let tree = sim.place_feature("TREE", FxVec3::from_ints(250, 60, 300), 0).unwrap();
+    let burning = sim.place_feature("TREE", FxVec3::from_ints(300, 60, 320), 0).unwrap();
+    let rock = sim.place_feature("ROCK", FxVec3::from_ints(350, 60, 300), 0).unwrap();
+    let permanent = sim.place_feature("PERMANENT", FxVec3::from_ints(320, 60, 300), 0).unwrap();
+    let outside = sim.place_feature("TREE", FxVec3::from_ints(300, 60, 400), 0).unwrap();
+    sim.ignite(burning);
+    let pos = FxVec3::from_ints(200, 70, 300);
+    sim.projectiles.push(crate::Projectile {
+        id: 1, weapon, owner: shooter, owner_player: 0, pos, prev_pos: pos, vel: FxVec3::from_ints(200, 0, 0),
+        target: None, target_pos: pos, age: 0, ttl: 5, hits: Vec::new(), dead: false,
+    });
+    sim.step(&[]);
+    for index in [tree, burning, rock] {
+        assert!(!sim.features[index].alive, "the D-gun must destroy features between flight endpoints, including burning trees");
+        assert_eq!(sim.features[index].burn_until, 0);
+    }
+    for index in [permanent, outside] {
+        assert!(sim.features[index].alive, "indestructible features and trees outside the damage area survive");
+        assert_eq!(sim.features[index].health, Fx::from_int(1000));
+    }
+    assert_eq!(sim.projectiles.len(), 1, "destroying features must not consume a piercing shot");
+}
+
+#[test]
 fn ceasefire_protects_against_projectiles_after_the_attacker_is_removed() {
     for protected in [false, true] {
         for (through, paralyzer) in [(false, false), (true, false), (false, true)] {
