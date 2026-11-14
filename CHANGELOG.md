@@ -8,6 +8,9 @@
   reviewed. The pull request template follows it.
 
 ### Fixed
+- Turrets stop tracking enemies beyond firing range and can switch to targets they can hit.
+  Units on attack-move or patrol keep advancing until their weapons are actually in range,
+  rather than stopping just short and holding fire. Explicit attack orders keep their targets.
 - Edge scrolling stopped working once a battle had loaded, or the profile or career window had
   been open, until the cursor left the window and came back, which in full screen on a single
   display it never could. Any move of the cursor now brings it back. It no longer scrolls while a

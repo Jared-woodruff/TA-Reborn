@@ -86,7 +86,7 @@ pub use transport::{Client, Host, HostEvent};
 /// along the ground; 98: capturing never takes more than two minutes of a Commander's work.)
 /// [`Msg::Hello`] and [`Refusal::Version`] keep their layout, so builds of other protocols are
 /// still told why they cannot meet.
-pub const PROTOCOL: u32 = 98;
+pub const PROTOCOL: u32 = 99;
 pub const DEFAULT_PORT: u16 = 7890;
 /// Ticks between state hash reports (which double as progress reports).
 pub const HASH_INTERVAL: u64 = 15;
