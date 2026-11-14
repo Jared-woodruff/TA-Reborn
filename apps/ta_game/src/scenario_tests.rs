@@ -37,7 +37,7 @@ fn assets() -> (Assets, ta_formats::tnt::TntMap) {
     let data = Arc::new(ta_data::GameData::load(&vfs));
     let types = Arc::new(ta_sim::UnitTypes::compile(&data, &|p| vfs.read_opt(p)));
     let info = ta_data::MapInfo::default();
-    let maps = vec![crate::setup::MapEntry { name: "test".into(), title: "Test".into(), description: String::new(), planet: String::new(), size: String::new(), start_positions: 0, info }];
+    let maps = vec![crate::setup::MapEntry { name: "test".into(), title: "Test".into(), description: String::new(), planet: String::new(), size: String::new(), start_positions: 0, origin: Default::default(), info }];
     let map = ta_formats::tnt::TntMap { width: 64, height: 64, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![60; 64 * 64], features: vec![ta_formats::tnt::FEATURE_NONE; 64 * 64], feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
     let assets = Assets { vfs: Arc::new(vfs), data, types, maps: maps.clone(), selectable_maps: maps, campaigns: Vec::new(), data_hash: 0, compatibility: Default::default(), mods: Default::default() };
     std::fs::remove_dir_all(dir).unwrap();

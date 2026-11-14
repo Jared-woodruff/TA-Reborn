@@ -1267,6 +1267,7 @@ mod tests {
                 planet: ["Green Planet", "Desert", "Lava", "Metal"][i % 4].into(),
                 size: "10 x 10".into(),
                 start_positions: 2 + i % 3,
+                origin: Default::default(),
                 info: Default::default(),
             })
             .collect()

@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use ta_data::map::Origin;
 use ta_data::{GameData, MapInfo};
 use ta_formats::tdf;
 use ta_render::Renderer;
@@ -538,6 +539,8 @@ pub struct MapEntry {
     pub planet: String,
     pub size: String,
     pub start_positions: usize,
+    /// Where it comes from (TA's own, an expansion's, TA Reborn's, Supreme Commander's, a mod's).
+    pub origin: Origin,
     pub info: MapInfo,
 }
 
@@ -569,6 +572,9 @@ impl MapEntry {
             }
             // Title-case the file stem when the OTA has no name.
             let title = if info.name.trim().is_empty() { stem.clone() } else { info.name.trim().to_string() };
+            // (Where it comes from: the terrain's source, and its OTA for one made from Supreme
+            // Commander's.)
+            let origin = vfs.origin(&format!("maps/{stem}.tnt")).map_or(Origin::Mod, |source| Origin::of(&source.layer, &source.path, &info));
             out.push(MapEntry {
                 title,
                 description: ta_data::map::blurb(&info.description),
@@ -576,6 +582,7 @@ impl MapEntry {
                 size: info.size.clone(),
                 start_positions: starts,
                 name: stem,
+                origin,
                 info,
             });
         }

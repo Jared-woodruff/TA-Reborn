@@ -8,7 +8,7 @@ fn assets() -> Assets {
     let compatibility = ta_data::Compatibility::load(&vfs);
     let maps = ["First map", "Second map"].map(|name| crate::setup::MapEntry {
         name: name.into(), title: name.into(), description: String::new(), planet: String::new(), size: String::new(),
-        start_positions: 2, info: Default::default(),
+        start_positions: 2, origin: Default::default(), info: Default::default(),
     }).to_vec();
     Assets { vfs, data, types, maps: maps.clone(), selectable_maps: maps, campaigns: Vec::new(), data_hash: compatibility.global(), compatibility, mods: Default::default() }
 }

@@ -257,19 +257,32 @@ impl NetLobby {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
-                let search = w::search_field(ui, &mut self.filter, t("Search maps…"), 300.0 - 6.0 - 32.0, None);
-                // (A map at random, of those with room for the players.)
+                let search = w::search_field(ui, &mut self.map_choice.words, t("Search maps…"), 300.0 - 6.0 - 32.0, None);
+                // (A map at random, of those the list shows with room for the players, else of
+                // them all.)
                 let size = vec2(32.0, search.rect.height());
                 if w::glyph_button(ui, w::Glyph::Shuffle, size, w::Tone::Secondary, assets.selectable_maps.len() > 1).on_hover_text(t("A map at random, with room for these players")).clicked() {
                     let players = self.state.slots.iter().filter(|s| s.kind.plays()).count().max(2);
-                    let fits: Vec<&crate::setup::MapEntry> = assets.selectable_maps.iter().filter(|m| m.name != self.state.map && m.start_positions >= players).collect();
+                    let maps = &assets.selectable_maps;
+                    let fits = |pool: Vec<usize>| -> Vec<usize> { pool.into_iter().filter(|&i| maps[i].name != self.state.map && maps[i].start_positions >= players).collect() };
+                    let mut pool = fits(self.map_choice.shown(maps));
+                    if pool.is_empty() {
+                        pool = fits((0..maps.len()).collect());
+                    }
                     self.seed = self.seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-                    if !fits.is_empty() {
-                        self.state.map = fits[((self.seed >> 33) % fits.len() as u64) as usize].name.clone();
+                    if !pool.is_empty() {
+                        let chosen = &maps[pool[((self.seed >> 33) % pool.len() as u64) as usize]];
+                        if !self.map_choice.accepts(chosen) {
+                            self.map_choice.clear();
+                        }
+                        self.state.map = chosen.name.clone();
                         *changed = true;
                     }
                 }
             });
+            ui.add_space(4.0);
+            // Where the maps come from, and their order.
+            let reveal = self.map_choice.controls(ui, "mp_maps", &assets.selectable_maps, 300.0);
             ui.add_space(4.0);
             // (Maps someone in the lobby lacks, or has another version of, show it: their count
             // of players in red, and who, under the pointer.)
@@ -284,15 +297,27 @@ impl NetLobby {
                 let area = egui::ScrollArea::vertical().id_salt("mp_maps").max_height(height).min_scrolled_height(ta_ui::scroll::whole_rows(160.0, panel::LIST_ROW + 1.0, 1.0)).auto_shrink([false, true]);
                 ta_ui::scroll::show(ui, area, ta_ui::scroll::Behind::Well, |ui| {
                     ui.spacing_mut().item_spacing.y = 1.0;
-                    let f = self.filter.to_ascii_lowercase();
-                    for m in assets.selectable_maps.iter().filter(|m| f.is_empty() || m.title.to_ascii_lowercase().contains(&f)) {
+                    let maps = &assets.selectable_maps;
+                    let shown = self.map_choice.shown(maps);
+                    let by_origin = self.map_choice.order == crate::map_list::Order::Origin;
+                    let mut origin = None;
+                    for m in shown.iter().map(|&i| &maps[i]) {
+                        // (Put in order by origin: each origin's name over its maps.)
+                        if by_origin && origin != Some(m.origin) {
+                            origin = Some(m.origin);
+                            crate::map_list::heading(ui, m.origin, shown.iter().filter(|&&j| maps[j].origin == m.origin).count());
+                        }
                         let lacking: Vec<String> = transport.map_or_else(Vec::new, |h| people.iter().filter_map(|(peer, name)| {
                             let status = MapStatus::of(own_maps.get(&m.name).copied(), h.peer_map(*peer, &m.name));
                             matches!(status, MapStatus::Missing | MapStatus::Other).then(|| map_tip(name, status))
                         }).collect());
                         let players = RichText::new(tf("{n}P", &[("n", &m.start_positions)])).font(strong(11.5));
                         let players = if lacking.is_empty() { players } else { players.color(RED) };
-                        let row = panel::list_row(ui, m.name == self.state.map, true, RichText::new(&m.title), Some(players));
+                        let row = crate::map_list::row(ui, m, m.name == self.state.map, players);
+                        // (The map chosen brought into view after the origins or the order changed.)
+                        if reveal && m.name == self.state.map {
+                            row.scroll_to_me(Some(egui::Align::Center));
+                        }
                         let row = if lacking.is_empty() { row } else { row.on_hover_text(format!("{}\n{}", t("Not everyone in the lobby has this map:"), lacking.join("\n"))) };
                         if row.clicked() && self.state.map != m.name {
                             self.state.map = m.name.clone();

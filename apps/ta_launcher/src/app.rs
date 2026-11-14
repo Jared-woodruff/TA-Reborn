@@ -143,6 +143,8 @@ pub enum Action {
     SupcomOpen,
     /// Picks the folder Supreme Commander: Forged Alliance is installed in.
     SupcomBrowse,
+    /// Uses this copy of the game of those found (GOG's, Steam's...).
+    SupcomUse(std::path::PathBuf),
     /// Makes the chosen Supreme Commander maps into TA maps.
     SupcomImport,
     /// Stops the import after the map being made.
@@ -1009,6 +1011,11 @@ impl LauncherApp {
                     && !self.supcom.pick(&dir, &self.store.dir().join("mods"))
                 {
                     self.notify(ta_ui::i18n::tf("Supreme Commander: Forged Alliance is not in {folder}: choose the folder it is installed in (it holds gamedata and maps).", &[("folder", &dir.display())]), AMBER);
+                }
+            }
+            Action::SupcomUse(root) => {
+                if !self.supcom.importing() {
+                    self.supcom.pick(&root, &self.store.dir().join("mods"));
                 }
             }
             Action::SupcomImport => match (self.supcom_blocked(), self.detection.install().map(|i| i.root.clone())) {

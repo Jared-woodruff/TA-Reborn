@@ -16,6 +16,21 @@ fn the_game() -> Option<Install> {
     install::discover().into_iter().next()
 }
 
+/// Every copy of the game found on this computer, in the order looked for (GOG's, Steam's, the
+/// boxed copy's...), and that each holds the same maps.
+#[test]
+#[ignore]
+fn every_copy_found() {
+    let copies = install::discover();
+    for copy in &copies {
+        let maps = std::fs::read_dir(copy.maps()).map_or(0, |d| d.count());
+        eprintln!("{:?}: {} ({maps} map folders)", copy.store, copy.root.display());
+    }
+    if copies.is_empty() {
+        eprintln!("no copy of Forged Alliance found");
+    }
+}
+
 #[test]
 #[ignore]
 fn every_installed_map_reads() {

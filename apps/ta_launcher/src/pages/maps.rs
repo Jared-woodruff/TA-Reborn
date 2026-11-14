@@ -212,7 +212,9 @@ impl LauncherApp {
         let mut worlds: Vec<String> = self.maps.catalogue.entries.iter().map(|entry| entry.planet.clone()).filter(|planet| !planet.is_empty()).collect();
         worlds.sort_by_key(|world| world.to_lowercase());
         worlds.dedup();
-        let sources: std::collections::BTreeMap<String, String> = self.maps.catalogue.entries.iter().map(|entry| (entry.layer.clone(), entry.source.clone())).collect();
+        // (The sources by name: the game's own maps by where they come from, Core Contingency's
+        // and Battle Tactics' apart from TA's.)
+        let sources: Vec<String> = self.maps.catalogue.entries.iter().map(|entry| entry.source.clone()).collect::<std::collections::BTreeSet<_>>().into_iter().collect();
         let shown = self.maps.visible(&self.config.maps).len();
         let total = self.maps.catalogue.entries.len();
         ui.horizontal_wrapped(|ui| {
@@ -244,15 +246,14 @@ impl LauncherApp {
             if library::choice(ui, "map_world", width, label, &mut world, &choices).changed() {
                 self.maps.world = world.checked_sub(1).and_then(|at| worlds.get(at)).cloned().unwrap_or_default();
             }
-            let layers: Vec<&String> = sources.keys().collect();
-            let mut source = layers.iter().position(|layer| **layer == self.maps.source).map_or(0, |at| at + 1);
-            let choices: Vec<(usize, String)> = std::iter::once((0, t("All").to_string())).chain(sources.values().cloned().enumerate().map(|(at, name)| (at + 1, name))).collect();
+            let mut source = sources.iter().position(|name| *name == self.maps.source).map_or(0, |at| at + 1);
+            let choices: Vec<(usize, String)> = std::iter::once((0, t("All").to_string())).chain(sources.iter().cloned().enumerate().map(|(at, name)| (at + 1, name))).collect();
             let label = t("SOURCE");
             let names: Vec<String> = choices.iter().map(|(_, name)| name.clone()).collect();
             let width = wide(ui, label, &names).min(210.0);
             room(ui, width);
             if library::choice(ui, "map_source", width, label, &mut source, &choices).changed() {
-                self.maps.source = source.checked_sub(1).and_then(|at| layers.get(at)).map(|layer| (*layer).clone()).unwrap_or_default();
+                self.maps.source = source.checked_sub(1).and_then(|at| sources.get(at)).cloned().unwrap_or_default();
             }
             let sorts = [(Sort::Name, t("Name").to_string()), (Sort::Players, t("Players").into()), (Sort::Size, t("Size").into()), (Sort::Recent, t("Last played").into()), (Sort::Source, t("Source").into())];
             let label = t("ORDER");
@@ -345,7 +346,7 @@ impl LauncherApp {
             // (On a card the star is its own button, over the picture.)
             let card = Card { title: &entry.title, detail: &detail, lamps: &[lamp(entry, preferences)],
                 star: favourite && view == View::List, selected: entry.key == self.maps.selected, spoken: &spoken,
-                ribbon: entry.reborn().then_some(n("REBORN")) };
+                ribbon: entry.ribbon() };
             let id = Id::new(("map_card", &entry.key));
             let paint = |ui: &Ui, frame: Rect| library::picture(ui, frame, picture.as_ref(), failed);
             let response = match view {
@@ -446,6 +447,8 @@ impl LauncherApp {
         });
         if entry.reborn() {
             reborn_banner(ui);
+        } else if entry.origin == ta_data::map::Origin::SupremeCommander {
+            supcom_banner(ui);
         }
         ui.add_space(space::XS);
         self.map_actions(ui, entry, idle);
@@ -591,6 +594,21 @@ fn reborn_banner(ui: &mut Ui) {
             ui.set_width(ui.available_width());
             ui.label(RichText::new(t("TA REBORN MAP")).font(strong(12.5)).color(AMBER_BRIGHT).extra_letter_spacing(ta_ui::i18n::tracking(1.4)));
             super::wrapped(ui, t("Built for TA Reborn: optimised for its engine and balanced for every start. The best maps to play."), TEXT);
+        });
+}
+
+/// Over a map made from one of Supreme Commander's: what it is, and that it is the player's own
+/// making, from their copy of the game (its cliffs, forests and mass points kept).
+fn supcom_banner(ui: &mut Ui) {
+    egui::Frame::new()
+        .fill(Color32::from_rgba_unmultiplied(104, 184, 232, 18))
+        .stroke(Stroke::new(1.0, SKY.gamma_multiply(0.55)))
+        .corner_radius(3)
+        .inner_margin(egui::Margin::symmetric(10, 7))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.label(RichText::new(t("SUPREME COMMANDER MAP")).font(strong(12.5)).color(SKY).extra_letter_spacing(ta_ui::i18n::tracking(1.4)));
+            super::wrapped(ui, t("Made from a map of Supreme Commander: Forged Alliance, from your own copy of the game: its land, cliffs, forests, rocks, mass points and starts."), TEXT);
         });
 }
 

@@ -243,7 +243,7 @@ fn documents_folders() -> Vec<PathBuf> {
 }
 
 /// Whether two paths name one folder (on Windows whatever their case and slashes).
-pub(crate) fn same_folder(a: &Path, b: &Path) -> bool {
+pub fn same_folder(a: &Path, b: &Path) -> bool {
     if cfg!(windows) {
         let key = |p: &Path| p.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_ascii_lowercase();
         key(a) == key(b)

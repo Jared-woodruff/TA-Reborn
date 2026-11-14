@@ -14,6 +14,16 @@
   [docs/SUPCOM_MAPS.md](docs/SUPCOM_MAPS.md).
 - `ta-tools supcom` makes Supreme Commander's maps into TA's, with pictures of each beside the
   game's own.
+- Where each map comes from, in skirmish and in the multiplayer lobby: every map in the list is
+  tagged TA, CC (Core Contingency), BT (Battle Tactics), REBORN, SUPCOM (made from Supreme
+  Commander's) or MOD, its origin told in full under the pointer. The list shows the maps of one
+  origin, or the expansions together, and puts them in order by name, by origin (each origin under
+  its name) or by players; the search finds origins too, and a map at random is one of those shown.
+- The launcher's map library names the game's own maps by where they come from (Total
+  Annihilation, Core Contingency, Battle Tactics), for its SOURCE filter and order, and marks the
+  maps made from Supreme Commander's with a SUPREME COMMANDER ribbon and a note in their details.
+- With more than one copy of Supreme Commander: Forged Alliance installed (GOG's and Steam's),
+  the import shows each, to choose the one it reads; they make the same maps.
 - A mod's compatibility report now opens on an OVERVIEW: what the check found, in a word and a
   sentence, with its errors, warnings and notes, each a way into those findings; what the mod
   holds; the findings to fix first; and what the project saw of it in play. A mod's details in
