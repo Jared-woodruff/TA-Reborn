@@ -2506,6 +2506,14 @@ impl Game {
                 None
             }
         };
+        // With Shift, a reclaim already queued, given again, is taken back, as a building put
+        // down again on its own plan is.
+        if shift
+            && let Some(o @ (Order::Reclaim(_) | Order::ReclaimUnit(_))) = &order
+            && self.take_back_queued(o)
+        {
+            return true;
+        }
         if let Some(order) = order {
             let exclude = match &order {
                 Order::Guard(id) | Order::Repair(id) | Order::Load(id) | Order::ReclaimUnit(id) => Some(*id),
@@ -2558,6 +2566,11 @@ impl Game {
             let reclaimers: Vec<UnitId> =
                 self.selection.iter().copied().filter(|&id| self.sim.unit(id).is_some_and(|u| self.sim.unit_type(u).def.can_reclaim)).collect();
             if !reclaimers.is_empty() {
+                // With Shift, one already to be reclaimed is taken back, as a building put down
+                // again on its own plan is.
+                if shift && self.take_back_queued(&Order::Reclaim(index)) {
+                    return;
+                }
                 self.mark_order(&Order::Reclaim(index), false);
                 self.issue(Command::Order { player: self.local_player, units: reclaimers, order: Order::Reclaim(index), queue: shift });
                 if let Some(&first) = self.selection.first() {
@@ -3642,9 +3655,83 @@ impl Game {
         self.issue(Command::Formation { player: self.local_player, units, order, queue, shape });
     }
 
+    /// Takes `order` back from each unit of ours in the selection that has it queued (its first
+    /// such: `Command::DropOrder`). False when none has.
+    fn take_back_queued(&mut self, order: &Order) -> bool {
+        let me = self.local_player;
+        let drops: Vec<(UnitId, u32)> = self
+            .selection
+            .iter()
+            .filter_map(|&id| {
+                let u = self.sim.unit(id).filter(|u| u.owner == me)?;
+                u.orders.iter().position(|o| o == order).map(|i| (id, i as u32))
+            })
+            .collect();
+        for &(unit, index) in &drops {
+            self.issue(Command::DropOrder { player: me, unit, index, order: order.clone() });
+        }
+        if !drops.is_empty() {
+            self.ui_sounds.push("IMMEDIATEORDERS");
+        }
+        !drops.is_empty()
+    }
+
+    /// A click on (near) a waypoint the selection already has set takes it back: the nearest of
+    /// its units' queued moves within a waypoint's mark of the click is the waypoint, and each unit
+    /// drops its own move nearest to that (a group's moves, each to its place round the point it
+    /// was sent to, go together). False when no waypoint is that near.
+    fn take_back_move(&mut self, click: Vec3) -> bool {
+        // (World pixels: three cells, about a waypoint's mark; and as far as a formation's places
+        // lie round the point it was sent to.)
+        const NEAR: f32 = 48.0;
+        const GROUP: f32 = 400.0;
+        let me = self.local_player;
+        let flat = |p: &FxVec3| {
+            let p = p.to_f32();
+            Vec2::new(p[0], p[2])
+        };
+        let moves: Vec<(UnitId, Vec<(u32, FxVec3)>)> = self
+            .selection
+            .iter()
+            .filter_map(|&id| {
+                let u = self.sim.unit(id).filter(|u| u.owner == me)?;
+                let moves = u.orders.iter().enumerate().filter_map(|(i, o)| if let Order::Move(p) = o { Some((i as u32, *p)) } else { None });
+                Some((id, moves.collect()))
+            })
+            .collect();
+        let at = Vec2::new(click.x, click.z);
+        let Some(waypoint) = moves
+            .iter()
+            .flat_map(|(_, m)| m.iter().map(|(_, p)| flat(p)))
+            .filter(|p| p.distance(at) <= NEAR)
+            .min_by(|a, b| a.distance(at).total_cmp(&b.distance(at)))
+        else {
+            return false;
+        };
+        let mut taken = false;
+        for (unit, m) in moves {
+            let nearest = m
+                .iter()
+                .filter(|(_, p)| flat(p).distance(waypoint) <= GROUP)
+                .min_by(|a, b| flat(&a.1).distance(waypoint).total_cmp(&flat(&b.1).distance(waypoint)));
+            if let Some(&(index, pos)) = nearest {
+                self.issue(Command::DropOrder { player: me, unit, index, order: Order::Move(pos) });
+                taken = true;
+            }
+        }
+        if taken {
+            self.ui_sounds.push("IMMEDIATEORDERS");
+        }
+        taken
+    }
+
     /// Moves the selection to `target`: as a formation under the rule "modern movement", else
     /// spreading units in a grid so they don't pile up.
     fn move_selection(&mut self, target: Vec3, queue: bool) {
+        // With Shift, a click on a waypoint already set takes it back.
+        if queue && self.take_back_move(target) {
+            return;
+        }
         self.mark_order(&Order::Move(fx_vec(target)), false);
         let movers: Vec<UnitId> = self.selection.iter().copied().filter(|&id| self.sim.unit(id).is_some()).collect();
         if self.sim.group_formations && movers.len() > 1 {

@@ -209,8 +209,14 @@ pub enum Command {
     EditQueue { player: u8, unit: UnitId, index: u32, type_id: usize, pos: Option<FxVec3>, to_front: bool },
     /// TA's `+shootall`, on or off: the player's units' weapons take on every enemy in reach
     /// alike, their bad targets too (see [`crate::unit::Player::shoot_all`]).
-    /// (Last: replays keep the earlier variants' numbers.)
     SetShootAll { player: u8, on: bool },
+    /// Drops an order equal to `order` from `unit`'s orders, as they stand when the command runs:
+    /// the one at `index` if it is still that, else the nearest that is; none left, nothing. The
+    /// rest are given again as they are (`EditQueue` does the same for a building's plan). A
+    /// player's Shift-click on an order already queued takes it back: a reclaim of what is already
+    /// to be reclaimed, a move to a waypoint already set.
+    /// (Last: replays keep the earlier variants' numbers.)
+    DropOrder { player: u8, unit: UnitId, index: u32, order: Order },
 }
 
 /// The index nearest `index` (the lower first, of two as near) of those below `len` that `is`
@@ -2037,6 +2043,21 @@ impl Sim {
             Command::SetShootAll { player, on } => {
                 if let Some(p) = self.players.get_mut(*player as usize) {
                     p.shoot_all = *on;
+                }
+            }
+            Command::DropOrder { player, unit, index, order } => {
+                let Some(u) = self.unit_mut(*unit).filter(|u| u.owner == *player) else { return };
+                let orders = &u.orders;
+                let Some(j) = nearest_index(orders.len(), *index as usize, |j| orders[j] == *order) else { return };
+                // The rest given again as the player gave them, from what they are now.
+                let mut orders: Vec<Order> = u.orders.iter().cloned().collect();
+                orders.remove(j);
+                let (player, units) = (*player, vec![*unit]);
+                if orders.is_empty() {
+                    self.apply(&Command::Order { player, units: units.clone(), order: Order::Stop, queue: false });
+                }
+                for (i, order) in orders.into_iter().enumerate() {
+                    self.apply(&Command::Order { player, units: units.clone(), order, queue: i > 0 });
                 }
             }
             Command::Signal { player, kind, at } => {
