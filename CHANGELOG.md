@@ -12,6 +12,9 @@
   units' marks still moves there.
 
 ### Fixed
+- With a store run dry, the metal or energy used showed only what came in (+8.4 / -8.4), however
+  much more was being asked for. The use shown is now what builders, upkeep, cloaks and weapons
+  ask for (+8.4 / -20), so you see by how much you outspend your income.
 - Edge scrolling stopped working once a battle had loaded, or the profile or career window had
   been open, until the cursor left the window and came back, which in full screen on a single
   display it never could. Any move of the cursor now brings it back. It no longer scrolls while a

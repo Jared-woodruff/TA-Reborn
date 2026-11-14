@@ -80,7 +80,7 @@ fn readout(ui: &mut egui::Ui, name: &str, s: &Store, color: Color32, spark: Opti
         let amount = ta_ui::widgets::galley(ui, RichText::new(format!("{:.0}", s.amount)).font(strong(12.5)));
         metal::slab_text(ui.painter(), rect.center(), amount, true, TEXT_BRIGHT, false);
         // What comes in, and what goes out: the one that wins in its colour.
-        let short = s.income < s.expense - 0.05;
+        let short = s.income < s.wanted - 0.05;
         ui.label(RichText::new(format!("+{:.1}", s.income)).font(strong(12.0)).color(if s.income > 0.05 { GREEN } else { STEEL }));
         let spend = match s.state {
             StoreState::Stalling => RED,
@@ -88,7 +88,7 @@ fn readout(ui: &mut egui::Ui, name: &str, s: &Store, color: Color32, spark: Opti
             _ if short => AMBER_BRIGHT,
             _ => STEEL,
         };
-        ui.label(RichText::new(if s.expense > 0.05 { format!("-{:.1}", s.expense) } else { "0.0".to_string() }).font(strong(12.0)).color(spend));
+        ui.label(RichText::new(if s.wanted > 0.05 { format!("-{:.1}", s.wanted) } else { "0.0".to_string() }).font(strong(12.0)).color(spend));
         match s.state {
             StoreState::Stalling => {
                 ta_ui::widgets::tag(ui, n("STALLING"), RED);
@@ -146,8 +146,8 @@ impl Hud {
         let (readings, span) = if tier == Tier::Wide { self.trend.readings() } else { (Vec::new(), 1.0) };
         let spark = |index| (tier == Tier::Wide).then_some(Spark { readings: &readings, span, index });
         let gap = if tier == Tier::Tight { 12.0 } else { 20.0 };
-        let metal_store = Store::of(e.metal, e.metal_capacity, e.metal_income, e.metal_expense, rationed);
-        let energy_store = Store::of(e.energy, e.energy_capacity, e.energy_income, e.energy_expense, rationed);
+        let metal_store = Store::of(e.metal, e.metal_capacity, e.metal_income, e.metal_expense, e.metal_wanted, rationed);
+        let energy_store = Store::of(e.energy, e.energy_capacity, e.energy_income, e.energy_expense, e.energy_wanted, rationed);
         let metal = readout(ui, n("METAL"), &metal_store, METAL, spark(0).as_ref(), tier, time);
         ui.add_space(gap);
         let energy = readout(ui, n("ENERGY"), &energy_store, ENERGY, spark(2).as_ref(), tier, time);

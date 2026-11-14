@@ -52,6 +52,33 @@ fn construction_never_advances_more_work_than_the_resources_paid_for() {
 }
 
 #[test]
+fn the_use_shown_is_what_builders_ask_for_when_the_store_runs_dry() {
+    let data = data_of(&[
+        unit("BUILDER", "Builder=1; WorkerTime=30; CanMove=1; MaxVelocity=1; BuildDistance=128; FootprintX=1; FootprintZ=1;"),
+        unit("FRAME", "BuildTime=3000; BuildCostMetal=1000; BuildCostEnergy=0; FootprintX=2; FootprintZ=2;"),
+        unit("MAKER", "MetalMake=4; FootprintX=1; FootprintZ=1;"),
+    ]);
+    let mut sim = sim_of(data, 1);
+    let builder = put(&mut sim, "BUILDER", 0, 200, true);
+    let frame = put(&mut sim, "FRAME", 0, 280, false);
+    put(&mut sim, "MAKER", 0, 400, true);
+    sim.set_starting_resources(0, Fx::from_int(500), Fx::from_int(1000));
+    sim.step(&[Command::Order { player: 0, units: vec![builder], order: Order::Repair(frame), queue: false }]);
+    for _ in 0..10 { sim.step(&[]); }
+    // 1,000 metal over 3,000 worker time, at 30 a second: 10 metal a second, paid in full.
+    let e = &sim.players[0].economy;
+    assert!((e.metal_wanted.to_f64() - 10.0).abs() < 0.01, "asking {}", e.metal_wanted.to_f64());
+    assert_eq!(e.metal_wanted, e.metal_expense, "with metal in store, what is asked for is paid");
+    // The store run dry: only the 4 a second coming in is paid, and the asking is still 10.
+    sim.players[0].economy.metal = Fx::ZERO;
+    for _ in 0..30 { sim.step(&[]); }
+    let e = &sim.players[0].economy;
+    assert!((e.metal_income.to_f64() - 4.0).abs() < 0.01, "income {}", e.metal_income.to_f64());
+    assert!((e.metal_expense - e.metal_income).abs() < Fx::from_ratio(1, 10), "paid {} of {} coming in", e.metal_expense.to_f64(), e.metal_income.to_f64());
+    assert!((e.metal_wanted.to_f64() - 10.0).abs() < 0.01, "still asking {}", e.metal_wanted.to_f64());
+}
+
+#[test]
 fn resurrection_spends_partial_energy_instead_of_stalling_below_a_full_tick() {
     let mut sim = yard("300");
     let builder = put(&mut sim, "BUILDER", 0, 200, true);
