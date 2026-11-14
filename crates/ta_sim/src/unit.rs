@@ -162,6 +162,9 @@ pub struct Unit {
     /// The last tick one of its own side's builders took work off it, reclaiming it: for a
     /// second after that it is being taken apart (`Sim::being_taken_apart`).
     pub taken_apart_at: Option<u64>,
+    /// The metal its side's reclaiming has taken off it so far, paid when it is gone: TA pays
+    /// reclaiming at the end, not as the work goes. Lost with it if it dies first.
+    pub reclaim_owed: Fx,
     /// The last tick a builder worked on it unfinished (or set it down to build): construction
     /// left with nobody at it un-builds after a while, its metal coming back
     /// (`Sim::decay_abandoned_frames`). None for one nobody has worked on (a scene's or a
@@ -363,6 +366,7 @@ impl Unit {
             repair_work: 0,
             finished: false,
             taken_apart_at: None,
+            reclaim_owed: Fx::ZERO,
             worked_at: None,
             activated: false,
             upkeep_paid: true,

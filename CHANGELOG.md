@@ -30,6 +30,10 @@
   every unit within its area of effect of its way (sparing those beside the Commander as it
   fires) and the trees, rocks and wrecks in its path; trees catch fire as often as TA's weapon
   file says.
+- Reclaiming paid its metal a little at a time as the work went, so its income came at once and
+  reclaiming was worth more than in TA. Now, as in TA, a wreck, rock or tree gives all of its
+  metal and energy when it is reclaimed whole, and one of your own units its metal when it is
+  gone.
 - Capturing the most costly units took far longer than meant: a Commander needed 51 minutes to
   capture the Core's Galactic Gate. Capturing a unit still takes four times its cost in work,
   but never more than two minutes of a Commander's.

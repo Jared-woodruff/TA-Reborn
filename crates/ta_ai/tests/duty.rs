@@ -107,6 +107,31 @@ fn a_constructor_on_reclaim_duty_takes_wrecks() {
     assert!(gained > 0, "metal from the wrecks");
 }
 
+/// A wreck whose reclaim was left nearly done still pays all of its metal when it is finished (it
+/// pays when done), so a constructor on reclaim duty goes to finish it: valued by what was left of
+/// it, as when reclaiming paid as it went, it was passed over.
+#[test]
+fn a_constructor_on_reclaim_duty_finishes_a_wreck_left_nearly_reclaimed() {
+    let Some(mut scene) = Scene::new() else { return };
+    let wreck = ["ARMFUS_DEAD", "CORFUS_DEAD", "ARMMAKR_DEAD", "CORTHUD_DEAD"]
+        .into_iter()
+        .flat_map(|name| [(200, 120), (-200, 120), (120, -200), (-120, -200)].map(|(dx, dz)| (name, dx, dz)))
+        .find_map(|(name, dx, dz)| {
+            let i = scene.sim.place_feature(name, scene.start + FxVec3::from_ints(dx, 0, dz), 0)?;
+            (scene.sim.data.features[scene.sim.features[i].def].metal >= 60.0).then_some(i)
+        })
+        .expect("a rich wreck put down near the base");
+    scene.sim.features[wreck].reclaimed = Fx::from_ratio(99, 100);
+    let builder = scene.spawn("ARMCK", 60, 60);
+    scene.officer.set(builder, Some(Duty::Reclaim));
+    let ordered = scene.play(20);
+    assert!(
+        ordered.iter().any(|(_, c)| matches!(c, Command::Order { order: Order::Reclaim(f), .. } if *f == wreck)),
+        "sent to finish the wreck left at 99%: {:?}",
+        ordered.iter().map(|(_, c)| c).take(4).collect::<Vec<_>>()
+    );
+}
+
 #[test]
 fn a_constructor_on_defence_duty_puts_up_towers_on_the_side_of_the_enemy() {
     let Some(mut scene) = Scene::new() else { return };
