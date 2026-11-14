@@ -36,7 +36,8 @@ pub struct Input {
     pad_modifiers: winit::keyboard::ModifiersState,
     /// Gamepad: camera pan (-1..1 each way on screen), and the actions it struck this frame.
     pub pad_pan: Vec2,
-    /// The cursor is over the window (edge scrolling stops when it leaves).
+    /// The cursor is over the window, as its last enter, leave or move said (edge scrolling stops
+    /// when it leaves).
     pub cursor_inside: bool,
     pad_actions: HashSet<&'static str>,
 }
@@ -116,7 +117,13 @@ impl Input {
                 self.kb_modifiers = m.state();
                 self.modifiers = self.kb_modifiers | self.pad_modifiers;
             }
+            WindowEvent::CursorEntered { .. } => self.cursor_inside = true,
+            WindowEvent::CursorLeft { .. } => self.cursor_inside = false,
             WindowEvent::CursorMoved { position, .. } => {
+                // (A window is told of the cursor entering only as it crosses into it: after a
+                // loading screen or a dialog has let the input go, the cursor still over the
+                // window is known to be by its moves.)
+                self.cursor_inside = true;
                 let p = Vec2::new(position.x as f32, position.y as f32);
                 self.mouse_delta += p - self.mouse;
                 self.mouse = p;
@@ -266,6 +273,22 @@ impl Input {
         self.pad_actions.contains(action)
     }
 
+    /// Which way the cursor scrolls the view `size` (window pixels) from its edges: -1, 0 or 1
+    /// each way, within a few pixels of a side. Only from inside the view: a drag carried out
+    /// of the window goes on reporting where the cursor is out there (Windows and macOS do),
+    /// and must not scroll.
+    pub fn edge_scroll(&self, size: Vec2) -> Vec2 {
+        const EDGE: f32 = 3.0;
+        let m = self.mouse;
+        if !self.cursor_inside || m.x < 0.0 || m.y < 0.0 || m.x >= size.x || m.y >= size.y {
+            return Vec2::ZERO;
+        }
+        Vec2::new(
+            if m.x <= EDGE { -1.0 } else if m.x >= size.x - 1.0 - EDGE { 1.0 } else { 0.0 },
+            if m.y <= EDGE { -1.0 } else if m.y >= size.y - 1.0 - EDGE { 1.0 } else { 0.0 },
+        )
+    }
+
     /// Nothing pressed or held this frame, and the pointer away (the benchmark's battles take no
     /// input). Keep the keyboard modifiers: cancellation can be a chord whose modifier was
     /// pressed in an earlier frame.
@@ -299,6 +322,66 @@ mod tests {
     use winit::dpi::{PhysicalPosition, PhysicalSize};
     use winit::event::{DeviceId, Ime, Touch, TouchPhase};
     use winit::keyboard::ModifiersState;
+
+    #[test]
+    fn cursor_movement_restores_edge_scrolling_after_input_is_ignored() {
+        let mut input = Input::default();
+        let device_id = DeviceId::dummy();
+        input.on_event(&WindowEvent::CursorEntered { device_id }, false, false);
+        input.ignore();
+        assert!(!input.cursor_inside);
+        input.on_event(&WindowEvent::CursorMoved { device_id, position: PhysicalPosition::new(1919.0, 540.0) }, true, true);
+        assert!(input.cursor_inside);
+        assert_eq!(input.mouse, Vec2::new(1919.0, 540.0));
+        input.end_frame();
+        assert!(input.cursor_inside);
+        assert_eq!(input.mouse, Vec2::new(1919.0, 540.0));
+    }
+
+    #[test]
+    fn cursor_movement_initializes_tracking_without_an_enter_event() {
+        let mut input = Input::default();
+        input.on_event(&WindowEvent::CursorMoved { device_id: DeviceId::dummy(), position: PhysicalPosition::new(0.0, 540.0) }, false, false);
+        assert!(input.cursor_inside);
+        assert_eq!(input.mouse, Vec2::new(0.0, 540.0));
+    }
+
+    #[test]
+    fn cursor_leave_stops_edge_scrolling_until_the_cursor_returns() {
+        let mut input = Input::default();
+        let device_id = DeviceId::dummy();
+        input.on_event(&WindowEvent::CursorEntered { device_id }, true, true);
+        assert!(input.cursor_inside);
+        input.on_event(&WindowEvent::CursorLeft { device_id }, true, true);
+        input.end_frame();
+        assert!(!input.cursor_inside);
+        input.on_event(&WindowEvent::CursorEntered { device_id }, true, true);
+        assert!(input.cursor_inside);
+    }
+
+    #[test]
+    fn edge_scrolling_comes_from_inside_the_view_only() {
+        let (mut input, size, device_id) = (Input::default(), Vec2::new(1920.0, 1080.0), DeviceId::dummy());
+        let at = |input: &mut Input, x: f64, y: f64| {
+            input.on_event(&WindowEvent::CursorMoved { device_id, position: PhysicalPosition::new(x, y) }, false, false);
+            input.edge_scroll(size)
+        };
+        assert_eq!(at(&mut input, 960.0, 540.0), Vec2::ZERO);
+        assert_eq!(at(&mut input, 0.0, 540.0), Vec2::new(-1.0, 0.0));
+        assert_eq!(at(&mut input, 1919.0, 540.0), Vec2::new(1.0, 0.0));
+        assert_eq!(at(&mut input, 960.0, 2.0), Vec2::new(0.0, -1.0));
+        assert_eq!(at(&mut input, 1917.0, 1079.0), Vec2::new(1.0, 1.0));
+        // A drag carried out of the window: Windows says it left, then goes on with moves from
+        // out there, which say the cursor is over the window again.
+        input.on_event(&WindowEvent::CursorLeft { device_id }, false, false);
+        for (x, y) in [(-200.0, 540.0), (2400.0, 540.0), (960.0, -5.0), (960.0, 1080.0)] {
+            assert_eq!(at(&mut input, x, y), Vec2::ZERO, "the cursor at {x}, {y}, outside the view");
+        }
+        // The cursor gone from the window where it last was: at the edge, it scrolls nothing.
+        at(&mut input, 0.0, 540.0);
+        input.on_event(&WindowEvent::CursorLeft { device_id }, false, false);
+        assert_eq!(input.edge_scroll(size), Vec2::ZERO);
+    }
 
     #[test]
     fn ui_pointer_capture_blocks_controller_zoom_as_it_blocks_the_mouse_wheel() {
