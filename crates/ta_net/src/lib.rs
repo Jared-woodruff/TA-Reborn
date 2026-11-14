@@ -83,10 +83,11 @@ pub use transport::{Client, Host, HostEvent};
 /// is its script's, also between jobs; 95: the 3.1 patch's `[CANBUILD]` lists are the computer
 /// players', not the builders' menus; 96: a map's cliffs (`CELL_CLIFF`) are too steep to cross; 97:
 /// piercing shots (the D-gun) harm all within their area of effect along their flight, and run
-/// along the ground; 98: capturing never takes more than two minutes of a Commander's work.)
+/// along the ground; 98: capturing never takes more than two minutes of a Commander's work; 99:
+/// fire at will takes on only what its side sees, radar and sonar contacts by order alone.)
 /// [`Msg::Hello`] and [`Refusal::Version`] keep their layout, so builds of other protocols are
 /// still told why they cannot meet.
-pub const PROTOCOL: u32 = 98;
+pub const PROTOCOL: u32 = 99;
 pub const DEFAULT_PORT: u16 = 7890;
 /// Ticks between state hash reports (which double as progress reports).
 pub const HASH_INTERVAL: u64 = 15;
