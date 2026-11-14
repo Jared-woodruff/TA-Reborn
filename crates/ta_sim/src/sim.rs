@@ -21,6 +21,11 @@ mod air;
 
 /// Base resource storage every player has regardless of buildings (TA default).
 const BASE_STORAGE: i64 = 1000;
+/// The most work capturing a unit takes, in worker time by seconds: what a Commander (300)
+/// does in two minutes. Four times the cost of anything over 9,000 metal is more: TA's own
+/// Galactic Gate, a campaign building never meant to be built (197,485 metal and 1,982,431
+/// energy), took a Commander 51 minutes.
+const CAPTURE_WORK_MOST: i64 = 300 * 120;
 const PATH_EXPANSIONS: usize = 20_000;
 /// A* node expansions allowed per tick across all units. Searches that exceed it return a
 /// partial path and re-plan on arrival, bounding the cost of army-wide orders on huge maps.
@@ -2648,11 +2653,12 @@ impl Sim {
         if !self.unit(id).is_some_and(|u| u.in_build_stance) {
             return;
         }
-        // A Commander (300 worker time) takes a Flash tank in about two seconds and a
-        // Galactic Gate in a minute or two: the work is four times the cost (its metal, a
-        // sixtieth of its energy and twenty), counted as construction counts it.
+        // A Commander (300 worker time) takes a Flash tank in about two seconds and nothing in
+        // more than two minutes: the work is four times the cost (its metal, a sixtieth of its
+        // energy and twenty), counted as construction counts it, up to `CAPTURE_WORK_MOST`.
         let cost = tt.cost_metal + tt.cost_energy / 60 + Fx::from_int(20);
-        let total = (cost.0.max(1) as u64).saturating_mul(4 * TICKS_PER_SECOND as u64);
+        let work = (cost * 4).min(Fx::from_int(CAPTURE_WORK_MOST));
+        let total = (work.0.max(1) as u64).saturating_mul(TICKS_PER_SECOND as u64);
         let finished = {
             let Some(tu) = self.unit_mut(target) else { return };
             tu.capture_work = tu.capture_work.saturating_add(t.work_rate.max(1)).min(total);

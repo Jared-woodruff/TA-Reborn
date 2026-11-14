@@ -456,7 +456,9 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   what the work done so far is worth less what it was worth before, so a build costs
   exactly its price. Repair, reclaiming (features and own units), resurrection, capture and
   stockpiled missiles count their work the same way; `build_progress` and the other 0..1
-  progresses are derived from it.
+  progresses are derived from it. Capturing a unit is four times its cost in work (its metal, a
+  sixtieth of its energy and 20), never more than two minutes of a Commander's (300 worker
+  time; TA's Galactic Gate, a campaign building costing 197,485 metal, took 51 minutes).
 * **Construction under a stall**: each tick a builder's work is scaled by the stall factor
   (what the stores can pay of the demand); the last sliver of a build always gets at least
   one unit of work, so a starved economy still finishes what it builds instead of leaving it

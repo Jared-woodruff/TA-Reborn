@@ -210,6 +210,36 @@ fn capture_waits_for_room_at_the_unit_limit() {
 }
 
 #[test]
+fn capturing_takes_four_times_the_cost_never_more_than_two_minutes_of_a_commanders_work() {
+    let data = data_of(&[
+        unit("BUILDER", "Builder=1; WorkerTime=300; CanMove=1; MaxVelocity=1; BuildDistance=128; CanCapture=1; FootprintX=1; FootprintZ=1;"),
+        unit("SCOUT", "BuildCostMetal=100; BuildCostEnergy=600; FootprintX=1; FootprintZ=1;"),
+        unit("GATE", "BuildCostMetal=200000; BuildCostEnergy=2000000; FootprintX=2; FootprintZ=2;"),
+    ]);
+    // The scout: four times (100 metal, 600 / 60 energy and 20), at 300 a second: 1.73 s. The
+    // gate's four times its cost would be some 52 minutes: two minutes.
+    for (name, ticks) in [("SCOUT", 52), ("GATE", 120 * 30)] {
+        let mut sim = sim_of(data.clone(), 2);
+        for player in &mut sim.players { player.endless = true; }
+        let builder = put(&mut sim, "BUILDER", 0, 200, true);
+        let target = put(&mut sim, name, 1, 280, true);
+        sim.step(&[Command::Order { player: 0, units: vec![builder], order: Order::Capture(target), queue: false }]);
+        let mut worked = 0;
+        for _ in 0..30 * 600 {
+            sim.step(&[]);
+            let u = sim.unit(target).unwrap();
+            if u.owner == 0 {
+                worked += 1;
+                break;
+            }
+            if u.capture_progress > Fx::ZERO { worked += 1; }
+        }
+        assert_eq!(sim.unit(target).unwrap().owner, 0, "{name} captured");
+        assert_eq!(worked, ticks, "{name}: ticks of work");
+    }
+}
+
+#[test]
 fn fractional_repairs_accumulate_instead_of_rounding_to_zero_forever() {
     let data = data_of(&[
         unit("BUILDER", "Builder=1; CanMove=1; MaxVelocity=1; WorkerTime=0.3; BuildDistance=128;"),

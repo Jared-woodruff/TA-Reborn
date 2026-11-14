@@ -19,6 +19,9 @@
   every unit within its area of effect of its way (sparing those beside the Commander as it
   fires) and the trees, rocks and wrecks in its path; trees catch fire as often as TA's weapon
   file says.
+- Capturing the most costly units took far longer than meant: a Commander needed 51 minutes to
+  capture the Core's Galactic Gate. Capturing a unit still takes four times its cost in work,
+  but never more than two minutes of a Commander's.
 
 ## 1.0.5 — 2026-11-14
 
