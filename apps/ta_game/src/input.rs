@@ -116,7 +116,10 @@ impl Input {
                 self.kb_modifiers = m.state();
                 self.modifiers = self.kb_modifiers | self.pad_modifiers;
             }
+            WindowEvent::CursorEntered { .. } => self.cursor_inside = true,
+            WindowEvent::CursorLeft { .. } => self.cursor_inside = false,
             WindowEvent::CursorMoved { position, .. } => {
+                self.cursor_inside = true;
                 let p = Vec2::new(position.x as f32, position.y as f32);
                 self.mouse_delta += p - self.mouse;
                 self.mouse = p;
@@ -299,6 +302,42 @@ mod tests {
     use winit::dpi::{PhysicalPosition, PhysicalSize};
     use winit::event::{DeviceId, Ime, Touch, TouchPhase};
     use winit::keyboard::ModifiersState;
+
+    #[test]
+    fn cursor_movement_restores_edge_scrolling_after_input_is_ignored() {
+        let mut input = Input::default();
+        let device_id = DeviceId::dummy();
+        input.on_event(&WindowEvent::CursorEntered { device_id }, false, false);
+        input.ignore();
+        assert!(!input.cursor_inside);
+        input.on_event(&WindowEvent::CursorMoved { device_id, position: PhysicalPosition::new(1919.0, 540.0) }, true, true);
+        assert!(input.cursor_inside);
+        assert_eq!(input.mouse, Vec2::new(1919.0, 540.0));
+        input.end_frame();
+        assert!(input.cursor_inside);
+        assert_eq!(input.mouse, Vec2::new(1919.0, 540.0));
+    }
+
+    #[test]
+    fn cursor_movement_initializes_tracking_without_an_enter_event() {
+        let mut input = Input::default();
+        input.on_event(&WindowEvent::CursorMoved { device_id: DeviceId::dummy(), position: PhysicalPosition::new(0.0, 540.0) }, false, false);
+        assert!(input.cursor_inside);
+        assert_eq!(input.mouse, Vec2::new(0.0, 540.0));
+    }
+
+    #[test]
+    fn cursor_leave_stops_edge_scrolling_until_the_cursor_returns() {
+        let mut input = Input::default();
+        let device_id = DeviceId::dummy();
+        input.on_event(&WindowEvent::CursorEntered { device_id }, true, true);
+        assert!(input.cursor_inside);
+        input.on_event(&WindowEvent::CursorLeft { device_id }, true, true);
+        input.end_frame();
+        assert!(!input.cursor_inside);
+        input.on_event(&WindowEvent::CursorEntered { device_id }, true, true);
+        assert!(input.cursor_inside);
+    }
 
     #[test]
     fn ui_pointer_capture_blocks_controller_zoom_as_it_blocks_the_mouse_wheel() {

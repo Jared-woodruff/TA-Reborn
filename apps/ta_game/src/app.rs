@@ -1315,8 +1315,6 @@ impl ApplicationHandler<egui_winit::accesskit_winit::Event> for App {
             return;
         }
         match event {
-            WindowEvent::CursorEntered { .. } => state.input.cursor_inside = true,
-            WindowEvent::CursorLeft { .. } => state.input.cursor_inside = false,
             WindowEvent::Focused(false) => {
                 // Losing focus cancels a drag; it must never look like a release that
                 // commits a formation or a row of buildings, even if egui consumes it.
@@ -1345,7 +1343,8 @@ impl ApplicationHandler<egui_winit::accesskit_winit::Event> for App {
         let game_key = keyboard_pointer_key || history_key;
         if !response.consumed || (tab && !wants_keyboard && state.screen == Screen::Playing) || game_key {
             state.input.on_event(&event, wants_pointer, wants_keyboard && !game_key);
-        } else if let WindowEvent::MouseInput { .. } | WindowEvent::KeyboardInput { .. } = event {
+        } else if let WindowEvent::MouseInput { .. } | WindowEvent::KeyboardInput { .. }
+            | WindowEvent::CursorMoved { .. } | WindowEvent::CursorEntered { .. } | WindowEvent::CursorLeft { .. } = event {
             // Still track releases so buttons never get stuck.
             state.input.on_event(&event, true, true);
         }
