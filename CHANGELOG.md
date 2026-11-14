@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+- A contributing guide, [CONTRIBUTING.md](CONTRIBUTING.md): the project's ground rules, which
+  version to bump for which change, tests, the changelog, and how a pull request is written and
+  reviewed. The pull request template follows it.
+
 ### Fixed
 - Edge scrolling stopped working once a battle had loaded, or the profile or career window had
   been open, until the cursor left the window and came back, which in full screen on a single

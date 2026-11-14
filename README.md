@@ -758,7 +758,8 @@ Play it and [report what breaks](https://github.com/Jared-woodruff/TA-Reborn/iss
 translation: the fourteen languages are plain TOML files in `lang/`
 ([guide](tools/i18n/README.md)). Try your favourite mod and send its report. Or read
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/ROADMAP.md](docs/ROADMAP.md) and open a
-pull request; contributions are accepted under the project's licence.
+pull request as [CONTRIBUTING.md](CONTRIBUTING.md) describes; contributions are accepted under
+the project's licence.
 
 </details>
 
