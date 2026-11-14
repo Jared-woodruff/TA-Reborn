@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Edge scrolling stopped working once a battle had loaded, or the profile or career window had
+  been open, until the cursor left the window and came back, which in full screen on a single
+  display it never could. Any move of the cursor now brings it back. It no longer scrolls while a
+  drag is carried out of the window, or while a slider or a scroll bar is dragged to the edge of
+  the screen.
+
 ## 1.0.5 — 2026-11-14
 
 Supreme Commander: Forged Alliance's maps can now be played in skirmish: the launcher makes them
