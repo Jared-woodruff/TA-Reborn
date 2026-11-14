@@ -1034,6 +1034,41 @@ fn ground_weapon_acquires_landed_aircraft_and_releases_on_takeoff() {
 }
 
 #[test]
+fn fire_at_will_takes_on_only_what_its_side_sees_and_a_radar_contact_by_order() {
+    let data = data_of(&[
+        unit("GUN", "Weapon1=GUN; SightDistance=100; RadarDistance=600;"),
+        unit("TARGET", "MaxDamage=100000;"),
+        unit("SPOTTER", "CanMove=1; MaxVelocity=10; Acceleration=10; BrakeRate=10; TurnRate=5000; SightDistance=200;"),
+        weapon_file("GUN", ""),
+    ]);
+    let mut sim = sim_of(data, 2);
+    let gun = sim.spawn_unit(sim.types.id("GUN").unwrap(), 0, FxVec3::from_ints(300, 0, 300), 0, true).unwrap();
+    // 250 px off: in the gun's reach (400) and its radar's, out of its sight (100).
+    let target = sim.spawn_unit(sim.types.id("TARGET").unwrap(), 1, FxVec3::from_ints(550, 0, 300), 0, true).unwrap();
+    sim.step(&[]);
+    assert_eq!(sim.seen_by(sim.unit(target).unwrap(), 0), Seen::Radar);
+    let fired = |sim: &mut Sim| sim.take_events().iter().any(|e| matches!(e, SimEvent::WeaponFired { unit, .. } if *unit == gun));
+    for _ in 0..30 { sim.step(&[]); }
+    assert!(!fired(&mut sim) && sim.unit(gun).unwrap().weapons[0].target.is_none(), "a radar contact in the fog is not fired on at will");
+    // A spotter of ours in sight of it (out of the line of fire): fired on at will.
+    let spotter = sim.spawn_unit(sim.types.id("SPOTTER").unwrap(), 0, FxVec3::from_ints(550, 0, 430), 0, true).unwrap();
+    for _ in 0..30 { sim.step(&[]); }
+    assert_eq!(sim.seen_by(sim.unit(target).unwrap(), 0), Seen::Visible);
+    assert!(fired(&mut sim), "seen by its side, it is fired on at will");
+    // The spotter gone: a radar contact again, let go.
+    sim.step(&[Command::Order { player: 0, units: vec![spotter], order: Order::Move(FxVec3::from_ints(550, 0, 900)), queue: false }]);
+    for _ in 0..150 { sim.step(&[]); }
+    assert_eq!(sim.seen_by(sim.unit(target).unwrap(), 0), Seen::Radar);
+    sim.take_events();
+    for _ in 0..30 { sim.step(&[]); }
+    assert!(!fired(&mut sim) && sim.unit(gun).unwrap().weapons[0].target.is_none(), "out of sight again, let go");
+    // An order fires on the radar contact.
+    sim.step(&[Command::Order { player: 0, units: vec![gun], order: Order::Attack(Target::Unit(target)), queue: false }]);
+    for _ in 0..30 { sim.step(&[]); }
+    assert!(fired(&mut sim), "an attack order fires on a radar contact");
+}
+
+#[test]
 fn radar_contacts_accept_attacks_and_losing_contact_preserves_queued_orders() {
     let data = data_of(&[
         unit("SHOOTER", "CanMove=1; MaxVelocity=1; Weapon1=GUN; SightDistance=32; RadarDistance=500;"),

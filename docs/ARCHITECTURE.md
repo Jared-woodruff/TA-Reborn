@@ -311,8 +311,11 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   when they are the first weapon (bombers; the Phoenix and Hurricane carry an anti-air
   laser beside their bombs, and used to fire only that) or nothing else the unit carries
   can hit the target; the Commanders' D-gun is their third weapon and waits for manual
-  fire. A plane's bombs also find their own targets on patrol and attack-move with fire at will
-  (TA's bombers stand on hold fire, `StandingFireOrder=0`): what its side sees or has on radar
+  fire. Fire at will (and return fire) takes on only what its side sees: a radar or sonar
+  contact in the fog of war is fired on by an order alone (players: long-range guns firing at
+  will on radar alone, never spotted, outdid their cost). A plane's bombs also find their own
+  targets on patrol and attack-move with fire at will
+  (TA's bombers stand on hold fire, `StandingFireOrder=0`): what its side sees
   within its bombs' lead plus 160 px (`Sim::bomber_lookout`; the lead is 460 to 565 px for
   TA's bombers, beyond their 350 px sight), the nearest first. It keeps the target for its runs
   (not cleared after a drop; a building through the turn out of its sight as well,
