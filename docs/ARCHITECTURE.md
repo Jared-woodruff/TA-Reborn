@@ -313,8 +313,9 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   can hit the target; the Commanders' D-gun is their third weapon and waits for manual
   fire. Fire at will (and return fire) takes on only what its side sees: a radar or sonar
   contact in the fog of war is fired on by an order alone (players: long-range guns firing at
-  will on radar alone, never spotted, outdid their cost). A plane's bombs also find their own
-  targets on patrol and attack-move with fire at will
+  will on radar alone, never spotted, outdid their cost), but for guns a scenario sets to be
+  directed by a spotter (`Unit::radar_guided`, a placement's `radar_guided = true`). A plane's
+  bombs also find their own targets on patrol and attack-move with fire at will
   (TA's bombers stand on hold fire, `StandingFireOrder=0`): what its side sees
   within its bombs' lead plus 160 px (`Sim::bomber_lookout`; the lead is 460 to 565 px for
   TA's bombers, beyond their 350 px sight), the nearest first. It keeps the target for its runs
@@ -3596,9 +3597,9 @@ menu's briefing replays the narration through `MusicRequest::Narration`.
   ground units (the Commander's laser, the towers) never at aircraft, and `NoAutoFire` guns
   start on hold fire, which a computer player sets going, or a placement's `hold = true`
   (Iron Rain's Intimidators are their battery's, a second Core force nobody plays: set going
-  with `hold`, on stores of their own, they fire at what a radar post in the canyon sees of
-  the Arm base, every eight seconds each, as its briefing says; the post falls and they see
-  only what the Core's own units see). A wave's gunships go for whatever of the player's they
+  with `hold`, on stores of their own, and `radar_guided`, they fire at what a radar post in the
+  canyon sees of the Arm base, every eight seconds each, as its briefing says; the post falls
+  and they see only what the Core's own units see). A wave's gunships go for whatever of the player's they
   meet first, the Commander too; a wave's bombers go for the nearest of the player's units
   their side sees (above). Bombers that bomb left the autopilot's win rates as they were (21
   seeds a scenario and difficulty, Last Stand 42): the Defenders and the player's other

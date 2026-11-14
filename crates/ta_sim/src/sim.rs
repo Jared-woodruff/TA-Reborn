@@ -5534,6 +5534,14 @@ impl Sim {
         }
     }
 
+    /// Scenario set-up: the unit fires at will on radar and sonar contacts too, as guns a spotter
+    /// directs do ([`crate::unit::Unit::radar_guided`]).
+    pub fn set_radar_guided(&mut self, id: UnitId, on: bool) {
+        if let Some(u) = self.unit_mut(id) {
+            u.radar_guided = on;
+        }
+    }
+
     /// Adds orders to a unit's queue (scenario set-up: patrols, standing orders).
     pub fn give_orders(&mut self, id: UnitId, orders: impl IntoIterator<Item = Order>) {
         if let Some(u) = self.unit_mut(id) {
@@ -5687,6 +5695,7 @@ impl Sim {
             mix(u.pos.y.0);
             mix(u.pos.z.0);
             mix(u.fire_state as i64);
+            mix(u.radar_guided as i64);
             mix(u.move_state as i64);
             mix(u.path.len() as i64);
             for &(x, z) in &u.path { mix(x as i64); mix(z as i64); }

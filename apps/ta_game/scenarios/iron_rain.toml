@@ -61,8 +61,9 @@ units = [
 # The battery, a command of its own that nobody plays (its units follow their orders and fight
 # what comes near). Its guns are set going (`hold`: fire at will) and draw on its own stores: the
 # two of them fire 4,000 energy's worth every eight seconds, more than the Core's base makes. A
-# radar post in the canyon, on the way from the Arm base, spots that base for them; without it
-# they see only what the Core's own units see. The battery stands on the terrace of the mesa
+# radar post in the canyon, on the way from the Arm base, spots that base for them (`radar_guided`:
+# they fire at will on what their side has on radar, as nobody else's guns do); without it they
+# see only what the Core's own units see. The battery stands on the terrace of the mesa
 # south of the canyon's middle (its top is cut off), both guns within range of the Arm base;
 # heavy and light lasers on the canyon floor under its northern cliff, the Punisher and the
 # anti-air up with the guns, Thuds holding the ramp up its eastern side and Storms at the ramp's
@@ -72,8 +73,8 @@ side = "CORE"
 start = "3980 5030"
 energy = 1000000
 units = [
-    { unit = "CORINT", at = "3900 4980", hold = true, formation = "grid" },
-    { unit = "CORINT", at = "4060 5080", hold = true, formation = "grid" },
+    { unit = "CORINT", at = "3900 4980", hold = true, radar_guided = true, formation = "grid" },
+    { unit = "CORINT", at = "4060 5080", hold = true, radar_guided = true, formation = "grid" },
     { unit = "CORHLT", count = 3, at = "4000 4600", formation = "line", spacing = 176, facing = "start 1" },
     { unit = "CORPUN", at = "4330 5060", formation = "line", spacing = 160, facing = "start 1" },
     { unit = "CORLLT", count = 4, at = "4250 4560", formation = "line", spacing = 160, facing = "start 1" },

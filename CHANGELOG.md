@@ -23,7 +23,7 @@
 - Units and defences on fire at will fired at enemies in the fog of war that radar or sonar
   alone showed, which made long-range guns stronger than their cost. Fire at will, and return
   fire, now takes on only what your side sees; radar and sonar contacts are fired on when you
-  order it.
+  order it. (Iron Rain's guns, which a radar post spots for, still shell what it shows.)
 - The Commanders' D-gun passed through almost everything: it harmed only what its shot went
   right through, and a shot aimed down at a unit or at the ground went on under the ground
   beyond it. It now runs on along the ground or the water to the end of its flight, destroying
