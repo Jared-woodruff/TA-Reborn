@@ -8,6 +8,9 @@
   reviewed. The pull request template follows it.
 
 ### Fixed
+- Capture time uses a capped cost-based timer adjusted by the target's health and kills.
+  Full-health Galactic Gates take 60 seconds of active capture work instead of about
+  51 minutes. Capture orders keep independent timers and no longer depend on WorkerTime.
 - Edge scrolling stopped working once a battle had loaded, or the profile or career window had
   been open, until the cursor left the window and came back, which in full screen on a single
   display it never could. Any move of the cursor now brings it back. It no longer scrolls while a

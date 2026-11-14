@@ -188,7 +188,8 @@ fn capture_stops_when_its_enemy_target_becomes_hidden() {
     sim.vision.rebuild(&[]);
     assert_eq!(sim.seen_by(sim.unit(target).unwrap(), 0), Seen::Hidden);
     sim.update_capture_order(builder, &t, target);
-    assert_eq!(sim.unit(target).unwrap().capture_work, work, "capture cannot work on an unseen live position");
+    assert_eq!(sim.unit(target).unwrap().capture_work, 0);
+    assert!(sim.unit(builder).unwrap().capture.is_none());
     assert!(sim.unit(builder).unwrap().orders.is_empty());
     assert!(!sim.unit(builder).unwrap().in_build_stance);
 }
@@ -200,13 +201,146 @@ fn capture_waits_for_room_at_the_unit_limit() {
     let target = put(&mut sim, "BUILDER", 1, 280, true);
     sim.unit_limit = 1;
     sim.step(&[Command::Order { player: 0, units: vec![builder], order: Order::Capture(target), queue: false }]);
-    for _ in 0..4 { sim.step(&[]); }
+    for _ in 0..150 { sim.step(&[]); }
     assert_eq!(sim.unit(target).unwrap().owner, 1, "capture must not exceed the ownership limit");
     assert_eq!(sim.unit(target).unwrap().capture_progress, Fx::ONE, "keep completed work while waiting for room");
     sim.unit_limit = 2;
     sim.step(&[]);
     assert_eq!(sim.unit(target).unwrap().owner, 0);
     assert_eq!(sim.players[0].unit_count, 2);
+}
+
+fn capture_yard(worker: &str) -> Sim {
+    let mut sim = sim_of(data_of(&[
+        unit("BUILDER", &format!("Builder=1; CanCapture=1; WorkerTime={worker}; CanMove=1; MaxVelocity=1; BuildDistance=128; FootprintX=1; FootprintZ=1;")),
+        unit("GATE", "BuildCostMetal=197485; BuildCostEnergy=1982431; MaxDamage=2469; FootprintX=2; FootprintZ=2;"),
+        unit("FLASH", "BuildCostMetal=106; BuildCostEnergy=870; MaxDamage=625; FootprintX=1; FootprintZ=1;"),
+    ]), 2);
+    sim.los_enabled = false;
+    sim
+}
+
+#[test]
+fn capture_matches_specified_gate_flash_health_and_target_veterancy_times() {
+    for worker in ["0", "30", "300", "3000"] {
+        for (name, health, kills, ticks) in [("GATE", 2469, 0, 1800), ("GATE", 1, 0, 901), ("GATE", 2469, 25, 2700), ("FLASH", 625, 0, 186), ("FLASH", 625, 10, 223)] {
+            let mut sim = capture_yard(worker);
+            let builder = put(&mut sim, "BUILDER", 0, 200, true);
+            let target = put(&mut sim, name, 1, 280, true);
+            sim.unit_mut(target).unwrap().health = Fx::from_int(health);
+            sim.unit_mut(target).unwrap().kills = kills;
+            sim.unit_mut(builder).unwrap().kills = 100;
+            let t = sim.types.by_name("BUILDER").unwrap().clone();
+            let economy = sim.players[0].economy.clone();
+            sim.give_orders(builder, [Order::Capture(target)]);
+            sim.update_capture_order(builder, &t, target);
+            assert_eq!(sim.unit(builder).unwrap().capture.unwrap().ticks, ticks, "{name}, WorkerTime {worker}");
+            for _ in 0..ticks - 1 { sim.update_capture_order(builder, &t, target); }
+            assert_eq!(sim.unit(target).unwrap().owner, 1, "must not finish early: {name}, WorkerTime {worker}");
+            sim.update_capture_order(builder, &t, target);
+            assert_eq!(sim.unit(target).unwrap().owner, 0, "must finish on time: {name}, WorkerTime {worker}");
+            assert_eq!(sim.players[0].economy.energy, economy.energy);
+            assert_eq!(sim.players[0].economy.metal, economy.metal);
+            assert_eq!(sim.unit(target).unwrap().capture_progress, Fx::ZERO);
+            assert!(sim.unit(builder).unwrap().capture.is_none());
+        }
+    }
+}
+
+#[test]
+fn capture_specification_covers_cost_health_kill_thresholds_and_rounding() {
+    let sim = capture_yard("300");
+    let mut target = sim.types.by_name("FLASH").unwrap().clone();
+    target.max_health = Fx::from_int(100);
+    for (energy, metal, health, kills, expected) in [
+        (0, 0, 100, 0, 150),
+        (2000, 0, 100, 0, 180),
+        (0, 140, 100, 0, 180),
+        (2000, 140, 100, 4, 210),
+        (2000, 140, 100, 5, 231),
+        (2000, 140, 100, 9, 231),
+        (2000, 140, 100, 10, 252),
+        (2000, 140, 0, 0, 105),
+        (2000, 140, 50, 0, 158),
+        (1, 0, 100, 0, 151),
+        (200000, 0, 100, 0, 1800),
+        (200000, 0, 0, 0, 900),
+        (200000, 0, 100, 10, 2160),
+        (-100, -100, 200, 0, 150),
+    ] {
+        target.cost_energy = Fx::from_int(energy);
+        target.cost_metal = Fx::from_int(metal);
+        assert_eq!(target.capture_ticks(Fx::from_int(health), kills), expected, "energy {energy}, metal {metal}, health {health}, kills {kills}");
+    }
+    target.cost_energy = Fx::MAX;
+    target.cost_metal = Fx::MAX;
+    target.max_health = Fx::MAX;
+    assert_eq!(target.capture_ticks(Fx::MAX, 1_000_000_000_000), 36_000_000_001_800);
+    assert_eq!(target.capture_ticks(Fx::MAX, u64::MAX), u64::MAX);
+}
+
+#[test]
+fn capture_samples_health_and_kills_before_approaching_and_restarts_on_a_new_order() {
+    let mut sim = capture_yard("300");
+    let builder = put(&mut sim, "BUILDER", 0, 200, true);
+    let target = put(&mut sim, "GATE", 1, 800, true);
+    let t = sim.types.by_name("BUILDER").unwrap().clone();
+    sim.give_orders(builder, [Order::Capture(target)]);
+    sim.update_capture_order(builder, &t, target);
+    assert_eq!(sim.unit(builder).unwrap().capture.unwrap().ticks, 1800);
+    sim.unit_mut(target).unwrap().health = Fx::ONE;
+    sim.unit_mut(target).unwrap().kills = 25;
+    sim.unit_mut(builder).unwrap().pos.x = Fx::from_int(720);
+    sim.update_capture_order(builder, &t, target);
+    for _ in 0..100 { sim.update_capture_order(builder, &t, target); }
+    assert_eq!(sim.unit(builder).unwrap().capture.unwrap().ticks, 1800);
+    sim.order_unit(0, builder, &Order::Stop, false);
+    assert!(sim.unit(builder).unwrap().capture.is_none());
+    assert_eq!(sim.unit(target).unwrap().capture_progress, Fx::ZERO);
+    sim.order_unit(0, builder, &Order::Capture(target), false);
+    sim.update_capture_order(builder, &t, target);
+    let job = sim.unit(builder).unwrap().capture.unwrap();
+    assert_eq!((job.ticks, job.elapsed), (1351, 0));
+}
+
+#[test]
+fn simultaneous_capturers_do_not_pool_work_or_inherit_cancelled_progress() {
+    let mut sim = capture_yard("300");
+    let first = put(&mut sim, "BUILDER", 0, 200, true);
+    let second = put(&mut sim, "BUILDER", 0, 360, true);
+    let target = put(&mut sim, "FLASH", 1, 280, true);
+    let t = sim.types.by_name("BUILDER").unwrap().clone();
+    for builder in [first, second] {
+        sim.give_orders(builder, [Order::Capture(target)]);
+        sim.update_capture_order(builder, &t, target);
+        for _ in 0..100 { sim.update_capture_order(builder, &t, target); }
+    }
+    assert_eq!(sim.unit(target).unwrap().owner, 1);
+    sim.order_unit(0, first, &Order::Stop, false);
+    assert_eq!(sim.unit(target).unwrap().capture_progress, Fx::fraction(100, 186));
+    for _ in 0..85 { sim.update_capture_order(second, &t, target); }
+    assert_eq!(sim.unit(target).unwrap().owner, 1);
+    sim.update_capture_order(second, &t, target);
+    assert_eq!(sim.unit(target).unwrap().owner, 0);
+    assert_eq!(sim.unit(target).unwrap().capture_progress, Fx::ZERO);
+}
+
+#[test]
+fn capture_checksums_include_the_per_order_snapshot_and_elapsed_time() {
+    let mut sim = capture_yard("300");
+    let builder = put(&mut sim, "BUILDER", 0, 200, true);
+    let target = put(&mut sim, "GATE", 1, 280, true);
+    let t = sim.types.by_name("BUILDER").unwrap().clone();
+    sim.give_orders(builder, [Order::Capture(target)]);
+    sim.update_capture_order(builder, &t, target);
+    let checksum = sim.checksum();
+    assert_eq!(sim.clone().checksum(), checksum);
+    for field in 0..3 {
+        let mut changed = sim.clone();
+        let job = changed.unit_mut(builder).unwrap().capture.as_mut().unwrap();
+        match field { 0 => job.ticks += 2, 1 => job.elapsed += 1, _ => job.target = builder }
+        assert_ne!(changed.checksum(), checksum);
+    }
 }
 
 #[test]

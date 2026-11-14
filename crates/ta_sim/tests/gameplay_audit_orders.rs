@@ -67,7 +67,7 @@ fn capturing_a_loaded_transport_transfers_its_passenger_too() {
     assert_eq!(sim.seen_by(sim.unit(carrier).unwrap(), 0), ta_sim::Seen::Visible);
     sim.unit_limit = 2; // The builder plus the transport fits; its passenger does not.
     order(&mut sim, 0, builder, Order::Capture(carrier));
-    for _ in 0..60 {
+    for _ in 0..180 {
         sim.step(&[]);
     }
     assert_eq!(sim.unit(carrier).unwrap().owner, 1, "the entire captured group must fit");

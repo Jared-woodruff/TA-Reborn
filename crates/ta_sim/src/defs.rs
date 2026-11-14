@@ -196,8 +196,6 @@ pub struct UnitType {
     pub cost_energy: Fx,
     /// Build points added per tick.
     pub worker_rate: Fx,
-    /// Work done on a build (repair, reclaim, resurrection, capture) a tick: `WorkerTime` (raw
-    /// 16.16), as [`UnitType::build_work`] counts it.
     pub work_rate: u64,
     pub build_distance: Fx,
     pub sight: Fx,
@@ -280,6 +278,30 @@ pub fn big_walker(u: &UnitDef, model: &ModelDef, class: Option<&ta_data::MoveCla
 }
 
 impl UnitType {
+    pub(crate) fn capture_ticks(&self, health: Fx, kills: u64) -> u64 {
+        let scale = 14_000 * Fx::ONE.0 as u128;
+        let cost = self.cost_energy.0.max(0) as u128 * 7 + self.cost_metal.0.max(0) as u128 * 100;
+        let base = (5 * scale + cost).min(60 * scale);
+        let maximum = self.max_health.0.max(Fx::ONE.0) as u128;
+        let health = health.0.max(0) as u128;
+        let numerator = base * TICKS_PER_SECOND as u128 * (maximum + health.min(maximum));
+        let denominator = scale * 2 * maximum * 10;
+        let multiplier = kills as u128 / 5 + 10;
+        let ticks = if let Some(product) = numerator.checked_mul(multiplier) {
+            product.div_ceil(denominator)
+        } else {
+            let mut quotient = 0;
+            let mut remainder = 0;
+            for bit in (0..64).rev() {
+                remainder = remainder * 2 + if multiplier & (1 << bit) != 0 { numerator } else { 0 };
+                quotient = quotient * 2 + remainder / denominator;
+                remainder %= denominator;
+            }
+            quotient + u128::from(remainder != 0)
+        };
+        ticks.min(u64::MAX as u128).max(1) as u64
+    }
+
     pub(crate) fn collision_radius(&self) -> Fx {
         self.radius.max(self.model.height.max(Fx::from_int(8)) / 2).max(Fx::from_int(8)) * 3 / 4
     }

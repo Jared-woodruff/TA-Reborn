@@ -13,7 +13,7 @@ use crate::fixed::{FULL_TURN, Fx, FxVec3, QUARTER_TURN, atan2, cos, heading_of, 
 use crate::host::{HostRequest, OtherUnit, UnitHost, script_angle};
 use crate::path::{FlowField, PathQuery, Pathfinder};
 use crate::rng::Rng;
-use crate::unit::{BuildJob, Drift, Economy, MAX_PLAYERS, Order, Player, PlayerSetup, Unit, UnitId, piece_world_position, player_bit};
+use crate::unit::{BuildJob, CaptureJob, Drift, Economy, MAX_PLAYERS, Order, Player, PlayerSetup, Unit, UnitId, piece_world_position, player_bit};
 use crate::vision::{self, Seen, Sensor, Vision};
 use crate::world::{CELL, MoveSpec, Occupant, Region, World};
 
@@ -1307,6 +1307,7 @@ impl Sim {
         }
         let newly = u.carried_by.is_none();
         if newly {
+            self.finish_capture_job(unit);
             self.finish_build_job(unit);
         }
         let Some(u) = self.unit_mut(unit) else { return };
@@ -1749,10 +1750,13 @@ impl Sim {
             }
             return;
         }
-        let Some(u) = self.unit_mut(id) else { return };
-        if queue && !has_order_room(&u.orders, order) {
+        if queue && self.unit(id).is_none_or(|u| !has_order_room(&u.orders, order)) {
             return;
         }
+        if !queue {
+            self.finish_capture_job(id);
+        }
+        let Some(u) = self.unit_mut(id) else { return };
         u.idle_anchor = None;
         // A new first order starts afresh: the last one's way is no guide to it (given again to
         // the same place, its "as near as it gets" made a build or reclaim order fail at once).
@@ -2484,6 +2488,9 @@ impl Sim {
     }
 
     fn update_orders(&mut self, id: UnitId, t: &UnitType) {
+        if self.unit(id).is_some_and(|u| !matches!(u.orders.front(), Some(Order::Capture(_)))) {
+            self.finish_capture_job(id);
+        }
         let Some(order) = self.unit(id).and_then(|u| u.orders.front().cloned()) else {
             self.idle_response(id, t);
             return;
@@ -2580,10 +2587,9 @@ impl Sim {
         }
     }
 
-    /// Capturing: walk into range, aim the nano-lathe, then convert the enemy unit. Time
-    /// scales with the target's cost and the capturer's worker time.
     fn update_capture_order(&mut self, id: UnitId, t: &UnitType, target: UnitId) {
         let done = |sim: &mut Sim| {
+            sim.finish_capture_job(id);
             sim.finish_build_job(id);
             sim.stop(id);
             if let Some(u) = sim.unit_mut(id) {
@@ -2611,6 +2617,13 @@ impl Sim {
             return;
         }
         let target_pos = tu.pos;
+        let ticks = tt.capture_ticks(tu.health, tu.kills);
+        if self.unit(id).is_none_or(|u| u.capture.is_none_or(|job| job.target != target)) {
+            self.finish_capture_job(id);
+            if let Some(u) = self.unit_mut(id) {
+                u.capture = Some(CaptureJob { target, ticks, elapsed: 0 });
+            }
+        }
         let u = self.unit(id).unwrap();
         let reach = t.build_distance + t.radius;
         if Self::distance_to_footprint(u.pos, target_pos, tt.footprint) > reach {
@@ -2648,18 +2661,17 @@ impl Sim {
         if !self.unit(id).is_some_and(|u| u.in_build_stance) {
             return;
         }
-        // A Commander (300 worker time) takes a Flash tank in about two seconds and a
-        // Galactic Gate in a minute or two: the work is four times the cost (its metal, a
-        // sixtieth of its energy and twenty), counted as construction counts it.
-        let cost = tt.cost_metal + tt.cost_energy / 60 + Fx::from_int(20);
-        let total = (cost.0.max(1) as u64).saturating_mul(4 * TICKS_PER_SECOND as u64);
-        let finished = {
-            let Some(tu) = self.unit_mut(target) else { return };
-            tu.capture_work = tu.capture_work.saturating_add(t.work_rate.max(1)).min(total);
-            tu.capture_progress = Fx::fraction(tu.capture_work, total);
-            tu.capture_work >= total
+        let job = {
+            let Some(job) = self.unit_mut(id).and_then(|u| u.capture.as_mut()) else { return };
+            job.elapsed = job.elapsed.saturating_add(1).min(job.ticks);
+            *job
         };
-        if finished {
+        let progress = Fx::fraction(job.elapsed, job.ticks);
+        if let Some(tu) = self.unit_mut(target) && progress >= tu.capture_progress {
+            tu.capture_work = job.elapsed;
+            tu.capture_progress = progress;
+        }
+        if job.elapsed >= job.ticks {
             // Capturing a factory or transport also transfers its active product/cargo.
             // Keep the finished work until the entire group fits the recipient's limit.
             if self.players[owner as usize].unit_count.saturating_add(self.transfer_size(target)) > self.unit_limit {
@@ -2667,6 +2679,18 @@ impl Sim {
             }
             self.transfer_unit(target, owner);
             done(self);
+        }
+    }
+
+    fn finish_capture_job(&mut self, id: UnitId) {
+        let Some(job) = self.unit_mut(id).and_then(|u| u.capture.take()) else { return };
+        let best = self.units().filter(|u| !u.dead)
+            .filter(|u| self.unit(job.target).is_some_and(|tu| self.is_enemy(u.owner, tu.owner)))
+            .filter_map(|u| u.capture.filter(|c| c.target == job.target))
+            .max_by_key(|c| Fx::fraction(c.elapsed, c.ticks));
+        if let Some(tu) = self.unit_mut(job.target) {
+            tu.capture_work = best.map_or(0, |c| c.elapsed);
+            tu.capture_progress = best.map_or(Fx::ZERO, |c| Fx::fraction(c.elapsed, c.ticks));
         }
     }
 
@@ -2689,6 +2713,7 @@ impl Sim {
         // the call stack. Changing ownership before visiting children also breaks cycles.
         let mut pending = vec![id];
         while let Some(id) = pending.pop() {
+            self.finish_capture_job(id);
             let Some(u) = self.unit_mut(id).filter(|u| !u.dead) else { continue };
             let from = u.owner;
             if from == to {
@@ -2703,6 +2728,7 @@ impl Sim {
             u.idle_anchor = None;
             u.capture_progress = Fx::ZERO;
             u.capture_work = 0;
+            u.capture = None;
             u.transport_job = None;
             u.hover_alt = None;
             u.factory_queue.clear();
@@ -5392,6 +5418,9 @@ impl Sim {
             if !dead {
                 continue;
             }
+            if let Some(id) = self.units[slot].as_ref().map(|u| u.id) {
+                self.finish_capture_job(id);
+            }
             let u = self.units[slot].take().unwrap();
             let t = types.get(u.type_id);
             let complete = u.is_complete();
@@ -5720,6 +5749,9 @@ impl Sim {
             mix(u.taken_apart_at.map_or(-1, |t| t as i64));
             mix(u.worked_at.map_or(-1, |t| t as i64));
             mix(u.capture_work as i64);
+            target(&mut mix, u.capture.map(|c| Target::Unit(c.target)));
+            mix(u.capture.map_or(0, |c| c.ticks as i64));
+            mix(u.capture.map_or(0, |c| c.elapsed as i64));
             mix(u.in_build_stance as i64);
             mix(u.yard_open as i64);
             mix(u.activated as i64);

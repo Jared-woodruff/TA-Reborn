@@ -154,7 +154,7 @@ pub const RECORD_VERSION: u32 = 46;
 /// slope can be; 93, a piercing shot (TA's `noexplode`: the Commanders' D-gun) harms what stands
 /// within its area of effect all along its flight, units and features, from once it is that far
 /// from the gun, and runs on along the ground or the water it meets.
-pub const SIMULATION_VERSION: u32 = 93;
+pub const SIMULATION_VERSION: u32 = 94;
 /// Records shorter than one year of simulated time are supported. Shared with the
 /// launcher's metadata reader so impossible durations cannot start endless save catch-up.
 pub const MAX_RECORD_TICKS: u64 = 30 * 3600 * 24 * 365;
