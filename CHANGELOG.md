@@ -6,6 +6,10 @@
 - A contributing guide, [CONTRIBUTING.md](CONTRIBUTING.md): the project's ground rules, which
   version to bump for which change, tests, the changelog, and how a pull request is written and
   reviewed. The pull request template follows it.
+- Orders on the minimap aim at the units marked on it. A right-click on an enemy's mark, in sight
+  or on radar, attacks it, and an armed command takes its own kind of unit there: Attack and
+  Capture an enemy, Guard, Repair, Load and Reclaim one of yours. A right-click among your own
+  units' marks still moves there.
 
 ### Fixed
 - Edge scrolling stopped working once a battle had loaded, or the profile or career window had

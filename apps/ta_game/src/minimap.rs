@@ -458,7 +458,9 @@ impl Minimap {
             let w = to_world(p).clamp(Vec2::ZERO, (map_px - Vec2::ONE).max(Vec2::ZERO));
             let ground = game.sim.world.height_at(Fx::from_f32(w.x), Fx::from_f32(w.y)).to_f32();
             let modifiers = if primary_order { primary_modifiers } else { ta_ui::widgets::click_modifiers(&response, egui::PointerButton::Secondary) };
-            game.order_selection_from_map(glam::Vec3::new(w.x, ground, w.y), modifiers.shift, ui.input(|i| i.modifiers.shift));
+            // (A unit's mark within a few of the minimap's pixels is the one clicked.)
+            let reach = 5.0 / rect.width().max(1.0) * map_px.x;
+            game.order_selection_from_map(glam::Vec3::new(w.x, ground, w.y), reach, modifiers.shift, ui.input(|i| i.modifiers.shift));
         }
         rect
     }
