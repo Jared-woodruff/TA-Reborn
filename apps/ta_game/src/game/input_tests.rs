@@ -639,5 +639,39 @@ fn native_shift_giving_a_queued_reclaim_or_move_again_takes_it_back() {
     click(&mut game, a + Vec3::new(20.0, 0.0, 10.0));
     // (A move order keeps the point on the ground plane: x and z.)
     assert!(matches!(moves(&game).as_slice(), [Order::Move(p)] if p.x == fx_vec(b).x && p.z == fx_vec(b).z), "the first taken back, the second kept: {:?}", orders(&game));
+
+    // Two units sent apart, each on its own: a Shift-click on one's waypoint takes back that one
+    // alone. Sent together: a Shift-click on one's place takes back the group's.
+    let kbot = game.sim.types.id("ARMCK").expect("a construction kbot");
+    let site = game.sim.find_build_site(kbot, fx_vec(origin + Vec3::new(-80.0, 0.0, 80.0)), 10).unwrap();
+    let builder = game.sim.spawn_unit(kbot, game.local_player, site, 0, true).unwrap();
+    let stop = |game: &mut Game| {
+        let units = vec![commander, builder];
+        game.issue(Command::Order { player: game.local_player, units, order: Order::Stop, queue: false });
+        let commands = std::mem::take(&mut game.commands);
+        game.run_tick(commands);
+    };
+    stop(&mut game);
+    let moves_of = |game: &Game, id: UnitId| -> Vec<Vec2> {
+        game.sim.unit(id).unwrap().orders.iter().filter_map(|o| if let Order::Move(p) = o { Some(Vec2::new(p.x.to_f32(), p.z.to_f32())) } else { None }).collect()
+    };
+    let near = |list: &[Vec2], p: Vec3, r: f32| list.iter().any(|q| q.distance(Vec2::new(p.x, p.z)) <= r);
+    let p1 = spots[0];
+    let p2 = *spots.iter().find(|q| (150.0..300.0).contains(&q.distance(p1))).expect("a place 150 to 300 px off");
+    game.selection = vec![commander];
+    click(&mut game, p1);
+    game.selection = vec![builder];
+    click(&mut game, p2);
+    game.selection = vec![commander, builder];
+    click(&mut game, p1 + Vec3::new(10.0, 0.0, 10.0));
+    assert!(!near(&moves_of(&game, commander), p1, 48.0), "the Commander's own waypoint taken back: {:?}", orders(&game));
+    assert!(near(&moves_of(&game, builder), p2, 2.0), "the other unit's, given apart, kept: {:?}", moves_of(&game, builder));
+    stop(&mut game);
+    let p3 = *spots.iter().find(|q| q.distance(origin) > 300.0).expect("a place for the group");
+    click(&mut game, p3);
+    let place = *moves_of(&game, commander).last().expect("the Commander sent with the group");
+    assert!(!moves_of(&game, builder).is_empty(), "the kbot sent with the group");
+    click(&mut game, Vec3::new(place.x + 5.0, 0.0, place.y));
+    assert!(moves_of(&game, commander).is_empty() && moves_of(&game, builder).is_empty(), "the group's move taken back together: {:?} {:?}", moves_of(&game, commander), moves_of(&game, builder));
     println!("native take-back: reclaim and move passed");
 }

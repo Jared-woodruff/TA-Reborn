@@ -212,7 +212,7 @@ pub enum Command {
     SetShootAll { player: u8, on: bool },
     /// Drops an order equal to `order` from `unit`'s orders, as they stand when the command runs:
     /// the one at `index` if it is still that, else the nearest that is; none left, nothing. The
-    /// rest are given again as they are (`EditQueue` does the same for a building's plan). A
+    /// rest stay as they are; the one under way, dropped, ends as a finished order does. A
     /// player's Shift-click on an order already queued takes it back: a reclaim of what is already
     /// to be reclaimed, a move to a waypoint already set.
     /// (Last: replays keep the earlier variants' numbers.)
@@ -2046,18 +2046,21 @@ impl Sim {
                 }
             }
             Command::DropOrder { player, unit, index, order } => {
-                let Some(u) = self.unit_mut(*unit).filter(|u| u.owner == *player) else { return };
+                let Some(u) = self.unit(*unit).filter(|u| u.owner == *player) else { return };
                 let orders = &u.orders;
                 let Some(j) = nearest_index(orders.len(), *index as usize, |j| orders[j] == *order) else { return };
-                // The rest given again as the player gave them, from what they are now.
-                let mut orders: Vec<Order> = u.orders.iter().cloned().collect();
-                orders.remove(j);
-                let (player, units) = (*player, vec![*unit]);
-                if orders.is_empty() {
-                    self.apply(&Command::Order { player, units: units.clone(), order: Order::Stop, queue: false });
+                // Taken out where it stands, the rest kept as they are (not given again: a patrol's
+                // return leg, added as its first order was given, would be added once more). The one
+                // under way ends as a finished order does, and the next is taken up.
+                if j == 0 {
+                    self.finish_build_job(*unit);
+                    self.stop(*unit);
                 }
-                for (i, order) in orders.into_iter().enumerate() {
-                    self.apply(&Command::Order { player, units: units.clone(), order, queue: i > 0 });
+                if let Some(u) = self.unit_mut(*unit) {
+                    u.orders.remove(j);
+                    if j == 0 && !u.stance_is_scripted() {
+                        u.in_build_stance = false;
+                    }
                 }
             }
             Command::Signal { player, kind, at } => {

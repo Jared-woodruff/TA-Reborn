@@ -1109,6 +1109,13 @@ fn a_dropped_order_goes_from_the_queue_as_it_stands() {
     assert_eq!(orders(&sim), [a.clone()], "another player's units are not theirs to change");
     sim.step(&[drop(&a, 0)]);
     assert!(orders(&sim).is_empty(), "the one under way, the last: it stops");
+    // A move and a patrol after it: the move dropped, the patrol stays as it was (given again,
+    // its return leg was added once more).
+    sim.step(&[order(&a, false), order(&Order::Patrol(FxVec3::from_ints(400, 0, 700)), true)]);
+    let patrol: Vec<Order> = orders(&sim).into_iter().skip(1).collect();
+    assert!(!patrol.is_empty() && patrol.iter().all(|o| matches!(o, Order::Patrol(_))), "{patrol:?}");
+    sim.step(&[drop(&a, 0)]);
+    assert_eq!(orders(&sim), patrol, "the patrol as it was, no leg added");
 }
 
 #[test]

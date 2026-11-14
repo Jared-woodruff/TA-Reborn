@@ -393,6 +393,9 @@ pub struct Game {
     middle_press: Option<Vec2>,
     /// Orders just given, acknowledged where they go (see [`OrderMark`]).
     pub order_marks: Vec<OrderMark>,
+    /// The group moves given lately: the point clicked and the units sent there, each to its
+    /// place round it. A waypoint of one taken back takes back the group's (`take_back_move`).
+    move_groups: Vec<(Vec2, Vec<UnitId>)>,
     /// When the selection was last given an order (its routes show for a moment after).
     pub last_order: Option<std::time::Instant>,
     /// Seconds last announced by the self-destruct countdown voice.
@@ -829,6 +832,7 @@ impl Game {
             right_held_since: None,
             middle_press: None,
             order_marks: Vec::new(),
+            move_groups: Vec::new(),
             last_order: None,
             countdown_said: None,
             last_idle_builder: None,
@@ -3676,10 +3680,11 @@ impl Game {
         !drops.is_empty()
     }
 
-    /// A click on (near) a waypoint the selection already has set takes it back: the nearest of
-    /// its units' queued moves within a waypoint's mark of the click is the waypoint, and each unit
-    /// drops its own move nearest to that (a group's moves, each to its place round the point it
-    /// was sent to, go together). False when no waypoint is that near.
+    /// A click on (near) a waypoint the selection already has set takes it back: the nearest of its
+    /// units' queued moves within a waypoint's mark of the click is the waypoint. A group move it
+    /// was part of (`move_groups`) goes with it: each unit of that group drops its own move nearest
+    /// to the group's point, its place round it. Any other unit drops only a move of its own at the
+    /// click. False when no waypoint is that near.
     fn take_back_move(&mut self, click: Vec3) -> bool {
         // (World pixels: three cells, about a waypoint's mark; and as far as a formation's places
         // lie round the point it was sent to.)
@@ -3700,21 +3705,25 @@ impl Game {
             })
             .collect();
         let at = Vec2::new(click.x, click.z);
-        let Some(waypoint) = moves
+        let Some((clicked, waypoint)) = moves
             .iter()
-            .flat_map(|(_, m)| m.iter().map(|(_, p)| flat(p)))
-            .filter(|p| p.distance(at) <= NEAR)
-            .min_by(|a, b| a.distance(at).total_cmp(&b.distance(at)))
+            .flat_map(|(id, m)| m.iter().map(move |(_, p)| (*id, flat(p))))
+            .filter(|(_, p)| p.distance(at) <= NEAR)
+            .min_by(|a, b| a.1.distance(at).total_cmp(&b.1.distance(at)))
         else {
             return false;
         };
+        let group = self.move_groups.iter().rev().find(|(point, units)| units.contains(&clicked) && point.distance(waypoint) <= GROUP).cloned();
+        let nearest = |m: &[(u32, FxVec3)], to: Vec2, within: f32| {
+            m.iter().copied().filter(|(_, p)| flat(p).distance(to) <= within).min_by(|a, b| flat(&a.1).distance(to).total_cmp(&flat(&b.1).distance(to)))
+        };
         let mut taken = false;
         for (unit, m) in moves {
-            let nearest = m
-                .iter()
-                .filter(|(_, p)| flat(p).distance(waypoint) <= GROUP)
-                .min_by(|a, b| flat(&a.1).distance(waypoint).total_cmp(&flat(&b.1).distance(waypoint)));
-            if let Some(&(index, pos)) = nearest {
+            let pick = match &group {
+                Some((point, units)) if units.contains(&unit) => nearest(&m, *point, GROUP),
+                _ => nearest(&m, at, NEAR),
+            };
+            if let Some((index, pos)) = pick {
                 self.issue(Command::DropOrder { player: me, unit, index, order: Order::Move(pos) });
                 taken = true;
             }
@@ -3723,6 +3732,16 @@ impl Game {
             self.ui_sounds.push("IMMEDIATEORDERS");
         }
         taken
+    }
+
+    /// A group move given: kept for a while, so that a waypoint of it taken back takes back the
+    /// group's (`take_back_move`).
+    fn remember_move_group(&mut self, at: Vec3, units: &[UnitId]) {
+        const KEPT: usize = 64;
+        if self.move_groups.len() >= KEPT {
+            self.move_groups.remove(0);
+        }
+        self.move_groups.push((Vec2::new(at.x, at.z), units.to_vec()));
     }
 
     /// Moves the selection to `target`: as a formation under the rule "modern movement", else
@@ -3734,6 +3753,9 @@ impl Game {
         }
         self.mark_order(&Order::Move(fx_vec(target)), false);
         let movers: Vec<UnitId> = self.selection.iter().copied().filter(|&id| self.sim.unit(id).is_some()).collect();
+        if movers.len() > 1 {
+            self.remember_move_group(target, &movers);
+        }
         if self.sim.group_formations && movers.len() > 1 {
             self.group_order(movers, Order::Move(fx_vec(target)), queue);
             return;
