@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## 1.0.5 — 2026-11-14
+
+Supreme Commander: Forged Alliance's maps can now be played in skirmish: the launcher makes them
+into TA Reborn maps from your own copy of the game, GOG's or Steam's. Every map now shows where it
+comes from, in skirmish, the lobby and the launcher, and the lists can show one origin at a time.
+Mods install, update and are removed more safely, their compatibility report opens on an overview,
+and Total Mayhem's, TA: Escalation's and TA: The Final Frontier's builders and build menus behave
+more as in their own engines.
 
 ### Added
 - Supreme Commander: Forged Alliance's maps in TA Reborn. With the game installed (GOG's or Steam's,
