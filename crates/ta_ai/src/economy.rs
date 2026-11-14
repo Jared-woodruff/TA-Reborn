@@ -763,7 +763,8 @@ impl SkirmishAi {
             .filter(|&(i, f)| !self.helper || sim.explored(self.player, f.pos) && !self.enemy_ground(f.pos) && !plan.claimed(b.id, Claim::Reclaim(i)))
             .filter_map(|(i, f)| {
                 let d = &sim.data.features[f.def];
-                let metal = (Fx::from_f64(d.metal) * (Fx::ONE - f.reclaimed)).to_int();
+                // (All of its metal comes when it is reclaimed whole, however far along it is.)
+                let metal = Fx::from_f64(d.metal).to_int();
                 (d.reclaimable && metal >= 40 && self.threat.at(f.pos) == 0).then(|| (metal * 8 - dist(b.pos, f.pos), i, f.pos))
             })
             .max_by_key(|&(score, i, _)| (score, Reverse(i)))?;

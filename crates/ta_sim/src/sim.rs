@@ -4110,7 +4110,11 @@ impl Sim {
             let tt = self.types.get(u.type_id);
             let (total, work, owner, cost, max_health) = (tt.build_work, u.build_work, u.owner, tt.cost_metal, tt.max_health);
             let left = work.saturating_sub((total / FRAME_DECAY).max(1));
-            let refund = cost.share(work, total) - cost.share(left, total);
+            let mut refund = cost.share(work, total) - cost.share(left, total);
+            // (Gone: what its side's reclaiming took off it before comes too.)
+            if left == 0 {
+                refund += u.reclaim_owed;
+            }
             if let Some(p) = self.players.get_mut(owner as usize) {
                 let e = &mut p.economy;
                 e.metal = (e.metal + refund).min(e.metal_capacity.max(e.metal));
@@ -4122,6 +4126,7 @@ impl Sim {
                 if left == 0 {
                     // Gone without a Killed script, wreck or blast; given up, so no battle loss.
                     u.dead = true;
+                    u.reclaim_owed = Fx::ZERO;
                     u.death_processed = true;
                     u.removed = true;
                 }
@@ -4574,13 +4579,15 @@ impl Sim {
         let Some(frame) = self.unit(factory).and_then(|f| f.build).map(|b| b.target) else { return };
         let Some(u) = self.unit(frame).filter(|u| u.factory == Some(factory) && !u.is_complete() && !u.dead) else { return };
         let tt = self.types.get(u.type_id);
-        let (owner, refund) = (u.owner, tt.cost_metal.share(u.build_work, tt.build_work));
+        // What was put into it, and what its side's reclaiming took off it before.
+        let (owner, refund) = (u.owner, tt.cost_metal.share(u.build_work, tt.build_work) + u.reclaim_owed);
         let e = &mut self.players[owner as usize].economy;
         e.metal = (e.metal + refund).min(e.metal_capacity.max(e.metal));
         e.tick_metal_in += refund;
         if let Some(u) = self.unit_mut(frame) {
             // Gone without a Killed script, wreck or blast; given up, so no battle loss.
             u.dead = true;
+            u.reclaim_owed = Fx::ZERO;
             u.death_processed = true;
             u.removed = true;
         }

@@ -597,6 +597,39 @@ fn abandoned_construction_un_builds_and_gives_its_metal_back() {
     assert!(sim.features.iter().all(|f| !f.alive), "no wreck");
 }
 
+/// A frame its side began taking apart and then left: what the reclaiming took off it, paid only
+/// when a reclaim is done, comes back with the rest when it un-builds (nothing of it is lost).
+#[test]
+fn a_frame_partly_reclaimed_then_left_gives_back_all_it_took() {
+    let mut sim = yard("300");
+    sim.set_starting_resources(0, Fx::from_int(10000), Fx::from_int(100000));
+    let builder = put(&mut sim, "BUILDER", 0, 200, true);
+    let pos = FxVec3::from_ints(280, 60, 300);
+    sim.step(&[Command::Order { player: 0, units: vec![builder], order: Order::Build { type_id: sim.types.id("FRAME").unwrap(), pos }, queue: false }]);
+    let frame = (0..120).find_map(|_| {
+        sim.step(&[]);
+        sim.units.iter().flatten().find(|u| u.type_id == sim.types.id("FRAME").unwrap() && u.build_work > 0).map(|u| u.id)
+    }).expect("the builder gets to work");
+    sim.step(&[Command::Order { player: 0, units: vec![builder], order: Order::Stop, queue: false }]);
+    let (work, total) = { let u = sim.unit(frame).unwrap(); (u.build_work, sim.unit_type(u).build_work) };
+    let spent = sim.unit_type(sim.unit(frame).unwrap()).cost_metal.share(work, total);
+    let metal_left = sim.players[0].economy.metal;
+    // Taken apart a while, then left.
+    sim.step(&[Command::Order { player: 0, units: vec![builder], order: Order::ReclaimUnit(frame), queue: false }]);
+    for _ in 0..30 { sim.step(&[]); }
+    sim.step(&[Command::Order { player: 0, units: vec![builder], order: Order::Stop, queue: false }]);
+    let now = sim.unit(frame).unwrap().build_work;
+    assert!(now < work && now > 0, "partly taken apart: {now} of {work}");
+    assert_eq!(sim.players[0].economy.metal, metal_left, "nothing paid for a reclaim not done");
+    for _ in 0..(super::FRAME_GRACE + super::FRAME_DECAY + 60) {
+        sim.step(&[]);
+        if sim.unit(frame).is_none() { break; }
+    }
+    assert!(sim.unit(frame).is_none(), "it un-builds and is gone");
+    let back = sim.players[0].economy.metal - metal_left;
+    assert!((back - spent).abs() <= Fx::from_ratio(1, 100), "all the metal it took comes back: {back:?} of {spent:?}");
+}
+
 /// A frame set down and left before any work went into it goes once the while is up; one a scene
 /// or a mission placed unfinished, which nobody worked on, stays; one a builder comes back to
 /// stops un-building.
