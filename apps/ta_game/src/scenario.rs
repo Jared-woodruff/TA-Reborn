@@ -207,6 +207,11 @@ pub struct Placement {
     /// They hold their position (buildings don't move anyway).
     #[serde(default)]
     pub hold: bool,
+    /// They fire at will on what their side has on radar or sonar as well, as guns a spotter
+    /// directs do (Iron Rain's battery and the radar post that spots for it): everyone else's
+    /// fire at will takes on only what their side sees.
+    #[serde(default)]
+    pub radar_guided: bool,
     /// Only from this difficulty up ("normal", "hard"): extra defenders.
     #[serde(default)]
     pub from: Option<String>,
@@ -646,6 +651,9 @@ impl Scenario {
                 for id in placed {
                     if p.xp > 0 {
                         sim.set_experience(id, Fx::from_int(p.xp as i64));
+                    }
+                    if p.radar_guided {
+                        sim.set_radar_guided(id, true);
                     }
                     let mut orders = Vec::new();
                     if p.hold {

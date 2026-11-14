@@ -182,6 +182,10 @@ pub struct Unit {
     pub armored: bool,
     pub busy: bool,
     pub fire_state: u8,
+    /// Fires at will on what its side has on radar or sonar as well as on what it sees: guns a
+    /// spotter directs, a scenario's (`radar_guided`: Iron Rain's battery, which a radar post
+    /// spots for). Every other unit's fire at will takes on only what its side sees.
+    pub radar_guided: bool,
     pub move_state: u8,
     pub orders: VecDeque<Order>,
     /// Remaining waypoints (anchor cells) of the current path.
@@ -375,6 +379,7 @@ impl Unit {
             armored: false,
             busy: false,
             fire_state: 2,
+            radar_guided: false,
             move_state: 1,
             orders: VecDeque::new(),
             path: Vec::new(),

@@ -1069,6 +1069,27 @@ fn fire_at_will_takes_on_only_what_its_side_sees_and_a_radar_contact_by_order() 
 }
 
 #[test]
+fn a_spotters_guns_fire_at_will_on_what_radar_shows() {
+    let data = data_of(&[
+        unit("GUN", "Weapon1=GUN; SightDistance=100; RadarDistance=600;"),
+        unit("TARGET", "MaxDamage=100000;"),
+        weapon_file("GUN", ""),
+    ]);
+    let mut sim = sim_of(data, 2);
+    let gun = sim.spawn_unit(sim.types.id("GUN").unwrap(), 0, FxVec3::from_ints(300, 0, 300), 0, true).unwrap();
+    let target = sim.spawn_unit(sim.types.id("TARGET").unwrap(), 1, FxVec3::from_ints(550, 0, 300), 0, true).unwrap();
+    sim.set_radar_guided(gun, true);
+    sim.step(&[]);
+    assert_eq!(sim.seen_by(sim.unit(target).unwrap(), 0), Seen::Radar);
+    sim.take_events();
+    for _ in 0..30 { sim.step(&[]); }
+    assert!(
+        sim.take_events().iter().any(|e| matches!(e, SimEvent::WeaponFired { unit, .. } if *unit == gun)),
+        "a gun a spotter directs fires at will on a radar contact"
+    );
+}
+
+#[test]
 fn radar_contacts_accept_attacks_and_losing_contact_preserves_queued_orders() {
     let data = data_of(&[
         unit("SHOOTER", "CanMove=1; MaxVelocity=1; Weapon1=GUN; SightDistance=32; RadarDistance=500;"),

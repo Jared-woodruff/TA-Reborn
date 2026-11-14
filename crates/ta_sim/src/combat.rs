@@ -865,7 +865,8 @@ impl Sim {
     /// Whether an automatic target is still worth shooting by the weapon in `slot`. Ground is
     /// never one: only an attack order names ground, and once the order is gone (Stop, another
     /// order) so is it. Nor is one gone out of its side's sight, a radar or sonar contact now:
-    /// only an order fires on those. (A bad target is, until a better one comes into reach: see
+    /// only an order fires on those, but for a spotter's guns (`Unit::radar_guided`). (A bad
+    /// target is, until a better one comes into reach: see
     /// `update_weapons`.)
     fn target_valid(&self, id: UnitId, w: &WeaponType, t: Target) -> bool {
         match t {
@@ -873,7 +874,8 @@ impl Sim {
             Target::Projectile(_) => false,
             Target::Unit(tid) => {
                 let (Some(u), Some(tu)) = (self.unit(id), self.unit(tid)) else { return false };
-                if tu.dead || tu.carried_by.is_some() || !self.is_enemy(u.owner, tu.owner) || self.seen_by(tu, u.owner) != crate::vision::Seen::Visible {
+                let seen = self.seen_by(tu, u.owner);
+                if tu.dead || tu.carried_by.is_some() || !self.is_enemy(u.owner, tu.owner) || seen == crate::vision::Seen::Hidden || seen == crate::vision::Seen::Radar && !u.radar_guided {
                     return false;
                 }
                 self.can_engage(w, tu) && u.pos.within_xz(tu.pos, w.range + Fx::from_int(48))
@@ -887,13 +889,14 @@ impl Sim {
     /// in reach; with the owner's `+shootall` they count as any other), for a computer player's
     /// unit a mission's priority targets first, and among those the one that has just hit the
     /// unit. Computer players' units never pick what a mission tells them to ignore. Only what
-    /// its side sees: a radar or sonar contact in the fog is fired on by order alone, as players
+    /// its side sees (and, for a spotter's guns, `Unit::radar_guided`, what it has on radar): a
+    /// radar or sonar contact in the fog is fired on by order alone, as players
     /// asked (long-range guns kept firing at will on radar alone, never spotted, past what their
     /// cost was balanced for). `reach`: how far it looks (the weapon's range, a roving bomber's
     /// sight).
     fn find_target(&mut self, id: UnitId, weapon_slot: usize, w: &WeaponType, owner: u8, skip: Option<UnitId>, reach: Fx) -> Option<Target> {
         let u = self.unit(id)?;
-        let pos = u.pos;
+        let (pos, radar_guided) = (u.pos, u.radar_guided);
         let bad_mask = self.types.get(u.type_id).weapon_bad_masks[weapon_slot];
         let attacker = u.last_attacker.filter(|_| self.tick <= u.last_hit_tick + 2 * TICKS_PER_SECOND as u64);
         // (Shells: from about where the gun stands, to the target's middle.)
@@ -924,7 +927,8 @@ impl Sim {
             // Eligibility is read-only: a candidate that cannot beat the current winner
             // needs no visibility, submersion or ballistic checks.
             if best.is_some_and(|b| key >= b) { continue; }
-            if self.seen_by(o, owner) != crate::vision::Seen::Visible { continue; }
+            let seen = self.seen_by(o, owner);
+            if seen == crate::vision::Seen::Hidden || seen == crate::vision::Seen::Radar && !radar_guided { continue; }
             // (What it hits, only torpedoes and depth charges under the water.)
             if !self.can_engage(w, o) {
                 continue;

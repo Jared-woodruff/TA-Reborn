@@ -85,10 +85,10 @@ pub use transport::{Client, Host, HostEvent};
 /// piercing shots (the D-gun) harm all within their area of effect along their flight, and run
 /// along the ground; 98: capturing never takes more than two minutes of a Commander's work; 99:
 /// fire at will takes on only what its side sees, radar and sonar contacts by order alone; 100:
-/// reclaiming pays when it is done.)
+/// reclaiming pays when it is done; 101: a scenario's spotter-directed guns fire at will on radar.)
 /// [`Msg::Hello`] and [`Refusal::Version`] keep their layout, so builds of other protocols are
 /// still told why they cannot meet.
-pub const PROTOCOL: u32 = 100;
+pub const PROTOCOL: u32 = 101;
 pub const DEFAULT_PORT: u16 = 7890;
 /// Ticks between state hash reports (which double as progress reports).
 pub const HASH_INTERVAL: u64 = 15;

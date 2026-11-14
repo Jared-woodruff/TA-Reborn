@@ -157,8 +157,10 @@ pub const RECORD_VERSION: u32 = 46;
 /// times the target's cost in work, never more than two minutes of a Commander's (TA's Galactic
 /// Gate took 51); 95, fire at will (and return fire) takes on only what its side sees, a radar or
 /// sonar contact by order alone; 96, reclaiming pays when it is done, as TA's does: a feature's
-/// metal and energy when it is reclaimed whole, a unit's metal when it is gone.
-pub const SIMULATION_VERSION: u32 = 96;
+/// metal and energy when it is reclaimed whole, a unit's metal when it is gone; 97, guns a
+/// scenario sets to be directed by a spotter (`Unit::radar_guided`: Iron Rain's battery) fire at
+/// will on radar and sonar contacts as well.
+pub const SIMULATION_VERSION: u32 = 97;
 /// Records shorter than one year of simulated time are supported. Shared with the
 /// launcher's metadata reader so impossible durations cannot start endless save catch-up.
 pub const MAX_RECORD_TICKS: u64 = 30 * 3600 * 24 * 365;
