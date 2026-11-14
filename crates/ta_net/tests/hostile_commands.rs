@@ -179,7 +179,7 @@ fn shape(rng: &mut Rng, k: &Known) -> Shape {
 /// must refuse); never a resignation, which would leave nothing to command.
 fn command(rng: &mut Rng, k: &Known, player: u8) -> Command {
     let player = if rng.chance(12) { rng.next() as u8 } else { player };
-    match rng.below(20) {
+    match rng.below(21) {
         0..=3 => Command::Order { player, units: units(rng, k), order: order(rng, k), queue: rng.chance(2) },
         4 => Command::Produce { player, factory: unit(rng, k), type_id: type_id(rng, k), count: match rng.below(4) { 0 => i32::MIN, 1 => i32::MAX, _ => rng.below(9) as i32 - 4 } },
         5 => Command::SetRally { player, factory: unit(rng, k), pos: pos(rng, k) },
@@ -199,6 +199,7 @@ fn command(rng: &mut Rng, k: &Known, player: u8) -> Command {
         18 if rng.chance(2) => Command::SetShootAll { player, on: rng.chance(2) },
         // (The host's own commands, and cheats: never a player's.)
         18 => Command::Abandon { player },
+        19 => Command::DropOrder { player, unit: unit(rng, k), index: rng.next() as u32, order: order(rng, k) },
         _ => Command::Cheat { player, cheat: ta_sim::Cheat::Destroy(units(rng, k)) },
     }
 }

@@ -73,7 +73,7 @@ pub fn blurb(duty: Duty) -> &'static str {
 fn commanded(c: &Command) -> &[UnitId] {
     match c {
         Command::Order { units, .. } | Command::Formation { units, .. } => units,
-        Command::EditQueue { unit, .. } => std::slice::from_ref(unit),
+        Command::EditQueue { unit, .. } | Command::DropOrder { unit, .. } => std::slice::from_ref(unit),
         _ => &[],
     }
 }

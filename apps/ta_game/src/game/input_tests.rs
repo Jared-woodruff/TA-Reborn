@@ -586,3 +586,92 @@ fn native_minimap_orders_aim_at_the_units_marked_there() {
     assert!(matches!(last(&game), Some(Command::Order { order: Order::Attack(ta_sim::Target::Unit(t)), .. }) if t == enemy), "{:?}", last(&game));
     println!("native minimap orders: attack, move, guard and armed attack passed");
 }
+
+#[test]
+#[ignore = "needs installed Total Annihilation data and a Windows graphics adapter"]
+#[allow(deprecated)]
+fn native_shift_giving_a_queued_reclaim_or_move_again_takes_it_back() {
+    let install = ta_vfs::install::discover(None).expect("Total Annihilation install");
+    let mut vfs = ta_vfs::Vfs::new();
+    vfs.mount_game_dir(&install.root, "base").unwrap();
+    let event_loop = winit::event_loop::EventLoop::builder().with_any_thread(true).build().unwrap();
+    let window = Arc::new(event_loop.create_window(winit::window::Window::default_attributes()
+        .with_visible(false).with_inner_size(winit::dpi::PhysicalSize::new(1024, 768))).unwrap());
+    let mut renderer = Renderer::new(window, 1024, 768).unwrap();
+    let assets = Assets::load(Arc::new(vfs), Default::default(), &mut renderer, None, None, &Default::default()).unwrap();
+    let mut game = Game::new(&assets, &mut renderer, &GameSetup::duel("Coast To Coast")).unwrap();
+    let commander = game.local_commander().unwrap();
+    let origin = Vec3::from_array(game.sim.unit(commander).unwrap().pos.to_f32());
+    game.selection = vec![commander];
+    let orders = |game: &Game| game.sim.unit(commander).unwrap().orders.iter().cloned().collect::<Vec<_>>();
+    // A Shift right-click there, and the orders on to the simulation.
+    let click = |game: &mut Game, at: Vec3| {
+        game.hovered = None;
+        game.cursor_ground = Some(at);
+        game.context_order(true);
+        let commands = std::mem::take(&mut game.commands);
+        game.run_tick(commands);
+    };
+
+    // A wreck to reclaim, given again with Shift: taken back.
+    let wreck = [(200.0, 0.0), (0.0, 200.0), (-200.0, 0.0), (0.0, -200.0)]
+        .into_iter()
+        .find_map(|(dx, dz)| game.sim.place_feature("ARMSOLAR_DEAD", fx_vec(origin + Vec3::new(dx, 0.0, dz)), 0))
+        .expect("a solar collector's wreck put down");
+    let at = Vec3::from_array(game.sim.features[wreck].pos.to_f32());
+    click(&mut game, at);
+    assert!(orders(&game).contains(&Order::Reclaim(wreck)), "{:?}", orders(&game));
+    click(&mut game, at);
+    assert!(!orders(&game).contains(&Order::Reclaim(wreck)), "taken back: {:?}", orders(&game));
+
+    // Two waypoints set with Shift, on open ground; a Shift-click beside the first takes it back.
+    let open = |game: &Game, p: Vec3| game.reclaimable_feature_at(p).is_none();
+    let spots: Vec<Vec3> = (3..20)
+        .flat_map(|r| [Vec3::new(r as f32 * 40.0, 0.0, 0.0), Vec3::new(-(r as f32) * 40.0, 0.0, 0.0), Vec3::new(0.0, 0.0, r as f32 * 40.0)])
+        .map(|d| origin + d)
+        .filter(|&p| open(&game, p) && open(&game, p + Vec3::new(20.0, 0.0, 10.0)))
+        .collect();
+    let (a, b) = (spots[0], *spots.iter().find(|p| p.distance(spots[0]) > 200.0).expect("a second waypoint"));
+    click(&mut game, a);
+    click(&mut game, b);
+    let moves = |game: &Game| orders(game).into_iter().filter(|o| matches!(o, Order::Move(_))).collect::<Vec<_>>();
+    assert_eq!(moves(&game).len(), 2, "{:?}", orders(&game));
+    click(&mut game, a + Vec3::new(20.0, 0.0, 10.0));
+    // (A move order keeps the point on the ground plane: x and z.)
+    assert!(matches!(moves(&game).as_slice(), [Order::Move(p)] if p.x == fx_vec(b).x && p.z == fx_vec(b).z), "the first taken back, the second kept: {:?}", orders(&game));
+
+    // Two units sent apart, each on its own: a Shift-click on one's waypoint takes back that one
+    // alone. Sent together: a Shift-click on one's place takes back the group's.
+    let kbot = game.sim.types.id("ARMCK").expect("a construction kbot");
+    let site = game.sim.find_build_site(kbot, fx_vec(origin + Vec3::new(-80.0, 0.0, 80.0)), 10).unwrap();
+    let builder = game.sim.spawn_unit(kbot, game.local_player, site, 0, true).unwrap();
+    let stop = |game: &mut Game| {
+        let units = vec![commander, builder];
+        game.issue(Command::Order { player: game.local_player, units, order: Order::Stop, queue: false });
+        let commands = std::mem::take(&mut game.commands);
+        game.run_tick(commands);
+    };
+    stop(&mut game);
+    let moves_of = |game: &Game, id: UnitId| -> Vec<Vec2> {
+        game.sim.unit(id).unwrap().orders.iter().filter_map(|o| if let Order::Move(p) = o { Some(Vec2::new(p.x.to_f32(), p.z.to_f32())) } else { None }).collect()
+    };
+    let near = |list: &[Vec2], p: Vec3, r: f32| list.iter().any(|q| q.distance(Vec2::new(p.x, p.z)) <= r);
+    let p1 = spots[0];
+    let p2 = *spots.iter().find(|q| (150.0..300.0).contains(&q.distance(p1))).expect("a place 150 to 300 px off");
+    game.selection = vec![commander];
+    click(&mut game, p1);
+    game.selection = vec![builder];
+    click(&mut game, p2);
+    game.selection = vec![commander, builder];
+    click(&mut game, p1 + Vec3::new(10.0, 0.0, 10.0));
+    assert!(!near(&moves_of(&game, commander), p1, 48.0), "the Commander's own waypoint taken back: {:?}", orders(&game));
+    assert!(near(&moves_of(&game, builder), p2, 2.0), "the other unit's, given apart, kept: {:?}", moves_of(&game, builder));
+    stop(&mut game);
+    let p3 = *spots.iter().find(|q| q.distance(origin) > 300.0).expect("a place for the group");
+    click(&mut game, p3);
+    let place = *moves_of(&game, commander).last().expect("the Commander sent with the group");
+    assert!(!moves_of(&game, builder).is_empty(), "the kbot sent with the group");
+    click(&mut game, Vec3::new(place.x + 5.0, 0.0, place.y));
+    assert!(moves_of(&game, commander).is_empty() && moves_of(&game, builder).is_empty(), "the group's move taken back together: {:?} {:?}", moves_of(&game, commander), moves_of(&game, builder));
+    println!("native take-back: reclaim and move passed");
+}

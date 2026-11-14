@@ -3,6 +3,9 @@
 ## Unreleased
 
 ### Added
+- Shift and a click on an order already queued takes it back, as a building put down again on
+  its own plan does: a reclaim of a wreck, rock, tree or unit already queued for reclaiming, or a
+  move to within a waypoint's mark of one already set (a group's moves there go together).
 - A contributing guide, [CONTRIBUTING.md](CONTRIBUTING.md): the project's ground rules, which
   version to bump for which change, tests, the changelog, and how a pull request is written and
   reviewed. The pull request template follows it.

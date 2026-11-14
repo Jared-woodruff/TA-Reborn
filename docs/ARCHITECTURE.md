@@ -2725,8 +2725,12 @@ build menu by `Purpose` on tabs (`Hud::build_tab`).
   plans never stand in the way of one building put down (`Game::own_plans_under`): put down
   again on one of them (the same building, the same footprint) it undoes it, with
   `Command::EditQueue`; another over them takes their place (with Shift they are taken out of
-  the queue, the rest kept; without, the new order replaces the queue anyway). A row dragged out
-  with Shift keeps clear of them. A right-click ends the placing; with Shift it also gives the
+  the queue, the rest kept; without, the new order replaces the queue anyway). Other orders are
+  taken back as plans are, with Shift: a reclaim of what the selection already has queued for
+  reclaim (`Game::take_back_queued`), and a move clicked within 48 px of a waypoint it already
+  has (`Game::take_back_move`: each unit drops its own move nearest that waypoint, so a group's
+  moves to their places round it go together), with `Command::DropOrder`, matched as the queue
+  stands when it runs. A row dragged out with Shift keeps clear of them. A right-click ends the placing; with Shift it also gives the
   right-click's order, queued (a Commander told to build a plant, then sent on). While placing,
   every constructor's queued buildings show as faint ghosts; the ghosts, and the one being
   placed, are drawn where the building will stand (`Sim::resting_pos`, as `Sim::spawn_unit`
@@ -2771,7 +2775,7 @@ build menu by `Purpose` on tabs (`Hud::build_tab`).
   battle; the duties themselves are client state, kept beside the commands in a saved game
   (`Record::duties`, from `RECORD_VERSION` 44, `Record::with_duties` at the three places that
   save: autosave, quick save, Save game) and put back by `Game::restore_duties` when the save has
-  caught up (`Playback::duties`); replays have none. Any `Command::Order`, `Formation` or `EditQueue` that comes through `Game::issue`
+  caught up (`Playback::duties`); replays have none. Any `Command::Order`, `Formation`, `EditQueue` or `DropOrder` that comes through `Game::issue`
   takes the units it names off duty (`Game::release_from_duty`: clicks, keys, buttons, the build
   menu, Stop); a Commander on duty that an enemy hits, or that has armed enemies in sight close by
   (`DutyEvent::Danger`, told by `DutyOfficer::take_events`), leaves it at once. Units on duty are left
