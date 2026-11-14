@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- Capture timing now follows the original game's capped cost timer, target health and target
+  veterancy. Full-health Galactic Gates take 60 seconds of active capture work instead of about
+  51 minutes. Capture orders keep independent timers and no longer depend on WorkerTime.
+
 ## 1.0.5 — 2026-11-14
 
 Supreme Commander: Forged Alliance's maps can now be played in skirmish: the launcher makes them

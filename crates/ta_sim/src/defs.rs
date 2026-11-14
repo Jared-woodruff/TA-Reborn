@@ -196,8 +196,6 @@ pub struct UnitType {
     pub cost_energy: Fx,
     /// Build points added per tick.
     pub worker_rate: Fx,
-    /// Work done on a build (repair, reclaim, resurrection, capture) a tick: `WorkerTime` (raw
-    /// 16.16), as [`UnitType::build_work`] counts it.
     pub work_rate: u64,
     pub build_distance: Fx,
     pub sight: Fx,
@@ -280,6 +278,18 @@ pub fn big_walker(u: &UnitDef, model: &ModelDef, class: Option<&ta_data::MoveCla
 }
 
 impl UnitType {
+    pub(crate) fn capture_ticks(&self, health: Fx, kills: u64) -> u64 {
+        let scale = (1i128 << 34) * Fx::ONE.0 as i128;
+        let cost = self.cost_energy.0.max(0) as i128 * 30 * 8_589_935
+            + self.cost_metal.0.max(0) as i128 * 30 * 15_339_169 * 8;
+        let base = (150 + cost / scale).min(1800);
+        let maximum = self.max_health.to_int().max(1) as i128;
+        let health = health.to_int().clamp(0, maximum as i64) as i128;
+        let ticks = base * (health + maximum) / (2 * maximum);
+        let ticks = (ticks as u128 * (kills as u128 / 5 + 10) / 10).min((u64::MAX - 1) as u128) as u64;
+        ticks.saturating_add(ticks % 2).max(2)
+    }
+
     pub(crate) fn collision_radius(&self) -> Fx {
         self.radius.max(self.model.height.max(Fx::from_int(8)) / 2).max(Fx::from_int(8)) * 3 / 4
     }

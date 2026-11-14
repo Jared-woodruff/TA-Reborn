@@ -152,7 +152,7 @@ pub const RECORD_VERSION: u32 = 46;
 /// constructors on a duty build what their menus offer; 92, a cell a map marks as a cliff
 /// (`ta_formats::tnt::CELL_CLIFF`: a map converted from Supreme Commander) is as steep as a
 /// slope can be.
-pub const SIMULATION_VERSION: u32 = 92;
+pub const SIMULATION_VERSION: u32 = 93;
 /// Records shorter than one year of simulated time are supported. Shared with the
 /// launcher's metadata reader so impossible durations cannot start endless save catch-up.
 pub const MAX_RECORD_TICKS: u64 = 30 * 3600 * 24 * 365;

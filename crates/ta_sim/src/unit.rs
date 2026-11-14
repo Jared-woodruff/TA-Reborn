@@ -133,6 +133,13 @@ pub struct BuildJob {
     pub started: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct CaptureJob {
+    pub target: UnitId,
+    pub ticks: u64,
+    pub elapsed: u64,
+}
+
 #[derive(Clone)]
 pub struct Unit {
     pub id: UnitId,
@@ -217,10 +224,9 @@ pub struct Unit {
     pub orbit: Option<FxVec3>,
     /// A construction aircraft at work: its sway round what it builds (`Sim::drift_round`).
     pub drift: Option<Drift>,
-    /// Capture progress 0..=1 accumulated by enemy capturers, and the work behind it (out of
-    /// the cost a capture takes, see `Sim::update_capture_order`).
     pub capture_progress: Fx,
     pub capture_work: u64,
+    pub(crate) capture: Option<CaptureJob>,
     /// Cloaking: wanted by the player, active this tick (paid for, not just fired),
     /// shimmering visible after firing until this tick, and the players whose units are
     /// close enough to see through the cloak (a [`player_bit`] each).
@@ -390,6 +396,7 @@ impl Unit {
             drift: None,
             capture_progress: Fx::ZERO,
             capture_work: 0,
+            capture: None,
             cloak_on: false,
             cloaked: false,
             decloak_until: 0,
