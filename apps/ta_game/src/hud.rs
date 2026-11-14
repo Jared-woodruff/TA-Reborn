@@ -2603,7 +2603,10 @@ struct Store {
     amount: f32,
     capacity: f32,
     income: f32,
-    expense: f32,
+    /// What is asked for, paid or not ([`ta_sim::Economy::metal_wanted`]): the use shown, by
+    /// how much the asking outruns the income. (What the store does, its state, goes by what
+    /// is paid: a builder held up by metal asks for energy that is not spent.)
+    wanted: f32,
     state: StoreState,
 }
 
@@ -2621,8 +2624,8 @@ enum StoreState {
 }
 
 impl Store {
-    fn of(amount: Fx, capacity: Fx, income: Fx, expense: Fx, rationed: bool) -> Store {
-        let (amount, capacity, income, expense) = (amount.to_f32(), capacity.to_f32(), income.to_f32(), expense.to_f32());
+    fn of(amount: Fx, capacity: Fx, income: Fx, expense: Fx, wanted: Fx, rationed: bool) -> Store {
+        let (amount, capacity, income, expense, wanted) = (amount.to_f32(), capacity.to_f32(), income.to_f32(), expense.to_f32(), wanted.to_f32());
         let net = income - expense;
         let state = if amount <= (capacity * 0.02).max(1.0) && (rationed || net < -0.05) {
             StoreState::Stalling
@@ -2633,7 +2636,7 @@ impl Store {
         } else {
             StoreState::Steady
         };
-        Store { amount, capacity, income, expense, state }
+        Store { amount, capacity, income, wanted, state }
     }
 
     /// What its tip says: the figures, and what to do about a store in trouble.
@@ -2645,7 +2648,7 @@ impl Store {
                 ("amount", &format!("{:.0}", self.amount)),
                 ("capacity", &format!("{:.0}", self.capacity)),
                 ("income", &format!("{:.1}", self.income)),
-                ("spending", &format!("{:.1}", self.expense)),
+                ("spending", &format!("{:.1}", self.wanted)),
             ],
         );
         let advice = match self.state {
@@ -2680,7 +2683,7 @@ fn resource_bar(ui: &mut egui::Ui, name: &str, s: Store, color: Color32, bar_wid
                 ui.ctx().request_repaint();
             }
             ui.label(egui::RichText::new(format!("{:.0}", s.amount)).font(strong(13.0)).color(TEXT_BRIGHT));
-            let net = s.income - s.expense;
+            let net = s.income - s.wanted;
             let rate = if net >= 0.0 { format!("+{net:.1}") } else { format!("{net:.1}") };
             let rate_color = match s.state {
                 StoreState::Stalling => RED,
@@ -3223,5 +3226,20 @@ mod tests {
         assert_eq!(ghost_figures(&flows(1.7, 0.0, 0.0, 3.0)), "+1.7 metal  ·  Uses 3.0 energy");
         assert_eq!(ghost_figures(&flows(0.0, 0.0, 20.0, 0.0)), "+20 energy");
         assert_eq!(ghost_figures(&flows(0.0, 0.0, 0.0, 0.0)), "");
+    }
+
+    #[test]
+    fn a_store_shows_what_is_asked_for_and_goes_by_what_is_paid() {
+        let f = |v: i64| Fx::from_int(v);
+        // A build held up by metal asks for 20 energy a second and is paid none: the store, 100 of
+        // 1,000 and 10 a second coming in, fills; it shows 20 used, but no running dry.
+        let store = Store::of(f(100), f(1000), f(10), f(0), f(20), false);
+        assert_eq!(store.state, StoreState::Steady);
+        assert_eq!(store.wanted, 20.0);
+        // Full the same way: what comes in is wasted.
+        assert_eq!(Store::of(f(1000), f(1000), f(10), f(0), f(20), false).state, StoreState::Full);
+        // Run dry with the asking paid down to the income: stalling, 20 shown.
+        let dry = Store::of(f(0), f(1000), f(10), f(10), f(20), true);
+        assert_eq!((dry.state, dry.wanted), (StoreState::Stalling, 20.0));
     }
 }

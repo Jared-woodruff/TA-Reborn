@@ -1179,6 +1179,11 @@ impl Sim {
             let energy = self.shot_energy(id, w);
             let e = &mut self.players[owner as usize].economy;
             if e.energy < energy || e.metal < w.metal_per_shot {
+                // Waiting for its price, it tries again every tick: it asks for it at the pace its
+                // reload would fire it (the use shown, `Economy::metal_wanted`).
+                let reload = i64::from(w.reload_ticks.max(1));
+                e.tick_energy_wanted += energy / reload;
+                e.tick_metal_wanted += w.metal_per_shot / reload;
                 return;
             }
             e.energy -= energy;

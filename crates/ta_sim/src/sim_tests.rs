@@ -1058,6 +1058,26 @@ fn radar_contacts_accept_attacks_and_losing_contact_preserves_queued_orders() {
     assert_eq!(sim.unit(s).unwrap().move_request, Some(retreat));
 }
 
+#[test]
+fn a_shot_waiting_for_its_energy_asks_for_it_at_its_reload_pace() {
+    let data = data_of(&[
+        unit("GUN", "Weapon1=ZAP; SightDistance=500;"),
+        unit("DUMMY", "MaxDamage=100000;"),
+        weapon_file("ZAP", "energypershot=300;"),
+    ]);
+    let mut sim = sim_of(data, 2);
+    let gun = sim.spawn_unit(sim.types.id("GUN").unwrap(), 0, FxVec3::from_ints(300, 0, 300), 0, true).unwrap();
+    sim.spawn_unit(sim.types.id("DUMMY").unwrap(), 1, FxVec3::from_ints(400, 0, 300), 0, true).unwrap();
+    sim.set_starting_resources(0, Fx::ZERO, Fx::ZERO);
+    for _ in 0..40 { sim.step(&[]); }
+    let w = sim.weapon_types.get(sim.types.get(sim.unit(gun).unwrap().type_id).weapons[0].unwrap()).clone();
+    let e = &sim.players[0].economy;
+    assert_eq!(e.energy_expense, Fx::ZERO, "nothing paid with no energy");
+    // (Not its whole price every tick it tries again: its price over its reload.)
+    assert_eq!(e.energy_wanted, w.energy_per_shot / i64::from(w.reload_ticks.max(1)) * TICKS_PER_SECOND);
+    assert!(e.energy_wanted > Fx::ZERO);
+}
+
 /// A factory (a builder that does not move) takes the orders its weapons fire on, as TA's do, what
 /// it is making going on: manual fire with a weapon for it (Total Mayhem's and Escalation's
 /// factories turn their buildpad so). Stockpiled missiles launch on Attack as well;

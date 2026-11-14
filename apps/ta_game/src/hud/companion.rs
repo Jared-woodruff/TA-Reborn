@@ -145,8 +145,8 @@ impl Hud {
             let time = ctx.input(|i| i.time);
             let width = (ui.available_width() - 190.0).clamp(60.0, 260.0);
             ui.spacing_mut().item_spacing.y = 4.0;
-            super::resource_bar(ui, n("METAL"), super::Store::of(e.metal, e.metal_capacity, e.metal_income, e.metal_wanted, rationed), super::METAL, width, time, false);
-            super::resource_bar(ui, n("ENERGY"), super::Store::of(e.energy, e.energy_capacity, e.energy_income, e.energy_wanted, rationed), super::ENERGY, width, time, false);
+            super::resource_bar(ui, n("METAL"), super::Store::of(e.metal, e.metal_capacity, e.metal_income, e.metal_expense, e.metal_wanted, rationed), super::METAL, width, time, false);
+            super::resource_bar(ui, n("ENERGY"), super::Store::of(e.energy, e.energy_capacity, e.energy_income, e.energy_expense, e.energy_wanted, rationed), super::ENERGY, width, time, false);
             ui.add_space(6.0);
         }
         self.economy_charts(ui, &ctx, vfs, game, 96.0);
