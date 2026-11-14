@@ -211,12 +211,15 @@ impl Sim {
             if p.dead { continue; }
             let w = weapons.get(p.weapon);
             if w.no_explode && !w.def.interceptor {
-                self.grid.query(p.pos, p.vel.length() + self.types.collision_reach, &mut near);
+                // A piercing shot sweeps its damage area along the flight, rather than
+                // waiting for a point projectile to touch a unit. In particular the
+                // D-gun's ground-aimed ball passes below units' collision spheres.
+                self.grid.query(p.pos, p.vel.length() + self.types.collision_reach + w.aoe_radius, &mut near);
                 for &slot in &near {
                     let Some(u) = self.units.get(slot as usize).and_then(|u| u.as_ref()) else { continue };
                     if !self.projectile_hits_unit(p, w, u) { continue; }
                     let (centre, radius) = hit_sphere(u, self);
-                    if segment_distance(p.prev_pos, p.pos, centre) <= radius {
+                    if segment_distance(p.prev_pos, p.pos, centre) <= radius + w.aoe_radius {
                         p.hits.push(u.id);
                         if !self.ceasefire_spares_side(p.owner_player, u.owner) {
                             self.damage_unit(u.id, w.damage_to(u.type_id), p.owner, p.vel);

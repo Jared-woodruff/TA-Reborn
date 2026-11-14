@@ -578,6 +578,41 @@ fn weapon_file(name: &str, keys: &str) -> (String, String) {
 }
 
 #[test]
+fn piercing_shots_sweep_their_damage_area_and_hit_each_unit_once() {
+    let mut data = data_of(&[
+        unit("SHOOTER", "Weapon1=SHOT;"),
+        unit("TARGET", "FootprintX=2; FootprintZ=2;"),
+        weapon_file("SHOT", "areaofeffect=48; noexplode=1; commandfire=1;"),
+    ]);
+    let weapon = data.weapon_id("SHOT").unwrap();
+    data.weapons[weapon].default_damage = 60.0;
+    let mut sim = sim_of(data, 2);
+    let target_type = sim.types.id("TARGET").unwrap();
+    let t = sim.types.get(target_type);
+    let y = Fx::from_int(60) + t.model.height.max(Fx::from_int(8)) / 2;
+    let z = Fx::from_int(255) + t.collision_radius();
+    let shooter = sim.spawn_unit(sim.types.id("SHOOTER").unwrap(), 0, FxVec3::from_ints(200, 60, 255), 0, true).unwrap();
+    let friendly = sim.spawn_unit(target_type, 0, FxVec3::new(Fx::from_int(280), Fx::from_int(60), z + Fx::from_int(12)), 0, true).unwrap();
+    let enemy = sim.spawn_unit(target_type, 1, FxVec3::new(Fx::from_int(340), Fx::from_int(60), z + Fx::from_int(12)), 0, true).unwrap();
+    let outside = sim.spawn_unit(target_type, 1, FxVec3::new(Fx::from_int(400), Fx::from_int(60), z + Fx::from_int(64)), 0, true).unwrap();
+    sim.step(&[]);
+    let full = sim.unit(enemy).unwrap().health;
+    let shooter_full = sim.unit(shooter).unwrap().health;
+    let pos = FxVec3::new(Fx::from_int(200), y, Fx::from_int(255));
+    sim.projectiles.push(crate::Projectile {
+        id: 1, weapon, owner: shooter, owner_player: 0, pos, prev_pos: pos, vel: FxVec3::from_ints(80, 0, 0),
+        target: None, target_pos: pos, age: 0, ttl: 8, hits: Vec::new(), dead: false,
+    });
+    for _ in 0..8 { sim.step(&[]); }
+    for id in [friendly, enemy] {
+        assert_eq!(sim.unit(id).unwrap().health, full - Fx::from_int(60), "the damage area reaches friends and enemies beside the flight, once each");
+    }
+    assert_eq!(sim.unit(outside).unwrap().health, full, "outside the damage area");
+    assert_eq!(sim.unit(shooter).unwrap().health, shooter_full, "the shot still excludes its owner");
+    assert!(sim.projectiles.is_empty(), "piercing shots still expire");
+}
+
+#[test]
 fn ceasefire_protects_against_projectiles_after_the_attacker_is_removed() {
     for protected in [false, true] {
         for (through, paralyzer) in [(false, false), (true, false), (false, true)] {

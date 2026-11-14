@@ -4,6 +4,37 @@ use super::*;
 use super::air_original::{field, original};
 
 #[test]
+fn original_dguns_hit_a_line_of_units_when_aimed_at_ground() {
+    let Some((data, types)) = original() else { eprintln!("TA install not found; skipping"); return };
+    for name in ["ARMCOM", "CORCOM"] {
+        for ground in [false, true] {
+            let mut sim = field(data, types, false);
+            let commander = sim.spawn_unit(types.id(name).unwrap(), 0, FxVec3::from_ints(400, 60, 600), 16384, true).unwrap();
+            let targets: Vec<_> = [90, 140, 190].into_iter().map(|dx| {
+                sim.spawn_unit(types.id("CORTHUD").unwrap(), 0, FxVec3::from_ints(400 + dx, 60, 600), 0, true).unwrap()
+            }).collect();
+            for id in std::iter::once(commander).chain(targets.iter().copied()) { sim.unit_mut(id).unwrap().fire_state = 0; }
+            let weapon = types.get(types.id(name).unwrap()).weapons.iter().flatten().copied().find(|&w| sim.weapon_types.get(w).command_fire).unwrap();
+            // Sweep through a formation by clicking the ground under its back rank;
+            // also keep the direct unit shot through its front rank working.
+            let target = if ground { Target::Ground(sim.unit(*targets.last().unwrap()).unwrap().pos) } else { Target::Unit(targets[0]) };
+            sim.give_orders(commander, [Order::ManualFire(target)]);
+            let mut shots = 0;
+            for _ in 0..180 {
+                sim.step(&[]);
+                for event in sim.take_events() {
+                    if matches!(event, SimEvent::WeaponFired { weapon: w, .. } if w == weapon) { shots += 1; }
+                }
+            }
+            let alive: Vec<_> = targets.iter().map(|&id| sim.unit(id).is_some_and(|u| !u.dead)).collect();
+            println!("{name} ground={ground}: shots={shots}, alive={alive:?}");
+            assert_eq!(shots, 1);
+            assert!(alive.iter().all(|&a| !a), "{name} ground={ground}: a D-gun must pierce the line, alive={alive:?}");
+        }
+    }
+}
+
+#[test]
 fn original_land_units_move_stop_and_reverse_direction() {
     let Some((data, types)) = original() else { eprintln!("TA install not found; skipping"); return };
     let mut checked = 0;
