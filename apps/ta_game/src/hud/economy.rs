@@ -146,8 +146,8 @@ impl Hud {
         let (readings, span) = if tier == Tier::Wide { self.trend.readings() } else { (Vec::new(), 1.0) };
         let spark = |index| (tier == Tier::Wide).then_some(Spark { readings: &readings, span, index });
         let gap = if tier == Tier::Tight { 12.0 } else { 20.0 };
-        let metal_store = Store::of(e.metal, e.metal_capacity, e.metal_income, e.metal_expense, rationed);
-        let energy_store = Store::of(e.energy, e.energy_capacity, e.energy_income, e.energy_expense, rationed);
+        let metal_store = Store::of(e.metal, e.metal_capacity, e.metal_income, e.metal_wanted, rationed);
+        let energy_store = Store::of(e.energy, e.energy_capacity, e.energy_income, e.energy_wanted, rationed);
         let metal = readout(ui, n("METAL"), &metal_store, METAL, spark(0).as_ref(), tier, time);
         ui.add_space(gap);
         let energy = readout(ui, n("ENERGY"), &energy_store, ENERGY, spark(2).as_ref(), tier, time);

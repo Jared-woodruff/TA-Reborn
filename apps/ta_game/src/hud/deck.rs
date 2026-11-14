@@ -142,7 +142,7 @@ impl EconomyTrend {
         self.fraction = (game.sim.tick % 30) as f32 / 30.0;
         let Some(p) = game.sim.players.get(player as usize) else { return };
         let e = &p.economy;
-        self.now = [e.metal_income, e.metal_expense, e.energy_income, e.energy_expense].map(|v| v.to_f32());
+        self.now = [e.metal_income, e.metal_wanted, e.energy_income, e.energy_wanted].map(|v| v.to_f32());
         for (sum, v) in self.sum.iter_mut().zip(self.now) {
             *sum += v;
         }

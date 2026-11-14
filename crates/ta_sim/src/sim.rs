@@ -828,6 +828,7 @@ impl Sim {
         let (owner, pos) = (u.owner, u.pos);
         let e = &mut self.players[owner as usize].economy;
         let paid = e.energy >= cost;
+        e.tick_energy_wanted += cost;
         if paid {
             e.energy -= cost;
             e.tick_energy_out += cost;
@@ -5284,6 +5285,7 @@ impl Sim {
                 }
             }
             let paid = upkeep.is_zero() || e.energy >= upkeep;
+            e.tick_energy_wanted += upkeep;
             // (For the figures the interface shows: `Sim::unit_flows`.)
             u.upkeep_paid = paid;
             if paid && upkeep > Fx::ZERO {
@@ -5364,8 +5366,12 @@ impl Sim {
             e.energy_income = e.tick_energy_in * TICKS_PER_SECOND;
             e.metal_expense = e.tick_metal_out * TICKS_PER_SECOND;
             e.energy_expense = e.tick_energy_out * TICKS_PER_SECOND;
+            e.metal_wanted = e.tick_metal_wanted * TICKS_PER_SECOND;
+            e.energy_wanted = e.tick_energy_wanted * TICKS_PER_SECOND;
             e.tick_metal_out = Fx::ZERO;
             e.tick_energy_out = Fx::ZERO;
+            e.tick_metal_wanted = Fx::ZERO;
+            e.tick_energy_wanted = Fx::ZERO;
         }
     }
 

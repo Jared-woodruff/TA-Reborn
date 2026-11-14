@@ -1155,8 +1155,8 @@ impl ClassicHud {
         }
         let e = &p.economy;
         let readouts = [
-            ("METAL", e.metal, e.metal_capacity, e.metal_income, e.metal_expense, env.st.metal),
-            ("ENERGY", e.energy, e.energy_capacity, e.energy_income, e.energy_expense, env.st.energy),
+            ("METAL", e.metal, e.metal_capacity, e.metal_income, e.metal_wanted, env.st.metal),
+            ("ENERGY", e.energy, e.energy_capacity, e.energy_income, e.energy_wanted, env.st.energy),
         ];
         for (name, amount, cap, income, expense, color) in readouts {
             if let Some(b) = l.get(&format!("{name}BAR")).map(inclusive) {

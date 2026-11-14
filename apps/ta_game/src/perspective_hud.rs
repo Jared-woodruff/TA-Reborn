@@ -669,8 +669,8 @@ fn glass_economy(painter: &Painter, r: Rect, game: &Game, owner: u8) {
     let e = &pl.economy;
     let g = glass_inside(r);
     let rows = [
-        (t("ENERGY"), e.energy.to_f32(), e.energy_capacity.to_f32(), e.energy_income.to_f32(), e.energy_expense.to_f32(), AMBER),
-        (t("METAL"), e.metal.to_f32(), e.metal_capacity.to_f32(), e.metal_income.to_f32(), e.metal_expense.to_f32(), Color32::from_gray(215)),
+        (t("ENERGY"), e.energy.to_f32(), e.energy_capacity.to_f32(), e.energy_income.to_f32(), e.energy_wanted.to_f32(), AMBER),
+        (t("METAL"), e.metal.to_f32(), e.metal_capacity.to_f32(), e.metal_income.to_f32(), e.metal_wanted.to_f32(), Color32::from_gray(215)),
     ];
     let row_h = g.height() / 2.0;
     for (i, (label, have, max, income, expense, colour)) in rows.iter().enumerate() {

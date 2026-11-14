@@ -593,10 +593,18 @@ pub struct Economy {
     pub(crate) energy_demand_next: Fx,
     /// Fraction (0..=1) of requested build resources granted this tick.
     pub build_factor: Fx,
+    /// What was asked for over the last tick, per second, paid or not: builders and stockpiles
+    /// at their full pace, upkeep, cloaking and shots. With a store empty only what comes in is
+    /// paid, so the expense equals the income; the interface shows this as the use instead, by
+    /// how much the asking outruns the income. Nothing in the battle reads it.
+    pub metal_wanted: Fx,
+    pub energy_wanted: Fx,
     pub(crate) tick_metal_in: Fx,
     pub(crate) tick_energy_in: Fx,
     pub(crate) tick_metal_out: Fx,
     pub(crate) tick_energy_out: Fx,
+    pub(crate) tick_metal_wanted: Fx,
+    pub(crate) tick_energy_wanted: Fx,
 }
 
 impl Economy {
@@ -607,6 +615,8 @@ impl Economy {
         let worth = |amount: Fx, work: u64| amount.share(before + work, total) - amount.share(before, total);
         self.metal_demand_next += worth(metal, full);
         self.energy_demand_next += worth(energy, full);
+        self.tick_metal_wanted += worth(metal, full);
+        self.tick_energy_wanted += worth(energy, full);
         let factor = factor.clamp(Fx::ZERO, Fx::ONE);
         let mut work = if factor > Fx::ZERO && full > 0 {
             ((full as u128 * factor.0 as u128) >> crate::fixed::FRAC_BITS).max(1) as u64

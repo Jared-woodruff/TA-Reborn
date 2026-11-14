@@ -363,6 +363,8 @@ impl Sim {
         let e = &mut self.players[owner].economy;
         e.metal_demand_next += worth(w.metal_per_shot, full);
         e.energy_demand_next += worth(w.energy_per_shot, full);
+        e.tick_metal_wanted += worth(w.metal_per_shot, full);
+        e.tick_energy_wanted += worth(w.energy_per_shot, full);
         let mut work = (e.build_factor.0.max(0) as u64).min(full);
         // Last tick's demand cannot predict a newly started silo or what another builder
         // has already spent. Limit work to the stores that remain, including rounding at
@@ -1183,6 +1185,8 @@ impl Sim {
             e.metal -= w.metal_per_shot;
             e.tick_energy_out += energy;
             e.tick_metal_out += w.metal_per_shot;
+            e.tick_energy_wanted += energy;
+            e.tick_metal_wanted += w.metal_per_shot;
         }
         let muzzle_piece = self.call_script(id, QUERY_FUNCS[slot], &[0]).and_then(|p| p.first().copied());
         self.start_script(id, FIRE_FUNCS[slot], &[]);
