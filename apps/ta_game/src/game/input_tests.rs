@@ -341,7 +341,7 @@ fn native_queued_orders_keep_patrol_targets_and_finish_repeat_modes() {
     // metadata keeps the mode until the HUD has processed the last queued click.
     input.end_frame();
     game.set_command_mode(Some(CommandMode::Patrol));
-    game.order_selection_from_map(point, true, true);
+    game.order_selection_from_map(point, 0.0, true, true);
     patrol_command(&game, unit, point, true);
     assert_eq!(game.command_mode, Some(CommandMode::Patrol));
     modifiers(&mut input, ModifiersState::SHIFT);
@@ -351,7 +351,7 @@ fn native_queued_orders_keep_patrol_targets_and_finish_repeat_modes() {
     game.handle_input(&input, &camera, &renderer, true);
     assert_eq!(game.command_mode, Some(CommandMode::Patrol));
     let second = point + Vec3::new(80.0, 0.0, 0.0);
-    game.order_selection_from_map(second, true, false);
+    game.order_selection_from_map(second, 0.0, true, false);
     patrol_command(&game, unit, second, true);
     assert!(game.command_mode.is_none() && !game.repeat_order);
 
@@ -364,7 +364,7 @@ fn native_queued_orders_keep_patrol_targets_and_finish_repeat_modes() {
     // Unit-target commands cannot become accidental minimap move orders.
     let count = game.commands.len();
     game.set_command_mode(Some(CommandMode::Guard));
-    game.order_selection_from_map(point, false, false);
+    game.order_selection_from_map(point, 0.0, false, false);
     assert_eq!(game.commands.len(), count);
     assert_eq!(game.command_mode, Some(CommandMode::Guard));
     // Spectators may inspect a selected unit but armed commands must not take ownership
@@ -372,7 +372,7 @@ fn native_queued_orders_keep_patrol_targets_and_finish_repeat_modes() {
     game.spectator = true;
     game.set_command_mode(Some(CommandMode::Patrol));
     assert!(!game.can_order());
-    game.order_selection_from_map(point, false, false);
+    game.order_selection_from_map(point, 0.0, false, false);
     assert_eq!(game.commands.len(), count);
     println!("native queued input: delayed Shift release, Patrol drag, minimap waypoints, repeat completion and friendly-ground targeting passed");
 }
@@ -539,4 +539,50 @@ fn native_placing_again_undoes_a_plan_and_another_building_takes_its_place() {
     assert!(game.placement.is_none());
     assert_eq!(game.commands.len(), count, "no order");
     println!("native placing: undo, replace, and Shift with the right button passed");
+}
+
+#[test]
+#[ignore = "needs installed Total Annihilation data and a Windows graphics adapter"]
+#[allow(deprecated)]
+fn native_minimap_orders_aim_at_the_units_marked_there() {
+    let install = ta_vfs::install::discover(None).expect("Total Annihilation install");
+    let mut vfs = ta_vfs::Vfs::new();
+    vfs.mount_game_dir(&install.root, "base").unwrap();
+    let event_loop = winit::event_loop::EventLoop::builder().with_any_thread(true).build().unwrap();
+    let window = Arc::new(event_loop.create_window(winit::window::Window::default_attributes()
+        .with_visible(false).with_inner_size(winit::dpi::PhysicalSize::new(1024, 768))).unwrap());
+    let mut renderer = Renderer::new(window, 1024, 768).unwrap();
+    let assets = Assets::load(Arc::new(vfs), Default::default(), &mut renderer, None, None, &Default::default()).unwrap();
+    let mut game = Game::new(&assets, &mut renderer, &GameSetup::duel("Coast To Coast")).unwrap();
+    let (me, commander) = (game.local_player, game.local_commander().unwrap());
+    let foe = (0..game.sim.players.len() as u8).find(|&p| game.sim.is_enemy(me, p)).expect("an enemy");
+    let origin = game.sim.unit(commander).unwrap().pos;
+    let (raider, builder) = (game.sim.types.id("CORAK").expect("an A.K."), game.sim.types.id("ARMCK").expect("a construction kbot"));
+    let site = |game: &Game, kind, dx, dz| game.sim.find_build_site(kind, origin + FxVec3::from_ints(dx, 0, dz), 10).unwrap();
+    let enemy_at = site(&game, raider, 160, 0);
+    let enemy = game.sim.spawn_unit(raider, foe, enemy_at, 0, true).unwrap();
+    let friend_at = site(&game, builder, -120, 60);
+    let friend = game.sim.spawn_unit(builder, me, friend_at, 0, true).unwrap();
+    game.run_tick(Vec::new());
+    assert_eq!(game.seen(game.sim.unit(enemy).unwrap()), Seen::Visible, "the enemy in the Commander's sight");
+    game.selection = vec![commander];
+    let ground = |p: FxVec3| Vec3::from_array(p.to_f32());
+    let last = |game: &Game| game.commands.last().cloned();
+
+    // A click on the enemy's mark: it is attacked. Beside it, on nothing: a move there.
+    game.order_selection_from_map(ground(enemy_at) + Vec3::new(8.0, 0.0, 0.0), 40.0, false, false);
+    assert!(matches!(last(&game), Some(Command::Order { order: Order::Attack(ta_sim::Target::Unit(t)), .. }) if t == enemy), "{:?}", last(&game));
+    game.order_selection_from_map(ground(enemy_at) + Vec3::new(0.0, 0.0, 200.0), 40.0, false, false);
+    assert!(matches!(last(&game), Some(Command::Order { order: Order::Move(_), .. })), "{:?}", last(&game));
+    // Our own unit's mark: still a move, not a guard.
+    game.order_selection_from_map(ground(friend_at), 40.0, false, false);
+    assert!(matches!(last(&game), Some(Command::Order { order: Order::Move(_), .. })), "{:?}", last(&game));
+    // Armed, a command takes its own kind of unit: Guard ours, Attack the enemy.
+    game.set_command_mode(Some(CommandMode::Guard));
+    game.order_selection_from_map(ground(friend_at), 40.0, false, false);
+    assert!(matches!(last(&game), Some(Command::Order { order: Order::Guard(t), .. }) if t == friend), "{:?}", last(&game));
+    game.set_command_mode(Some(CommandMode::Attack));
+    game.order_selection_from_map(ground(enemy_at), 40.0, false, false);
+    assert!(matches!(last(&game), Some(Command::Order { order: Order::Attack(ta_sim::Target::Unit(t)), .. }) if t == enemy), "{:?}", last(&game));
+    println!("native minimap orders: attack, move, guard and armed attack passed");
 }

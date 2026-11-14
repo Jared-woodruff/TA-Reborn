@@ -438,7 +438,7 @@ fn native_all_five_lessons_advance_and_attack_move_uses_real_input() {
                             game.commands.clear();
                             game.used.fight = false;
                             game.set_command_mode(Some(CommandMode::Fight));
-                            game.order_selection_from_map(target, false, false);
+                            game.order_selection_from_map(target, 0.0, false, false);
                             assert!(tutorial.met(Progress::from(&game), &camera));
                             game.commands.clear();
                         }
@@ -446,7 +446,7 @@ fn native_all_five_lessons_advance_and_attack_move_uses_real_input() {
                     game.sim.group_formations = true;
                     game.set_command_mode(Some(CommandMode::Fight));
                     let target = tutorial.outpost_centre(&game).unwrap();
-                    game.order_selection_from_map(target, false, false);
+                    game.order_selection_from_map(target, 0.0, false, false);
                 }
                 Check::OutpostGone | Check::RaidBeaten => wait(&mut game, &mut tutorial, &camera),
                 Check::Overlay(o) => game.toggle_overlay(o),
@@ -511,7 +511,7 @@ fn native_all_five_lessons_advance_and_attack_move_uses_real_input() {
                 Check::Rally => {
                     let factory = game.sim.units().find(|u| u.owner == game.local_player && game.sim.unit_type(u).is_factory).unwrap().id;
                     game.selection = vec![factory];
-                    game.order_selection_from_map(Vec3::from_array((base + FxVec3::from_ints(150, 0, 150)).to_f32()), false, false);
+                    game.order_selection_from_map(Vec3::from_array((base + FxVec3::from_ints(150, 0, 150)).to_f32()), 0.0, false, false);
                     assert!(game.used.rally);
                     step(&mut game);
                     assert!(!game.sim.unit(factory).unwrap().rally.is_empty());
@@ -521,7 +521,7 @@ fn native_all_five_lessons_advance_and_attack_move_uses_real_input() {
                     let builder = game.sim.units().find(|u| u.owner == game.local_player && is_kind(game.sim.unit_type(u), Kind::Builder)).unwrap().id;
                     game.selection = vec![builder];
                     game.set_command_mode(Some(CommandMode::Patrol));
-                    game.order_selection_from_map(Vec3::from_array(base.to_f32()) + Vec3::X * 200.0, false, false);
+                    game.order_selection_from_map(Vec3::from_array(base.to_f32()) + Vec3::X * 200.0, 0.0, false, false);
                 }
                 Check::HoldFire => {
                     game.selection = game.sim.units().filter(|u| u.owner == game.local_player && is_combat(&game.sim, u)).map(|u| u.id).collect();

@@ -2549,47 +2549,8 @@ impl Game {
             return;
         }
         if let Some(target) = self.hovered
-            && let Some(click) = clicks::click_on(&self.sim, self.local_player, &self.selection, target)
+            && self.unit_order(target, shift)
         {
-            // (The cursor says the same: see `cursor_kind`.)
-            let me = self.local_player;
-            match click {
-                // Aircraft sent to a repair pad fly there and land on it.
-                clicks::UnitClick::Land(planes) => {
-                    let Some(pad) = self.sim.unit(target).map(|t| t.pos) else { return };
-                    self.mark_order(&Order::Guard(target), false);
-                    self.issue(Command::Order { player: me, units: planes, order: Order::Move(pad), queue: shift });
-                }
-                // A transport picks one of ours up.
-                clicks::UnitClick::Load(carrier) => {
-                    self.mark_order(&Order::Load(target), false);
-                    self.issue(Command::Order { player: me, units: vec![carrier], order: Order::Load(target), queue: shift });
-                }
-                // The armed attack the enemy's.
-                clicks::UnitClick::Attack(armed) => {
-                    let attack = Order::Attack(ta_sim::Target::Unit(target));
-                    self.mark_order(&attack, false);
-                    self.issue(Command::Order { player: me, units: armed, order: attack, queue: shift });
-                    return;
-                }
-                // Constructors repair, or help build, a unit that needs work, and guard one that
-                // doesn't (a factory: that helps its production, now and later); other mobile
-                // units guard it, and factories send their units to.
-                clicks::UnitClick::Help { repair, guard, .. } => {
-                    if !repair.is_empty() || !guard.is_empty() {
-                        self.mark_order(&Order::Repair(target), false);
-                    }
-                    if !repair.is_empty() {
-                        self.issue(Command::Order { player: me, units: repair, order: Order::Repair(target), queue: shift });
-                    }
-                    if !guard.is_empty() {
-                        self.issue(Command::Order { player: me, units: guard, order: Order::Guard(target), queue: shift });
-                    }
-                }
-            }
-            if let Some(&first) = self.selection.first() {
-                self.voices.push((first, ta_audio::SoundEvent::Ok));
-            }
             return;
         }
         // Builders right-clicking a wreck, rock or tree reclaim it.
@@ -2611,6 +2572,71 @@ impl Game {
                 self.voices.push((first, ta_audio::SoundEvent::Ok));
             }
         }
+    }
+
+    /// The order a click with the order button on `target` gives the selection, by what it is
+    /// (`clicks::click_on`; the cursor says the same: see `cursor_kind`), given. False when it
+    /// gives none.
+    fn unit_order(&mut self, target: UnitId, shift: bool) -> bool {
+        let Some(click) = clicks::click_on(&self.sim, self.local_player, &self.selection, target) else {
+            return false;
+        };
+        let me = self.local_player;
+        match click {
+            // Aircraft sent to a repair pad fly there and land on it.
+            clicks::UnitClick::Land(planes) => {
+                let Some(pad) = self.sim.unit(target).map(|t| t.pos) else { return true };
+                self.mark_order(&Order::Guard(target), false);
+                self.issue(Command::Order { player: me, units: planes, order: Order::Move(pad), queue: shift });
+            }
+            // A transport picks one of ours up.
+            clicks::UnitClick::Load(carrier) => {
+                self.mark_order(&Order::Load(target), false);
+                self.issue(Command::Order { player: me, units: vec![carrier], order: Order::Load(target), queue: shift });
+            }
+            // The armed attack the enemy's.
+            clicks::UnitClick::Attack(armed) => {
+                let attack = Order::Attack(ta_sim::Target::Unit(target));
+                self.mark_order(&attack, false);
+                self.issue(Command::Order { player: me, units: armed, order: attack, queue: shift });
+                return true;
+            }
+            // Constructors repair, or help build, a unit that needs work, and guard one that
+            // doesn't (a factory: that helps its production, now and later); other mobile
+            // units guard it, and factories send their units to.
+            clicks::UnitClick::Help { repair, guard, .. } => {
+                if !repair.is_empty() || !guard.is_empty() {
+                    self.mark_order(&Order::Repair(target), false);
+                }
+                if !repair.is_empty() {
+                    self.issue(Command::Order { player: me, units: repair, order: Order::Repair(target), queue: shift });
+                }
+                if !guard.is_empty() {
+                    self.issue(Command::Order { player: me, units: guard, order: Order::Guard(target), queue: shift });
+                }
+            }
+        }
+        if let Some(&first) = self.selection.first() {
+            self.voices.push((first, ta_audio::SoundEvent::Ok));
+        }
+        true
+    }
+
+    /// The unit marked on the minimap nearest `at` (x, z on the ground), within `reach` of it, of
+    /// the kind a minimap order aims at: an enemy in sight or on radar (`enemy`), else one of
+    /// ours or our allies'.
+    pub(crate) fn minimap_unit_at(&self, at: Vec2, reach: f32, enemy: bool) -> Option<UnitId> {
+        let me = self.local_player;
+        self.sim
+            .units()
+            .filter(|u| !u.dead && u.carried_by.is_none() && self.sim.is_enemy(me, u.owner) == enemy && self.seen(u) != Seen::Hidden)
+            .map(|u| {
+                let p = u.pos.to_f32();
+                ((p[0] - at.x).hypot(p[2] - at.y), u.id)
+            })
+            .filter(|&(d, _)| d <= reach)
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, id)| id)
     }
 
     /// Acknowledges an order where it goes (see [`OrderMark`]); the selection's routes show
@@ -3553,15 +3579,25 @@ impl Game {
         best.map(|(_, i)| i)
     }
 
-    /// A minimap order uses the armed command when there is one, else moves the selection.
-    /// Unit-only commands keep waiting for a unit; they never fall back to Move.
-    pub(crate) fn order_selection_from_map(&mut self, target: Vec3, queue: bool, shift_held: bool) {
+    /// A minimap order uses the armed command when there is one, aimed at a unit marked there
+    /// when it takes one; else the selection attacks an enemy marked there (in sight or on radar),
+    /// or moves there. Unit-only commands keep waiting for a unit; they never fall back to Move.
+    /// `reach`: how far from `target` a unit's mark is taken to be clicked.
+    pub(crate) fn order_selection_from_map(&mut self, target: Vec3, reach: f32, queue: bool, shift_held: bool) {
         if !self.can_order() {
             return;
         }
+        let at = Vec2::new(target.x, target.z);
         if let Some(mode) = self.command_mode {
+            // The command's own kind of unit: an enemy to attack or capture, one of ours or an
+            // ally's to guard, repair, load or take apart; none for the ground's commands.
+            let unit = match mode {
+                CommandMode::Attack | CommandMode::DGun | CommandMode::Capture => self.minimap_unit_at(at, reach, true),
+                CommandMode::Guard | CommandMode::Repair | CommandMode::Load | CommandMode::Reclaim => self.minimap_unit_at(at, reach, false),
+                _ => None,
+            };
             let ground = self.cursor_ground.replace(target);
-            let hovered = self.hovered.take();
+            let hovered = std::mem::replace(&mut self.hovered, unit);
             let issued = self.target_command(mode, queue);
             self.cursor_ground = ground;
             self.hovered = hovered;
@@ -3573,6 +3609,13 @@ impl Game {
                 finish_repeat_mode(&mut self.repeat_order, &mut self.command_mode, &mut self.placement, shift_held || self.demo_shift, false);
             }
         } else {
+            // (Our own units' and our allies' marks are passed over: a click among them moves
+            // there, as before, rather than guarding one.)
+            if let Some(enemy) = self.minimap_unit_at(at, reach, true)
+                && self.unit_order(enemy, queue)
+            {
+                return;
+            }
             self.move_selection(target, queue);
             if let Some(&first) = self.selection.first() {
                 self.voices.push((first, ta_audio::SoundEvent::Ok));
