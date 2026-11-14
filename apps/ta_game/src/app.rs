@@ -1315,8 +1315,6 @@ impl ApplicationHandler<egui_winit::accesskit_winit::Event> for App {
             return;
         }
         match event {
-            WindowEvent::CursorEntered { .. } => state.input.cursor_inside = true,
-            WindowEvent::CursorLeft { .. } => state.input.cursor_inside = false,
             WindowEvent::Focused(false) => {
                 // Losing focus cancels a drag; it must never look like a release that
                 // commits a formation or a row of buildings, even if egui consumes it.
@@ -1345,8 +1343,10 @@ impl ApplicationHandler<egui_winit::accesskit_winit::Event> for App {
         let game_key = keyboard_pointer_key || history_key;
         if !response.consumed || (tab && !wants_keyboard && state.screen == Screen::Playing) || game_key {
             state.input.on_event(&event, wants_pointer, wants_keyboard && !game_key);
-        } else if let WindowEvent::MouseInput { .. } | WindowEvent::KeyboardInput { .. } = event {
-            // Still track releases so buttons never get stuck.
+        } else if let WindowEvent::MouseInput { .. } | WindowEvent::KeyboardInput { .. }
+            | WindowEvent::CursorMoved { .. } | WindowEvent::CursorEntered { .. } | WindowEvent::CursorLeft { .. } = event {
+            // Still track releases so buttons never get stuck, and the cursor (egui keeps a
+            // slider's drag to itself): where it is, and whether it is over the window.
             state.input.on_event(&event, true, true);
         }
         match event {
@@ -4221,15 +4221,13 @@ impl State {
             cam.pan_pixels(pan * scroll);
         }
         // The screen's edges: the cursor within a few pixels of one (inside the window, which
-        // has the keyboard) scrolls that way. (Not in captures: where the mouse happens to be
+        // has the keyboard) scrolls that way, though not while the interface holds it (a slider
+        // or a scroll bar dragged to the edge). (Not in captures: where the mouse happens to be
         // must not move their view.)
-        if self.settings.gameplay.edge_scroll && input.cursor_inside && self.window.has_focus() && self.screenshot_path.is_none() {
-            const EDGE: f32 = 3.0;
-            let (m, size) = (input.mouse, cam.viewport);
-            let edge = Vec2::new(
-                if m.x <= EDGE { -1.0 } else if m.x >= size.x - 1.0 - EDGE { 1.0 } else { 0.0 },
-                if m.y <= EDGE { -1.0 } else if m.y >= size.y - 1.0 - EDGE { 1.0 } else { 0.0 },
-            );
+        if self.settings.gameplay.edge_scroll && self.window.has_focus() && self.screenshot_path.is_none()
+            && !self.egui.ctx.egui_is_using_pointer()
+        {
+            let edge = input.edge_scroll(cam.viewport);
             cam.pan_pixels(edge * scroll);
             // (Scrolling the view takes it back from a unit followed or the action camera.)
             if edge != Vec2::ZERO {
