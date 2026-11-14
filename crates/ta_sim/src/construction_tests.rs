@@ -659,6 +659,48 @@ fn reclaiming_a_unit_takes_as_long_as_its_metal_says() {
     assert!(solar_ticks.abs_diff(expected) <= 4, "100 metal: twenty times that in worker time: {solar_ticks} ticks, {expected} expected");
 }
 
+#[test]
+fn reclaiming_pays_when_it_is_done_not_as_the_work_goes() {
+    let data = data_of(&[
+        unit("BUILDER", "Builder=1; WorkerTime=300; CanMove=1; MaxVelocity=1; BuildDistance=128; CanReclamate=1; FootprintX=1; FootprintZ=1;"),
+        unit("SOLAR", "BuildTime=2495; BuildCostMetal=100; BuildCostEnergy=760; FootprintX=2; FootprintZ=2;"),
+        ("features/all/rock.tdf".into(), "[ROCK] { footprintx=1; footprintz=1; blocking=1; reclaimable=1; metal=60; damage=1000; }".into()),
+    ]);
+    let mut sim = sim_of(with_menu(data, "BUILDER", &["SOLAR"]), 1);
+    let builder = put(&mut sim, "BUILDER", 0, 200, true);
+    sim.set_starting_resources(0, Fx::ZERO, Fx::ZERO);
+    let metal = |sim: &Sim| sim.players[0].economy.metal;
+    // A rock: nothing while it is reclaimed, its 60 metal when it is gone.
+    let rock = sim.place_feature("ROCK", FxVec3::from_ints(250, 60, 300), 0).unwrap();
+    sim.step(&[Command::Order { player: 0, units: vec![builder], order: Order::Reclaim(rock), queue: false }]);
+    let mut ticks = 0;
+    while sim.features[rock].alive && ticks < 900 {
+        assert_eq!(metal(&sim), Fx::ZERO, "nothing paid while the work goes");
+        sim.step(&[]);
+        ticks += 1;
+    }
+    assert!(!sim.features[rock].alive && ticks > 10, "reclaimed, over {ticks} ticks");
+    assert_eq!(metal(&sim), Fx::from_int(60), "the whole of it at the end");
+    // One of our own buildings, taken apart in two goes: nothing until it is gone, then all of
+    // its 100 metal.
+    sim.players[0].economy.metal = Fx::ZERO;
+    let solar = put(&mut sim, "SOLAR", 0, 300, true);
+    sim.step(&[Command::Order { player: 0, units: vec![builder], order: Order::ReclaimUnit(solar), queue: false }]);
+    while sim.unit(solar).is_some_and(|u| u.build_progress > Fx::HALF) { sim.step(&[]); }
+    sim.step(&[Command::Order { player: 0, units: vec![builder], order: Order::Stop, queue: false }]);
+    for _ in 0..10 { sim.step(&[]); }
+    assert!(sim.unit(solar).is_some_and(|u| u.build_progress <= Fx::HALF && u.build_progress > Fx::ZERO), "left half taken apart");
+    assert_eq!(metal(&sim), Fx::ZERO, "nothing for half of it");
+    sim.step(&[Command::Order { player: 0, units: vec![builder], order: Order::ReclaimUnit(solar), queue: false }]);
+    for _ in 0..900 {
+        if sim.unit(solar).is_none() { break; }
+        assert_eq!(metal(&sim), Fx::ZERO, "nothing while it is taken apart");
+        sim.step(&[]);
+    }
+    assert!(sim.unit(solar).is_none(), "gone");
+    assert_eq!(metal(&sim), Fx::from_int(100), "all of its metal when it is gone");
+}
+
 /// A builder's script as Total Mayhem's advanced construction kbots have it (`ARMACK.bos`): the
 /// nano arm goes out as a job starts, raising the build stance, unless it is out already; after a
 /// job it stays out five seconds and comes in, dropping the stance, only if no new job came.

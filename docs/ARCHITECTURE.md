@@ -502,7 +502,9 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
 * **Reclaim and resurrection**: features give their metal and energy; own units are taken
   apart like construction in reverse, refunding metal, and vanish without a wreck, in time by
   their metal as a feature is (twenty times it in worker time: a metal maker, which costs none,
-  at once). A unit is
+  at once). Either pays when it is done, as TA's reclaiming does: a feature's metal and energy
+  when it is reclaimed whole (the work stays on it if left), a unit's metal when it is gone
+  (`Unit::reclaim_owed`, kept across goes, lost with it if it dies first). A unit is
   finished once (`Unit::finished`: its `UnitCompleted`, its count in the stats, switched on and
   set to hold fire as it is finished): while its side takes it apart (`Sim::being_taken_apart`,
   a builder took work off it in the last second), other builders' work on it only mends what is
