@@ -174,6 +174,13 @@ impl Sim {
                 p.pos.y = self.world.sea_level - Fx::ONE;
                 p.vel.y = p.vel.y.min(Fx::ZERO);
             }
+            // A piercing shot (TA's `noexplode`: the D-gun) meeting the ground or the water runs on
+            // along it, through what stands there: aimed down at a unit or at the ground, it went
+            // on under them.
+            if w.no_explode && !w.def.interceptor && w.trajectory == Trajectory::Straight {
+                let surface = self.world.height_at(p.pos.x, p.pos.z).max(self.world.sea_level);
+                p.pos.y = p.pos.y.max(surface);
+            }
         }
 
         let intercepting = projectiles.iter().any(|p| !p.dead && weapons.get(p.weapon).def.interceptor);
@@ -211,18 +218,24 @@ impl Sim {
             if p.dead { continue; }
             let w = weapons.get(p.weapon);
             if w.no_explode && !w.def.interceptor {
-                self.grid.query(p.pos, p.vel.length() + self.types.collision_reach, &mut near);
+                // It harms what it passes through, and what stands within its area of effect of
+                // its flight, each once; that area only once the shot is as far from the gun, so
+                // it never reaches back over the unit that fired it and those beside it.
+                let flown = p.vel.length() * i64::from(p.age.saturating_sub(1));
+                let area = if flown >= w.aoe_radius { w.aoe_radius } else { Fx::ZERO };
+                self.grid.query(p.pos, p.vel.length() + self.types.collision_reach + area, &mut near);
                 for &slot in &near {
                     let Some(u) = self.units.get(slot as usize).and_then(|u| u.as_ref()) else { continue };
                     if !self.projectile_hits_unit(p, w, u) { continue; }
                     let (centre, radius) = hit_sphere(u, self);
-                    if segment_distance(p.prev_pos, p.pos, centre) <= radius {
+                    if segment_distance(p.prev_pos, p.pos, centre) <= radius + area {
                         p.hits.push(u.id);
                         if !self.ceasefire_spares_side(p.owner_player, u.owner) {
                             self.damage_unit(u.id, w.damage_to(u.type_id), p.owner, p.vel);
                         }
                     }
                 }
+                self.sweep_features(p.prev_pos, p.pos, w);
             }
             let impact = if intercepting && (w.def.interceptor || w.def.targetable) { impacts[index] }
                 else { self.projectile_impact(p, w, &mut near) };

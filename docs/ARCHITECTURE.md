@@ -294,7 +294,13 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   and the explosion event says how far through the tick, for the client to draw the last
   stretch and set the blast off as the drawn shot arrives); TA/Spring edge falloff; deaths run
   `Killed`, spawn wrecks, and trigger `ExplodeAs` blasts (which can chain; a blast no archive
-  has is none, as in TA: see FORMATS.md).
+  has is none, as in TA: see FORMATS.md). A piercing shot (`noexplode=1`: the Commanders'
+  D-gun) goes off at nothing: it harms each unit it passes through, and each within its area of
+  effect of its flight (half its `areaofeffect`, 24 px for the D-gun) once it is that far from
+  the gun (never back over the Commander's side, where its builders stand), and hits the
+  features in its way as its blast would (trees catch fire by its `firestarter`, 70 for the
+  D-gun, the rest are destroyed, a wreck heap and all); meeting the ground or the water it runs
+  on along it, to the end of its flight (its `weapontimer`, 4 s for the D-gun).
   Aiming never kills a script's aim: the script's own `signal` ends the last one when a new
   one starts, and some guard a step from it (see FORMATS.md). A new aim is asked for only
   once the last has answered (else after three seconds): after every shot, when the target

@@ -1603,21 +1603,48 @@ impl Sim {
             if !f.alive || !f.pos.within_xz(pos, r + Fx::from_int(8)) {
                 continue;
             }
-            let def = &self.data.features[f.def];
-            if def.indestructible || f.burn_until != 0 {
-                // Burning features burn down on their own.
+            self.hit_feature(i, damage, ignite);
+        }
+    }
+
+    /// A piercing shot (TA's `noexplode`: the Commanders' D-gun) over the features in its way:
+    /// those within its blast's reach of its flight this tick, measured to where they stand,
+    /// are hit as by its blast. (What a destroyed one leaves lies in its way still, and is hit
+    /// as the shot passes on: a wreck it crosses goes, heap and all.)
+    fn sweep_features(&mut self, from: FxVec3, to: FxVec3, w: &WeaponType) {
+        let r = w.aoe_radius.max(Fx::from_int(12)) + Fx::from_int(8);
+        let ignite = w.def.fire_starter.clamp(0.0, 100.0) as u32;
+        let mut near = Vec::new();
+        self.feature_grid.near(from + (to - from).scale(Fx::HALF), (to - from).length_xz() / 2 + r, &mut near);
+        for i in near {
+            let i = i as usize;
+            let f = &self.features[i];
+            if !f.alive || segment_distance(from, to, f.pos) > r {
                 continue;
             }
-            if def.flamable && ignite > 0 && self.rng.chance(ignite, 100) {
-                self.ignite(i);
-                continue;
-            }
-            let f = &mut self.features[i];
-            f.health -= damage;
-            if f.health <= Fx::ZERO {
-                let next = self.data.features[f.def].feature_dead.clone();
-                self.replace_feature(i, &next);
-            }
+            self.hit_feature(i, w.default_damage, ignite);
+        }
+    }
+
+    /// A blast or a piercing shot reaches a feature: a flammable one (a tree) may catch fire
+    /// instead, with `ignite` percent chance; the others take the damage and, destroyed, leave
+    /// their `featuredead`.
+    fn hit_feature(&mut self, i: usize, damage: Fx, ignite: u32) {
+        let f = &self.features[i];
+        let def = &self.data.features[f.def];
+        if def.indestructible || f.burn_until != 0 {
+            // Burning features burn down on their own.
+            return;
+        }
+        if def.flamable && ignite > 0 && self.rng.chance(ignite, 100) {
+            self.ignite(i);
+            return;
+        }
+        let f = &mut self.features[i];
+        f.health -= damage;
+        if f.health <= Fx::ZERO {
+            let next = self.data.features[f.def].feature_dead.clone();
+            self.replace_feature(i, &next);
         }
     }
 

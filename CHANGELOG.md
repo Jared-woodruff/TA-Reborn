@@ -8,6 +8,12 @@
   display it never could. Any move of the cursor now brings it back. It no longer scrolls while a
   drag is carried out of the window, or while a slider or a scroll bar is dragged to the edge of
   the screen.
+- The Commanders' D-gun passed through almost everything: it harmed only what its shot went
+  right through, and a shot aimed down at a unit or at the ground went on under the ground
+  beyond it. It now runs on along the ground or the water to the end of its flight, destroying
+  every unit within its area of effect of its way (sparing those beside the Commander as it
+  fires) and the trees, rocks and wrecks in its path; trees catch fire as often as TA's weapon
+  file says.
 
 ## 1.0.5 — 2026-11-14
 

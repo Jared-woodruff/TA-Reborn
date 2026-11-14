@@ -578,6 +578,149 @@ fn weapon_file(name: &str, keys: &str) -> (String, String) {
 }
 
 #[test]
+fn piercing_shots_sweep_their_damage_area_and_hit_each_unit_once() {
+    let mut data = data_of(&[
+        unit("SHOOTER", "Weapon1=SHOT;"),
+        unit("TARGET", "FootprintX=2; FootprintZ=2;"),
+        weapon_file("SHOT", "areaofeffect=48; noexplode=1; commandfire=1;"),
+    ]);
+    let weapon = data.weapon_id("SHOT").unwrap();
+    data.weapons[weapon].default_damage = 60.0;
+    let mut sim = sim_of(data, 2);
+    let target_type = sim.types.id("TARGET").unwrap();
+    let t = sim.types.get(target_type);
+    let y = Fx::from_int(60) + t.model.height.max(Fx::from_int(8)) / 2;
+    let z = Fx::from_int(255) + t.collision_radius();
+    let shooter = sim.spawn_unit(sim.types.id("SHOOTER").unwrap(), 0, FxVec3::from_ints(200, 60, 255), 0, true).unwrap();
+    let friendly = sim.spawn_unit(target_type, 0, FxVec3::new(Fx::from_int(280), Fx::from_int(60), z + Fx::from_int(12)), 0, true).unwrap();
+    let enemy = sim.spawn_unit(target_type, 1, FxVec3::new(Fx::from_int(340), Fx::from_int(60), z + Fx::from_int(12)), 0, true).unwrap();
+    let outside = sim.spawn_unit(target_type, 1, FxVec3::new(Fx::from_int(400), Fx::from_int(60), z + Fx::from_int(64)), 0, true).unwrap();
+    sim.step(&[]);
+    let full = sim.unit(enemy).unwrap().health;
+    let shooter_full = sim.unit(shooter).unwrap().health;
+    let pos = FxVec3::new(Fx::from_int(200), y, Fx::from_int(255));
+    sim.projectiles.push(crate::Projectile {
+        id: 1, weapon, owner: shooter, owner_player: 0, pos, prev_pos: pos, vel: FxVec3::from_ints(80, 0, 0),
+        target: None, target_pos: pos, age: 0, ttl: 8, hits: Vec::new(), dead: false,
+    });
+    for _ in 0..8 { sim.step(&[]); }
+    for id in [friendly, enemy] {
+        assert_eq!(sim.unit(id).unwrap().health, full - Fx::from_int(60), "the damage area reaches friends and enemies beside the flight, once each");
+    }
+    assert_eq!(sim.unit(outside).unwrap().health, full, "outside the damage area");
+    assert_eq!(sim.unit(shooter).unwrap().health, shooter_full, "the shot still excludes its owner");
+    assert!(sim.projectiles.is_empty(), "piercing shots still expire");
+}
+
+#[test]
+fn dgun_sweeps_hit_trees_and_rocks_as_its_blast_would_without_stopping_the_shot() {
+    // (TA's D-gun says `firestarter=70`: a tree in its way catches fire as often, else goes.)
+    for fire_starter in [0, 100] {
+        let mut data = data_of(&[
+            unit("SHOOTER", "Weapon1=SHOT;"),
+            weapon_file("SHOT", &format!("rendertype=3; areaofeffect=48; noexplode=1; commandfire=1; firestarter={fire_starter};")),
+            ("features/all/targets.tdf".into(), "[TREE] { damage=1000; height=40; blocking=1; flamable=1; burnmin=10; burnmax=10; } [ROCK] { damage=1000; blocking=1; } [PERMANENT] { damage=1000; blocking=1; indestructible=1; }".into()),
+        ]);
+        let weapon = data.weapon_id("SHOT").unwrap();
+        data.weapons[weapon].default_damage = 30000.0;
+        let mut sim = sim_of(data, 1);
+        let shooter = sim.spawn_unit(sim.types.id("SHOOTER").unwrap(), 0, FxVec3::from_ints(200, 60, 300), 0, true).unwrap();
+        let tree = sim.place_feature("TREE", FxVec3::from_ints(250, 60, 300), 0).unwrap();
+        let burning = sim.place_feature("TREE", FxVec3::from_ints(300, 60, 320), 0).unwrap();
+        let rock = sim.place_feature("ROCK", FxVec3::from_ints(350, 60, 300), 0).unwrap();
+        let permanent = sim.place_feature("PERMANENT", FxVec3::from_ints(320, 60, 300), 0).unwrap();
+        let outside = sim.place_feature("TREE", FxVec3::from_ints(300, 60, 400), 0).unwrap();
+        sim.ignite(burning);
+        let pos = FxVec3::from_ints(200, 70, 300);
+        sim.projectiles.push(crate::Projectile {
+            id: 1, weapon, owner: shooter, owner_player: 0, pos, prev_pos: pos, vel: FxVec3::from_ints(200, 0, 0),
+            target: None, target_pos: pos, age: 0, ttl: 5, hits: Vec::new(), dead: false,
+        });
+        sim.step(&[]);
+        assert!(!sim.features[rock].alive && sim.features[rock].burn_until == 0, "a rock in the way is destroyed");
+        if fire_starter == 0 {
+            assert!(!sim.features[tree].alive && sim.features[tree].burn_until == 0, "a tree in the way is destroyed");
+        } else {
+            assert!(sim.features[tree].alive && sim.features[tree].burn_until != 0, "a tree in the way catches fire");
+        }
+        assert!(sim.features[burning].alive && sim.features[burning].burn_until != 0, "a burning tree burns down on its own");
+        for index in [permanent, outside] {
+            assert!(sim.features[index].alive, "indestructible features and trees outside the damage area survive");
+            assert_eq!(sim.features[index].health, Fx::from_int(1000));
+        }
+        assert_eq!(sim.projectiles.len(), 1, "destroying features must not consume a piercing shot");
+    }
+}
+
+#[test]
+fn piercing_shots_run_along_the_ground_or_the_water_they_meet() {
+    let mut data = data_of(&[
+        unit("SHOOTER", "Weapon1=SHOT;"),
+        unit("TARGET", "FootprintX=2; FootprintZ=2;"),
+        weapon_file("SHOT", "areaofeffect=48; noexplode=1; commandfire=1;"),
+    ]);
+    let weapon = data.weapon_id("SHOT").unwrap();
+    data.weapons[weapon].default_damage = 60.0;
+    // Aimed down into flat ground (at 60), it would pass some 60 px under a unit 320 px on.
+    let mut sim = sim_of(data.clone(), 1);
+    let shooter = sim.spawn_unit(sim.types.id("SHOOTER").unwrap(), 0, FxVec3::from_ints(200, 60, 255), 0, true).unwrap();
+    let target = sim.spawn_unit(sim.types.id("TARGET").unwrap(), 0, FxVec3::from_ints(520, 60, 255), 0, true).unwrap();
+    sim.step(&[]);
+    let full = sim.unit(target).unwrap().health;
+    let pos = FxVec3::from_ints(200, 80, 255);
+    sim.projectiles.push(crate::Projectile {
+        id: 1, weapon, owner: shooter, owner_player: 0, pos, prev_pos: pos, vel: FxVec3::from_ints(40, -10, 0),
+        target: None, target_pos: pos, age: 0, ttl: 10, hits: Vec::new(), dead: false,
+    });
+    for _ in 0..3 { sim.step(&[]); }
+    assert_eq!(sim.projectiles[0].pos.y, Fx::from_int(60), "it runs on along the ground");
+    for _ in 0..6 { sim.step(&[]); }
+    assert_eq!(sim.unit(target).unwrap().health, full - Fx::from_int(60), "the unit on the ground in its way is hit");
+    // Over the sea (its floor at 20, its surface at 60) it runs along the water.
+    let mut sea = flat_map();
+    sea.heights = vec![20; sea.heights.len()];
+    sea.sea_level = 60;
+    let mut sim = sim_on_map(data, 1, &sea);
+    let pos = FxVec3::from_ints(200, 80, 255);
+    sim.projectiles.push(crate::Projectile {
+        id: 1, weapon, owner: UnitId { slot: 1000, generation: 0 }, owner_player: 0, pos, prev_pos: pos, vel: FxVec3::from_ints(40, -10, 0),
+        target: None, target_pos: pos, age: 0, ttl: 10, hits: Vec::new(), dead: false,
+    });
+    for _ in 0..4 { sim.step(&[]); }
+    assert_eq!(sim.projectiles[0].pos.y, Fx::from_int(60), "it runs on along the water");
+}
+
+#[test]
+fn a_piercing_shots_area_never_reaches_back_over_those_beside_the_gun() {
+    let mut data = data_of(&[
+        unit("SHOOTER", "Weapon1=SHOT;"),
+        unit("TARGET", "FootprintX=2; FootprintZ=2;"),
+        weapon_file("SHOT", "areaofeffect=48; noexplode=1; commandfire=1;"),
+    ]);
+    let weapon = data.weapon_id("SHOT").unwrap();
+    data.weapons[weapon].default_damage = 60.0;
+    let mut sim = sim_of(data, 1);
+    let target_type = sim.types.id("TARGET").unwrap();
+    let t = sim.types.get(target_type);
+    let y = Fx::from_int(60) + t.model.height.max(Fx::from_int(8)) / 2;
+    // Beside the flight, outside the unit's own reach of it, inside its area's.
+    let beside = Fx::from_int(255) + t.collision_radius() + Fx::from_int(12);
+    let shooter = sim.spawn_unit(sim.types.id("SHOOTER").unwrap(), 0, FxVec3::from_ints(160, 60, 255), 0, true).unwrap();
+    let builder = sim.spawn_unit(target_type, 0, FxVec3::new(Fx::from_int(200), Fx::from_int(60), beside), 0, true).unwrap();
+    let further = sim.spawn_unit(target_type, 0, FxVec3::new(Fx::from_int(330), Fx::from_int(60), beside), 0, true).unwrap();
+    sim.step(&[]);
+    let full = sim.unit(builder).unwrap().health;
+    let pos = FxVec3::new(Fx::from_int(200), y, Fx::from_int(255));
+    sim.projectiles.push(crate::Projectile {
+        id: 1, weapon, owner: shooter, owner_player: 0, pos, prev_pos: pos, vel: FxVec3::from_ints(10, 0, 0),
+        target: None, target_pos: pos, age: 0, ttl: 20, hits: Vec::new(), dead: false,
+    });
+    for _ in 0..20 { sim.step(&[]); }
+    assert_eq!(sim.unit(builder).unwrap().health, full, "beside the gun as it fires");
+    assert_eq!(sim.unit(further).unwrap().health, full - Fx::from_int(60), "beside the flight further on");
+}
+
+#[test]
 fn ceasefire_protects_against_projectiles_after_the_attacker_is_removed() {
     for protected in [false, true] {
         for (through, paralyzer) in [(false, false), (true, false), (false, true)] {
