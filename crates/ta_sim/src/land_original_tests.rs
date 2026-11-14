@@ -15,8 +15,6 @@ fn original_dguns_hit_a_line_of_units_when_aimed_at_ground() {
             }).collect();
             for id in std::iter::once(commander).chain(targets.iter().copied()) { sim.unit_mut(id).unwrap().fire_state = 0; }
             let weapon = types.get(types.id(name).unwrap()).weapons.iter().flatten().copied().find(|&w| sim.weapon_types.get(w).command_fire).unwrap();
-            // Sweep through a formation by clicking the ground under its back rank;
-            // also keep the direct unit shot through its front rank working.
             let target = if ground { Target::Ground(sim.unit(*targets.last().unwrap()).unwrap().pos) } else { Target::Unit(targets[0]) };
             sim.give_orders(commander, [Order::ManualFire(target)]);
             let mut shots = 0;
