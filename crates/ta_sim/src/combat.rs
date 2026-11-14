@@ -1326,7 +1326,7 @@ impl Sim {
             self.damage_unit(id, dmg, source, dir);
         }
         // Scorch/knock over trees and other destructible features.
-        self.damage_features_along(pos, pos, w);
+        self.damage_features(pos, r, w.default_damage, w.def.fire_starter);
     }
 
     /// Paralyzer (EMP) hits stun instead of damaging. TA's damage figure is the stun time
@@ -1590,39 +1590,61 @@ impl Sim {
     /// Applies explosion damage to destructible features: flammable ones (trees) may catch
     /// fire instead, with the weapon's `firestarter` percent chance; the others take the
     /// damage and, destroyed, leave their `featuredead` (a smudge, rubble).
-    fn damage_features_along(&mut self, from: FxVec3, to: FxVec3, w: &WeaponType) {
-        let r = w.aoe_radius.max(Fx::from_int(12)) + Fx::from_int(8);
-        let disintegrate = w.def.render_type == RenderType::Disintegrator;
-        let ignite = if disintegrate { 0 } else { w.def.fire_starter.clamp(0.0, 100.0) as u32 };
-        let from = FxVec3::new(from.x, Fx::ZERO, from.z);
-        let to = FxVec3::new(to.x, Fx::ZERO, to.z);
-        let midpoint = from + (to - from).scale(Fx::HALF);
+    fn damage_features(&mut self, pos: FxVec3, r: Fx, damage: Fx, fire_starter: f64) {
+        let r = r.max(Fx::from_int(12));
+        let ignite = fire_starter.clamp(0.0, 100.0) as u32;
         // (In index order, as they were once all looked at: the chances of catching fire are
         // drawn in that order. What a destroyed one leaves is not hit by the same blast.)
         let mut near = Vec::new();
-        self.feature_grid.near(midpoint, (to - from).length_xz() / 2 + r, &mut near);
+        self.feature_grid.near(pos, r + Fx::from_int(8), &mut near);
         for i in near {
             let i = i as usize;
             let f = &self.features[i];
-            let pos = FxVec3::new(f.pos.x, Fx::ZERO, f.pos.z);
-            if !f.alive || segment_distance(from, to, pos) > r {
+            if !f.alive || !f.pos.within_xz(pos, r + Fx::from_int(8)) {
                 continue;
             }
-            let def = &self.data.features[f.def];
-            if def.indestructible || f.burn_until != 0 && !disintegrate {
-                // Burning features burn down on their own.
+            self.hit_feature(i, damage, ignite);
+        }
+    }
+
+    /// A piercing shot (TA's `noexplode`: the Commanders' D-gun) over the features in its way:
+    /// those within its blast's reach of its flight this tick, measured to where they stand,
+    /// are hit as by its blast. (What a destroyed one leaves lies in its way still, and is hit
+    /// as the shot passes on: a wreck it crosses goes, heap and all.)
+    fn sweep_features(&mut self, from: FxVec3, to: FxVec3, w: &WeaponType) {
+        let r = w.aoe_radius.max(Fx::from_int(12)) + Fx::from_int(8);
+        let ignite = w.def.fire_starter.clamp(0.0, 100.0) as u32;
+        let mut near = Vec::new();
+        self.feature_grid.near(from + (to - from).scale(Fx::HALF), (to - from).length_xz() / 2 + r, &mut near);
+        for i in near {
+            let i = i as usize;
+            let f = &self.features[i];
+            if !f.alive || segment_distance(from, to, f.pos) > r {
                 continue;
             }
-            if def.flamable && ignite > 0 && self.rng.chance(ignite, 100) {
-                self.ignite(i);
-                continue;
-            }
-            let f = &mut self.features[i];
-            f.health -= w.default_damage;
-            if f.health <= Fx::ZERO {
-                let next = self.data.features[f.def].feature_dead.clone();
-                self.replace_feature(i, &next);
-            }
+            self.hit_feature(i, w.default_damage, ignite);
+        }
+    }
+
+    /// A blast or a piercing shot reaches a feature: a flammable one (a tree) may catch fire
+    /// instead, with `ignite` percent chance; the others take the damage and, destroyed, leave
+    /// their `featuredead`.
+    fn hit_feature(&mut self, i: usize, damage: Fx, ignite: u32) {
+        let f = &self.features[i];
+        let def = &self.data.features[f.def];
+        if def.indestructible || f.burn_until != 0 {
+            // Burning features burn down on their own.
+            return;
+        }
+        if def.flamable && ignite > 0 && self.rng.chance(ignite, 100) {
+            self.ignite(i);
+            return;
+        }
+        let f = &mut self.features[i];
+        f.health -= damage;
+        if f.health <= Fx::ZERO {
+            let next = self.data.features[f.def].feature_dead.clone();
+            self.replace_feature(i, &next);
         }
     }
 
