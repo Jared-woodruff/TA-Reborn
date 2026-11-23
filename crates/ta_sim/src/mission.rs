@@ -1291,7 +1291,16 @@ pub fn setup_mission(
         // Berthas hold their fire (0). A computer player's are its own to set going
         // (`SkirmishAi::arm_defenses`), or its script's. (Scripts' `o` come after.)
         let fire = (owner == 0).then(|| crate::sim::file_fire_state(&t.def));
+        // An aircraft stands parked where it is placed (its height in the file is the ground's),
+        // as TA's did, where it may set down: it takes off on its first orders, not at once to
+        // come down again (with a script's wait, to hang over the spot: `Unit::holding`). Over
+        // the sea, or ground too steep, it is in flight.
+        let parked = (t.locomotion == Locomotion::Air).then(|| sim.unit(id).map(|u| u.pos)).flatten().and_then(|at| sim.world.air_landing_height(at, &t.landing()));
         if let Some(u) = sim.unit_mut(id) {
+            if let Some(ground) = parked {
+                u.landed = true;
+                u.pos.y = ground;
+            }
             u.health = (max * Fx::from_f32(pu.health)).max(Fx::ONE);
             u.kills = pu.kills;
             u.xp = Fx::from_int(pu.kills as i64);

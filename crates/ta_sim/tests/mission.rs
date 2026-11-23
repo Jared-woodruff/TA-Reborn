@@ -1432,6 +1432,65 @@ fn a_mods_own_copy_of_a_mission_places_its_units() {
     std::fs::remove_dir_all(&root).ok();
 }
 
+/// A mission's aircraft stand parked where they are placed, as TA's did, and one its script tells
+/// to wait (TA's `w`) waits there, taking off on its orders once the wait is up. Placed on the
+/// ground with a wait, each climbed away and hung over the spot for the length of it (The Defense
+/// of Larab Harbor's Core raiders, along the south edge, for up to 28 minutes).
+#[test]
+fn a_missions_aircraft_wait_parked_and_take_off_after() {
+    let root = scratch_folder("parked-wait");
+    let plane = "CanFly=1;\nCanMove=1;\nMaxVelocity=5;\nAcceleration=1;\nBrakeRate=1;\nTurnRate=2048;\nCruiseAlt=80;\nFootprintX=1;\nFootprintZ=1;";
+    let ota = "[GlobalHeader]{missionname=Made Up;DestroyAllUnits=1;[Schema 0]{Type=Easy;[units]{\
+        [unit0]{Unitname=PLANE;XPos=400;ZPos=400;Player=2;InitialMission=w 10, m 800 400;}\
+        [unit1]{Unitname=PLANE;XPos=400;ZPos=600;Player=2;InitialMission=m 800 600;}\
+        [unit2]{Unitname=PLANE;XPos=400;ZPos=800;Player=2;}\
+        [unit3]{Unitname=TANK;XPos=100;ZPos=100;Player=1;}}\
+        [specials]{[special0]{specialwhat=StartPos1;XPos=100;ZPos=100;}}}}";
+    write_files(&root.join("game"), &[
+        ("units/plane.fbi", unit_file("PLANE", plane)),
+        ("units/tank.fbi", unit_file("TANK", "MaxVelocity=1;\nCanMove=1;")),
+        ("maps/Made Up.ota", ota.into()),
+    ]);
+    let mounted = ta_vfs::mods::mount(Some(&root.join("game")), None, &[], &|m| m.manifest.id.clone());
+    mounted.install.unwrap();
+    let vfs = mounted.vfs;
+    let data = Arc::new(GameData::load(&vfs));
+    let types = Arc::new(UnitTypes::compile(&data, &|p| vfs.read_opt(p)));
+    let mission = Mission::load(&vfs, "Made Up.ota").expect("the mission");
+    let schema = mission.schemas[0].clone();
+    let mut sim = flat_sim(types, data);
+    let setup = ta_sim::mission::setup_mission(&mut sim, &mission, &schema, None);
+    assert!(setup.skipped.is_empty());
+    let planes: Vec<_> = sim.units().filter(|u| sim.unit_type(u).locomotion == ta_sim::Locomotion::Air).map(|u| (u.id, u.pos.z.to_int())).collect();
+    let at = |z: i64| planes.iter().find(|p| p.1 == z).map(|p| p.0).expect("a plane placed there");
+    let (waits, goes, idle) = (at(400), at(600), at(800));
+    let ground = Fx::from_int(60);
+    for id in [waits, goes, idle] {
+        let u = sim.unit(id).unwrap();
+        assert!(u.landed && u.pos.y == ground, "placed parked on the ground");
+    }
+    // Ten seconds of waiting: parked where it stood; the other on its way at once; the third,
+    // with nothing to do, still parked.
+    for tick in 0..280 {
+        sim.step(&[]);
+        let u = sim.unit(waits).unwrap();
+        assert!(u.landed && u.pos.x == Fx::from_int(400) && u.pos.y == ground, "waiting, parked (tick {tick}: {:?}, landed {})", u.pos.to_f32(), u.landed);
+        assert!(sim.unit(idle).unwrap().landed, "with nothing to do, parked (tick {tick})");
+        if tick == 30 {
+            let off = sim.unit(goes).unwrap();
+            assert!(!off.landed && off.pos.y > ground, "with orders and no wait, it took off at once: {:?}", off.pos.to_f32());
+        }
+    }
+    assert_eq!(sim.unit(goes).unwrap().pos.x, Fx::from_int(800), "and went where it was sent");
+    // The wait up, it takes off on its move.
+    for _ in 0..200 {
+        sim.step(&[]);
+    }
+    let u = sim.unit(waits).unwrap();
+    assert!(!u.landed && u.pos.x > Fx::from_int(420), "on its way once the wait was up: {:?}", u.pos.to_f32());
+    std::fs::remove_dir_all(&root).ok();
+}
+
 /// What a mod's data lacks of a mission is said before it starts (`unplayable`), rather than
 /// played into a mission decided at once: a total conversion's units in place of TA's (none of
 /// those the mission gives the player), the Commander it is lost with, every way to win it; and

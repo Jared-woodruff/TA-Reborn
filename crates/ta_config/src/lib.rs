@@ -213,8 +213,10 @@ pub const RECORD_VERSION: u32 = 47;
 /// missiles slow as they fly instead of hanging over their launchers; launched upright at a
 /// negative speed, one drops), and a shot leaves from where its firing piece is once the weapon's
 /// fire function has run as far as its first wait.
-/// 110: direct unit possession, steering and assisted weapon aiming.
-pub const SIMULATION_VERSION: u32 = 110;
+/// 110: direct unit possession, steering and assisted weapon aiming. 111: a mission's aircraft
+/// stand parked where they are placed, and one its script holds (`w`, `wa`) waits parked, no
+/// busier than an idle one, rather than climbing off to hang over the spot (`Unit::holding`).
+pub const SIMULATION_VERSION: u32 = 111;
 /// Records shorter than one year of simulated time are supported. Shared with the
 /// launcher's metadata reader so impossible durations cannot start endless save catch-up.
 pub const MAX_RECORD_TICKS: u64 = 30 * 3600 * 24 * 365;

@@ -658,6 +658,14 @@ impl Unit {
         self.build_progress >= Fx::ONE
     }
 
+    /// Held where it is by its mission's script (`Order::Wait`, `Order::WaitAttacked`: TA's `w`
+    /// and its waits on an attack): doing nothing until then, an aircraft no busier than one with
+    /// no orders. It waits parked, as TA's did, not hanging over the spot (Larab Harbor's raiders
+    /// wait up to 28 minutes for their turn), and takes off on the orders after the wait.
+    pub fn holding(&self) -> bool {
+        matches!(self.orders.front(), Some(Order::Wait(_) | Order::WaitAttacked(_)))
+    }
+
     /// Its most health: its type's, with its enhancements'.
     #[inline]
     pub fn max_health(&self, t: &UnitType) -> Fx {

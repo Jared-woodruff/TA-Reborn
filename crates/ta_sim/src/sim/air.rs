@@ -57,7 +57,7 @@ impl Sim {
         if o.landed {
             return Some((o.pos, false));
         }
-        let idle = o.orders.is_empty() && o.build.is_none() && o.cargo.is_empty() && o.weapons.iter().all(|w| w.target.is_none());
+        let idle = (o.orders.is_empty() || o.holding()) && o.build.is_none() && o.cargo.is_empty() && o.weapons.iter().all(|w| w.target.is_none());
         match o.path_goal {
             _ if !idle || !o.is_complete() => None,
             Some(goal) => Some((goal, false)),
@@ -202,7 +202,7 @@ impl Sim {
         if let Some(h) = holder {
             let took_off = self.unit_mut(h).is_some_and(|o| {
                 o.air_pad = None;
-                if o.orders.is_empty() {
+                if o.orders.is_empty() || o.holding() {
                     o.path_goal = None;
                     o.move_request = None;
                 }
@@ -320,16 +320,18 @@ impl Sim {
         self.start_repair_trip(id, t);
         let Some(current) = self.unit(id) else { return };
         // (On a repair trip its orders wait, and what its weapons aim at does not keep it off its
-        // deck: it flies there and lands as an aircraft with nothing to do does.)
+        // deck: it flies there and lands as an aircraft with nothing to do does. Held by its
+        // mission's script, it has nothing to do until then: `Unit::holding`.)
         let trip = current.repair_trip;
-        let external = !trip && (!current.orders.is_empty() || current.build.is_some() || !current.cargo.is_empty() || current.weapons.iter().any(|w| w.target.is_some()));
+        let ordered = !current.orders.is_empty() && !current.holding();
+        let external = !trip && (ordered || current.build.is_some() || !current.cargo.is_empty() || current.weapons.iter().any(|w| w.target.is_some()));
         let old_pad = current.air_pad;
         let lost_pad = old_pad.is_some_and(|pad| self.air_pad_point(current.owner, pad).is_none());
         if old_pad.is_some() && (external || lost_pad) && let Some(u) = self.unit_mut(id) {
             u.air_pad = None;
             released |= u.landed;
             u.landed = false;
-            if lost_pad && u.orders.is_empty() { u.path_goal = None; u.move_request = None; }
+            if lost_pad && !ordered { u.path_goal = None; u.move_request = None; }
         }
         let Some(current) = self.unit(id) else { return };
         let mut ground_landing = self.air_ground_height(t, current.pos);
@@ -407,7 +409,7 @@ impl Sim {
         // Carrying a passenger keeps the aircraft in flight even after Move or Stop.
         // Landing would drag the unit hanging below it through the terrain. (On a repair trip
         // only its way to the deck keeps it up.)
-        let busy = u.path_goal.is_some() || !trip && (!u.orders.is_empty() || u.build.is_some() || !u.cargo.is_empty() || u.weapons.iter().any(|w| w.target.is_some()));
+        let busy = u.path_goal.is_some() || !trip && (!u.orders.is_empty() && !u.holding() || u.build.is_some() || !u.cargo.is_empty() || u.weapons.iter().any(|w| w.target.is_some()));
         // A self-chosen parking approach is part of landing, not a new external
         // task that restarts the idle delay after reaching the clear footprint.
         u.idle_ticks = if external { 0 } else { u.idle_ticks.saturating_add(1) };
