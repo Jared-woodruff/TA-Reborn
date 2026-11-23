@@ -533,6 +533,10 @@ impl Sim {
 
     /// Weapon update for one unit: acquire targets, aim via script, fire.
     pub(crate) fn update_weapons(&mut self, id: UnitId, types: &crate::defs::UnitTypes, weapons: &crate::defs::WeaponTypes) {
+        if self.unit(id).is_some_and(|unit| unit.direct_control.is_some()) {
+            self.direct_weapons(id, types, weapons);
+            return;
+        }
         let Some(u) = self.unit(id) else { return };
         let t = types.get(u.type_id);
         // (Its own slots: its enhancements fill and swap them.)
@@ -769,30 +773,120 @@ impl Sim {
         }
     }
 
+    /// Weapon update for a unit its owner drives (`update_weapons` hands it over): every weapon
+    /// counts down its reload and aims where the sight looks, at the ground at its range, or at
+    /// the visible enemy under the sight with the weapon's own firing solution
+    /// (`direct_aim_target`); with the trigger held it fires once aimed, loaded and, unless it is
+    /// on a turret, with the hull turned its way. Missiles kept in stock, interceptors and the
+    /// weapons fired only on order (the Commander's D-gun), unless one is the unit's first, are
+    /// left out: they are not the trigger's.
+    fn direct_weapons(&mut self, id: UnitId, types: &crate::defs::UnitTypes, weapons: &crate::defs::WeaponTypes) {
+        let Some(unit) = self.unit(id) else { return };
+        let Some(control) = unit.direct_control else { return };
+        let ty = types.get(unit.type_id);
+        let slots = *unit.weapon_slots(ty);
+        let heading = wrap_angle(control.input.heading - unit.heading);
+        let pitch = control.input.pitch;
+        let input = control.input;
+        for slot in 0..MAX_WEAPONS {
+            let Some(weapon) = slots[slot] else { continue };
+            let weapon = weapons.get(weapon);
+            if let Some(unit) = self.unit_mut(id) {
+                let state = &mut unit.weapons[slot];
+                state.reload = state.reload.saturating_sub(1);
+                state.burst_timer = state.burst_timer.saturating_sub(1);
+            }
+            let Some(unit) = self.unit(id) else { return };
+            if weapon.command_fire && slot != 0 || weapon.def.stockpile || weapon.def.interceptor || !self.weapon_can_fire_from(unit, weapon) { continue; }
+            let body_heading = unit.heading;
+            let from = self.aim_from_point(id, slot);
+            let direction = rotate_y(rotate_x(FxVec3::new(Fx::ZERO, Fx::ZERO, Fx::ONE), -pitch), input.heading);
+            let point = from + direction.scale(weapon.range);
+            let assisted = self.direct_aim_target(id, from, direction, weapon);
+            let (target, point, pitch) = assisted.unwrap_or((Target::Ground(point), point, pitch));
+            let heading = if assisted.is_some() { wrap_angle(heading_of(point - from) - body_heading) } else { heading };
+            if control.aim_piece.is_none() && slots.iter().position(Option::is_some) == Some(slot) {
+                let query = weapon_function(ty, WeaponFunction::Query, slot);
+                let piece = self.call_script(id, query, &[0]).and_then(|values| values.first().copied()).and_then(|piece| {
+                    self.unit(id)?.cob.as_ref()?.program.piece_map.get(usize::try_from(piece).ok()?).copied().flatten()
+                }).or_else(|| self.unit(id).and_then(|unit| self.aim_from_piece(unit, slot)));
+                if let Some(control) = self.unit_mut(id).and_then(|unit| unit.direct_control.as_mut()) { control.aim_piece = piece; }
+            }
+            if let Some(unit) = self.unit_mut(id) { unit.weapons[slot].target = Some(target); }
+            let traversing = self.unit(id).and_then(|unit| unit.cob.as_ref()).is_some_and(|script| script.waiting_for_turn(ThreadTag::Aim(slot as u16)));
+            let aimed = self.aim_weapon(id, slot, heading, pitch);
+            let Some(unit) = self.unit(id) else { return };
+            let waiting = unit.cob.as_ref().is_some_and(|script| script.is_running(ThreadTag::Aim(slot as u16)));
+            let ready = unit.weapons[slot].reload == 0 || unit.weapons[slot].burst_left > 0 && unit.weapons[slot].burst_timer == 0;
+            let aligned = weapon.def.turret || heading.abs() <= weapon.tolerance.max(500);
+            if input.fire && aimed && ready && (!waiting || traversing) && aligned {
+                self.fire(id, slot, weapon, target, point, pitch);
+            }
+        }
+    }
+
+    /// The enemy a driven unit's sight lies on: the nearest along the sight from `from`, within the
+    /// weapon's range, that its player sees (not on radar alone), the weapon may take on and has a
+    /// clear line of fire to, within its hit sphere and a little more (wider farther off); with
+    /// where to aim at it and the pitch to fire at to hit it (a shell's arc, not the sight's line).
+    fn direct_aim_target(&self, shooter: UnitId, from: FxVec3, direction: FxVec3, weapon: &WeaponType) -> Option<(Target, FxVec3, i32)> {
+        let owner = self.unit(shooter)?.owner;
+        self.units().filter_map(|unit| {
+            if unit.id == shooter || unit.dead || unit.carried_by.is_some() || !self.is_enemy(owner, unit.owner)
+                || self.seen_by(unit, owner) != crate::Seen::Visible || !self.can_engage(weapon, unit) { return None; }
+            let target = Target::Unit(unit.id);
+            let point = self.weapon_target_point(weapon, target)?;
+            let to = point - from;
+            let along = to.dot(direction);
+            let radius = hit_sphere(unit, self).1;
+            if along <= Fx::ZERO || to.length_xz() > weapon.range + radius { return None; }
+            let tolerance = radius + Fx::from_int(12) + along / 128;
+            if (to - direction.scale(along)).length() > tolerance { return None; }
+            let pitch = self.launch_pitch(weapon, to)?;
+            if !self.line_of_fire_clear(from, point, weapon, pitch) { return None; }
+            Some((along, unit.id, target, point, pitch))
+        }).min_by_key(|(distance, id, ..)| (*distance, *id)).map(|(_, _, target, point, pitch)| (target, point, pitch))
+    }
+
     /// Ask the weapon's script to aim and wait for its newest readiness answer. Shared
     /// by ordinary weapons and missile defence, including deployment delays/refusals.
     /// Pending deployment finishes before another aim is started; the script's own
     /// signals cancel older threads, and only the newest answer updates readiness.
+    /// (Driven, it is asked again whenever the sight moves, so that the gun follows the mouse at
+    /// its script's own pace.)
     fn aim_weapon(&mut self, id: UnitId, slot: usize, heading: i32, pitch: i32) -> bool {
         let Some(u) = self.unit(id) else { return false };
         let tag = ThreadTag::Aim(slot as u16);
         let aim = weapon_function(self.types.get(u.type_id), WeaponFunction::Aim, slot);
         let has_aim = u.cob.as_ref().is_some_and(|c| c.has_function(aim));
         let tick = self.tick;
+        let direct = u.direct_control.is_some();
         let Some(u) = self.unit_mut(id) else { return false };
         match u.cob.as_mut().filter(|_| has_aim) {
             // No script to ask: always aimed.
-            None => true,
+            None => {
+                if direct {
+                    let state = &mut u.weapons[slot];
+                    state.aim_heading = heading;
+                    state.aim_pitch = pitch;
+                    state.aimed = true;
+                    state.aim_asked = true;
+                    state.last_aim_tick = tick;
+                }
+                true
+            },
             Some(c) => {
                 // The newest aim's answer, when it comes.
-                if let Some(r) = c.take_result(tag) {
-                    u.weapons[slot].aimed = r.value != 0;
-                }
+                let answered = c.take_result(tag);
+                if let Some(r) = &answered { u.weapons[slot].aimed = r.value != 0; }
                 let ws = u.weapons[slot];
                 let drift = wrap_angle(heading - ws.aim_heading).abs().max(wrap_angle(pitch - ws.aim_pitch).abs());
                 let since = tick.saturating_sub(ws.last_aim_tick);
                 let newest = c.is_running(tag);
-                let ask = if newest || c.is_running(ThreadTag::OldAim(slot as u16)) {
+                let ask = if direct {
+                    let tracking = drift > 0 && since >= 1 && (!newest || c.waiting_for_turn(tag));
+                    !ws.aim_asked || tracking || !newest && answered.is_none() && since >= 15
+                } else if newest || c.is_running(ThreadTag::OldAim(slot as u16)) {
                     // An aim unanswered for long (its target gone, or waiting on something
                     // that never comes): asked again anyway.
                     since >= AIM_PATIENCE && (!newest || drift > REAIM_DRIFT || !ws.aimed)
@@ -1388,7 +1482,9 @@ impl Sim {
         let (unit_heading, unit_speed) = (u.heading, u.speed);
         // Re-solve the launch angle from the actual muzzle (the aim-from piece differs). A torpedo
         // fired under the water sets off for its target's depth (`projectiles::torpedo_aim`).
-        let pitch = if w.torpedo && muzzle.y < self.world.sea_level {
+        let pitch = if u.direct_control.is_some() && matches!(target, Target::Ground(_)) {
+            pitch
+        } else if w.torpedo && muzzle.y < self.world.sea_level {
             let to = projectiles::torpedo_aim(tp - muzzle);
             atan2(to.y, to.length_xz().max(Fx::ONE))
         } else {

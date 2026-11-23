@@ -166,6 +166,13 @@ impl PieceAnim {
         !matches!(self.turns[axis], Motion::Idle)
     }
 
+    pub fn turn_speed(&self, axis: usize) -> Option<i32> {
+        match self.turns.get(axis)? {
+            Motion::Turn { speed, .. } => Some(*speed),
+            _ => None,
+        }
+    }
+
     pub fn is_moving(&self, axis: usize) -> bool {
         !matches!(self.moves[axis], Motion::Idle)
     }
@@ -352,6 +359,10 @@ impl CobInstance {
 
     pub fn is_running(&self, tag: ThreadTag) -> bool {
         self.threads.iter().any(|t| !t.dead && t.tag == tag)
+    }
+
+    pub(crate) fn waiting_for_turn(&self, tag: ThreadTag) -> bool {
+        self.threads.iter().any(|thread| !thread.dead && thread.tag == tag && matches!(thread.wait, Wait::Turn(_, _)))
     }
 
     /// Removes and returns the result of the most recent finished thread with `tag`.

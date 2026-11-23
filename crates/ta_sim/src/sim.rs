@@ -19,6 +19,7 @@ use crate::world::{CELL, MoveSpec, Occupant, Region, World};
 
 pub mod adjacency;
 mod air;
+mod possession;
 mod blockers;
 pub mod enhance;
 mod repair_round;
@@ -222,6 +223,9 @@ pub enum Command {
     /// to be reclaimed, a move to a waypoint already set.
     /// (Last: replays keep the earlier variants' numbers.)
     DropOrder { player: u8, unit: UnitId, index: u32, order: Order },
+    /// `player` drives their unit from the first-person view with `input` (sent when it changes,
+    /// and once a second while it does not), or lets it go (`None`): see `sim/possession.rs`.
+    DirectControl { player: u8, unit: UnitId, input: Option<crate::unit::DirectInput> },
 }
 
 /// The index nearest `index` (the lower first, of two as near) of those below `len` that `is`
@@ -1785,6 +1789,10 @@ impl Sim {
     }
 
     pub(crate) fn order_unit(&mut self, player: u8, id: UnitId, order: &Order, queue: bool) {
+        // (A unit its owner drives takes no orders: its own wait until it is let go.)
+        if self.unit(id).is_some_and(|unit| unit.direct_control.is_some()) {
+            return;
+        }
         if !valid_order_position(order) {
             return;
         }
@@ -1934,6 +1942,7 @@ impl Sim {
             return;
         }
         match c {
+            Command::DirectControl { player, unit, input } => self.set_direct_control(*player, *unit, *input),
             Command::Order { player, units, order, queue } => {
                 if let Order::Build { type_id, .. } = order && !self.is_allowed(*type_id) {
                     return;
@@ -2369,6 +2378,17 @@ impl Sim {
     /// A unit's orders, production and flight: the first part of its tick, before the ground
     /// units move (all at once: `move_ground_units`).
     fn unit_orders(&mut self, id: UnitId, types: &UnitTypes) {
+        // A driven unit let go: no input for a while (its player gone), or no longer theirs to
+        // drive (given away, taken aboard, destroyed). It stops and takes up its orders.
+        if self.unit(id).and_then(|u| u.direct_control).is_some_and(|control| control.expires <= self.tick || self.unit(id).is_none_or(|u| u.owner != control.player || u.carried_by.is_some() || u.dead)) {
+            if let Some(u) = self.unit_mut(id) {
+                u.direct_control = None;
+                for slot in 0..ta_data::unit::MAX_WEAPONS {
+                    u.retarget(slot, None);
+                }
+            }
+            self.halt(id);
+        }
         let Some(u) = self.unit(id) else { return };
         let t = types.get(u.type_id);
         // Passengers ride along; paralyzed units are frozen: no orders, movement, weapons or
@@ -2386,7 +2406,7 @@ impl Sim {
             // Phase timings (diagnostics) on one tick in PHASE_SAMPLE, scaled up: reading the
             // clock for every unit on every tick costs about as much as a phase.
             let ta = self.sampled().then(std::time::Instant::now);
-            if !held {
+            if !held && u.direct_control.is_none() {
                 self.update_orders(id, t);
             }
             // (Not one upgraded just now: it is gone, the new one in its place.)
@@ -2489,7 +2509,12 @@ impl Sim {
             if let Some(&Some(pace)) = paces.get(u.id.slot as usize) {
                 steer.speed_cap = Some(steer.speed_cap.map_or(pace, |c| c.min(pace)));
             }
-            Self::ground_step(u, t, specs[t.id], world, steer, tick).map(|goal| (u.id, goal))
+            if let Some(control) = u.direct_control {
+                Self::direct_step(u, t, specs[t.id], world, control.input);
+                None
+            } else {
+                Self::ground_step(u, t, specs[t.id], world, steer, tick).map(|goal| (u.id, goal))
+            }
         };
         let replan: Vec<(UnitId, FxVec3)> = if self.parallel && self.units.len() >= PARALLEL_MOVERS {
             use rayon::prelude::*;
@@ -6181,6 +6206,17 @@ impl Sim {
             target(&mut mix, u.last_attacker.map(Target::Unit));
             mix(u.last_damage.0);
             mix(u.heading as i64);
+            if let Some(control) = u.direct_control {
+                mix(1);
+                mix(control.player as i64);
+                mix(control.aim_piece.map_or(-1, |piece| piece as i64));
+                mix(control.expires as i64);
+                mix(control.input.throttle as i64);
+                mix(control.input.turn as i64);
+                mix(control.input.heading as i64);
+                mix(control.input.pitch as i64);
+                mix(control.input.fire as i64);
+            }
             mix(u.build_progress.0);
             mix(u.build_work as i64);
             mix(u.repair_work as i64);

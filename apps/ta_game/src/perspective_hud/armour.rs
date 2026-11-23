@@ -30,7 +30,7 @@ pub(super) fn sight(pen: &Pen, view: &View, window: &Window, p: &Perspective, ga
     let pen = pen.scaled((window.rect.height() / pen.s(560.0)).clamp(0.75, 1.0));
     let periscope = p.cockpit == Cockpit::Periscope;
     // (Through the magnified sight, or the periscope, their own cross-hairs are the reticle.)
-    let own = p.zoom > 0 || periscope;
+    let own = !p.minimalist && (p.zoom > 0 || periscope);
     if !own {
         reticle(&pen, c);
     }
@@ -42,13 +42,15 @@ pub(super) fn sight(pen: &Pen, view: &View, window: &Window, p: &Perspective, ga
     // the window (a bridge's sill stands close under the middle of the view).
     let beside = c + vec2(pen.s(170.0), pen.s(82.0));
     let beside = pos2(beside.x, beside.y.min(window.rect.bottom() - pen.s(1.25 * 60.0)).max(c.y));
-    match p.cockpit {
+    if !p.wireframe.is_empty() {
+        room.push(model_outline(&pen.scaled(1.25), beside, p, game));
+    } else { match p.cockpit {
         Cockpit::Bridge => room.push(director(&pen.scaled(1.25), beside, rd)),
         Cockpit::Periscope => {}
         _ => room.push(hull(&pen.scaled(1.25), beside, rd, !rd.mobile)),
-    }
+    } }
     // The range finder, while nothing is bracketed (the bracket gives the target's range).
-    if p.target(game).is_none() {
+    if p.minimalist || p.target(game).is_none() {
         let range = ground_range(game, p.eye, p.forward, REACH);
         let at = c + vec2(pen.s(if own { 70.0 } else { 104.0 }), -pen.s(if own { 46.0 } else { 9.0 }));
         let label = pen.text(at, Align2::LEFT_BOTTOM, t("RNG"), 13.0, PHOSPHOR.gamma_multiply(0.8));
@@ -83,6 +85,39 @@ fn reticle(pen: &Pen, c: Pos2) {
         pen.line(c + vec2(-pen.s(half), pen.s(y)), c + vec2(pen.s(half), pen.s(y)), 1.8, col);
     }
     pen.dot(c, 2.8, AMBER_BRIGHT);
+}
+
+fn model_outline(pen: &Pen, center: Pos2, p: &Perspective, game: &Game) -> Rect {
+    let ty = game.sim.types.get(p.type_id);
+    let mut turret = game.sim.unit(p.unit).and_then(|unit| (0..ta_data::unit::MAX_WEAPONS).find_map(|slot| game.sim.aim_from_piece(unit, slot)));
+    while let Some(parent) = turret.and_then(|i| ty.model.pieces.get(i)).and_then(|piece| piece.parent) {
+        if ty.model.pieces.get(parent).is_none_or(|piece| piece.parent.is_none()) { break; }
+        turret = Some(parent);
+    }
+    let forward = glam::Vec2::new(p.forward.x, p.forward.z).normalize_or(glam::Vec2::Y);
+    let project = |point: glam::Vec3| vec2(-point.x * forward.y + point.z * forward.x, -point.x * forward.x - point.z * forward.y);
+    let origin = p.body.transform_point3(glam::Vec3::ZERO);
+    let mut edges = Vec::new();
+    let mut extent = 1.0_f32;
+    for (piece, lines) in &p.wireframe {
+        let Some(matrix) = p.pieces.get(*piece).filter(|matrix| **matrix != glam::Mat4::ZERO) else { continue };
+        let mut ancestor = Some(*piece);
+        let mut aimed = false;
+        while let Some(i) = ancestor {
+            if Some(i) == turret { aimed = true; break; }
+            ancestor = ty.model.pieces.get(i).and_then(|part| part.parent);
+        }
+        for line in lines {
+            let points = line.map(|point| project(matrix.transform_point3(point) - origin));
+            extent = extent.max(points[0].length()).max(points[1].length());
+            edges.push((points, aimed));
+        }
+    }
+    let scale = pen.s(34.0) / extent;
+    for (points, aimed) in edges {
+        pen.line(center + points[0] * scale, center + points[1] * scale, 0.8, if aimed { AMBER_BRIGHT } else { PHOSPHOR.gamma_multiply(0.8) });
+    }
+    Rect::from_center_size(center, Vec2::splat(pen.s(72.0)))
 }
 
 /// Where the gun points, as a ring on the picture.

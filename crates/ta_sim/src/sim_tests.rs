@@ -12,6 +12,137 @@ use super::*;
 use crate::unit::{PlayerSetup, Target};
 use crate::vision::Seen;
 
+#[test]
+fn possession_adjusts_elevation_for_a_visible_enemy_under_the_sight() {
+    let data = data_of(&[
+        unit("DRIVER", "CanMove=1; MaxVelocity=1; Weapon1=GUN;"),
+        unit("TARGET", "MaxDamage=1000;"),
+        weapon_file("GUN", "turret=1; ballistic=1; range=600; weaponvelocity=300;"),
+    ]);
+    let mut sim = sim_of(data, 2);
+    sim.los_enabled = false;
+    let driver = sim.spawn_unit(sim.types.id("DRIVER").unwrap(), 0, FxVec3::from_ints(300, 60, 300), 0, true).unwrap();
+    let enemy = sim.spawn_unit(sim.types.id("TARGET").unwrap(), 1, FxVec3::from_ints(300, 80, 500), 0, true).unwrap();
+    let u = sim.unit(driver).unwrap();
+    let from = u.model_pos(sim.unit_type(u)) + FxVec3::new(Fx::ZERO, sim.unit_type(u).model.height / 2, Fx::ZERO);
+    let to = sim.target_point(Target::Unit(enemy)).unwrap() - from;
+    let input = crate::DirectInput { throttle: 0, turn: 0, heading: 0, pitch: atan2(to.y, to.length_xz()), fire: true };
+    sim.step(&[Command::DirectControl { player: 0, unit: driver, input: Some(input) }]);
+    let state = sim.unit(driver).unwrap().weapons[0];
+    assert_eq!(state.target, Some(Target::Unit(enemy)));
+    assert!(state.aim_pitch > input.pitch, "the cannon elevates above the direct line to compensate for gravity");
+    assert!(sim.projectiles.iter().any(|shot| shot.owner == driver && shot.vel.y > Fx::ZERO));
+    sim.unit_mut(enemy).unwrap().cloaked = true;
+    sim.unit_mut(enemy).unwrap().revealed_to = 0;
+    sim.step(&[Command::DirectControl { player: 0, unit: driver, input: Some(crate::DirectInput { fire: false, ..input }) }]);
+    assert!(matches!(sim.unit(driver).unwrap().weapons[0].target, Some(Target::Ground(_))), "hidden enemies do not attract the sight");
+}
+
+#[test]
+fn possession_tracks_continuous_mouse_aim_without_pausing_or_exceeding_script_speed() {
+    use crate::cob::CobProgram;
+    use ta_formats::cob::{CobFunction, CobScript, op};
+    let data = data_of(&[unit("DRIVER", "CanMove=1; MaxVelocity=1; Weapon1=GUN;"), weapon_file("GUN", "turret=1;")]);
+    let mut sim = sim_of(data, 1);
+    let kind = sim.types.id("DRIVER").unwrap();
+    let ty = &mut Arc::get_mut(&mut sim.types).unwrap().types[kind];
+    Arc::make_mut(&mut ty.model).pieces = vec![crate::defs::PieceDef { name: "gun".into(), parent: None, offset: FxVec3::ZERO, top: Fx::ZERO }];
+    ty.model_to_cob = vec![Some(0)];
+    let script = CobScript {
+        pieces: vec!["gun".into()],
+        functions: vec![CobFunction { name: "AimPrimary".into(), offset: 0 }],
+        code: vec![
+            op::CREATE_LOCAL, op::CREATE_LOCAL,
+            op::PUSH_CONSTANT, 2, op::SIGNAL,
+            op::PUSH_CONSTANT, 2, op::SET_SIGNAL_MASK,
+            op::PUSH_CONSTANT, 6000, op::PUSH_LOCAL, 0, op::TURN, 0, 1,
+            op::WAIT_TURN, 0, 1, op::PUSH_CONSTANT, 1, op::RETURN,
+        ],
+        ..Default::default()
+    };
+    ty.script = Some(Arc::new(CobProgram::new(script, &["gun".into()])));
+    let id = sim.spawn_unit(kind, 0, FxVec3::from_ints(300, 60, 300), 0, true).unwrap();
+    let idle = crate::DirectInput { throttle: 0, turn: 0, heading: 0, pitch: 0, fire: false };
+    for _ in 0..3 { sim.step(&[Command::DirectControl { player: 0, unit: id, input: Some(idle) }]); }
+    let mut previous = 0;
+    let mut fired = false;
+    for tick in 0..30 {
+        let input = crate::DirectInput { heading: 1000 + tick * 300, fire: true, ..idle };
+        sim.step(&[Command::DirectControl { player: 0, unit: id, input: Some(input) }]);
+        let script = sim.unit(id).unwrap().cob.as_ref().unwrap();
+        let heading = script.pieces[0].rotation[1];
+        if tick > 0 { assert_eq!(heading - previous, 200, "steady scripted turning at tick {tick}"); }
+        assert!(script.thread_count() <= 2);
+        previous = heading;
+        fired |= sim.take_events().iter().any(|event| matches!(event, SimEvent::WeaponFired { unit, .. } if *unit == id));
+    }
+    assert!(fired, "the trigger still fires while tracking the mouse");
+}
+
+#[test]
+fn possession_aim_does_not_follow_a_decorative_muzzle_axis() {
+    use crate::cob::CobProgram;
+    use ta_formats::cob::{CobFunction, CobScript, op};
+    let data = data_of(&[unit("DRIVER", "CanMove=1; MaxVelocity=1; Weapon1=GUN;"), weapon_file("GUN", "turret=1;")]);
+    let mut sim = sim_of(data, 1);
+    let kind = sim.types.id("DRIVER").unwrap();
+    let ty = &mut Arc::get_mut(&mut sim.types).unwrap().types[kind];
+    Arc::make_mut(&mut ty.model).pieces = vec![crate::defs::PieceDef { name: "gun".into(), parent: None, offset: FxVec3::ZERO, top: Fx::ZERO }];
+    ty.model_to_cob = vec![Some(0)];
+    let script = CobScript {
+        pieces: vec!["gun".into()],
+        functions: vec![CobFunction { name: "AimPrimary".into(), offset: 0 }, CobFunction { name: "QueryPrimary".into(), offset: 5 }],
+        code: vec![op::CREATE_LOCAL, op::CREATE_LOCAL, op::PUSH_CONSTANT, 1, op::RETURN, op::PUSH_CONSTANT, 0, op::RETURN],
+        ..Default::default()
+    };
+    ty.script = Some(Arc::new(CobProgram::new(script, &["gun".into()])));
+    let id = sim.spawn_unit(kind, 0, FxVec3::from_ints(300, 60, 300), 0, true).unwrap();
+    sim.unit_mut(id).unwrap().cob.as_mut().unwrap().pieces[0].rotation[1] = 4096;
+    sim.unit_mut(id).unwrap().cob.as_mut().unwrap().pieces[0].rotation[0] = 16384;
+    let input = crate::DirectInput { throttle: 0, turn: 0, heading: 0, pitch: 0, fire: true };
+    let mut shot = None;
+    for _ in 0..5 {
+        sim.step(&[Command::DirectControl { player: 0, unit: id, input: Some(input) }]);
+        for event in sim.take_events() {
+            if let SimEvent::WeaponFired { unit, pos, target, .. } = event && unit == id { shot = Some((pos, target)); }
+        }
+    }
+    let (from, target) = shot.expect("fired");
+    assert!(crate::fixed::heading_of(target - from).abs() < 8);
+    assert_eq!(target.y, from.y);
+}
+
+#[test]
+fn possession_waits_for_scripted_aim_and_obeys_a_refusal() {
+    use crate::cob::CobProgram;
+    use ta_formats::cob::{CobFunction, CobScript, op};
+    for answer in [0, 1] {
+        let data = data_of(&[unit("DRIVER", "CanMove=1; MaxVelocity=1; Weapon1=GUN;"), weapon_file("GUN", "range=400; turret=1; reloadtime=0.1;")]);
+        let mut sim = sim_of(data, 1);
+        let kind = sim.types.id("DRIVER").unwrap();
+        let script = CobScript {
+            functions: vec![CobFunction { name: "AimPrimary".into(), offset: 0 }],
+            code: vec![op::CREATE_LOCAL, op::CREATE_LOCAL, op::PUSH_CONSTANT, 1000, op::SLEEP, op::PUSH_CONSTANT, answer, op::RETURN],
+            ..Default::default()
+        };
+        Arc::get_mut(&mut sim.types).unwrap().types[kind].script = Some(Arc::new(CobProgram::new(script, &[])));
+        let unit = sim.spawn_unit(kind, 0, FxVec3::from_ints(300, 60, 300), 0, true).unwrap();
+        let input = crate::DirectInput { throttle: 0, turn: 0, heading: 0, pitch: 0, fire: true };
+        let command = Command::DirectControl { player: 0, unit, input: Some(input) };
+        for _ in 0..29 {
+            sim.step(&[command.clone()]);
+            assert!(sim.unit(unit).unwrap().direct_control.is_some());
+            assert!(!sim.take_events().iter().any(|event| matches!(event, SimEvent::WeaponFired { unit: shooter, .. } if *shooter == unit)));
+        }
+        let mut fired = false;
+        for _ in 0..45 {
+            sim.step(&[command.clone()]);
+            fired |= sim.take_events().iter().any(|event| matches!(event, SimEvent::WeaponFired { unit: shooter, .. } if *shooter == unit));
+        }
+        assert_eq!(fired, answer != 0);
+    }
+}
+
 #[path = "construction_tests.rs"]
 mod construction;
 

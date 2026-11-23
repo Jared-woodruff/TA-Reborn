@@ -4605,8 +4605,10 @@ impl State {
     /// Into a unit: the camera, the cursor and the picture's settings are the mode's until it
     /// is left.
     fn enter_perspective(&mut self, id: ta_sim::UnitId, now: f64) {
-        let Some(p) = crate::perspective::Perspective::enter(&mut self.game, &self.camera, id, now) else { return };
-        self.renderer.set_cockpit(p.model.as_deref());
+        let Some(mut p) = crate::perspective::Perspective::enter(&mut self.game, &self.camera, id, now) else { return };
+        p.minimalist = self.settings.gameplay.minimalist_first_person;
+        p.load_wireframe(&self.assets.vfs, &self.game);
+        self.renderer.set_cockpit(if p.minimalist { None } else { p.model.as_deref() });
         self.perspective = Some(p);
         self.perspective_post = Some(self.settled_post());
         self.game.command_mode = None;
@@ -4624,6 +4626,10 @@ impl State {
     /// A frame inside a unit.
     fn perspective_frame(&mut self, dt: f32, now: f64) {
         let Some(p) = self.perspective.as_mut() else { return };
+        if p.minimalist != self.settings.gameplay.minimalist_first_person {
+            p.minimalist = self.settings.gameplay.minimalist_first_person;
+            self.renderer.set_cockpit(if p.minimalist { None } else { p.model.as_deref() });
+        }
         p.reduced_motion = self.settings.gameplay.reduced_motion;
         p.reduced_flashes = self.settings.gameplay.reduced_flashes;
         // (The clock's hour is the one the world is lit by.)
@@ -4641,7 +4647,7 @@ impl State {
         p.update(&mut self.game, input, &mut self.camera, dt, now);
         self.renderer.set_cockpit_frame(p.cockpit_frame(&self.game, now));
         // A modelled cockpit's instruments, painted onto its glass before the frame is drawn.
-        if p.model.is_some()
+        if !p.minimalist && p.model.is_some()
             && let Some(atlas) = self.renderer.cockpit_instruments()
         {
             let gpu = &self.renderer.gpu;
@@ -6012,6 +6018,7 @@ impl State {
         // (The Options' and the profile editor's file dialogs stand over the game's window, never
         // behind it: in full screen one behind would leave the game looking frozen.)
         ta_ui::settings::set_dialog_parent(&self.egui.ctx, rfd::FileDialog::new().set_parent(&*self.window));
+        let minimal_view = screen == Screen::Playing && perspective.as_ref().is_some_and(|p| p.minimalist);
         let output = self.egui.ctx.run_ui(raw, |ui| {
             // A replay being made into a film: how it goes, nothing else.
             if let Some(film) = film.as_mut() {
@@ -6235,25 +6242,25 @@ impl State {
             }
             // Achievements earned: their notices at the top right (on the title screen, under
             // the commander's card).
-            if loading.is_none() && matches!(screen, Screen::Menu | Screen::Playing) && !achievement_toasts.is_empty() {
+            if !minimal_view && loading.is_none() && matches!(screen, Screen::Menu | Screen::Playing) && !achievement_toasts.is_empty() {
                 let room = if screen == Screen::Playing && !hud_hidden() { hud.notices_room(ui.ctx()) } else {
                     let r = ui.ctx().content_rect();
                     egui::Rect::from_min_max(egui::pos2(r.min.x, r.min.y + if screen == Screen::Menu { 104.0 } else { 0.0 }), r.max)
                 };
                 achievement_toasts.show(ui.ctx(), room);
             }
-            if matches!(screen, Screen::Menu | Screen::Playing) {
+            if !minimal_view && matches!(screen, Screen::Menu | Screen::Playing) {
                 let music = crate::jukebox::Music { track: now_playing.as_deref(), on: music_on, position: music_position, bands: &music_bands };
                 // (Clear of the title screen's footer, and its shadow.)
                 let bottom = if screen == Screen::Menu { 88.0 } else { 20.0 };
                 jukebox_requests = jukebox.draw(ui.ctx(), &ta_tracks, &music, &music_source, &settings.audio, bottom);
             }
-            if dev.visible {
+            if dev.visible && !minimal_view {
                 draw_dev_panel(ui.ctx(), dev, lighting, post, camera, game);
             }
             // The player's frame rate counter (Display: FRAME RATE COUNTER), in battle (not in a
             // benchmark, whose own overlay counts the frames).
-            if settings.graphics.show_frame_rate && screen == Screen::Playing && loading.is_none() && !crate::benchmark::running() {
+            if !minimal_view && settings.graphics.show_frame_rate && screen == Screen::Playing && loading.is_none() && !crate::benchmark::running() {
                 frame_rate_counter(ui.ctx(), &dev.meter, game.battle_view, game.ppp);
             }
             // The pages and dialogs no longer drawn go out (a page sliding away as the next

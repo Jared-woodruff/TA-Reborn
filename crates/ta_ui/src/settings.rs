@@ -873,6 +873,7 @@ fn interface(ui: &mut Ui, rows: &mut Rows, p: &mut Gameplay, launcher: &mut Laun
         widgets::segmented_fill(ui, &mut p.range_overlays, &[(RangeOverlays::All, n("ALL")), (RangeOverlays::Sensors, n("SENSORS")), (RangeOverlays::Off, n("OFF"))]);
     });
     toggle_row(ui, rows, "STRATEGIC ICONS", "Far out, where units are a few pixels across, each one shows as an icon in its owner's colour, its shape saying what it is. Off: the units themselves at every height.", "zoom out icons strategic overview symbols far units", &mut p.strategic_icons);
+    toggle_row(ui, rows, "MINIMALIST FIRST-PERSON VIEW", "Riding in a unit: only its sight, its health and a radar, without the cockpit round them", "perspective cockpit hud first person unit eye minimal crosshair health", &mut p.minimalist_first_person);
     toggle_row(ui, rows, "CLASSIC INTERFACE", "TA's own 1997 side panel, resource bar and build menus in battle", "hud old original panel", &mut p.classic_interface);
     setting_row(ui, rows, "ORIGINAL PIXELS", "The classic interface's art and lettering in TA's own square pixels, enlarged as they are. Off: smoothed for your screen, sharp at any size", "classic interface hud pixels pixelated pixel art sharp smooth blurry retro scaling filter", |ui| {
         let classic = p.classic_interface;
@@ -1192,6 +1193,7 @@ fn restore(category: Category, config: &mut Config) {
             p.range_overlays = d.gameplay.range_overlays;
             p.strategic_icons = d.gameplay.strategic_icons;
             p.classic_interface = d.gameplay.classic_interface;
+            p.minimalist_first_person = d.gameplay.minimalist_first_person;
             p.classic_pixels = d.gameplay.classic_pixels;
             p.mod_themes = d.gameplay.mod_themes;
             p.companion = d.gameplay.companion;
@@ -1389,6 +1391,19 @@ mod tests {
         view.search = "zzzz".into();
         let (_, texts) = frame(&mut view, &mut config, &host());
         assert!(texts.iter().any(|t| t.starts_with("Nothing matches")));
+    }
+
+    #[test]
+    fn minimalist_first_person_is_searchable_and_resets_with_interface() {
+        let mut config = Config::default();
+        config.gameplay.minimalist_first_person = true;
+        let mut view = SettingsView { search: "first-person".into(), ..Default::default() };
+        let (_, texts) = frame(&mut view, &mut config, &host());
+        assert!(texts.iter().any(|text| text == "MINIMALIST FIRST-PERSON VIEW"));
+        restore(Category::Controls, &mut config);
+        assert!(config.gameplay.minimalist_first_person);
+        restore(Category::Interface, &mut config);
+        assert!(!config.gameplay.minimalist_first_person);
     }
 
     /// The radial menu's two rows, in both hosts, found by searching; Controls' defaults put it

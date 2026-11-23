@@ -255,8 +255,42 @@ pub struct BuildJob {
     pub started: bool,
 }
 
+/// Ticks a driven unit waits for its owner's next input before it is let go (three seconds): the
+/// view sends one whenever its input changes and once a second besides, so only a player gone, or
+/// a game that stopped sending, lets it go this way.
+pub const DIRECT_CONTROL_TICKS: u64 = 90;
+
+/// A player's hands on a unit they drive (`Command::DirectControl`, from the first-person view).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DirectInput {
+    /// Ahead (1), astern (-1) or neither (0).
+    pub throttle: i8,
+    /// The hull turning right (1), left (-1) or neither (0).
+    pub turn: i8,
+    /// Where the sight looks: the world's heading (TA's angle units, -32768..32767)...
+    pub heading: i32,
+    /// ...and its pitch above the level (-16384..16384, straight down to straight up).
+    pub pitch: i32,
+    /// The trigger held (or clicked since the last input).
+    pub fire: bool,
+}
+
+/// A unit driven by its owner (`Sim::set_direct_control`): their latest input, held until the next.
+#[derive(Clone, Copy, Debug)]
+pub struct DirectControl {
+    /// The piece the unit's first weapon fires from (its query's answer), found on its first tick
+    /// driven: where the view's sight is drawn from.
+    pub aim_piece: Option<usize>,
+    pub player: u8,
+    pub input: DirectInput,
+    /// The tick it is let go at unless another input comes first ([`DIRECT_CONTROL_TICKS`]).
+    pub expires: u64,
+}
+
 #[derive(Clone)]
 pub struct Unit {
+    /// Driven by its owner from the first-person view: their input, its orders waiting meanwhile.
+    pub direct_control: Option<DirectControl>,
     pub id: UnitId,
     pub type_id: usize,
     pub owner: u8,
@@ -512,6 +546,7 @@ impl Unit {
     /// A unit with default state; used by the simulation and for previews.
     pub fn new(id: UnitId, type_id: usize, owner: u8, pos: FxVec3) -> Unit {
         Unit {
+            direct_control: None,
             id,
             type_id,
             owner,
@@ -849,6 +884,23 @@ pub fn piece_world_position(unit: &Unit, t: &UnitType, cob: Option<&CobInstance>
     v = rotate_x(v, unit.pitch);
     v = rotate_y(v, unit.heading);
     unit.model_pos(t) + v
+}
+
+/// The way a model piece points (its +z), turned as the piece and every piece it hangs from are
+/// turned by the unit's script, and by the hull's tilt on the ground: [`piece_world_position`]'s
+/// turns, without the offsets. (A hidden muzzle points as it is turned, drawn or not.)
+pub fn piece_world_direction(unit: &Unit, t: &UnitType, model_piece: usize) -> FxVec3 {
+    let mut direction = FxVec3::new(Fx::ZERO, Fx::ZERO, Fx::ONE);
+    let mut current = Some(model_piece);
+    for _ in 0..256 {
+        let Some(index) = current else { break };
+        let Some(piece) = t.model.pieces.get(index) else { break };
+        if let Some(animation) = unit.cob.as_ref().and_then(|script| t.model_to_cob.get(index).copied().flatten().and_then(|index| script.pieces.get(index))) {
+            direction = rotate_y(rotate_x(rotate_z(direction, animation.rotation[2].wrapping_neg()), animation.rotation[0]), animation.rotation[1]);
+        }
+        current = piece.parent;
+    }
+    rotate_y(rotate_x(rotate_z(direction, unit.roll), unit.pitch), unit.heading)
 }
 
 /// The heading of what stands on a model piece: the unit's own, turned as the piece and every

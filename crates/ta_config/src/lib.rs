@@ -213,7 +213,8 @@ pub const RECORD_VERSION: u32 = 47;
 /// missiles slow as they fly instead of hanging over their launchers; launched upright at a
 /// negative speed, one drops), and a shot leaves from where its firing piece is once the weapon's
 /// fire function has run as far as its first wait.
-pub const SIMULATION_VERSION: u32 = 109;
+/// 110: direct unit possession, steering and assisted weapon aiming.
+pub const SIMULATION_VERSION: u32 = 110;
 /// Records shorter than one year of simulated time are supported. Shared with the
 /// launcher's metadata reader so impossible durations cannot start endless save catch-up.
 pub const MAX_RECORD_TICKS: u64 = 30 * 3600 * 24 * 365;
@@ -1289,6 +1290,7 @@ pub struct Gameplay {
     /// TA's 1997 in-game interface (side panel, resource bar, build menus) in place of
     /// the modern HUD.
     pub classic_interface: bool,
+    pub minimalist_first_person: bool,
     /// The classic interface's art and lettering in TA's own square pixels, enlarged as they
     /// are (off: smoothed for the screen, sharp at any size).
     pub classic_pixels: bool,
@@ -1374,6 +1376,7 @@ impl Default for Gameplay {
             strategic_icons: true,
             ta_cursors: true,
             classic_interface: false,
+            minimalist_first_person: false,
             classic_pixels: false,
             mod_themes: true,
             colour_blind: false,
@@ -2458,6 +2461,19 @@ mod tests {
             assert!(!g.ground_life && g.show_frame_rate);
             assert_eq!(g.matching_preset(), level);
         }
+    }
+
+    #[test]
+    fn minimalist_first_person_defaults_off_and_round_trips() {
+        for source in ["", "[gameplay]\nclassic_interface = true\n"] {
+            let config: Config = toml::from_str(source).unwrap();
+            assert!(!config.gameplay.minimalist_first_person);
+        }
+        let mut config = Config::default();
+        config.gameplay.minimalist_first_person = true;
+        let saved = toml::to_string_pretty(&config).unwrap();
+        let restored: Config = toml::from_str(&saved).unwrap();
+        assert_eq!(restored, config);
     }
 
     /// The seasons are the launcher's settings, but the game's options show them too: what the
