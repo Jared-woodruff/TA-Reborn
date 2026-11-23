@@ -15,6 +15,12 @@
   radar at the bottom, without the cockpit round them.
 
 ### Fixed
+- In the Arm campaign's The Defense of Larab Harbor, the Core's fighters and bombers waiting along
+  the south edge for their turn to attack hung motionless in the air over the spot for up to 28
+  minutes. A mission's aircraft now stand parked where the mission places them, as in TA, and one
+  its script tells to wait (or to wait until it is attacked) waits parked, taking off once the wait
+  is up; over the sea, where it cannot set down, it circles, as an aircraft with nothing to do
+  does. Other missions' waiting aircraft wait the same.
 - The game speed keys (+ and -) could leave a battle unable to get back to normal speed: each
   press multiplied or divided the speed by 1.5, so once it was held at the slowest, 0.25, pressing
   back up gave 0.84 and then 1.27, never 1.0 again. The keys now step through set speeds (0.25,

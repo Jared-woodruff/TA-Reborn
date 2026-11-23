@@ -109,8 +109,9 @@ pub use transport::{Client, Host, HostEvent};
 /// from where the fire functions put their firing pieces.)
 /// [`Msg::Hello`] and [`Refusal::Version`] keep their layout, so builds of other protocols are
 /// still told why they cannot meet.
-/// 115: deterministic possession input and release commands (simulation 110).
-pub const PROTOCOL: u32 = 115;
+/// 115: deterministic possession input and release commands (simulation 110). 116: simulation
+/// 111, a mission's aircraft parked and waiting parked.
+pub const PROTOCOL: u32 = 116;
 pub const DEFAULT_PORT: u16 = 7890;
 /// Ticks between state hash reports (which double as progress reports).
 pub const HASH_INTERVAL: u64 = 15;
