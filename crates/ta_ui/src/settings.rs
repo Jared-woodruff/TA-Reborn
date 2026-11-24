@@ -62,7 +62,7 @@ impl Category {
     /// What is in it, under its title.
     fn blurb(self) -> &'static str {
         match self {
-            Category::Gameplay => n("Your name, new games' unit limit and speed, saving"),
+            Category::Gameplay => n("Your name, new games' unit limit and speed, saving, the enemy's transmissions and the coach"),
             Category::Controls => n("Mouse buttons, scrolling, the gamepad and every key"),
             Category::Interface => n("Language, health bars, icons, the classic interface and the seasons"),
             Category::Accessibility => n("Readability, motion, flashes, cursors and message timing"),
@@ -852,7 +852,7 @@ fn gameplay(ui: &mut Ui, rows: &mut Rows, p: &mut Gameplay, taken: &[String]) {
         widgets::value_slider(ui, Slider::new(&mut p.speed, limits::SPEED).step_by(0.25).custom_formatter(|v, _| format!("{v:.2}×")).custom_parser(times), value_box);
     });
     toggle_row(ui, rows, "AUTOSAVE", "Single-player games save themselves every five minutes", "save load continue", &mut p.autosave);
-    toggle_row(ui, rows, "COMPUTER PLAYERS TALK", "In single-player battles the enemy's computer players greet you, answer your messages and gloat or grumble as the battle turns", "chat chatter ai messages taunts", &mut p.ai_chatter);
+    toggle_row(ui, rows, "ENEMY TRANSMISSIONS", "In single-player battles the enemy's Commanders greet you, taunt you and answer your messages, their words coming in at the top left. Off: they keep quiet, from that moment on, in a battle under way too. A scenario's story still comes in.", "taunts chat chatter ai computer players enemy commanders messages communications transmissions mute quiet", &mut p.ai_chatter);
     toggle_row(ui, rows, "BATTLE TIPS", "A tip at the start of each battle: a key, a trick or a rule of thumb", "tips hints start loading advice help", &mut p.start_tips);
     setting_row(ui, rows, "COACH", "A word of advice in battle when a store runs dry, a factory waits or your Commander is in danger", "advice help hints tips beginner new", |ui| {
         widgets::segmented_fill(ui, &mut p.coach, &[(ta_config::Coach::FirstBattles, "FIRST BATTLES"), (ta_config::Coach::Always, "ALWAYS"), (ta_config::Coach::Off, "OFF")]);

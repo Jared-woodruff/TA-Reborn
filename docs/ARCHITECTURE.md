@@ -2891,7 +2891,7 @@ where the units go (`hud/domain.rs`, below).
   cheat panel (`hud/cheats.rs`, key `cheats`, Ctrl+Alt+C, or the pause menu) has them all,
   and a spawn tool with a searchable list of every unit type (mods' too) whose clicks
   place units (`spawn_tool_input`). The end panel says CHEATS USED.
-* **Computer players talk** (`chatter.rs`, setting `ai_chatter`): in single-player battles
+* **Computer players talk** (`chatter.rs`, setting `ai_chatter`, ENEMY TRANSMISSIONS): in single-player battles
   but campaign missions, each enemy computer player is a persona: a manner from its side
   (Arm officers correct, Core intelligences cold, a third side or a second of a kind brash),
   a name and a title (`Temper::title`: FIELD COMMANDER, MACHINE INTELLIGENCE, MERCENARY).
@@ -2919,8 +2919,13 @@ where the units go (`hud/domain.rs`, below).
   side, the words typed out at 42 a second and held to be read, the voice's trace under them.
   While a line is "typed" (`Chatter::typing`) the card shows the link being made; one card at
   a time, the rest queued (`Game::transmissions`). The chat keeps the lines in its history but
-  not on the screen's log (`ChatLine::title`). Everything here is local and changes nothing in
-  the battle.
+  not on the screen's log (`ChatLine::title`). The setting off mutes them at once, mid-battle
+  too (`Chatter::set_muted`: nothing is queued or said, though they go on watching the battle,
+  so turned on again they take it up from there with no late greeting), and takes their cards
+  off the screen (`Hud::hush_transmissions`, lines marked `ChatLine::persona`); a scenario's
+  story still comes in. A battle begun with it off has them muted from the start, and their
+  record is kept only where they said something (`Chatter::heard`). Everything here is local
+  and changes nothing in the battle.
 * **TA's interface sounds** (`Game::ui_sounds`, events of `gamedata/allsound.tdf` played by
   `GameAudio::play_interface`): ADDBUILD and SUBBUILD (`produce`), OKTOBUILD and
   NOTOKTOBUILD (placing), CREATESQUAD and SELECTSQUAD (groups), SelectMultipleUnits (a box),

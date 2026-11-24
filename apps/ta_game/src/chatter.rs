@@ -7,7 +7,9 @@
 //! and a title, who remembers the player from battles before (`rivals.rs`): a rematch has its
 //! own greeting. Their lines come in as transmissions (`hud/comms.rs`), the link established
 //! while they "type", and stay on the chat. Only this computer hears them; nothing here
-//! touches the battle.
+//! touches the battle. The ENEMY TRANSMISSIONS setting (`ai_chatter`) turned off mutes them
+//! from that moment, mid-battle too ([`Chatter::set_muted`]): they go on watching the battle,
+//! so turned on again they take it up from there, with no greeting come too late.
 
 use ta_sim::{Locomotion, Sim, SimEvent};
 use ta_ui::i18n::{n, t, tf};
@@ -376,6 +378,10 @@ pub struct Chatter {
     rng: u64,
     /// Lines being "typed".
     pending: Vec<Pending>,
+    /// Nothing is said ([`Chatter::set_muted`]); whether anything has been, this battle (the
+    /// personas are remembered as met only then).
+    muted: bool,
+    heard: bool,
     greeted: bool,
     /// When anyone last spoke, and when the player was last called out for cheating.
     last_any: f32,
@@ -392,8 +398,9 @@ pub struct Chatter {
 impl Chatter {
     /// The talkers of a battle: the human's enemies run by the computer, the personas the
     /// player has met before (`rivals`) coming back now and then; the record is kept when the
-    /// battle is decided if `keep`. `None` when there are none.
-    pub fn new(sim: &Sim, human: u8, ai_players: &[u8], seed: u64, rivals: Rivals, keep: bool) -> Option<Chatter> {
+    /// battle is decided if `keep`, and they have said something. They start `muted` with the
+    /// ENEMY TRANSMISSIONS setting off. `None` when there are none.
+    pub fn new(sim: &Sim, human: u8, ai_players: &[u8], seed: u64, rivals: Rivals, keep: bool, muted: bool) -> Option<Chatter> {
         let mut rng = seed ^ 0x5DEE_CE66_D1CE_4E5B;
         let mut voices: Vec<Voice> = Vec::new();
         for &p in ai_players.iter().filter(|&&p| sim.is_enemy(human, p)) {
@@ -443,6 +450,8 @@ impl Chatter {
             human,
             rng,
             pending: Vec::new(),
+            muted,
+            heard: false,
             greeted: false,
             last_any: 0.0,
             cheat_called: None,
@@ -466,13 +475,22 @@ impl Chatter {
         out
     }
 
+    /// Mutes them (the ENEMY TRANSMISSIONS setting turned off), the lines being "typed"
+    /// dropped, or lets them talk again from now on.
+    pub fn set_muted(&mut self, muted: bool) {
+        self.muted = muted;
+        if muted {
+            self.pending.clear();
+        }
+    }
+
     /// The battle is decided (the player won it or lost it): each persona's record against
-    /// the player is kept, the once.
+    /// the player is kept, the once (not where they never said a word: muted all along).
     pub fn decided(&mut self, won: bool) {
         if std::mem::replace(&mut self.decided, true) {
             return;
         }
-        if !self.keep {
+        if !self.keep || !self.heard {
             return;
         }
         let names: Vec<String> = self.voices.iter().map(|v| v.name.clone()).collect();
@@ -513,8 +531,11 @@ impl Chatter {
         self.speak_with(v, moment, now, delay, Vec::new());
     }
 
-    /// As `speak`, filling the line's placeholders.
+    /// As `speak`, filling the line's placeholders. (Muted, nothing is said.)
     fn speak_with(&mut self, v: usize, moment: Moment, now: f32, delay: f32, args: Vec<(&'static str, String)>) {
+        if self.muted {
+            return;
+        }
         // One line at a time, but an answer to the player waits its turn (a second question
         // gets its answer after the first's).
         let answer = matches!(
@@ -744,7 +765,8 @@ impl Chatter {
                 let voice = &mut self.voices[p.voice];
                 voice.said.push(p.line);
                 let args: Vec<(&str, &dyn std::fmt::Display)> = p.args.iter().map(|(k, v)| (*k, v as &dyn std::fmt::Display)).collect();
-                out.push(ChatLine::transmission(voice.name.clone(), voice.temper.title(), tf(p.line, &args), voice.player));
+                out.push(ChatLine::persona(voice.name.clone(), voice.temper.title(), tf(p.line, &args), voice.player));
+                self.heard = true;
             } else {
                 i += 1;
             }
@@ -921,6 +943,35 @@ mod tests {
         assert_eq!(classify("nice one"), Moment::Compliment);
         assert_eq!(classify("what are you building"), Moment::AskBuild);
         assert_eq!(classify("how's it going"), Moment::AskHowWinning);
+    }
+
+    /// Muted (ENEMY TRANSMISSIONS off), they say nothing (greeting, answers, cries of foul) and
+    /// nothing waits to be said; let talk again mid-battle, they answer from then on, with no
+    /// greeting come too late; muted while a line is being typed, it is dropped.
+    #[test]
+    fn muted_they_say_nothing_and_let_talk_they_answer_from_then_on() {
+        let data = std::sync::Arc::new(ta_data::GameData::load(&ta_vfs::Vfs::new()));
+        let types = std::sync::Arc::new(ta_sim::UnitTypes::compile(&data, &|_| None));
+        let map = ta_formats::tnt::TntMap { width: 64, height: 64, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![0; 64 * 64], features: vec![ta_formats::tnt::FEATURE_NONE; 64 * 64], feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
+        let players: Vec<_> = ["ARM", "CORE"].iter().zip(0u8..).map(|(side, i)| ta_sim::PlayerSetup { side: side.to_string(), color: i, start: ta_sim::FxVec3::ZERO, metal: ta_sim::Fx::ZERO, energy: ta_sim::Fx::ZERO, ai: i == 1 }).collect();
+        let sim = Sim::new(types, data, &map, &ta_data::MapInfo::default(), 0, &players, 7);
+        let mut chatter = Chatter::new(&sim, 0, &[1], 7, Rivals::default(), false, true).expect("an enemy to talk");
+        chatter.heard(&sim, "hello", 2.0);
+        chatter.cheated(3.0);
+        for second in 0..40 {
+            assert!(chatter.update(&sim, second as f32).is_empty(), "said at {second} s");
+            assert!(chatter.typing(second as f32).is_empty(), "typing at {second} s");
+        }
+        assert!(!chatter.heard);
+        chatter.set_muted(false);
+        chatter.heard(&sim, "who are you?", 40.0);
+        let said: Vec<ChatLine> = (40..60).flat_map(|second| chatter.update(&sim, second as f32)).collect();
+        assert_eq!(said.len(), 1, "the answer alone: {said:?}");
+        assert!(said[0].persona && said[0].title.is_some(), "a transmission of theirs: {said:?}");
+        assert!(chatter.heard);
+        chatter.heard(&sim, "who are you?", 60.0);
+        chatter.set_muted(true);
+        assert!((60..80).all(|second| chatter.update(&sim, second as f32).is_empty()), "the line being typed is dropped");
     }
 
     #[test]

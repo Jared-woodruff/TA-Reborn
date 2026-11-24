@@ -26,6 +26,12 @@
   controller is in use the view's hints show its buttons, and they come up again when one is taken
   up. The pause and speed keys work in a unit too, said on its glass.
 
+### Changed
+- The enemy Commanders' transmissions (their greetings, taunts and answers coming in at the top
+  left of the battlefield) are turned off with Options, GAMEPLAY: ENEMY TRANSMISSIONS, as COMPUTER
+  PLAYERS TALK was called. It now takes effect at once, in a battle under way too: the card on the
+  screen goes with them, and turned on again they talk from there. A scenario's story still comes in.
+
 ### Fixed
 - Riding in a unit (Perspective), from a review of the whole view:
   - The view's key hints covered the sight, the target or the flight figures in the Krogoth's cab,
