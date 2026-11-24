@@ -1552,8 +1552,12 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   keys joined by straight lines), and triangular dither of an 8-bit step added in sRGB.
 * **Cockpits** (`cockpit.rs`, `shaders/cockpit.wgsl`; the models in `cockpits/*.glb`, built
   by `tools/cockpits/build.py`): a Perspective view's crew station, drawn after the scene
-  pass into the same HDR target with its own depth (cleared, discarded), before bloom and the
-  tone map, with the camera's field of view and a near plane of 1 cm; its geometry is in the
+  pass into the same HDR target with its own depth (cleared, discarded; transient, and made before
+  the frame is put together), before bloom and the tone map, with the camera's field of view and a
+  near plane of 1 cm. Its pipelines, samplers and paint textures are made once for a picture's
+  antialiasing (`CockpitKit`), its model's buffers and instrument atlas for each model
+  (`CockpitRenderer`), both in error scopes (refused, for want of memory or by a shader that does
+  not build, the view goes without a cockpit rather than every frame being refused); its geometry is in the
   eye's space (glTF: x right, y up, looking along -z; metres), moved by the frame's `mount`
   (the seat's give). The GLB reader takes the default scene's triangles (positions, normals,
   the baked masks in COLOR_0, decals' UVs; float or normalised/integer, quantised by the
@@ -1564,8 +1568,13 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   `canvas`; `concrete`; `decal`; `glow_trim`, `screen.<n>`, `lamp.<colour>.<n>`,
   `lamp.alarm.<n>`, `glass`), and moving parts: a node `anim.<part>` and all under it, kept in
   the part's space, with the frame's transform applied after its rest (`CockpitFrame::parts`).
-  Its triangles are ordered for the one draw: opaque, then the decals (blended over the paint),
-  then the glass. `TA_COCKPITS=<folder>` reads `<name>.glb`, `wear.png`, `decals.png` and
+  Its triangles are ordered opaque, then the decals, then the glass: the opaque drawn over what is
+  there with the picture's alpha cleared (the heat haze neither shimmers on the cockpit nor takes its
+  paint into the window), the decals (over the paint) and the glass blended with the alpha left as it
+  is (the battle's heat behind the glass kept). Then, where none of it came nearer than the far plane
+  (a picture wider than the cab is modelled for, ultrawide), the cab's walls, its paint in the shadow
+  of its far corners (`vs_walls`, fading in as it settles round the eye: `CockpitFrame::walls`).
+  `TA_COCKPITS=<folder>` reads `<name>.glb`, `wear.png`, `decals.png` and
   `cockpit.wgsl` from a folder where it has them (the builder's output tried unbuilt). Screens become
   [`cockpit::Screen`]s: the rectangle round the glass in its own plane (middle, half extents
   across and up; not round the vertices' average, which the bake's uneven subdivision pulls
@@ -1593,9 +1602,10 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   worn smooth where held; chips and scratches dent the normal (a height's screen-space slope,
   no tangents). The decals (`cockpits/decals.png`: stencils in TA Reborn's own stencil
   letters, caution, danger and keep-clear plates, data plates, labels; `tools/cockpits/art.py`)
-  wear with the paint under them. Lighting: the sky dimmed, the sun on what faces it only
-  through the openings (less when it is behind) and less in the corners, a cabin lamp over the
-  eye, every instrument's glow on what is round it (a light at each screen, a wide one's at its
+  wear with the paint under them. Lighting: the frame's own sky (`Renderer::cockpit_light`: the
+  hour's horizon, greyed and dimmed under rain clouds, a world without air's dark), dimmed, the sun
+  on what faces it only through the openings (less when it is behind) and less in the corners, a
+  cabin lamp over the eye (hung in the cab: it moves with the mount), every instrument's glow on what is round it (a light at each screen, a wide one's at its
   thirds, facing out of it), a pulsing red alarm and a hit's flash; GGX highlights held to a
   few times the light and widened where the normal turns within a pixel; the gloss reflects
   the cab, dark, and only the window's view where it looks out through it. Every
@@ -2963,23 +2973,36 @@ where the units go (`hud/domain.rs`, below).
   known folder from the registry, `TA_PICTURES` to override) as `<map> NNN.png`
   (`ta_config::next_picture`); F12 screenshots go there too.
 * **Perspective** (`perspective.rs`, `perspective_hud.rs`, key `perspective`, Q; the eye among
-  the order buttons): a view from inside a unit and nothing more. The unit goes on with its
-  orders and nothing is sent to the simulation, so the view is the player's alone, in
-  multiplayer, replays and spectating alike. The key takes the first selected unit, else the
+  the order buttons): a view from inside a unit. The unit goes on with its orders and nothing is
+  sent to the simulation, so the view is the player's alone, in multiplayer, replays and
+  spectating alike, unless the player takes control of one of their own ground units, hovercraft
+  or ships (E; a pad's Y): its input then goes to the battle as `Command::DirectControl`, as it
+  changes and once a second besides, until E again or leaving lets it go (`sim/possession.rs`: the
+  battle lets go of one it hears nothing from for 90 ticks; W and S, A and D, a pad's left stick
+  drive it, the sight aims its guns at their scripts' turning speeds, a click, RB or A fires). The key takes the first selected unit, else the
   one under the pointer: the player's own or an ally's (a spectator's, anyone's), finished, in
   sight, and mobile or armed (`Perspective::can_enter`). The camera dives into the unit
   (1.1 s) and climbs back out on Escape, or when a transport picks the unit up, over where the
   unit is then; the cursor is held in the window and hidden, and the mouse looks round by its
-  raw motion (`Input::raw_delta`; a pad's left stick too); the wheel magnifies the sight, V
-  looks from behind, N is the night sight. The eye sits where the crew would
+  raw motion (`Input::raw_delta`; a pad's right stick, and its left one unless it drives: the
+  hidden pointer the right stick moves stops at the window's edge, so it is not read); the wheel
+  magnifies the sight a step a whole line (a touchpad's and a pad's triggers' fractions add up),
+  V (X) looks from behind, rising to see the unit over a ridge between them, N (LB) is the night
+  sight (the picture brightened, the cockpit's own light dimmed as much). A narrower picture than
+  16:9 sees as far across as 16:9, further up and down (`view_fov`). Riding, the pause and speed
+  keys work (said on the glass), a dialog that takes the pointer (the menu, F1's page, the jukebox,
+  the window's close asked about) climbs out first, and the keys' hints keep off the sight's marks
+  (low, in one row, else high in the window; a pad's buttons while one is in use). The eye sits where the crew would
   (`Cockpit`): in a walker's head, over a turret's gun towards its back (in line with the
   piece under the turret that reaches furthest forward), over an aircraft's nose, high
   amidships on a ship, a periscope at the surface; it is posed from the unit as drawn this
-  frame (`Scene::pose`), and the unit's pieces the eye is in are not drawn
-  (`Scene::hide_near`, from each piece's bounds). Ground units look in world yaw and pitch
+  frame (`Scene::pose`, after the battle's step: the view from behind keeps up with its unit),
+  and the unit's pieces the eye is in are not drawn while the camera is close to it, diving in and
+  climbing out (`Scene::hide_near`, from each piece's bounds, from `SEAT_AT` of the dive). Ground units look in world yaw and pitch
   (the hull turns under the view); aircraft look round from the nose and roll with the bank
   (`Camera::roll`). The ears are in the unit too: the listener moves to the eye, hearing as
-  wide as a 1,000-unit battle view (`audio.rs`, `EAR_WIDTH`). The cockpit is egui painted over
+  wide as a 1,000-unit battle view (`audio.rs`, `EAR_WIDTH`; the signal lost, or climbing out,
+  where the camera is, as widely). The cockpit is egui painted over
   the picture: the glass's marks over the world (under a modelled cockpit, clipped at its
   window's sill, the highest its own geometry rises into the middle of the view below the eye:
   `Perspective::sill_y`), the painted frame of a cockpit without a model, the instruments, the
@@ -2996,7 +3019,9 @@ where the units go (`hud/domain.rs`, below).
   with its kind's own field of view (`CockpitFrame::fov_y`) while the dive's widens to it; its
   lamps and screens come on once it is in, each screen after a self test, and a heading tape
   under a model without a heading screen of its own (a canopy, a gunship) keeps under its
-  window's top (`Perspective::lintel_y`). It sways against the
+  window's top (`Perspective::lintel_y`: measured once on the model's triangles, up each of a
+  row of lines across the middle of the view, passing over those that meet the model at eye
+  level and those beside them, a pillar's and its bolts': `perspective::lintel`). It sways against the
   eye's acceleration (both smoothed, the slightest ignored) and kicks with the gun (`mount`),
   its tillers, sticks and helm follow the unit's speed and turning (with the hull failing its
   cabin lamp stutters, not with flashes reduced), and the instruments are
