@@ -60,6 +60,13 @@
   rather than losing them all by the tenth minute. Their Commander also gets away from enemy
   towers it meets out on the field, and from fire it cannot see, rather than reclaiming wrecks
   under their guns.
+- Computer players of the Supreme Commander factions climb the tiers: once a factory of a higher
+  tier stands, their other land factories are upgraded to it as their income grows, and while
+  metal is short the factories still to climb leave it to the top tier's (they make constructors
+  still), so the armies of the late game are of tech 2 and 3 rather than of tech 1. Their
+  extractors and factories no longer start costly upgrades three at a time on an income that
+  cannot pay for them. Any computer player keeps artillery to under a third of its army.
+  Multiplayer and replays need everyone on this build.
 
 ### Fixed
 - Supreme Commander's factions in play, from a review before the import was offered to everyone

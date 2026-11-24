@@ -8,6 +8,9 @@ use super::*;
 /// the Gantry).
 const EXPERIMENTAL_LEAD: u64 = 10;
 
+/// The share (percent) of our army on the ground that may be artillery (`TypeInfo::artillery`).
+const ARTILLERY_SHARE: usize = 30;
+
 impl SkirmishAi {
     // ---- Economy -------------------------------------------------------------------------------
 
@@ -1798,8 +1801,10 @@ impl SkirmishAi {
                 }
             }
         }
-        // The top tier of our finished factories on the ground.
+        // The top tier of our finished factories on the ground, by their tags; and of those at
+        // work, by the constructors they turn out (`working_top_tier`).
         let top_ground = s.factories.iter().filter(|f| matches!(self.info[f.type_id].kind, Locomotion::Ground | Locomotion::Hover)).map(|f| self.info[f.type_id].tech).max().unwrap_or(1);
+        let top_tier = self.working_top_tier(sim, s);
         // Units queued and not started yet count as well as those under way.
         for f in &s.factories {
             for &t in f.factory_queue.iter().skip(f.build.is_some() as usize) {
@@ -1958,6 +1963,11 @@ impl SkirmishAi {
                 if air && planes >= plane_cap || full || !enemies_left || standing.contains(&f.id) {
                     continue;
                 }
+                // One that climbs in place to the top tier leaves the metal to that tier's while
+                // metal is short (Forged Alliance's; TA's factories do not climb).
+                if self.leaves_metal_to_top_tier(sim, f, top_tier) {
+                    continue;
+                }
                 // A factory below our top tier on the ground leaves a share of its turns to the
                 // advanced ones, as the economy grows (what metal there is goes to the better
                 // army).
@@ -1975,6 +1985,7 @@ impl SkirmishAi {
                 if self.p.produce_gap > 0 {
                     self.produced.push((f.id, s.now));
                 }
+                log::debug!("{} min: P{me}'s {} makes {}", s.minutes, sim.unit_type(f).name, sim.types.get(t).name);
                 out.push(Command::Produce { player: me, factory: f.id, type_id: t, count: 1 });
                 if f.rally != [Order::Move(rally)] {
                     out.push(Command::SetRally { player: me, factory: f.id, pos: rally });
@@ -1993,6 +2004,15 @@ impl SkirmishAi {
     pub(crate) fn constructor(&self, t: usize) -> bool {
         let i = &self.info[t];
         i.role == Role::Builder && (i.builds_mex || i.builds_energy) && !i.experimental
+    }
+
+    /// Whether our army on the ground holds its share of artillery, `ARTILLERY_SHARE` (of those in
+    /// it, under way and queued, four at least).
+    pub(crate) fn artillery_full(&self, s: &Survey) -> bool {
+        let land = |t: usize| self.info[t].role == Role::Combat && matches!(self.info[t].kind, Locomotion::Ground | Locomotion::Hover);
+        let queued = s.factories.iter().flat_map(|f| f.factory_queue.iter().skip(f.build.is_some() as usize).copied());
+        let (all, artillery) = s.own.iter().map(|u| u.type_id).chain(queued).filter(|&t| land(t)).fold((0usize, 0usize), |(a, r), t| (a + 1, r + self.info[t].artillery as usize));
+        artillery * 100 >= ARTILLERY_SHARE * all.max(4)
     }
 
     /// The share (percent) of the units built at the top tier: none on a small economy, more as
@@ -2061,15 +2081,44 @@ impl SkirmishAi {
         })
     }
 
-    /// Ground factories of the third tier wanted once one stands (Forged Alliance's: upgraded into,
-    /// `run_upgrades_in_place`): one, and another for every 40 metal a second of income past 40 (one
-    /// more at most, two on Hard, and one more for a persona that races up the tiers).
+    /// Ground factories of the top tier wanted once one stands, where the others climb to it in place
+    /// (Forged Alliance's, `run_upgrades_in_place`): one, and another for every 15 metal a second of
+    /// income past 15 (about what one turns out with a few hands at it), one more for a persona that
+    /// races up the tiers, as many as the level's factories; Easy, one.
     pub(crate) fn top_factories_wanted(&self, s: &Survey) -> usize {
         if self.difficulty == Difficulty::Easy {
             return 1;
         }
-        let more = ((s.m_inc.to_int() - 40).max(0) / 40) as usize;
-        1 + more.min(1 + (self.difficulty == Difficulty::Hard) as usize + (self.persona == Persona::Tech) as usize)
+        let more = ((s.m_inc.to_int() - 15).max(0) / 15) as usize + (self.persona == Persona::Tech) as usize;
+        (1 + more).min(self.p.max_factories)
+    }
+
+    /// The top tier (`factory_tier`) of our finished factories on the ground (0 with none).
+    pub(crate) fn top_ground_tier(&self, sim: &Sim, s: &Survey) -> u8 {
+        s.factories.iter().filter(|f| matches!(self.info[f.type_id].kind, Locomotion::Ground | Locomotion::Hover)).map(|f| self.factory_tier(sim, f.type_id)).max().unwrap_or(0)
+    }
+
+    /// The top tier of our finished factories on the ground at work: not upgrading (one that is
+    /// makes nothing meanwhile), nor stopped (its yard under fire). 0 with none.
+    pub(crate) fn working_top_tier(&self, sim: &Sim, s: &Survey) -> u8 {
+        s.factories
+            .iter()
+            .filter(|f| matches!(self.info[f.type_id].kind, Locomotion::Ground | Locomotion::Hover) && !matches!(f.orders.front(), Some(Order::Upgrade(_))) && !self.paused.iter().any(|&(id, _)| id == f.id))
+            .map(|f| self.factory_tier(sim, f.type_id))
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// Whether a factory of ours below the top tier on the ground at work (`working_top_tier`) leaves
+    /// the metal to the top tier's factories (makes no army of its own, only constructors and
+    /// anti-aircraft when they are due): one on the ground that climbs in place towards that tier
+    /// (Forged Alliance's: it upgrades in its turn, `run_upgrades_in_place`), while metal is short.
+    /// What metal piles up beyond what the top tier spends, it spends again. (TA's factories upgrade
+    /// into nothing: they make their army as before.)
+    pub(crate) fn leaves_metal_to_top_tier(&self, sim: &Sim, f: &Unit, top_tier: u8) -> bool {
+        let ground = matches!(self.info[f.type_id].kind, Locomotion::Ground | Locomotion::Hover);
+        let tier = self.factory_tier(sim, f.type_id);
+        ground && tier < top_tier && self.metal_avg < Fx::from_ratio(25, 100) && sim.next_upgrade(f).is_some_and(|to| self.factory_tier(sim, to) > tier)
     }
 
     /// Advanced factories wanted: one, and another for every 25 metal a second of income past
@@ -2127,6 +2176,12 @@ impl SkirmishAi {
         let may_experimental = s.minutes >= self.p.experimental_minute && s.m_inc >= fx(30) && experimentals < self.p.experimentals;
         let budget = self.experimental_budget(s);
         c.retain(|&(_, o)| !self.info[o].experimental || may_experimental && self.info[o].cost <= budget);
+        // Artillery held to its share of the army on the ground (`artillery_full`): rated by its
+        // reach it would make up whole armies, and what lobs its shells from afar wants a front of
+        // others before it.
+        if !air && !naval && c.iter().any(|&(_, o)| self.info[o].artillery) && c.iter().any(|&(_, o)| !self.info[o].artillery) && self.artillery_full(s) {
+            c.retain(|&(_, o)| !self.info[o].artillery);
+        }
         if c.is_empty() {
             return None;
         }

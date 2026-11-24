@@ -1769,8 +1769,12 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   the army's cap grows a quarter for a player at tech 2 or more, more advanced factories come as
   the economy grows (`adv_factories_wanted`): upgraded where a factory of ours upgrades into one
   (`run_upgrades_in_place`, which also takes first the upgrade into a factory leading to
-  experimentals, and once a tech 3 factory stands climbs more ground factories to it,
-  `top_factories_wanted`), built where none does; and more tech 3 engineers as the income grows.
+  experimentals, and once a ground factory of a tier above others stands climbs those below to it,
+  `top_factories_wanted`: one more for every 15 metal a second past 15), built where none does; a
+  ground factory that climbs in place below the top tier at work makes no army while metal is
+  short (`leaves_metal_to_top_tier`: constructors and anti-aircraft still; the metal goes to the
+  top tier's factories and the climb; TA's factories climb nothing and make their army as
+  before); and more tech 3 engineers as the income grows.
   The way to experimentals (`experimentals_reachable`) follows a factory's upgrades and an
   engineering suite's menu as well as what builds what.
 * Clearing the way (`clear.rs`): a unit whose route stops short of where it was sent though the
@@ -1803,16 +1807,25 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   start not yet looked at only when nothing is known (scouting in force). It is never
   "dominant" (going for the kill) before it has found the enemy.
 * Upgrades in place (`upgrade.rs`, `run_upgrades_in_place`): where a factory of ours upgrades into
-  a factory of a higher tier (`factory_tier`), the tiers are climbed by upgrading it, one factory
-  at a time, on the economy the first advanced factory waits for (`builder_task` then builds no
-  factory of the next tier: `climbs_by_upgrading`), the land factory first; with metal piling up,
-  or fewer advanced factories than the economy wants (`adv_factories_wanted`), more of them (toward
-  experimentals, first one that upgrades into a factory leading there); extractors (from
-  `mex_upgrade_minute`: the persona's, Tech's sooner, Rush's later) upgrade into better ones (more
-  `extracts_metal`), the safe ones nearest
-  home first, a few at a time as the income allows and while power holds (the reclaim and rebuild of
-  `upgrade_task` leaves those alone). Builders that help factories help one upgrading
-  (`factory_to_help`). With no unit of ours that upgrades (TA's games), nothing of it runs.
+  a factory of a higher tier (`factory_tier`), the tiers are climbed by upgrading it, the step to a
+  tier none of ours has yet alone, on the economy the first advanced factory waits for
+  (`builder_task` then builds no factory of the next tier: `climbs_by_upgrading`), the land factory
+  first; then the ground factories below the top tier climb to it as the income grows
+  (`top_factories_wanted`, the nearest the top first, while power holds); with metal piling up, or
+  fewer advanced factories than the economy wants (`adv_factories_wanted`), more of them (toward
+  experimentals, first one that upgrades into a factory leading there). Another starts beside those
+  under way (three at most) only while what they have left to pay is within 30 seconds of our metal
+  income (`FACTORY_UPGRADES_LEFT`). Extractors (from `mex_upgrade_minute`: the persona's, Tech's
+  sooner, Rush's later) upgrade into better ones (more `extracts_metal`), the safe ones nearest
+  home first, a few at a time as the income allows (another only while those under way have less
+  than 45 seconds of it left to pay, `EXTRACTOR_UPGRADES_LEFT`: three of Forged Alliance's costly
+  tech 3 extractors at once had starved everything else) and while power holds (the reclaim
+  and rebuild of `upgrade_task` leaves those alone). Builders that help factories help one
+  upgrading (`factory_to_help`). With no unit of ours that upgrades (TA's games), nothing of it
+  runs. Soaks of Forged Alliance's factions against each other (48 games of 30 minutes, Sherwood,
+  six seeds, Normal and Hard): of the army finished from minute 20, tech 1 went from 92% to 69%
+  (tech 2 2% to 17%, tech 3 6% to 13%) with the climb and `leaves_metal_to_top_tier`, and mobile
+  artillery from 39% to 12% of all armed units finished.
 * Adjacency (`adjacency.rs`): a power plant whose bonuses reach a factory of ours goes up beside it
   (`plant_beside_factory`, from `plant_task`: the factory nearest the builder first, a site along
   the most of a side, out of the way out and off the ground its upgrades take, the lane round the
@@ -1920,7 +1933,10 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   can (when there are any); among them by `TypeInfo::value` (firepower times health per
   cost, plus reach) or, on Hard, by `efficiency` for land units: firepower times health
   grows with the square of the number of units, so per cost^1.5, less for units too slow
-  to keep up. Hard also handles its battles (`micro`): badly hurt units fall back to the
+  to keep up. Artillery (`TypeInfo::artillery`: a ground unit whose shells or missiles are lobbed
+  600 px or further), rated by its reach, made up whole armies of Forged Alliance's (72-87 a game):
+  it is held to `ARTILLERY_SHARE` (30%) of the army on the ground, those under way and queued
+  counted (`artillery_full`). Hard also handles its battles (`micro`): badly hurt units fall back to the
   rally point and a builder off factory duty repairs them (free in TA; hurt warships go
   back off the shipyard, where a naval constructor kept for it mends them), and fire is
   concentrated on the enemy in reach whose loss costs the most firepower per point of

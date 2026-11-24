@@ -626,6 +626,181 @@ fn a_strategic_silos_first_missile_is_saved_for() {
     assert!(ai.standing_for_projects(&sim, &s).is_empty());
 }
 
+/// Three tiers of factories climbed in place, as the Supreme Commander factions' are (FACT1 into FACT2
+/// into FACT3, costing 800 and 3,000; each turns out its tier's constructor and tanks of the tiers up
+/// to its own, FACT1 artillery too), a factory that upgrades into nothing (LAB1, as TA's), extractors
+/// that upgrade (EXT1 into EXT2, of `ext2_metal`), `minutes` into the game on a grown economy.
+fn climb_fixture(minutes: u64, ext2_metal: u32) -> Sim {
+    let ext2 = format!("ExtractsMetal=3; FootprintX=2; FootprintZ=2; BuildCostMetal={ext2_metal};");
+    fixture(
+        minutes,
+        160,
+        &[
+            ("BUILD1", "Builder=1; WorkerTime=100; BuildDistance=200; CanMove=1; MaxVelocity=2; Category=LEVEL1;"),
+            ("BUILD2", "Builder=1; WorkerTime=200; BuildDistance=200; CanMove=1; MaxVelocity=2; Category=LEVEL2;"),
+            ("BUILD3", "Builder=1; WorkerTime=300; BuildDistance=200; CanMove=1; MaxVelocity=2; Category=LEVEL3;"),
+            ("FACT1", "Builder=1; WorkerTime=60; FootprintX=4; FootprintZ=4; BuildTime=100; Category=LEVEL1; UpgradesTo=FACT2;"),
+            ("FACT2", "Builder=1; WorkerTime=60; FootprintX=4; FootprintZ=4; BuildTime=100; Category=LEVEL2; UpgradesTo=FACT3; BuildCostMetal=800;"),
+            ("FACT3", "Builder=1; WorkerTime=60; FootprintX=4; FootprintZ=4; BuildTime=100; Category=LEVEL3; BuildCostMetal=3000;"),
+            ("LAB1", "Builder=1; WorkerTime=60; FootprintX=4; FootprintZ=4; BuildTime=100; Category=LEVEL1;"),
+            ("EXT1", "ExtractsMetal=1; WorkerTime=10; FootprintX=2; FootprintZ=2; UpgradesTo=EXT2;"),
+            ("EXT2", ext2.as_str()),
+            ("POWER", "EnergyMake=20; FootprintX=2; FootprintZ=2;"),
+            ("BIGPOWER", "EnergyMake=200; FootprintX=2; FootprintZ=2; BuildCostMetal=600;"),
+            ("TANK1", "CanMove=1; MaxVelocity=2; Weapon1=GUN; Category=LEVEL1; BuildCostMetal=50;"),
+            ("ARTY1", "CanMove=1; MaxVelocity=1; Weapon1=SHELL; Category=LEVEL1; BuildCostMetal=60;"),
+            ("TANK2", "CanMove=1; MaxVelocity=2; Weapon1=GUN; Category=LEVEL2; BuildCostMetal=200; MaxDamage=3000;"),
+            ("TANK3", "CanMove=1; MaxVelocity=2; Weapon1=GUN; Category=LEVEL3; BuildCostMetal=600; MaxDamage=9000;"),
+        ],
+        "[GUN] { range=200; reloadtime=1; weaponvelocity=400; [DAMAGE] { default=10; } } \
+         [SHELL] { range=800; reloadtime=2; weaponvelocity=400; ballistic=1; [DAMAGE] { default=40; } }",
+        &[
+            ("BUILD1", vec!["EXT1", "POWER", "FACT1", "LAB1"]),
+            ("BUILD2", vec!["EXT1", "POWER"]),
+            ("BUILD3", vec!["EXT1", "POWER", "BIGPOWER"]),
+            ("FACT1", vec!["BUILD1", "TANK1", "ARTY1"]),
+            ("FACT2", vec!["BUILD2", "TANK1", "TANK2"]),
+            ("FACT3", vec!["BUILD3", "TANK1", "TANK2", "TANK3"]),
+            ("LAB1", vec!["BUILD1", "TANK1"]),
+        ],
+    )
+}
+
+/// This think's upgrades in place: (unit, into what).
+fn upgrades(ai: &mut SkirmishAi, sim: &Sim) -> Vec<(UnitId, usize)> {
+    let mut out = Vec::new();
+    ai.run_upgrades_in_place(sim, &ai.survey(sim), &mut out);
+    out.into_iter()
+        .filter_map(|c| match c {
+            Command::Order { units, order: Order::Upgrade(to), .. } => Some((units[0], to)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Once a factory of the third tier stands, those below that climb in place climb to it as the
+/// economy grows (the nearest the top first: FACT2 before FACT1), the next beside one under way only
+/// while what that has left to pay is within half a minute of our income; on a small income one of
+/// the top tier is enough; a factory that upgrades into nothing is left as it is.
+#[test]
+fn the_factories_below_climb_to_the_top_tier() {
+    let mut sim = climb_fixture(20, 500);
+    put(&mut sim, "FACT3", 0, 400, 400);
+    let second = put(&mut sim, "FACT2", 0, 700, 400);
+    let first = put(&mut sim, "FACT1", 0, 1000, 400);
+    let lab = put(&mut sim, "LAB1", 0, 1300, 400);
+    let mut ai = SkirmishAi::new(0, &sim, Difficulty::Normal);
+    let (fact2, fact3) = (id(&sim, "FACT2"), id(&sim, "FACT3"));
+    // A small income: one factory of the top tier will do.
+    sim.players[0].economy.metal_income = fx(10);
+    assert_eq!(upgrades(&mut ai, &sim), vec![], "one at the top is enough for ten metal a second");
+    // Forty a second: another; the nearest the top first.
+    grown(&mut sim);
+    assert_eq!(upgrades(&mut ai, &sim), vec![(second, fact3)]);
+    sim.step(&[Command::Order { player: 0, units: vec![second], order: Order::Upgrade(fact3), queue: false }]);
+    grown(&mut sim);
+    // Its 3,000 to pay: the next waits (half a minute of forty is 1,200)...
+    assert_eq!(upgrades(&mut ai, &sim), vec![], "the next waits while 3,000 is left to pay");
+    // ...beside it on an income that pays for both, FACT1 into FACT2 (the lab upgrades into nothing).
+    sim.players[0].economy.metal_income = fx(120);
+    assert_eq!(upgrades(&mut ai, &sim), vec![(first, fact2)]);
+    assert!(!upgrades(&mut ai, &sim).iter().any(|&(u, _)| u == lab));
+}
+
+/// A factory below the top tier at work that climbs in place leaves the metal to the top tier while
+/// metal is short (it makes no army; the top tier's does), and makes its own again with metal piling
+/// up or while the top tier's factory upgrades (making nothing meanwhile); a factory that upgrades into
+/// nothing (TA's) never leaves it.
+#[test]
+fn a_factory_that_climbs_leaves_the_metal_to_the_top_tier() {
+    let mut sim = climb_fixture(20, 500);
+    let top = put(&mut sim, "FACT3", 0, 400, 400);
+    let first = put(&mut sim, "FACT1", 0, 1000, 400);
+    let lab = put(&mut sim, "LAB1", 0, 1300, 400);
+    // (Constructors enough of each tier, and a tank at home: the factories turn out the army alone.)
+    for k in 0..8 {
+        put(&mut sim, "BUILD1", 0, 500 + 30 * k, 700);
+    }
+    for k in 0..4 {
+        put(&mut sim, "BUILD3", 0, 500 + 30 * k, 760);
+    }
+    put(&mut sim, "TANK1", 0, 600, 600);
+    let mut ai = SkirmishAi::new(0, &sim, Difficulty::Normal);
+    ai.metal_avg = Fx::from_ratio(1, 10);
+    let s = ai.survey(&sim);
+    let top_tier = ai.working_top_tier(&sim, &s);
+    assert_eq!(top_tier, 3);
+    assert!(ai.leaves_metal_to_top_tier(&sim, sim.unit(first).unwrap(), top_tier));
+    assert!(!ai.leaves_metal_to_top_tier(&sim, sim.unit(lab).unwrap(), top_tier), "one that upgrades into nothing makes its army");
+    let mut out = Vec::new();
+    ai.run_factories(&sim, &s, &mut out);
+    let made = |out: &[Command], f: UnitId| out.iter().filter_map(|c| match c {
+        Command::Produce { factory, type_id, .. } if *factory == f => Some(*type_id),
+        _ => None,
+    }).collect::<Vec<usize>>();
+    assert!(made(&out, first).is_empty(), "FACT1 leaves the metal: {:?}", made(&out, first));
+    assert!(!made(&out, top).is_empty(), "the top tier's factory makes its army");
+    // Metal piling up: it makes its own again.
+    ai.metal_avg = Fx::from_ratio(5, 10);
+    assert!(!ai.leaves_metal_to_top_tier(&sim, sim.unit(first).unwrap(), top_tier));
+    // The top tier's only factory upgrading: what is at work below makes its army.
+    let mut sim = climb_fixture(20, 500);
+    let top = put(&mut sim, "FACT2", 0, 400, 400);
+    let first = put(&mut sim, "FACT1", 0, 1000, 400);
+    let mut ai = SkirmishAi::new(0, &sim, Difficulty::Normal);
+    sim.step(&[Command::Order { player: 0, units: vec![top], order: Order::Upgrade(id(&sim, "FACT3")), queue: false }]);
+    ai.metal_avg = Fx::from_ratio(1, 10);
+    let s = ai.survey(&sim);
+    assert_eq!(ai.working_top_tier(&sim, &s), 1, "the factory upgrading is not at work");
+    assert!(!ai.leaves_metal_to_top_tier(&sim, sim.unit(first).unwrap(), ai.working_top_tier(&sim, &s)));
+}
+
+/// Artillery (lobbing its shells from afar: rated by its reach, it is the best of what FACT1 offers)
+/// is picked while our army holds little of it, and no more once it holds its share.
+#[test]
+fn artillery_is_held_to_its_share() {
+    let mut sim = climb_fixture(20, 500);
+    let fact1 = id(&sim, "FACT1");
+    let opts = sim.types.get(fact1).ai_build_options.clone();
+    let arty = id(&sim, "ARTY1");
+    let mut ai = SkirmishAi::new(0, &sim, Difficulty::Normal);
+    assert!(ai.info[arty].artillery && !ai.info[id(&sim, "TANK1")].artillery);
+    let picks = |ai: &mut SkirmishAi, sim: &Sim| {
+        let s = ai.survey(sim);
+        (0..100).filter(|_| ai.pick_combat(sim, &s, fact1, &opts) == Some(arty)).count()
+    };
+    for k in 0..6 {
+        put(&mut sim, "TANK1", 0, 500 + 30 * k, 500);
+    }
+    let free = picks(&mut ai, &sim);
+    assert!(free >= 40, "artillery, the best for its price, while the army holds none: {free} of 100");
+    for k in 0..4 {
+        put(&mut sim, "ARTY1", 0, 500 + 30 * k, 560);
+    }
+    assert_eq!(picks(&mut ai, &sim), 0, "four of ten is past its share");
+}
+
+/// An extractor's upgrade beside one under way waits while that one has more left to pay than
+/// three quarters of a minute of our income (a third tier's 4,000 on thirty a second), and goes
+/// ahead beside a cheap one.
+#[test]
+fn extractor_upgrades_wait_for_what_is_left_to_pay() {
+    for (cost, second) in [(4000, false), (500, true)] {
+        let mut sim = climb_fixture(20, cost);
+        put(&mut sim, "EXT1", 0, 500, 500);
+        put(&mut sim, "EXT1", 0, 700, 500);
+        let mut ai = SkirmishAi::new(0, &sim, Difficulty::Normal);
+        sim.players[0].economy.metal_income = fx(30);
+        let first = upgrades(&mut ai, &sim);
+        assert_eq!(first.len(), 1, "one to start with");
+        sim.step(&[Command::Order { player: 0, units: vec![first[0].0], order: Order::Upgrade(first[0].1), queue: false }]);
+        grown(&mut sim);
+        sim.players[0].economy.metal_income = fx(30);
+        let next = upgrades(&mut ai, &sim);
+        assert_eq!(next.len() == 1, second, "beside one costing {cost}: {next:?}");
+    }
+}
+
 /// A silo holding a missile with nothing we know of in its reach sends a plane to look at the
 /// enemy's bases (and once in a while only); with a building of theirs known, it fires instead.
 #[test]
