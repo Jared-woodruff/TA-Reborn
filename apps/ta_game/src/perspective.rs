@@ -1175,12 +1175,14 @@ impl Perspective {
             let centre = body.transform_point3(Vec3::new(0.0, t.model.height.to_f32() * 0.5, 0.0));
             self.centre = centre;
             let mut at = centre - flat * (r * 4.0 + 40.0) + Vec3::Y * (r * 1.4 + 18.0);
-            // (Over the ground as it is drawn: a building's pad and its bank raise it; and high
-            // enough to see the unit over a ridge between them, risen at once, settling back.)
+            // (Over the ground as it is drawn, or the sea: a building's pad and its bank raise it;
+            // and high enough to see the unit over a ridge between them, risen at once, settling
+            // back. The line to it is held to the land alone: one under the sea, a submarine or a
+            // Commander on the sea bed, is seen through the water, not lifted over by its surface.)
             let world = &game.sim.world;
-            let ground = |x: f32, z: f32| crate::scene::drawn_ground(world, x, z).max(world.sea_level.to_f32());
-            at.y = at.y.max(ground(at.x, at.z) + 6.0);
-            let over_ridge = chase_clearance(centre, at, |x, z| ground(x, z) + 4.0);
+            let land = |x: f32, z: f32| crate::scene::drawn_ground(world, x, z);
+            at.y = at.y.max(land(at.x, at.z).max(world.sea_level.to_f32()) + 6.0);
+            let over_ridge = chase_clearance(centre, at, |x, z| land(x, z) + 4.0);
             self.chase_lift = if over_ridge >= self.chase_lift { over_ridge } else { self.chase_lift + (over_ridge - self.chase_lift) * (1.0 - (-dt * 2.0).exp()) };
             at.y += self.chase_lift;
             self.eye = at;
@@ -1709,6 +1711,12 @@ mod tests {
         assert!((lift - 70.0).abs() < 1e-3, "{lift}");
         let raised = eye + Vec3::Y * lift;
         assert!(chase_clearance(target, raised, ridge) < 1e-3);
+        // A submarine 100 under a sea at 0, its sea bed at -200, the camera behind it over the
+        // water: seen through the water, no rise (the sea's surface taken for ground lifted it
+        // over a thousand units).
+        let (sub, over) = (Vec3::new(0.0, -100.0, 0.0), Vec3::new(0.0, 6.0, -100.0));
+        assert_eq!(chase_clearance(sub, over, |_, _| -200.0 + 4.0), 0.0);
+        assert!(chase_clearance(sub, over, |_, _| 0.0 + 4.0) > 1000.0);
     }
 
     #[test]
