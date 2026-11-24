@@ -1420,6 +1420,13 @@ impl ApplicationHandler<egui_winit::accesskit_winit::Event> for App {
                     state.window.request_redraw();
                     return;
                 }
+                // (A unit driven from its eyes is let go, and the word sent before the window goes:
+                // in a battle over the network it went on with its last input in the others' games
+                // until the battle let it go.)
+                state.drop_perspective();
+                if let Some(net) = state.game.net.as_mut() {
+                    net.flush();
+                }
                 state.archive_replay();
                 event_loop.exit();
             }
