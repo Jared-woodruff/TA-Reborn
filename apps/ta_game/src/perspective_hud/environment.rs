@@ -7,7 +7,7 @@
 use egui::{Align2, Color32, Rect, Vec2, pos2, vec2};
 use ta_ui::i18n::t;
 
-use super::data::{Daylight, Readouts, clock_time};
+use super::data::{Daylight, Readouts, clock_time, metres};
 use super::kit::{Glyph, Pen, clock};
 use crate::effects::Weather;
 use crate::theme::{AMBER, AMBER_BRIGHT};
@@ -64,7 +64,7 @@ fn chips(rd: &Readouts) -> Vec<Chip> {
         Chip { glyph: g, colour: col, text: face, wind: None },
         Chip { glyph: Glyph::Sun, colour: INK, text: format!("{} {:.0} {:03.0}°", t("WIND"), env.wind, (env.wind_to + 180.0).round().rem_euclid(360.0)), wind: Some((env.wind_to - rd.look).to_radians()) },
         Chip { glyph: wg, colour: wcol, text: word, wind: None },
-        Chip { glyph: Glyph::Peak, colour: AMBER, text: format!("{} {:.0}", t("ELEV"), env.elevation), wind: None },
+        Chip { glyph: Glyph::Peak, colour: AMBER, text: format!("{} {:.0} {}", t("ELEV"), metres(env.elevation), t("M")), wind: None },
     ]
 }
 
@@ -116,10 +116,11 @@ pub fn corner(pen: &Pen, at: egui::Pos2, rd: &Readouts) -> Rect {
 /// they took.
 pub fn status_line(pen: &Pen, r: Rect, rd: &Readouts) -> Rect {
     let chips = chips(rd);
-    // As tall as the line allows, narrowed until the four fit side by side.
+    // As tall as the line allows, narrowed until the four fit side by side (on the panoramic
+    // display's narrow pane, the height's figures with their metres too).
     let mut size = (r.height() / pen.u * 0.62).min(8.0);
     let room = |size: f32| chips.iter().map(|c| pen.s(size * 1.6) + pen.width(&c.text, size)).sum::<f32>();
-    while size > 3.0 && room(size) > r.width() * 0.94 {
+    while size > 2.5 && room(size) > r.width() * 0.94 {
         size -= 0.25;
     }
     let gap = (r.width() - room(size)).max(0.0) / chips.len() as f32;

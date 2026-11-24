@@ -366,6 +366,19 @@ pub struct HudState {
     /// Where the view's keys stand while they show (`perspective_hud`'s `hints`): since when they
     /// show, and which of their places they took then.
     pub keys_at: std::cell::Cell<Option<(f64, usize)>>,
+    /// Since when the view has been leaving (interface seconds): what is written over it fades as
+    /// the camera climbs out (`perspective_hud`).
+    pub left_at: std::cell::Cell<Option<f64>>,
+    /// The units in view whose brackets were fitted to their models last frame (`perspective_hud`'s
+    /// sight: the nearest, kept while they are near, so that a bracket does not change its size
+    /// back and forth).
+    pub fitted: std::cell::Cell<Vec<UnitId>>,
+    /// How the target was marked last frame: which, whether bracketed in the window (else a
+    /// chevron at its edge), and which of its line's places it took.
+    pub target_line: std::cell::Cell<Option<(UnitId, bool, u8)>>,
+    /// The periscope's painted frame was in place round the eye last frame: it stays there
+    /// through the magnified field (the seat goes out as the sight magnifies).
+    pub framed: std::cell::Cell<bool>,
 }
 
 impl HudState {

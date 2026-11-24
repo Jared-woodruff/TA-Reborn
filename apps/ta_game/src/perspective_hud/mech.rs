@@ -9,23 +9,22 @@ use egui::{Pos2, Rect, Vec2, vec2};
 use super::data::Readouts;
 use super::kit::{Pen, clock};
 use super::{PHOSPHOR, View, sight};
-use crate::game::Game;
 use crate::perspective::Perspective;
 use crate::theme::{AMBER, AMBER_BRIGHT};
 
 /// The glass over the world. Returns the room its marks take (what else is written over the world
 /// keeps off it).
-pub(super) fn hud(pen: &Pen, view: &View, p: &Perspective, game: &Game, rd: &Readouts, now: f64) -> Vec<Rect> {
+pub(super) fn hud(pen: &Pen, view: &View, p: &Perspective, rd: &Readouts, now: f64) -> Vec<Rect> {
     // (A mech's marks are a little larger than the other crews'.)
     let pen = pen.scaled(1.1);
     let c = view.rect.center();
     // (Through the magnified sight, its own cross-hairs are the reticle.)
     if p.zoom > 0 {
-        sight::readiness(&pen, c, 60.0, p, game, now, true);
+        sight::readiness(&pen, c, 60.0, p, rd, now, true);
         return vec![Rect::from_center_size(c, Vec2::splat(pen.s(160.0)))];
     }
     reticle(&pen, c);
-    sight::readiness(&pen, c, 40.0, p, game, now, true);
+    sight::readiness(&pen, c, 40.0, p, rd, now, true);
     twist(&pen, rd, c);
     vec![Rect::from_min_max(c - vec2(pen.s(72.0), pen.s(62.0)), c + vec2(pen.s(72.0), pen.s(TWIST_RADIUS + 14.0)))]
 }

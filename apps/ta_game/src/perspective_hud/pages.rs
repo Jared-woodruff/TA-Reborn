@@ -156,8 +156,9 @@ pub fn unit(pen: &Pen, g: Rect, rd: &Readouts, face: &Face) {
     // Its name and kind.
     let (x, room) = (side + 5.0, UNIT_SIZE.0 - side - 5.0);
     let name = rd.name.to_uppercase();
+    // (Narrowed a little, then cut short.)
     let size = shrunk(pen, &name, 10.5, pen.s(room), 0.62);
-    pen.name(at(x, 0.0), Align2::LEFT_TOP, name, size, PHOSPHOR);
+    pen.name(at(x, 0.0), Align2::LEFT_TOP, pen.fitted_name(&name, size, pen.s(room)), size, PHOSPHOR);
     if !rd.kind.trim().eq_ignore_ascii_case(rd.name.trim()) {
         let kind = pen.fitted(&rd.kind.to_uppercase(), 6.2, pen.s(room));
         pen.text(at(x, 13.5), Align2::LEFT_TOP, kind, 6.2, PHOSPHOR.gamma_multiply(0.6));
