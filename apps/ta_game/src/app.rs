@@ -8689,6 +8689,12 @@ impl State {
     /// again joining it.
     fn restart_to_join(&mut self, address: &str, password: &str, order: Vec<String>) {
         log::info!("starting again with the mods {order:?} to join {address}");
+        // (The name typed on the Multiplayer page is the one the game joins with: kept first, as
+        // hosting or joining keeps it, the profile's commander renamed too.)
+        let name = self.menu.connect.name.trim().to_string();
+        if !name.is_empty() && name != self.settings.gameplay.player_name {
+            self.rename_commander(name);
+        }
         self.settings.mods.enabled = order;
         if let Err(e) = self.settings.save() {
             log::warn!("could not save the settings: {e}");

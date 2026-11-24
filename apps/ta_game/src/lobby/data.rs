@@ -93,16 +93,25 @@ pub(super) fn differences(host: &[NetMod], ours: &[NetMod], installed: &[RecordM
 
 /// The load order that makes our mods the host's, where turning mods on and off (and putting
 /// them in the host's order) is all it takes: every mod the host plays with is installed here as
-/// the host has it (none missing, none another version or copy). Map packs on now stay on. None
-/// where it would not be enough, or nothing differs.
+/// the host has it (none missing, none another version or copy). Of ours on now, those of maps
+/// alone stay on after them (by what each gives, as the network tells it: a map pack with
+/// features of its own gives data, and goes off with the rest). None where it would not be
+/// enough, or nothing differs.
 pub(super) fn switch_order(host: &[NetMod], ours: &[NetMod], installed: &[RecordMod]) -> Option<Vec<String>> {
     let gives = |id: &str, list: &[NetMod]| list.iter().any(|m| m.id == id && m.data);
     let wanted: Vec<RecordMod> = host.iter().filter(|m| m.data || gives(&m.id, ours)).map(record).collect();
     let on: Vec<RecordMod> = ours.iter().map(record).collect();
     let check = ta_config::records::mods::check(&wanted, &on, installed);
-    let same_copies = check.changed().next().is_none()
+    let enough = check.missing().next().is_none()
+        && check.changed().next().is_none()
         && check.needed.iter().all(|(m, need)| !matches!(need, Need::Off { version, .. } if !version.is_empty() && *version != m.version));
-    (check.switchable() && same_copies).then(|| check.load_order())
+    let wanted_here = |id: &str| wanted.iter().any(|w| w.id == id);
+    // (Ours that give data and the host plays without: turned off.)
+    let extra_data = ours.iter().any(|m| m.data && !wanted_here(&m.id));
+    let differs = check.reordered || extra_data || check.needed.iter().any(|(_, need)| matches!(need, Need::Off { .. }));
+    (enough && differs).then(|| {
+        wanted.iter().map(|m| m.id.clone()).chain(ours.iter().filter(|m| !m.data && !wanted_here(&m.id)).map(|m| m.id.clone())).collect()
+    })
 }
 
 /// A refusal for other data, told: what differs, a line each (the first [`MOST`]).
@@ -148,6 +157,15 @@ mod tests {
         let mut other = installed(&ours);
         other.extend([RecordMod { digest: [1; 16], ..record(&host[0]) }, RecordMod { version: "12".into(), digest: [9; 16], ..record(&host[1]) }]);
         assert_eq!(switch_order(&host, &ours, &other), None);
+        // A map pack of ours that gives data (features of its own) goes off, whatever its name;
+        // and with only it to turn off, the restart is still offered.
+        let ours = [m("map-pack-with-features", "1", 8, true)];
+        let host = [m("esc", "10.2", 1, true)];
+        let mut here = installed(&ours);
+        here.push(RecordMod { digest: [1; 16], ..record(&host[0]) });
+        assert_eq!(switch_order(&host, &ours, &here), Some(vec!["esc".to_string()]));
+        let none: [NetMod; 0] = [];
+        assert_eq!(switch_order(&none, &ours, &installed(&ours)), Some(Vec::new()), "the host plays without mods: ours off");
     }
 
     #[test]
