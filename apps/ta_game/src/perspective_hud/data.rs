@@ -163,8 +163,6 @@ impl Readouts {
         let to_deg = f32::to_degrees;
         let look = bearing_of(p.forward.x, p.forward.z);
         let heading = heading_bearing(u.heading);
-        // (Whether it rains is the weather's own clock, as the glass of the cockpit sees it.)
-        let now = crate::scene::game_seconds(game.sim.tick, game.alpha()) as f32;
         let energy = game.sim.players.get(u.owner as usize).map_or(0.0, |pl| pl.economy.energy.to_f32());
         // (Each weapon's own cost: a mod's unit may carry two fired on command.)
         let slots = u.weapon_slots(ty);
@@ -202,8 +200,8 @@ impl Readouts {
                 wind: game.sim.wind.to_f32(),
                 wind_to,
                 weather: game.effects.weather_kind(),
-                // TODO(lead): rain_on_glass
-                rain: game.effects.rain(now),
+                // (As the world shows it: no storm told of with the WEATHER setting off.)
+                rain: game.effects.rain_shown(),
                 elevation: (ground - world.sea_level).to_f32(),
             },
             weapons,

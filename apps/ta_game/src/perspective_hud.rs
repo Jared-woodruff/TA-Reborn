@@ -224,8 +224,9 @@ pub fn draw(p: &Perspective, ctx: &egui::Context, game: &Game, camera: &Camera, 
     let window = window(&view, p, modelled);
     // The glass: the night sight, the vignette, cracks; and in the rain, drops running down it.
     glass(&back, rect, &window, p, on, now);
-    // TODO(lead): rain_on_glass
-    let rain = game.effects.rain(crate::scene::game_seconds(game.sim.tick, game.alpha()) as f32);
+    // (As the world shows the rain: none with the WEATHER setting off, nor with the eye under the
+    // sea.)
+    let rain = p.rain_on_glass(game);
     if rain > 0.02 && !p.chase && p.cockpit != Cockpit::Periscope && !modelled {
         raindrops(&back, rect, p, rain * on, now);
     }
