@@ -31,8 +31,10 @@ pub const TAGS: [&str; 3] = ["units", "factions", "supreme commander"];
 /// `AdjacencySize`, from the buffs of the player's own copy; the engineering stations working round
 /// them by themselves, `DefaultMissionType=AssistPatrol`, by their drones' work and reach; and the
 /// units Forged Alliance makes only by upgrading made, so that what upgrades into them says so: the
-/// tech 3 Kennel, the Hives of tech 2 and 3, the Cybran shield generator's four upgrades).
-pub const VERSION: u32 = 12;
+/// tech 3 Kennel, the Hives of tech 2 and 3, the Cybran shield generator's four upgrades;
+/// 13: units of a faction's different tiers sharing a name shown with their tiers, "T2 Engineer"
+/// (`units::shown_name`), and every wreck by its unit's name, never its id).
+pub const VERSION: u32 = 13;
 
 /// What was made.
 #[derive(Clone, Debug, Default)]
@@ -103,6 +105,7 @@ pub fn make(files: &Files, units: &[UnitBlueprint], reborn: &str, write: &mut dy
             exits: Vec::new(),
             adjacency: u.adjacency.as_deref().map_or(&[][..], |table| adjacency.of(table)),
             adjacency_categories: Some(&adjacency_categories),
+            name: units::shown_name(u, &faction),
         };
         let shown: Vec<Vec<String>> = list.iter().map(|e| enhance::shown_bones(u, e)).collect();
         match unit(files, u, &extra, &extra_weapons, shown, &mut |path, bytes| put(path, bytes, &mut made))? {
@@ -692,7 +695,7 @@ mod tests {
     }
 
     /// The hash of the test faction's mod (see the test above).
-    const EXPECTED: &str = "724a6fd9e1bf0a04f95d1bd6cfad1f49f7bcae55a11ee64ba80699ecb7d4f14b";
+    const EXPECTED: &str = "767037adbecaa137b1d628c47f1cf69d01d1930189019d781e078a5fa69ea16e";
 
     /// A unit whose mesh does not read is left out, with its reason; the rest are made.
     #[test]

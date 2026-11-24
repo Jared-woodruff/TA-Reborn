@@ -130,6 +130,15 @@ impl Verdict {
 /// choose the install, the profile and a capture of the first run, the rest left behind (what it
 /// was opened with, a battle to start...).
 pub fn restart_args(original: impl IntoIterator<Item = OsString>, record: &Path, replay: bool) -> Vec<OsString> {
+    let mut args = kept_args(original);
+    args.push(if replay { "--replay" } else { "--load" }.into());
+    args.push(record.as_os_str().to_os_string());
+    args
+}
+
+/// Of the arguments the game was started with, those a game started again keeps: the install,
+/// the profile and a capture of the first run.
+fn kept_args(original: impl IntoIterator<Item = OsString>) -> Vec<OsString> {
     const KEPT: &[&str] = &["--profile", "--game-dir", "--screenshot", "--frames"];
     let mut args: Vec<OsString> = Vec::new();
     let mut original = original.into_iter().skip(1);
@@ -146,8 +155,6 @@ pub fn restart_args(original: impl IntoIterator<Item = OsString>, record: &Path,
             }
         }
     }
-    args.push(if replay { "--replay" } else { "--load" }.into());
-    args.push(record.as_os_str().to_os_string());
     args
 }
 
@@ -162,6 +169,31 @@ pub fn restart(record: &Path, replay: bool) -> std::io::Result<()> {
     command.args(restart_args(std::env::args_os(), record, replay));
     for name in SCRIPTED_INPUT {
         command.env_remove(name);
+    }
+    no_console(&mut command);
+    // (The launcher that started this game follows the new one: `ta_config::running`.)
+    let root = ta_config::running::profile_root();
+    ta_config::running::mark_restart(&root);
+    command.spawn().map(|_| ()).inspect_err(|_| {
+        ta_config::running::take_restart(&root);
+    })
+}
+
+/// Starts the game again joining the multiplayer game at `address` (`password`: its password,
+/// handed over as `--join` takes it); the caller then closes this one.
+pub fn restart_to_join(address: &str, password: &str) -> std::io::Result<()> {
+    let exe = std::env::current_exe()?;
+    let mut command = std::process::Command::new(exe);
+    let mut args = kept_args(std::env::args_os());
+    args.extend([OsString::from("--join"), OsString::from(address)]);
+    command.args(args);
+    for name in SCRIPTED_INPUT {
+        command.env_remove(name);
+    }
+    if password.is_empty() {
+        command.env_remove("TA_LOBBY_PASSWORD");
+    } else {
+        command.env("TA_LOBBY_PASSWORD", password);
     }
     no_console(&mut command);
     // (The launcher that started this game follows the new one: `ta_config::running`.)

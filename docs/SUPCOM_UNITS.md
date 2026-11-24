@@ -260,6 +260,13 @@ texture at 512), made in about twelve seconds.
 Each unit becomes a TA unit (`units/<id>.fbi`, `scripts/<id>.cob`; `ta_supcom::factions::units`,
 `script`, `faction`, made whole by `make`), its numbers Forged Alliance's at TA's scale:
 
+- **Name:** its own (`General.UnitName`), else its description (most engineers, factories and
+  economy buildings have no name of their own); where another unit of its faction of another tier
+  has the same, its tier before it (`units::shown_name`: "T1 Engineer", "T2 Engineer", "T3 Land
+  Factory"), as Forged Alliance's players say it: its menus tell tiers apart by their pictures'
+  frames, TA's menus and cards by name. Units of one tier sharing a name keep it (the Cybran's
+  Hives: the game shows an upgrade's step, "The Hive II"). Converter 13 and later; its wreck goes
+  by the same name, never its id.
 - **Health, costs, sight:** `Defense.Health`, `Economy.BuildCostMass` and `BuildCostEnergy`
   as they are; intel radii × 32 pixels.
 - **Build time:** FA builds in `BuildTime / BuildRate` seconds, TA in `BuildTime /

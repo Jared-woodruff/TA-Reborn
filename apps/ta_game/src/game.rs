@@ -704,6 +704,19 @@ pub struct Game {
     pub voices: Vec<(UnitId, ta_audio::SoundEvent)>,
 }
 
+/// A battle's map not installed with the mods on now (a saved game or replay made with a map pack
+/// that is off, or since removed): said in the player's words, not as a file the game looked for.
+#[derive(Debug)]
+pub struct MapMissing(pub String);
+
+impl std::fmt::Display for MapMissing {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&ta_ui::i18n::tf("This battle's map, {map}, is not installed with the mods on now: turn on the mods it was made with (its map pack) to open it.", &[("map", &self.0)]))
+    }
+}
+
+impl std::error::Error for MapMissing {}
+
 impl Game {
     pub fn new(assets: &Assets, renderer: &mut Renderer, setup: &GameSetup) -> Result<Game> {
         setup.validate()?;
@@ -711,7 +724,8 @@ impl Game {
         let vfs = assets.vfs.as_ref();
         let map_name = &setup.map;
         let map_path = format!("maps/{map_name}.tnt");
-        let map = TntMap::parse(&vfs.read(&map_path).with_context(|| map_path.clone())?)?;
+        let Some(bytes) = vfs.read_opt(&map_path) else { return Err(MapMissing(map_name.clone()).into()) };
+        let map = TntMap::parse(&bytes).with_context(|| map_path.clone())?;
         let info = MapInfo::from_ota(&vfs.read_opt(&format!("maps/{map_name}.ota")).map(|b| tdf::parse_bytes(&b)).unwrap_or_default());
         // Campaign missions come with their own OTA (objectives, placed units).
         let mission = match &setup.mission {

@@ -171,7 +171,8 @@ pub fn wrecks(units: &[&UnitBlueprint]) -> String {
         let _ = writeln!(
             s,
             "[{id}_dead]\n\t{{\n\tworld=All Worlds;\n\tdescription={} Wreckage;\n\tcategory=supcom_corpses;\n\tobject={id};\n\tfootprintx={fx};\n\tfootprintz={fz};\n\theight={height};\n\tblocking={blocking};\n\thitdensity=100;\n\tmetal={};\n\tenergy=0;\n\tdamage={};\n\treclaimable=1;\n\tfeaturereclamate=smudge01;\n\tseqnamereclamate=tree1reclamate;\n\t}}",
-            units::tdf_text(if u.name.is_empty() { &u.id } else { &u.name }),
+            // (By the name its unit is shown by: never its id.)
+            units::tdf_text(&units::shown_name(u, units)),
             (u.cost_mass * w.mass).round() as i64,
             (u.health * w.health).round().max(1.0) as i64
         );

@@ -904,6 +904,28 @@ pub struct Extra<'a> {
     pub exits: Vec<Exit>,
     pub adjacency: &'a [crate::adjacency::Buff],
     pub adjacency_categories: Option<&'a std::collections::BTreeSet<String>>,
+    /// The name it is shown by ([`shown_name`]); empty: its own, else its description.
+    pub name: String,
+}
+
+/// The name a unit is shown by: its own, else its description (the commanders' and most
+/// buildings' and engineers'), else its id; where another unit of its faction of another tier would
+/// be shown by the same (Forged Alliance tells its tiers apart by their pictures' frames, TA's menus
+/// and cards by name), its tier before it, as Forged Alliance's players say it: "T2 Engineer",
+/// "T3 Land Factory". Units of one tier sharing a name keep it (an upgrade's step tells those
+/// apart in the game).
+pub fn shown_name(u: &UnitBlueprint, faction: &[&UnitBlueprint]) -> String {
+    let own = |u: &UnitBlueprint| -> String {
+        if !u.name.is_empty() { u.name.clone() } else if !u.description.is_empty() { u.description.clone() } else { u.id.to_ascii_uppercase() }
+    };
+    let name = own(u);
+    let shared = faction.iter().any(|o| o.id != u.id && o.tech != u.tech && own(o).eq_ignore_ascii_case(&name));
+    match u.tech {
+        Some(Tech::T1) if shared => format!("T1 {name}"),
+        Some(Tech::T2) if shared => format!("T2 {name}"),
+        Some(Tech::T3) if shared => format!("T3 {name}"),
+        _ => name,
+    }
 }
 
 /// One of a factory's ways out, for its unit file's `[EXITS]` (docs/MODDING.md; `ta_data`'s
@@ -1056,8 +1078,9 @@ pub fn unit_file(u: &UnitBlueprint, weapons: &Weapons, carries: Option<(u32, u32
     put("Version", "1".into());
     put("Side", side.into());
     put("Objectname", u.id.to_ascii_lowercase());
-    // (The commanders have no name of their own: their description.)
-    let named = if !u.name.is_empty() { &u.name } else if !u.description.is_empty() { &u.description } else { &id };
+    // (The commanders have no name of their own: their description. Its tier with it where its
+    // faction has another of that name: `shown_name`.)
+    let named = if !extra.name.is_empty() { &extra.name } else if !u.name.is_empty() { &u.name } else if !u.description.is_empty() { &u.description } else { &id };
     put("Name", tdf_text(named));
     put("Description", tdf_text(&u.description));
     put("FootprintX", fx.to_string());
@@ -1465,6 +1488,25 @@ mod tests {
     use super::*;
     use crate::projectile::ProjectileBlueprint;
     use crate::unit::{self, Rack};
+
+    /// Where a faction has units of different tiers by one name, each is shown with its tier (and
+    /// its wreck by the same name, never its id); a name of its own, or one alone of its name, as
+    /// it is.
+    #[test]
+    fn tiers_sharing_a_name_are_told_apart() {
+        let bp = |id: &str, tech: &str, general: &str| unit::parse(id, &format!(
+            "UnitBlueprint {{ Categories = {{ 'UEF', 'MOBILE', 'LAND', '{tech}', 'ENGINEER' }}, Description = 'Engineer',              Defense = {{ Health = 100, MaxHealth = 100 }}, Economy = {{ BuildCostEnergy = 100, BuildCostMass = 50, BuildTime = 100 }},              General = {{ FactionName = 'UEF'{general} }}, Physics = {{ MotionType = 'RULEUMT_Land', MaxSpeed = 2, TurnRate = 90 }},              Footprint = {{ SizeX = 1, SizeZ = 1 }} }}")).unwrap();
+        let t1 = bp("UEL0105", "TECH1", "");
+        let t2 = bp("UEL0208", "TECH2", "");
+        let named = bp("UEL0309", "TECH3", ", UnitName = 'Builder Bob'");
+        let faction = [&t1, &t2, &named];
+        assert_eq!(shown_name(&t1, &faction), "T1 Engineer");
+        assert_eq!(shown_name(&t2, &faction), "T2 Engineer");
+        assert_eq!(shown_name(&named, &faction), "Builder Bob");
+        assert_eq!(shown_name(&t1, &[&t1]), "Engineer", "alone of its name: as it is");
+        let wrecks = super::super::faction::wrecks(&faction);
+        assert!(wrecks.contains("description=T2 Engineer Wreckage;") && !wrecks.contains("UEL0"), "{wrecks}");
+    }
 
     fn striker() -> UnitBlueprint {
         unit::parse(

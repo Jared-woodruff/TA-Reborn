@@ -61,6 +61,8 @@ impl Menu {
         let mods_differ = prompt.verdict.mods.as_ref().is_some_and(|check| !check.matches());
         let missing: Vec<RecordMod> = prompt.verdict.mods.as_ref().map(|c| c.missing().cloned().collect()).unwrap_or_default();
         let switch = prompt.verdict.mods.as_ref().filter(|c| c.switchable()).map(|c| c.load_order());
+        // (Its map, with the mods on now: without it, it cannot open as it is.)
+        let map_here = assets.vfs.exists(&format!("maps/{}.tnt", prompt.record.setup.map));
         let title = if mods_differ { t("MADE WITH OTHER MODS") } else { t("MADE WITH OTHER GAME DATA") };
         let accent = if lines.iter().any(|l| l.tone == Tone::Bad) { RED } else { AMBER };
         let width = (ctx.content_rect().width() - 80.0).clamp(1.0, 620.0);
@@ -84,6 +86,9 @@ impl Menu {
                 (Some(_), false) => t("A replay is its battle played over from the orders given in it. With other mods they can lead elsewhere: it may not show the battle it recorded.").to_string(),
             };
             ui.add(egui::Label::new(RichText::new(why).color(TEXT)).wrap());
+            if !map_here {
+                ui.add(egui::Label::new(RichText::new(tf("Its map, {map}, is not installed with the mods on now: it opens only with the mods it was made with.", &[("map", &prompt.record.setup.map)])).color(AMBER)).wrap());
+            }
             ui.add_space(4.0);
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
@@ -103,8 +108,9 @@ impl Menu {
                         choice = Some(Choice::Get(first.id.clone()));
                     }
                 }
+                // (Not where its map is not installed with the mods on now: it could not open.)
                 let anyway = if save { n("LOAD ANYWAY") } else { n("WATCH ANYWAY") };
-                if ui.add(ActionButton::secondary(anyway)).on_hover_text(t("Its orders are played over with the mods on now")).clicked() {
+                if map_here && ui.add(ActionButton::secondary(anyway)).on_hover_text(t("Its orders are played over with the mods on now")).clicked() {
                     choice = Some(Choice::Anyway);
                 }
                 if ui.add(ActionButton::secondary("CANCEL")).clicked() {
