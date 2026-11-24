@@ -325,7 +325,7 @@ fn reading_at(readings: &[StatSample], tick: f32, series: Series) -> Option<f32>
 }
 
 /// Player `i`'s figures as they stand now, as the battle's thirty-second readings take them
-/// (none before the battle's first tick).
+/// (none before the battle's first tick; the Commanders left out of the army's worth, as there).
 fn now(game: &Game, i: usize) -> Option<StatSample> {
     let sim = &game.sim;
     let p = sim.players.get(i).filter(|_| sim.tick > 0)?;
@@ -333,7 +333,7 @@ fn now(game: &Game, i: usize) -> Option<StatSample> {
         .units()
         .filter(|u| u.owner as usize == i && !u.dead && u.is_complete())
         .map(|u| sim.unit_type(u))
-        .filter(|t| t.locomotion != ta_sim::Locomotion::Static && t.weapons.iter().any(|w| w.is_some()))
+        .filter(|t| t.locomotion != ta_sim::Locomotion::Static && !t.def.is_commander && t.weapons.iter().any(|w| w.is_some()))
         .fold(Fx::ZERO, |a, t| a + t.cost_metal + t.cost_energy / 60);
     Some(StatSample { tick: sim.tick, metal_income: p.economy.metal_income, energy_income: p.economy.energy_income, army_value: army, units: p.unit_count })
 }

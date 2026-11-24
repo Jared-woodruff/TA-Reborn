@@ -85,6 +85,9 @@
   - A saved game or replay whose map's pack is off offered LOAD ANYWAY, which ended in a file
     error; it now says its map is not installed with the mods on now, and offers only what can open
     it.
+- ARMY VALUE in the battle's statistics (its figure and its chart) counted the Commanders: a
+  Supreme Commander faction's, priced as a large army, put a player far ahead before anything was
+  built. It counts the army alone now, as the allies' cards and the cast's do.
 - Riding in a unit (Perspective), from a review of the whole view:
   - The view's key hints covered the sight, the target or the flight figures in the Krogoth's cab,
     on a ship's bridge, in a gun tower and in the aircraft; they now keep clear of them, low in the
