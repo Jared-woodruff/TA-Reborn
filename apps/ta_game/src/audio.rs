@@ -242,7 +242,13 @@ impl GameAudio {
         if !music {
             engine.set_music_config(crate::sound_log::no_music());
         }
-        Self::with_engine(engine, vfs)
+        let mut audio = Self::with_engine(engine, vfs);
+        // (Its music the soundtrack chosen, as the speakers' is.)
+        if music {
+            audio.soundtrack = config.soundtrack;
+            audio.apply_soundtrack();
+        }
+        audio
     }
 
     /// The next `out.len() / 2` stereo frames of a film's sound ([`GameAudio::film`]).
@@ -719,7 +725,9 @@ impl GameAudio {
         if self.log.is_some() {
             return;
         }
-        let config = soundtrack_music(&self.ta_music, &self.fa_tracks, self.soundtrack, self.forged_alliance_side);
+        let mut config = soundtrack_music(&self.ta_music, &self.fa_tracks, self.soundtrack, self.forged_alliance_side);
+        // (The player's shuffle as it is now: the playlists change, not how they play.)
+        config.shuffle = self.engine.music().shuffle();
         self.engine.set_music_config(config);
         let music = self.engine.music();
         let stale = match (music.mood(), music.now_playing()) {
@@ -808,14 +816,14 @@ impl GameAudio {
         self.engine.bank().source().clone()
     }
 
-    /// TA's music files: the battle themes, the peace themes, the briefing's, victory, defeat;
-    /// then Forged Alliance's soundtrack where it is installed, every track of it (its films' too),
-    /// whatever SOUNDTRACK plays.
+    /// TA's music files: the battle themes, the peace themes, the briefing's, victory, defeat (as
+    /// TA's playlists name them, whatever SOUNDTRACK plays); then Forged Alliance's soundtrack
+    /// where it is installed, every track of it (its films' too).
     pub fn ta_tracks(&self) -> Vec<String> {
         use ta_audio::music::Mood;
         let mut tracks: Vec<String> = Vec::new();
         for mood in [Mood::Battle, Mood::Peace, Mood::Briefing, Mood::Victory, Mood::Defeat] {
-            let mut list: Vec<String> = self.engine.music().playlist(mood).iter().filter(|p| !p.starts_with("file:") && !p.starts_with("music/supcom/") && !tracks.contains(p)).cloned().collect();
+            let mut list: Vec<String> = self.engine.music().resolve(&self.ta_music, mood).into_iter().filter(|p| !p.starts_with("file:") && !p.starts_with("music/supcom/") && !tracks.contains(p)).collect();
             list.sort_by_key(|p| p.rsplit('/').next().and_then(|f| f.split('.').next()).and_then(|n| n.parse::<u32>().ok()).unwrap_or(u32::MAX));
             tracks.extend(list);
         }
@@ -885,6 +893,86 @@ mod tests {
         assert_eq!(tracks, fa(&[("menu", 1), ("battle", 2)]).into_iter().enumerate().map(|(i, t)| if i == 0 { FaTrack { file: "music/supcom/menu.flac".into(), ..t } } else { t }).collect::<Vec<_>>());
         source.insert(FA_LIST, b"not toml [[".to_vec());
         assert!(fa_tracks(&source).is_empty(), "a list that does not read: none");
+    }
+
+    /// Game files of TA's music (a track of each default playlist: battle 2, peace 11, the
+    /// briefing's 17, victory 0, defeat 1) and Forged Alliance's soundtrack (a building theme, a
+    /// battle theme, the menu's, and its list), in a folder of the test's own: the folder, and
+    /// the files mounted.
+    fn music_files(name: &str) -> (std::path::PathBuf, Arc<Vfs>) {
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("ta-audio-{name}-{}-{nanos}", std::process::id()));
+        for file in ["music/2.ogg", "music/11.ogg", "music/17.ogg", "music/0.ogg", "music/1.ogg", "music/supcom/building_1.flac", "music/supcom/battle_1.flac", "music/supcom/menu.flac"] {
+            let at = dir.join(file);
+            std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+            std::fs::write(at, b"").unwrap();
+        }
+        std::fs::write(dir.join(FA_LIST), "[[track]]
+file = \"music/supcom/building_1.flac\"
+part = \"building\"
+number = 1
+
+[[track]]
+file = \"music/supcom/battle_1.flac\"
+part = \"battle\"
+number = 1
+
+[[track]]
+file = \"music/supcom/menu.flac\"
+part = \"menu\"
+number = 1
+").unwrap();
+        let mut vfs = Vfs::new();
+        vfs.mount_mod_dir(&dir, "music").unwrap();
+        (dir, Arc::new(vfs))
+    }
+
+    fn audio_of(vfs: Arc<Vfs>) -> GameAudio {
+        let bank = Arc::new(SoundBank::from_vfs(vfs.clone()));
+        GameAudio::with_engine(AudioEngine::new_offline(AudioSettings::default(), bank, 1000), vfs)
+    }
+
+    /// The soundtrack chosen rebuilds the playlists, never how they play: the player's shuffle
+    /// off stays off, as the soundtrack is applied and as the side changes it.
+    #[test]
+    fn the_soundtrack_keeps_the_players_shuffle() {
+        let (dir, vfs) = music_files("shuffle");
+        let mut audio = audio_of(vfs);
+        audio.engine.music_mut().set_shuffle(false);
+        audio.soundtrack = ta_config::Soundtrack::BySide;
+        audio.apply_soundtrack();
+        assert!(!audio.engine.music().shuffle());
+        audio.set_side(true);
+        assert_eq!(audio.engine.music().playlist(Mood::Peace), ["music/supcom/building_1.flac"], "Forged Alliance's, for one of its factions");
+        assert!(!audio.engine.music().shuffle(), "still off");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The jukebox lists TA's music whatever plays: with Forged Alliance's alone, TA's battle,
+    /// peace and briefing themes are there all the same, before Forged Alliance's.
+    #[test]
+    fn the_jukebox_lists_tas_music_whatever_plays() {
+        let (dir, vfs) = music_files("jukebox");
+        let mut audio = audio_of(vfs);
+        audio.soundtrack = ta_config::Soundtrack::ForgedAlliance;
+        audio.apply_soundtrack();
+        assert!(audio.engine.music().playlist(Mood::Battle).iter().all(|p| p.starts_with("music/supcom/")), "Forged Alliance's plays");
+        let tracks = audio.ta_tracks();
+        assert_eq!(&tracks[..5], ["music/2.ogg", "music/11.ogg", "music/17.ogg", "music/0.ogg", "music/1.ogg"], "{tracks:?}");
+        assert!(tracks.contains(&"music/supcom/menu.flac".to_string()));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A replay's film plays the soundtrack chosen (its music on); with its music off, none.
+    #[test]
+    fn a_films_music_is_the_soundtrack_chosen() {
+        let (dir, vfs) = music_files("film");
+        let config = ta_config::Audio { soundtrack: ta_config::Soundtrack::ForgedAlliance, ..Default::default() };
+        let film = GameAudio::film(vfs.clone(), &config, 1000, false, true);
+        assert_eq!(film.engine.music().playlist(Mood::Peace), ["music/supcom/building_1.flac"]);
+        let silent = GameAudio::film(vfs, &config, 1000, false, false);
+        assert!(silent.engine.music().playlist(Mood::Peace).is_empty());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     fn offline_audio() -> GameAudio {
