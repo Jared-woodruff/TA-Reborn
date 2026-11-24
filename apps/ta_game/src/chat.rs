@@ -18,24 +18,32 @@ pub struct ChatLine {
     pub secs: f32,
     /// The speaker, for their colour, when known.
     pub player: Option<u8>,
-    /// A computer player's transmission: the speaker's title (translated where shown). It
-    /// comes in on its own card (`hud/comms.rs`), and stays in the chat's history.
+    /// A transmission: the speaker's title (translated where shown). It comes in on its own
+    /// card (`hud/comms.rs`), and stays in the chat's history.
     pub title: Option<&'static str>,
+    /// A transmission from a computer player's persona (`chatter.rs`), not a scenario's story:
+    /// the ENEMY TRANSMISSIONS setting turned off takes it off the screen.
+    pub persona: bool,
 }
 
 impl ChatLine {
     pub fn said(from: String, text: String, player: Option<u8>) -> ChatLine {
-        ChatLine { from, text, secs: 12.0, player, title: None }
+        ChatLine { from, text, secs: 12.0, player, title: None, persona: false }
+    }
+
+    /// A scenario's transmission (its story), from `from`, `title` under the name.
+    pub fn transmission(from: String, title: &'static str, text: String, player: u8) -> ChatLine {
+        ChatLine { from, text, secs: 12.0, player: Some(player), title: Some(title), persona: false }
     }
 
     /// A computer player's line, from its persona, `title` under its name.
-    pub fn transmission(from: String, title: &'static str, text: String, player: u8) -> ChatLine {
-        ChatLine { from, text, secs: 12.0, player: Some(player), title: Some(title) }
+    pub fn persona(from: String, title: &'static str, text: String, player: u8) -> ChatLine {
+        ChatLine { persona: true, ..ChatLine::transmission(from, title, text, player) }
     }
 
     /// The game's answer to a cheat code.
     pub fn answer(text: String) -> ChatLine {
-        ChatLine { from: String::new(), text, secs: 8.0, player: None, title: None }
+        ChatLine { from: String::new(), text, secs: 8.0, player: None, title: None, persona: false }
     }
 }
 

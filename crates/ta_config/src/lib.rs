@@ -1378,7 +1378,9 @@ pub struct Gameplay {
     /// How the right button opens the radial menu; a settings file from before the choice keeps
     /// what the button always did (a click or a hold).
     pub radial_opens: RadialOpens,
-    /// In single-player battles the enemy's computer players talk on the chat.
+    /// In single-player battles the enemy's computer players talk: their greetings, taunts
+    /// and answers come in as transmissions at the top left and stay on the chat (the ENEMY
+    /// TRANSMISSIONS setting; off, they keep quiet from that moment, mid-battle too).
     pub ai_chatter: bool,
     /// When the coach gives advice in battle.
     pub coach: Coach,

@@ -7532,13 +7532,15 @@ fn battle_card(ui: &mut egui::Ui, game: &Game) {
 
 /// A new battle's single-player touches: our name on the chat line, and the enemy's computer
 /// players, who talk (not in campaign missions, which tell their own story), remembering the
-/// player from battles before where this run keeps records (`remember`).
+/// player from battles before where this run keeps records (`remember`). With the ENEMY
+/// TRANSMISSIONS setting off they are there all the same, muted, so that turning it on in the
+/// battle lets them talk.
 fn meet_the_enemy(game: &mut Game, settings: &ta_config::Config, remember: bool) {
     game.player_name = settings.gameplay.player_name.clone();
     let setup = &game.setup;
     let computers: Vec<u8> = setup.players.iter().enumerate().filter(|(_, s)| matches!(s.controller, crate::setup::Controller::Ai(..))).map(|(i, _)| i as u8).collect();
     game.chatter = match setup.local_player {
-        Some(me) if settings.gameplay.ai_chatter && setup.mission.is_none() => {
+        Some(me) if setup.mission.is_none() => {
             // (Captures: `TA_RIVALS=won|lost` makes every persona a rival the player beat last
             // time, or lost to; such a record is never kept.)
             let rivals = match std::env::var("TA_RIVALS").ok().as_deref() {
@@ -7546,7 +7548,7 @@ fn meet_the_enemy(game: &mut Game, settings: &ta_config::Config, remember: bool)
                 _ if remember => crate::rivals::Rivals::load(),
                 _ => crate::rivals::Rivals::default(),
             };
-            crate::chatter::Chatter::new(&game.sim, me, &computers, setup.seed, rivals, remember && std::env::var("TA_RIVALS").is_err())
+            crate::chatter::Chatter::new(&game.sim, me, &computers, setup.seed, rivals, remember && std::env::var("TA_RIVALS").is_err(), !settings.gameplay.ai_chatter)
         }
         _ => None,
     };
@@ -9327,6 +9329,17 @@ impl State {
         }
         if self.settings.gameplay.unit_limit != before.gameplay.unit_limit {
             self.menu.rules.unit_limit = self.settings.gameplay.unit_limit;
+        }
+        // The enemy's transmissions turned off (or on): at once, in the battle under way too;
+        // their card on the screen goes with them (a scenario's story stays).
+        if before.gameplay.ai_chatter != self.settings.gameplay.ai_chatter {
+            let talk = self.settings.gameplay.ai_chatter;
+            if let Some(chatter) = self.game.chatter.as_mut() {
+                chatter.set_muted(!talk);
+            }
+            if !talk {
+                self.hud.hush_transmissions();
+            }
         }
     }
 

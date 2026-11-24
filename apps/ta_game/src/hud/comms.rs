@@ -3,7 +3,9 @@
 //! of a link being made, a glitch now and then), their name and title, the words typed out as
 //! they speak, their voice's trace under them. While they "type" the card shows the link being
 //! established; one card at a time, the next waiting its turn. The lines stay on the chat (its
-//! history); the card is how they arrive.
+//! history); the card is how they arrive. The ENEMY TRANSMISSIONS setting turned off takes the
+//! computer players' cards off the screen at once ([`Hud::hush_transmissions`]); a scenario's
+//! story comes in all the same.
 
 use std::collections::VecDeque;
 
@@ -41,7 +43,8 @@ pub(super) struct Comms {
 }
 
 /// The card shown: whose (player, name, title), its words (none while the link is made), when
-/// it came up and when its words begin (the interface's clock).
+/// it came up and when its words begin (the interface's clock), and whether it is a computer
+/// player's (`ChatLine::persona`; a link being made always is).
 struct Shown {
     player: u8,
     name: String,
@@ -49,6 +52,7 @@ struct Shown {
     words: Option<String>,
     began: f64,
     speaks: f64,
+    persona: bool,
 }
 
 impl Shown {
@@ -63,7 +67,23 @@ impl Shown {
     }
 }
 
+impl Comms {
+    /// The computer players' transmissions go, waiting or shown (a scenario's stay).
+    fn hush(&mut self) {
+        self.queue.retain(|line| !line.persona);
+        if self.shown.as_ref().is_some_and(|s| s.persona) {
+            self.shown = None;
+        }
+    }
+}
+
 impl Hud {
+    /// The ENEMY TRANSMISSIONS setting turned off: the computer players' cards leave the screen
+    /// now, the one shown and those waiting (their lines stay in the chat's history).
+    pub fn hush_transmissions(&mut self) {
+        self.comms.hush();
+    }
+
     /// The card of the transmission of the moment (see the module's notes), and the next one
     /// when its time is up.
     pub(super) fn comms(&mut self, ctx: &egui::Context, vfs: &Vfs, game: &mut Game) {
@@ -91,15 +111,16 @@ impl Hud {
                 Some(s) => {
                     s.words = Some(line.text);
                     s.speaks = now.max(s.began + LINK);
+                    s.persona = line.persona;
                 }
                 None => {
-                    self.comms.shown = Some(Shown { player, name: line.from, title: line.title.unwrap_or(""), words: Some(line.text), began: now, speaks: now + LINK });
+                    self.comms.shown = Some(Shown { player, name: line.from, title: line.title.unwrap_or(""), words: Some(line.text), began: now, speaks: now + LINK, persona: line.persona });
                 }
             }
         }
         // Someone "typing": the link comes up.
         if self.comms.shown.is_none() && let Some(t) = typing.first() {
-            self.comms.shown = Some(Shown { player: t.player, name: t.name.clone(), title: t.title, words: None, began: now, speaks: now + LINK });
+            self.comms.shown = Some(Shown { player: t.player, name: t.name.clone(), title: t.title, words: None, began: now, speaks: now + LINK, persona: true });
         }
         let Some(player) = self.comms.shown.as_ref().map(|s| s.player) else { return };
         let pic = self.portrait(ctx, vfs, game, player, SCREEN);
@@ -292,7 +313,7 @@ mod tests {
     use super::*;
 
     fn shown(words: Option<&str>) -> Shown {
-        Shown { player: 1, name: "Cortex Theta".into(), title: "MACHINE INTELLIGENCE", words: words.map(str::to_string), began: 10.0, speaks: 10.0 + LINK }
+        Shown { player: 1, name: "Cortex Theta".into(), title: "MACHINE INTELLIGENCE", words: words.map(str::to_string), began: 10.0, speaks: 10.0 + LINK, persona: true }
     }
 
     /// The words take their time to come and stay long enough to read, less with another
@@ -305,5 +326,24 @@ mod tests {
         assert!(short.leaves(true) < short.leaves(false));
         assert!(short.leaves(false) - short.began >= LINK + HOLD);
         assert_eq!(shown(None).typed(), shown(None).speaks);
+    }
+
+    /// Turned off, the computer players' transmissions leave the screen at once, shown or
+    /// waiting, links being made too; a scenario's story stays.
+    #[test]
+    fn hushed_the_computer_players_cards_go_and_a_scenarios_stay() {
+        let taunt = || ChatLine::persona("Cortex Theta".into(), "MACHINE INTELLIGENCE", "Resistance is futile.".into(), 1);
+        let story = || ChatLine::transmission("Arm Command".into(), "", "Hold the ridge.".into(), 0);
+        let mut comms = Comms { queue: [taunt(), story(), taunt()].into_iter().collect(), shown: Some(shown(Some("Target acquired."))) };
+        comms.hush();
+        assert!(comms.shown.is_none(), "the card shown goes");
+        assert_eq!(comms.queue.iter().map(|l| l.from.as_str()).collect::<Vec<_>>(), ["Arm Command"], "the story waits its turn");
+        // A link being made is a computer player's; a scenario's card shown stays.
+        let mut comms = Comms { queue: Default::default(), shown: Some(shown(None)) };
+        comms.hush();
+        assert!(comms.shown.is_none());
+        let mut comms = Comms { queue: Default::default(), shown: Some(Shown { persona: false, ..shown(Some("Hold the ridge.")) }) };
+        comms.hush();
+        assert!(comms.shown.is_some());
     }
 }
