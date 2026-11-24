@@ -146,6 +146,8 @@ pub enum Action {
     SupcomBrowse,
     /// Uses this copy of the game of those found (GOG's, Steam's...).
     SupcomUse(std::path::PathBuf),
+    /// Looks for the game again (not found, or the look failed): installed since, perhaps.
+    SupcomLookAgain,
     /// Makes the chosen Supreme Commander maps into TA maps.
     SupcomImport,
     /// Stops the import after the map being made.
@@ -293,7 +295,9 @@ pub struct LauncherApp {
     pub(crate) settings_view: ta_ui::settings::SettingsView,
     pretend_missing: bool,
     /// The experimental features shown this run whatever the settings say (`--experimental`, or
-    /// `--show` at an experimental dialog): [`LauncherApp::experimental`].
+    /// `--show` at an experimental dialog): [`LauncherApp::experimental`]. (None is being tried
+    /// out at the moment: `crate::experimental`.)
+    #[allow(dead_code)]
     pub(crate) experimental_forced: bool,
     notice: Option<Notice>,
     /// Notices waiting their turn (a few at most).
@@ -741,8 +745,6 @@ impl LauncherApp {
             ("maps-list", _) => self.maps.view = crate::maps::View::List,
             // (The dialog that imports Supreme Commander's maps, the game looked for.)
             ("supcom", maps) => {
-                // (An experimental feature's: shown this run whatever the settings say.)
-                self.experimental_forced = true;
                 self.open_supcom(crate::supcom::Tab::Maps);
                 if !maps.is_empty() {
                     self.supcom.auto_start = Some(maps.split(',').map(|m| m.trim().to_string()).filter(|m| !m.is_empty()).collect());
@@ -751,7 +753,6 @@ impl LauncherApp {
             }
             // (The same dialog at the game's factions; those named imported once listed: `all`.)
             ("supcom-factions", sides) => {
-                self.experimental_forced = true;
                 self.open_supcom(crate::supcom::Tab::Factions);
                 if !sides.is_empty() {
                     self.supcom.factions.auto_start = Some(sides.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect());
@@ -1075,6 +1076,11 @@ impl LauncherApp {
                     self.supcom.pick(root);
                 }
             }
+            Action::SupcomLookAgain => {
+                if !self.supcom.importing() && !self.supcom.factions.importing() && self.supcom.checking().is_none() {
+                    self.supcom.look_again();
+                }
+            }
             Action::SupcomImport => self.start_supcom_import(crate::supcom::Tab::Maps, false),
             Action::SupcomStop => self.supcom.stop(),
             Action::SupcomFactionsImport => self.start_supcom_import(crate::supcom::Tab::Factions, false),
@@ -1377,25 +1383,15 @@ impl LauncherApp {
 
     /// Opens the Supreme Commander dialog at `tab` (or at the other, where only its import is under
     /// way), looking for the game where the tab's look is not current.
-    ///
-    /// It is an experimental feature's ([`crate::experimental::Feature::SupremeCommander`]): with
-    /// experimental features off it opens only to show an import still under way (one started
-    /// before they were turned off).
     pub(crate) fn open_supcom(&mut self, tab: crate::supcom::Tab) {
-        if !self.experimental(crate::experimental::Feature::SupremeCommander) && !self.supcom.importing() && !self.supcom.factions.importing() {
-            return;
-        }
         let roots = self.supcom_roots();
         self.supcom.show(tab, roots);
     }
 
     /// The tab of the Supreme Commander dialog that makes the mod `id` again: one of its imports'
-    /// made by an older converter ([`crate::supcom::update_tab`]), with the import shown
-    /// (experimental features on); else none, the mod listed as any other.
+    /// made by an older converter ([`crate::supcom::update_tab`]); else none, the mod listed as
+    /// any other.
     pub(crate) fn supcom_update(&self, id: &str) -> Option<crate::supcom::Tab> {
-        if !self.experimental(crate::experimental::Feature::SupremeCommander) {
-            return None;
-        }
         crate::supcom::update_tab(&self.mods, id)
     }
 
@@ -3465,14 +3461,12 @@ mod tests {
         }
     }
 
-    /// The Supreme Commander import is an experimental feature. With experimental features off,
-    /// as they come, the Maps and Mods pages have no SUPREME COMMANDER… and its dialog does not
-    /// open, unless to show an import already under way. Turned on in the settings, they are
-    /// there. `--experimental` and `--show` at the dialog show them for one run, the setting left
-    /// as it is.
+    /// The Supreme Commander import is offered to every player: the Maps and Mods pages have their
+    /// SUPREME COMMANDER… with experimental features off, as they come, and the dialog opens at
+    /// either tab (and from `--show`).
     #[test]
-    fn the_supreme_commander_import_is_shown_only_with_experimental_features_on() {
-        let dir = temp_dir("experimental_features");
+    fn the_supreme_commander_import_is_shown_to_every_player() {
+        let dir = temp_dir("supcom_for_everyone");
         let (ctx, mut app) = launcher(&dir.join("config.toml"), &["--pretend-missing"]);
         app.skins.shutdown();
         let painted = |ctx: &egui::Context, app: &mut LauncherApp, page: Page| -> Vec<String> {
@@ -3494,45 +3488,21 @@ mod tests {
         for page in [Page::Maps, Page::Mods] {
             let texts = painted(&ctx, &mut app, page);
             assert!(texts.iter().any(|text| text == "RESCAN"), "{page:?} drawn: {texts:?}");
-            assert!(!texts.iter().any(|text| text == "SUPREME COMMANDER…"), "{page:?}: {texts:?}");
-        }
-        open(&mut app, crate::supcom::Tab::Maps);
-        assert!(!app.supcom.open, "no way in with experimental features off");
-        // An import started before they were turned off is still seen through.
-        app.supcom.factions.pretend_importing();
-        open(&mut app, crate::supcom::Tab::Factions);
-        assert!(app.supcom.open, "an import under way is shown");
-        app.supcom.factions.stop();
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-        while app.supcom.factions.importing() && std::time::Instant::now() < deadline {
-            app.supcom.factions.poll(&ctx, false);
-            std::thread::sleep(std::time::Duration::from_millis(2));
-        }
-        app.supcom.close();
-        // Turned on in the settings: there.
-        app.config.launcher.experimental_features = true;
-        for page in [Page::Maps, Page::Mods] {
-            let texts = painted(&ctx, &mut app, page);
             assert!(texts.iter().any(|text| text == "SUPREME COMMANDER…"), "{page:?}: {texts:?}");
         }
-        open(&mut app, crate::supcom::Tab::Maps);
+        for tab in [crate::supcom::Tab::Maps, crate::supcom::Tab::Factions] {
+            open(&mut app, tab);
+            assert!(app.supcom.open && app.supcom.tab == tab, "{tab:?}");
+            app.supcom.close();
+        }
+        app.skins.shutdown();
+        drop((ctx, app));
+        let (_ctx, mut app) = launcher(&dir.join("config_run.toml"), &["--pretend-missing", "--page", "maps", "--show", "supcom"]);
+        app.skins.shutdown();
+        app.show("supcom");
         assert!(app.supcom.open);
         app.supcom.close();
         app.skins.shutdown();
-        drop((ctx, app));
-        // For one run, the setting left off.
-        for extra in [&["--pretend-missing", "--experimental"][..], &["--pretend-missing", "--page", "maps", "--show", "supcom"][..]] {
-            let (_ctx, mut app) = launcher(&dir.join("config_run.toml"), extra);
-            app.skins.shutdown();
-            if let Some(what) = extra.iter().position(|a| *a == "--show").map(|i| extra[i + 1]) {
-                app.show(what);
-                assert!(app.supcom.open, "{extra:?}");
-                app.supcom.close();
-            }
-            assert!(app.experimental(crate::experimental::Feature::SupremeCommander), "{extra:?}");
-            assert!(!app.config.launcher.experimental_features, "{extra:?}: the setting as it was");
-            app.skins.shutdown();
-        }
         let _ = std::fs::remove_dir_all(dir);
     }
 

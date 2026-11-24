@@ -5,21 +5,23 @@ skirmish. The maps are made on the player's computer from their own copy of the 
 Steam's), into a map pack in their mods folder; nothing of Supreme Commander's is shipped with
 TA Reborn or kept in this repository.
 
-The import is an **experimental feature**: the launcher shows it with **ENABLE EXPERIMENTAL
-FEATURES** on (Settings, LAUNCHER; off by default). Off, its SUPREME COMMANDER… buttons and the
-Mods page's UPDATE… for its pack are left out; maps it made before stay installed and play as
-any map pack's. `--experimental`, or `--show supcom`, shows it for one run (captures, tests).
+The import was an experimental feature (Settings, LAUNCHER: ENABLE EXPERIMENTAL FEATURES) up to
+1.0.9; it is now offered to every player.
 
 - **Players:** the launcher's Maps page, **SUPREME COMMANDER…** (its MAPS tab; the Mods page's
   opens the same dialog at its FACTIONS). The dialog finds the game (a folder chosen with CHANGE
   FOLDER…, or the copy switched to, is kept for the next start in the launcher's settings folder,
   `supcom.toml`), lists its skirmish maps and the player's own (downloaded maps and Forged
   Alliance Forever's vault) with the game's own pictures of them, and makes the chosen ones, one
-  after another (at first the game's own maps not imported yet, or changed since, are chosen; the
-  player's own never are; after an import, only those not made stay chosen, to try again; once
-  the pack is removed, they are chosen afresh): most in seconds, the largest in about a
-  minute; all 54 of the game's take about 20 minutes and 1.2 GB on disk, and the converter needs
-  under 1 GB of memory at most. The import checks first that
+  after another (at first, where the pack holds maps an older converter made, those alone are
+  chosen, listed first, to be made again: its update; else the game's own maps not imported yet;
+  the player's own never are; after an import, only those not made stay chosen, to try again;
+  once the pack is removed, they are chosen afresh): most in seconds, the largest in about a
+  minute; all 54 of the game's take about 20 minutes and 1.2 GB on disk (the dialog says both
+  for the maps chosen), and the converter needs under 1 GB of memory at most. Without the game
+  (most players), the dialog says what it needs (the player's own installed copy of Forged
+  Alliance: GOG's Gold Edition or Steam's), that nothing of it is downloaded or shipped, and
+  offers both stores' pages, CHOOSE FOLDER… and LOOK AGAIN. The import checks first that
   the disk has room for them (the maps the pack holds are kept by linking their files, not
   copying them), and goes on with the dialog closed: the launcher's footer shows how far it has
   got, and a click there opens the dialog again. STOP AFTER THIS MAP ends it once the map in hand

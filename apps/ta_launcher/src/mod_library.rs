@@ -147,9 +147,6 @@ pub struct Facts<'a> {
     pub status: &'a dyn Fn(&str) -> ValidationStatus,
     /// The mods the player hid from the library (`ta_config::Mods::hidden`).
     pub hidden: &'a [String],
-    /// The Supreme Commander import is shown (an experimental feature's: `crate::experimental`):
-    /// its mods made by an older converter count as updates.
-    pub supcom: bool,
 }
 
 impl Facts<'_> {
@@ -182,7 +179,7 @@ pub fn accepts(item: &Item, query: &str, filter: Filter, hidden_view: bool, fact
         // (The Supreme Commander imports' mods made by an older converter too: made again in
         // their dialog.)
         Filter::Updates => item.catalogue.is_some_and(|entry| waiting_update(entry, facts.updatable_version(&item.id)).is_some())
-            || facts.supcom && crate::supcom::update_tab(facts.mods, &item.id).is_some(),
+            || crate::supcom::update_tab(facts.mods, &item.id).is_some(),
         Filter::PlaysWell => item.catalogue.is_some_and(|entry| plays_well(entry, item.installed, &(facts.status)(&item.id))),
     };
     shown && match (item.catalogue, facts.mods.get(&item.id)) {
@@ -583,7 +580,7 @@ mod tests {
         assert_eq!(all.len(), catalogue::MODS.len() + 2, "the catalogue's, then the player's map pack and mod");
         let enabled = vec!["navy".to_string()];
         let status = |_: &str| ValidationStatus::Unknown;
-        let facts = Facts { mods: &list, enabled: &enabled, status: &status, hidden: &[], supcom: true };
+        let facts = Facts { mods: &list, enabled: &enabled, status: &status, hidden: &[] };
         let shown = |filter: Filter, query: &str| {
             let library = Library { filter, query: query.into(), sort: Sort::Name, ..Default::default() };
             library.visible(&facts).into_iter().map(|item| item.id).collect::<Vec<_>>()
@@ -612,7 +609,7 @@ mod tests {
         let enabled = vec!["navy".to_string()];
         let hidden = vec!["navy".to_string(), "totalmayhem".to_string(), "gone-mod".to_string()];
         let status = |_: &str| ValidationStatus::Unknown;
-        let facts = Facts { mods: &list, enabled: &enabled, status: &status, hidden: &hidden, supcom: true };
+        let facts = Facts { mods: &list, enabled: &enabled, status: &status, hidden: &hidden };
         let all = items(&list).len();
         assert_eq!(counts(&list, &hidden), (all - 2, 2), "a hidden id no longer installed counts for nothing");
         assert_eq!(counts(&list, &[]), (all, 0));

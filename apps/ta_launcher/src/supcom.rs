@@ -35,6 +35,9 @@ pub const PACK_ID: &str = "map-pack-supreme-commander";
 /// name also tells a pack an import made from another mod of its id.
 const PACK_NAME: &str = n("Supreme Commander maps");
 const PACK_DESCRIPTION: &str = n("Maps of Supreme Commander: Forged Alliance, made into TA maps from your own copy of the game.");
+/// The pack's tags, as the factions' mod has its own (the library's filters and search find it by
+/// them).
+const PACK_TAGS: [&str; 2] = ["maps", "supreme commander"];
 /// A map's picture in the list is made at most this many pixels a side (the game's are 256,
 /// shown 56 points across).
 const PREVIEW_SIDE: u32 = 128;
@@ -234,6 +237,10 @@ impl Outcome {
             (None, Went::Badly) if failed == 1 => t("The map could not be made.").to_string(),
             (None, Went::Badly) => tf("None of the {n} maps could be made.", &[("n", &failed)]),
             (None, Went::Nothing) => t("Nothing was imported.").to_string(),
+            // (Stopped part of the way: said so, those left over still chosen.)
+            (None, Went::Well) | (None, Went::Partly) if failed == 0 && self.stopped => {
+                if made == 1 { t("Stopped after 1 map: it is in the map library, and in skirmish. The maps not made yet stay chosen.").to_string() } else { tf("Stopped after {n} maps: they are in the map library, and in skirmish. The maps not made yet stay chosen.", &[("n", &made)]) }
+            }
             (None, Went::Well) | (None, Went::Partly) if failed == 0 => {
                 if made == 1 { t("Imported 1 map: it is in the map library, and in skirmish.").to_string() } else { tf("Imported {n} maps: they are in the map library, and in skirmish.", &[("n", &made)]) }
             }
@@ -764,6 +771,14 @@ impl Import {
         self.set_tab(tab);
     }
 
+    /// LOOK AGAIN (the game not found, or the look failed): both tabs look for it afresh, the one
+    /// shown at once; the game may have been installed since the dialog opened.
+    pub fn look_again(&mut self) {
+        self.look.outdate();
+        self.factions.look.outdate();
+        self.set_tab(self.tab);
+    }
+
     /// Shows the tab `tab`, its look made again unless it is current (the rule both tabs keep).
     pub fn set_tab(&mut self, tab: Tab) {
         self.tab = tab;
@@ -798,7 +813,7 @@ impl Import {
         let folders = self.roots.folders.clone();
         self.look.start("supcom scan", move || {
             let pack = installed_folder(&folders, PACK_ID);
-            find(install::discover(), install::user_map_folders(), install::user_maps_folder(), picked.as_deref(), pack.as_deref())
+            find(copies_found(), install::user_map_folders(), install::user_maps_folder(), picked.as_deref(), pack.as_deref())
         });
     }
 
@@ -1025,10 +1040,24 @@ impl Import {
     }
 }
 
-/// The maps chosen for the player when the game's maps are first listed: the game's own not
-/// imported yet (or made by an older converter). The player's own maps are theirs to choose: a
-/// vault holds hundreds, gigabytes once made.
+/// The copies of the game on this computer; none with `TA_SUPCOM_MISSING=1` (captures: the dialog
+/// as a player without the game sees it).
+pub(crate) fn copies_found() -> Vec<Install> {
+    if std::env::var_os("TA_SUPCOM_MISSING").is_some_and(|v| v == "1") {
+        return Vec::new();
+    }
+    install::discover()
+}
+
+/// The maps chosen for the player when the game's maps are first listed: those an older converter
+/// made, where the pack holds some (its update: the Mods page's UPDATE… opens this tab for it, and
+/// making every map not imported yet would take twenty minutes); else the game's own not imported
+/// yet. The player's own maps are theirs to choose: a vault holds hundreds, gigabytes once made.
 fn first_choice(found: &Found) -> BTreeSet<PathBuf> {
+    let outdated: BTreeSet<PathBuf> = found.maps.iter().filter(|e| e.state == State::Outdated).map(|e| e.folder.clone()).collect();
+    if !outdated.is_empty() {
+        return outdated;
+    }
     found.maps.iter().filter(|e| !e.players_own && e.state != State::Imported).map(|e| e.folder.clone()).collect()
 }
 
@@ -1088,7 +1117,10 @@ fn find(copies: Vec<Install>, own_folders: Vec<PathBuf>, own_hint: Option<PathBu
             found.maps.push(Entry { folder, players_own, scenario, state });
         }
     }
-    found.maps.sort_by(|a, b| a.scenario.name.to_lowercase().cmp(&b.scenario.name.to_lowercase()).then(a.folder.cmp(&b.folder)));
+    // (By name, those to update first: the ones chosen for an update in sight.)
+    found.maps.sort_by(|a, b| (a.state != State::Outdated).cmp(&(b.state != State::Outdated))
+        .then_with(|| a.scenario.name.to_lowercase().cmp(&b.scenario.name.to_lowercase()))
+        .then(a.folder.cmp(&b.folder)));
     (found, previews)
 }
 
@@ -1299,7 +1331,7 @@ fn make_pack(
     // (The pack's version is its oldest map's converter's: one made by an older converter than
     // this TA Reborn's is offered as an update.)
     let version = made_by(&maps_out).values().copied().min().unwrap_or(convert::VERSION);
-    let manifest = ModManifest { id: PACK_ID.into(), name: PACK_NAME.into(), version: version.to_string(), description: PACK_DESCRIPTION.into(), ..Default::default() };
+    let manifest = ModManifest { id: PACK_ID.into(), name: PACK_NAME.into(), version: version.to_string(), description: PACK_DESCRIPTION.into(), tags: PACK_TAGS.map(String::from).to_vec(), ..Default::default() };
     install(&payload, &manifest)?;
     Ok(outcome)
 }
@@ -1422,6 +1454,28 @@ pub fn size_estimate(entries: &[&Entry]) -> u64 {
     }).sum()
 }
 
+/// About how long the maps take to make on a fast computer, in seconds, by their size: measured on
+/// a 32-thread desktop, where the game's 54 take about 20 minutes, a 5 km map seconds and an 81 km
+/// one about a minute.
+pub fn time_estimate(entries: &[&Entry]) -> u64 {
+    entries.iter().map(|e| match e.scenario.size.0.max(e.scenario.size.1) {
+        0..=300 => 3u64,
+        301..=600 => 10,
+        601..=1100 => 25,
+        1101..=2100 => 40,
+        _ => 65,
+    }).sum()
+}
+
+/// A time to make as the dialog says it: under a minute, about a minute, about 20 minutes.
+pub fn time_text(seconds: u64) -> String {
+    match (seconds + 30) / 60 {
+        0 => t("under a minute").to_string(),
+        1 => t("about a minute").to_string(),
+        minutes => tf("about {n} minutes", &[("n", &minutes)]),
+    }
+}
+
 /// The size a map is called by in the game (`20 km`).
 pub fn km(scenario: &Scenario) -> String {
     let side = scenario.size.0.max(scenario.size.1);
@@ -1536,8 +1590,9 @@ mod tests {
         let mut import = Import { open: true, ..Default::default() };
         import.pretend_found(found(&gog, [State::New, State::Imported, State::Outdated]), Previews::new());
         import.poll(&ctx);
-        assert_eq!(chosen(&import), ["C:/Game/maps/SCMP_001", "C:/Game/maps/SCMP_003"]);
-        // The player adds their own map; it and SCMP_001 are made, SCMP_003 is not.
+        assert_eq!(chosen(&import), ["C:/Game/maps/SCMP_003"], "a pack to update: what an older converter made, alone, not every map not imported yet");
+        // The player adds a map of the game's and their own; those two are made, SCMP_003 is not.
+        import.choose(Path::new("C:/Game/maps/SCMP_001"), true);
         import.choose(Path::new("D:/Own/maps/mine.v0001"), true);
         import.pretend_importing(&["scmp_001", "mine.v0001"]);
         import.stop();
@@ -1902,8 +1957,7 @@ mod tests {
 
     /// The imports' mods made by an older converter than this TA Reborn's are updates on the Mods
     /// page (its UPDATES, the rail's count), made again at their tab; not one made by this
-    /// converter, nor another mod of their id, nor any while the import is hidden (experimental
-    /// features off: `crate::experimental`).
+    /// converter, nor another mod of their id.
     #[test]
     fn an_imports_mod_made_by_an_older_converter_is_an_update() {
         use crate::mod_library::{Facts, Filter, Library};
@@ -1913,20 +1967,18 @@ mod tests {
             std::fs::write(dir.join(id).join("mod.toml"), format!("id = \"{id}\"\nname = \"{name}\"\nversion = \"{version}\"\n")).unwrap();
         };
         let list = || ModList::scan(vec![ModFolder { label: ta_vfs::mods::USER_FOLDER_LABEL, path: dir.clone(), exists: true }], &[]);
-        let updates_shown = |list: &ModList, supcom: bool| {
+        let updates = |list: &ModList| {
             let status = |_: &str| crate::validation::ValidationStatus::Unknown;
-            let facts = Facts { mods: list, enabled: &[], status: &status, hidden: &[], supcom };
+            let facts = Facts { mods: list, enabled: &[], status: &status, hidden: &[] };
             let mut library = Library::default();
             library.filter = Filter::Updates;
             library.visible(&facts).into_iter().map(|item| item.id).filter(|id| id == PACK_ID || id == crate::supcom_factions::MOD_ID).collect::<Vec<_>>()
         };
-        let updates = |list: &ModList| updates_shown(list, true);
         write(PACK_ID, PACK_NAME, "0");
         write(crate::supcom_factions::MOD_ID, crate::supcom_factions::MOD_NAME, &crate::supcom_factions::VERSION.to_string());
         assert_eq!(update_tab(&list(), PACK_ID), Some(Tab::Maps));
         assert_eq!(update_tab(&list(), crate::supcom_factions::MOD_ID), None, "made by this converter");
         assert_eq!(updates(&list()), [PACK_ID]);
-        assert!(updates_shown(&list(), false).is_empty(), "the import hidden (experimental features off): no update to make");
         write(crate::supcom_factions::MOD_ID, crate::supcom_factions::MOD_NAME, "1");
         assert_eq!(update_tab(&list(), crate::supcom_factions::MOD_ID), Some(Tab::Factions));
         write(PACK_ID, "Bob's own maps", "0");

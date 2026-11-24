@@ -31,7 +31,7 @@ pub const MOD_NAME: &str = n("Supreme Commander factions");
 #[cfg_attr(not(test), allow(dead_code))]
 const MOD_DESCRIPTION: &str = n("Supreme Commander: Forged Alliance's four factions, their units and buildings, made from your own copy of the game.");
 /// What a unit takes on the disk once made, about (its paint the most, as large as Forged Alliance
-/// paints it: converter version 10): 680 MB for the game's 357.
+/// paints it: since converter version 10): about 680 MB for the game's 364.
 const UNIT_BYTES: u64 = 1_910_000;
 
 /// The mod's name as the interface shows it, in the language in use.
@@ -130,8 +130,8 @@ impl Outcome {
         match (&self.error, self.went()) {
             (Some(why), _) => tf("The factions could not be imported: {why}", &[("why", why)]),
             (None, Went::Nothing) => t("Stopped: nothing was installed, and the factions are as they were.").to_string(),
-            (None, Went::Well) if one => tf("Imported the {faction} faction: {units} units, a side to play in skirmish.", &[("faction", &names), ("units", units)]),
-            (None, Went::Well) => tf("Imported the {factions} factions: {units} units in all, each a side to play in skirmish.", &[("factions", &names), ("units", units)]),
+            (None, Went::Well) if one => tf("Imported the {faction} faction: {units} units. Its mod is on: choose {faction} as a player's side when you set up a skirmish.", &[("faction", &names), ("units", units)]),
+            (None, Went::Well) => tf("Imported the {factions} factions: {units} units in all. Their mod is on: choose one as a player's side when you set up a skirmish.", &[("factions", &names), ("units", units)]),
             (None, _) if one => tf("Imported the {faction} faction, but {failed} of its units could not be made: the {units} made are a side to play in skirmish.", &[("faction", &names), ("failed", failed), ("units", units)]),
             (None, _) => tf("Imported the {factions} factions, but {failed} of their units could not be made: the {units} made are in skirmish, a side each.", &[("factions", &names), ("failed", failed), ("units", units)]),
         }
@@ -195,7 +195,7 @@ impl Factions {
         let folders = roots.folders.clone();
         self.look.start("supcom factions scan", move || {
             let held = mod_place(&Roots { folders, mods_dir: PathBuf::new() }).copy.filter(|copy| !copy.archive).map(|copy| copy.path);
-            find(install::discover(), picked.as_deref(), held.as_deref())
+            find(crate::supcom::copies_found(), picked.as_deref(), held.as_deref())
         });
     }
 
@@ -711,10 +711,10 @@ mod tests {
         let stopped = Outcome { stopped: true, ..Default::default() };
         let one = Outcome { factions: vec!["CYBRAN".into()], units: 91, ..Default::default() };
         assert_eq!([&well, &partly, &broken, &stopped].map(Outcome::went), [Went::Well, Went::Partly, Went::Badly, Went::Nothing]);
-        assert_eq!(well.summary(), "Imported the UEF and AEON factions: 180 units in all, each a side to play in skirmish.");
+        assert_eq!(well.summary(), "Imported the UEF and AEON factions: 180 units in all. Their mod is on: choose one as a player's side when you set up a skirmish.");
         assert!(partly.summary().contains("but 1 of their units could not be made"), "{}", partly.summary());
         assert!(partly.notice().unwrap().contains("could not be made"), "a notice says some units failed: {:?}", partly.notice());
-        assert_eq!(one.summary(), "Imported the CYBRAN faction: 91 units, a side to play in skirmish.");
+        assert_eq!(one.summary(), "Imported the CYBRAN faction: 91 units. Its mod is on: choose CYBRAN as a player's side when you set up a skirmish.");
         assert!(broken.notice().unwrap().ends_with("disk full"));
         assert!(stopped.notice().is_none());
     }

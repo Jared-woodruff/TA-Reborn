@@ -31,6 +31,25 @@
   left of the battlefield) are turned off with Options, GAMEPLAY: ENEMY TRANSMISSIONS, as COMPUTER
   PLAYERS TALK was called. It now takes effect at once, in a battle under way too: the card on the
   screen goes with them, and turned on again they talk from there. A scenario's story still comes in.
+- The Supreme Commander import is no longer an experimental feature: SUPREME COMMANDER… is on the
+  launcher's Maps and Mods pages for every player, and its dialog carries no EXPERIMENTAL tag. (The
+  launcher's Settings show ENABLE EXPERIMENTAL FEATURES only while some feature is being tried out;
+  none is now.) From a review before it was offered to everyone:
+  - Without Forged Alliance installed, the dialog says what it needs (your own copy, GOG's Gold
+    Edition or Steam's Forged Alliance; the original Supreme Commander alone will not do), that
+    TA Reborn downloads and includes none of it, and has both stores' pages, CHOOSE FOLDER… and LOOK
+    AGAIN, which looks again for a copy installed with the dialog open.
+  - UPDATE… on the map pack, after an update of TA Reborn, chose every map of the game not imported
+    yet (about twenty minutes of work); it now chooses the maps to make again, listed first.
+  - The maps chosen are said with how long they take to make, as well as the room they take, and
+    an import stopped part of the way says so, the maps left over still chosen.
+  - The factions' tab says that their mod is turned on once made, where its sides are chosen, and
+    that online everyone in a battle needs it, made by the same version of TA Reborn. A player
+    turned away from a battle for lacking it is told to make it from their own copy, not to
+    install it. With the factions chosen made already, IMPORT FACTIONS becomes MAKE AGAIN.
+  - The Maps page's SUPREME COMMANDER… opens while the game runs, as the Mods page's does (the
+    dialog says why an import must wait); STOP AFTER THIS MAP is offered once a map is being made;
+    the map pack has tags in the library; your own maps' empty folder takes one line.
 
 ### Fixed
 - Riding in a unit (Perspective), from a review of the whole view:
