@@ -186,6 +186,9 @@ pub enum MenuAction {
     RestartWithMods { path: std::path::PathBuf, replay: bool, order: Vec<String> },
     /// Open the launcher's Mods page on this mod (one a record needs that is not installed).
     GetModInLauncher(String),
+    /// Turn these mods on (and only these, in this order), and start the game again joining the
+    /// multiplayer game at `address` (with its `password`): the host's mods.
+    RestartToJoin { address: String, password: String, order: Vec<String> },
     /// Open the options panel.
     Options,
     /// Play a tutorial lesson.
@@ -1205,6 +1208,7 @@ impl Menu {
                     self.page = Page::Lobby;
                     MenuAction::None
                 }
+                crate::lobby::ConnectAction::RestartWithMods { address, password, order } => MenuAction::RestartToJoin { address, password, order },
             },
             Page::Records => self.records_page(ui),
             Page::Credits => self.credits_page(ui),

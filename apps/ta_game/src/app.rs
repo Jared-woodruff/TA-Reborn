@@ -6135,7 +6135,7 @@ impl State {
                     MenuAction::Narrate(None) => audio.stop_narration(),
                     MenuAction::StartNet(setup, session) => transition = Some(Transition::StartNet(setup, session)),
                     MenuAction::Play(record) => transition = Some(Transition::Play(record)),
-                    action @ (MenuAction::RestartWithMods { .. } | MenuAction::GetModInLauncher(_)) => record_mods_request = Some(action),
+                    action @ (MenuAction::RestartWithMods { .. } | MenuAction::RestartToJoin { .. } | MenuAction::GetModInLauncher(_)) => record_mods_request = Some(action),
                     MenuAction::StartTutorial(n) => transition = Some(Transition::StartTutorial(n)),
                     MenuAction::Editor => transition = Some(Transition::Editor(crate::editor::Start::New(crate::editor::default_new(assets)), Some("new".into()))),
                     MenuAction::Show { unit, map, hours, act } => showroom_request = Some(ShowroomRequest::Show(unit, map, hours, act)),
@@ -6453,6 +6453,7 @@ impl State {
         }
         match record_mods_request {
             Some(MenuAction::RestartWithMods { path, replay, order }) => self.restart_with_mods(&path, replay, order),
+            Some(MenuAction::RestartToJoin { address, password, order }) => self.restart_to_join(&address, &password, order),
             Some(MenuAction::GetModInLauncher(id)) => self.get_mod_in_launcher(&id),
             _ => {}
         }
@@ -8679,6 +8680,26 @@ impl State {
             Err(e) => {
                 log::warn!("could not start again: {e}");
                 self.menu.failure = Some((ta_ui::i18n::n("START TA REBORN AGAIN"), ta_ui::i18n::tf("The battle's mods are turned on, but TA Reborn could not start again by itself ({error}). Close it and start it again to play with them.", &[("error", &e)])));
+            }
+        }
+    }
+
+    /// A multiplayer game turned us away for other mods, every one of the host's installed here:
+    /// they are turned on (only they, in the host's order; map packs stay on), and the game starts
+    /// again joining it.
+    fn restart_to_join(&mut self, address: &str, password: &str, order: Vec<String>) {
+        log::info!("starting again with the mods {order:?} to join {address}");
+        self.settings.mods.enabled = order;
+        if let Err(e) = self.settings.save() {
+            log::warn!("could not save the settings: {e}");
+            self.menu.failure = Some((ta_ui::i18n::n("SETTINGS NOT SAVED"), ta_ui::i18n::tf("Your settings could not be saved: {error}", &[("error", &e)])));
+            return;
+        }
+        match crate::record_mods::restart_to_join(address, password) {
+            Ok(()) => self.pending = Some(Transition::Quit),
+            Err(e) => {
+                log::warn!("could not start again: {e}");
+                self.menu.failure = Some((ta_ui::i18n::n("START TA REBORN AGAIN"), ta_ui::i18n::tf("The host's mods are turned on, but TA Reborn could not start again by itself ({error}). Close it and start it again to join the game.", &[("error", &e)])));
             }
         }
     }

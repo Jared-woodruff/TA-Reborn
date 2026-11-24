@@ -52,6 +52,22 @@
     the map pack has tags in the library; your own maps' empty folder takes one line.
 
 ### Fixed
+- Supreme Commander's factions in play, from a review before the import was offered to everyone
+  (make the factions again on the Mods page, UPDATE…, to have the first two):
+  - Their tiers had one name: a tech 3 factory's menu offered three Engineers, told apart only by
+    price, and so for factories, extractors, generators and more. Where a faction has units of
+    different tiers by one name, each now carries its tier: "T1 Engineer", "T2 Engineer", "T3 Land
+    Factory".
+  - 77 of their wrecks (the factories', engineers', extractors', generators' and the commanders')
+    were named by the unit's internal id, "UEB0101 Wreckage"; they now go by the unit's name.
+  - The commanders' enhancement slots were shown by Forged Alliance's ids (LCH, RCH); they now read
+    Left arm, Right arm and Back.
+  - Turned away from a multiplayer game for other mods (the factions' mod on, say), when every mod
+    the host plays is installed here, USE THE HOST'S MODS AND RESTART turns them on in the host's
+    order (map packs stay on) and joins the game again.
+  - A saved game or replay whose map's pack is off offered LOAD ANYWAY, which ended in a file
+    error; it now says its map is not installed with the mods on now, and offers only what can open
+    it.
 - Riding in a unit (Perspective), from a review of the whole view:
   - The view's key hints covered the sight, the target or the flight figures in the Krogoth's cab,
     on a ship's bridge, in a gun tower and in the aircraft; they now keep clear of them, low in the

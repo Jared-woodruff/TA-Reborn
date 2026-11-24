@@ -45,6 +45,11 @@ pub struct ConnectForm {
     /// A change for the settings to keep: what the last lobby made here was made with, or a
     /// game forgotten (the app takes it).
     pub keep: Option<Keep>,
+    /// Turned away for other mods, every one of the host's installed here: the game's address,
+    /// its password, and the load order that makes ours the host's (USE THE HOST'S MODS AND
+    /// RESTART, beside the refusal); pressed (`restart`).
+    switch: Option<(String, String, Vec<String>)>,
+    restart: bool,
 }
 
 /// See [`ConnectForm::keep`].
@@ -94,6 +99,8 @@ impl Default for ConnectForm {
             ask_password: false,
             connecting: None,
             keep: None,
+            switch: None,
+            restart: false,
         }
     }
 }
@@ -104,6 +111,9 @@ pub enum ConnectAction {
     None,
     Back,
     Lobby(NetLobby),
+    /// Turn these mods on (and only these, in this order) and start again, joining the game at
+    /// `address` (with its `password`): the host's mods, all installed here, as a refusal found.
+    RestartWithMods { address: String, password: String, order: Vec<String> },
 }
 
 /// The height of a game's row in the network's list.
@@ -196,6 +206,7 @@ impl ConnectForm {
         match started {
             Ok(_) => {
                 self.error = None;
+                self.switch = None;
                 self.connecting = Some(Connecting { address, from, result });
             }
             Err(e) => self.error = Some((from, tf("Could not connect: {error}", &[("error", &e)]))),
@@ -227,6 +238,15 @@ impl ConnectForm {
                         Some(reason) => {
                             log::info!("{} turned us away: {reason:?}", c.address);
                             self.error = Some((c.from, refusal_text(reason, assets)));
+                            // (Other mods, all of the host's installed here: a restart with them
+                            // can join.)
+                            self.switch = match reason {
+                                ta_net::Refusal::Data { mods } => {
+                                    let installed = crate::record_mods::installed(&ta_config::Config::load());
+                                    super::data::switch_order(mods, &super::data::our_mods(assets), &installed).map(|order| (c.address.clone(), self.password.clone(), order))
+                                }
+                                _ => None,
+                            };
                         }
                         None => {
                             if c.from != Place::Network {
@@ -340,6 +360,11 @@ impl ConnectForm {
             self.unlocking = None;
             self.connect(address, password, from, assets);
         }
+        if std::mem::take(&mut self.restart)
+            && let Some((address, password, order)) = self.switch.take()
+        {
+            return ConnectAction::RestartWithMods { address, password, order };
+        }
         action
     }
 
@@ -380,6 +405,17 @@ impl ConnectForm {
         {
             ui.add_space(if place == Place::Top { 0.0 } else { space::S });
             ui.add(egui::Label::new(RichText::new(why).font(body(13.0)).color(RED)).wrap());
+            // (Turned away for other mods, every one of the host's installed here: one click
+            // turns them on and comes back.)
+            if self.switch.is_some() {
+                ui.add_space(space::XS);
+                if ui.add(ActionButton::primary("USE THE HOST'S MODS AND RESTART"))
+                    .on_hover_text(t("TA Reborn starts again with the host's mods on, in the host's order, and the others off (map packs stay on), and joins this game again"))
+                    .clicked()
+                {
+                    self.restart = true;
+                }
+            }
             if place == Place::Top {
                 ui.add_space(space::S);
             }

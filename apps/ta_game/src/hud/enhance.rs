@@ -84,9 +84,17 @@ pub(crate) fn effects(game: &Game, ty: &UnitType, index: u16) -> Vec<String> {
     out
 }
 
-/// The slot an enhancement takes, by name.
+/// The slot an enhancement takes, by name: Supreme Commander's own ids in words (its commanders'
+/// "LCH" and "RCH" are their left and right arms, "Back" their back), a mod's other names as it
+/// gives them.
 pub(crate) fn slot_name(ty: &UnitType, index: u16) -> String {
-    ty.enhancements.get(index as usize).and_then(|e| ty.enhancement_slots.get(e.slot as usize)).cloned().unwrap_or_default()
+    let slot = ty.enhancements.get(index as usize).and_then(|e| ty.enhancement_slots.get(e.slot as usize)).cloned().unwrap_or_default();
+    match slot.to_ascii_uppercase().as_str() {
+        "LCH" => t("Left arm").to_string(),
+        "RCH" => t("Right arm").to_string(),
+        "BACK" => t("Back").to_string(),
+        _ => slot,
+    }
 }
 
 /// How long `u` takes to install it on its own build power.
@@ -191,6 +199,17 @@ mod tests {
         let map = ta_formats::tnt::TntMap { width: cells, height: cells, sea_level: 0, heights: vec![60; n], features: vec![ta_formats::tnt::FEATURE_NONE; n], tiles: vec![], tile_map: vec![], feature_names: vec![], minimap: Default::default(), flags: Vec::new() };
         let players: Vec<ta_sim::PlayerSetup> = (0..2).map(|color| ta_sim::PlayerSetup { side: "ARM".into(), color, start: FxVec3::ZERO, metal: Fx::from_int(1000), energy: Fx::from_int(1000), ai: false }).collect();
         Sim::new(types, data, &map, &ta_data::MapInfo::default(), 0, &players, 7)
+    }
+
+    /// Supreme Commander's slot ids read as words; a mod's own slot names as it gives them.
+    #[test]
+    fn slots_are_named_in_words() {
+        let sim = battle();
+        let coma = sim.types.get(sim.types.id("COMA").unwrap());
+        assert_eq!((super::slot_name(coma, 0), super::slot_name(coma, 1)), ("Left arm".to_string(), "Back".to_string()));
+        let mut odd = coma.clone();
+        odd.enhancement_slots = vec!["Turret".into(), "Hull".into()];
+        assert_eq!(super::slot_name(&odd, 0), "Turret");
     }
 
     /// A choice from one type's list (the classic interface shows the first selected unit's) goes
