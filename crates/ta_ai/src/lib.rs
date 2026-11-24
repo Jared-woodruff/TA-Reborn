@@ -19,11 +19,13 @@
 //!
 //! Modules: `info` rates every unit type once per game, `map` keeps metal deposits,
 //! vents, strength grids and terrain reachability, `economy` runs constructors, factories
-//! and metal makers, `army` the military, `navy` the shipyard and the fleet, `transport`
-//! lifts over water and cliffs. Allies (`Sim::allied`) are never targets and are kept out
-//! of the line of fire; only our own units are commanded.
+//! and metal makers, `army` the military, `air` the defence against the enemy's aircraft,
+//! `navy` the shipyard and the fleet, `transport` lifts over water and cliffs. Allies
+//! (`Sim::allied`) are never targets and are kept out of the line of fire; only our own units
+//! are commanded.
 
 mod adjacency;
+mod air;
 mod ally;
 mod army;
 mod clear;
@@ -43,6 +45,8 @@ mod tests;
 mod clear_tests;
 #[cfg(test)]
 mod projects_tests;
+#[cfg(test)]
+mod air_tests;
 
 use std::cmp::Reverse;
 
@@ -94,6 +98,18 @@ const MINUTE: u64 = 60 * SECOND;
 const LOST_SPOT_TICKS: u64 = 75 * SECOND;
 /// A builder that has not started its job after this long is given something else to do.
 const STUCK_TICKS: u64 = 40 * SECOND;
+/// The most armed enemy aircraft seen at once (`SkirmishAi::air_pressure`) fades by one every
+/// this long while fewer are in sight.
+const AIR_FADE: u64 = 30 * SECOND;
+/// An armed enemy aircraft in sight within this (px) of a unit of ours hurt or a building lost is
+/// taken to have done it: a raid from the air there (`SkirmishAi::air_raids`), remembered this
+/// long, those within `RAID_NEAR` (px) of each other one raid.
+const RAIDER_NEAR: i64 = 600;
+const RAID_MEMORY: u64 = 3 * MINUTE;
+const RAID_NEAR: i64 = 300;
+/// Armed enemy aircraft seen at once (or a raid from the air lately) from which the air is a heavy
+/// threat (`SkirmishAi::air_heavy`): anti-aircraft comes before more of what it would bomb.
+const HEAVY_AIR: usize = 4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Difficulty {
@@ -592,9 +608,23 @@ pub struct SkirmishAi {
     enemy_commander_type: usize,
     /// Places our army reached and found nothing to fight (not targets again until then).
     cleared: Vec<(FxVec3, u64)>,
-    /// Last tick enemy aircraft were seen, and how many.
+    /// Last tick armed enemy aircraft were seen, and whether a plant of the enemy's that makes
+    /// aircraft is known (seen, and not seen gone).
     enemy_air_tick: Option<u64>,
-    enemy_air: usize,
+    enemy_air_plant: bool,
+    /// The most armed enemy aircraft seen at once lately, and when (`air_pressure`: it fades); where
+    /// our units were hurt or our buildings lost with armed enemy aircraft over them lately, and when
+    /// last.
+    air_peak: (usize, u64),
+    air_raids: Vec<(FxVec3, u64)>,
+    /// Our anti-aircraft cover per cell: round each of our anti-aircraft buildings (going up too;
+    /// what moves comes and goes), as far as it reaches up, its strength (`aa_strength`). And while
+    /// aircraft threaten, where our economy is worth most for the cover it has (`exposed_to_air`:
+    /// the place and what is there), most first, and where our mobile anti-aircraft waits (the
+    /// rally point, then those places).
+    own_aa: Grid,
+    air_exposed: Vec<(FxVec3, i64)>,
+    aa_posts: Vec<FxVec3>,
     enemy_silo: bool,
     /// When a tactical launcher of the enemy's (`TypeInfo::tactical_silo`) was first seen: cover
     /// against its missiles is put up (`projects.rs`).
@@ -694,8 +724,9 @@ pub struct SkirmishAi {
     yard: Vec<(UnitId, UnitId)>,
     yard_losses: Vec<(UnitId, u64)>,
     paused: Vec<(UnitId, u64)>,
-    /// The commander is falling back until this tick.
+    /// The commander is falling back until this tick; when it was last hurt.
     retreat_until: u64,
+    commander_hit: Option<u64>,
     /// Where a shipyard can go (once looked for), when we last looked and how often.
     naval: Option<navy::Naval>,
     naval_checked: u64,
@@ -845,6 +876,9 @@ struct Plan {
     /// started.
     silos: [usize; 2],
     covers: usize,
+    /// Where anti-aircraft buildings are ordered, not yet started (`air.rs`: not two for one part
+    /// of the economy).
+    aa: Vec<FxVec3>,
 }
 
 /// A job a builder has to itself (a frame is another matter: any number of hands may build it).
@@ -1153,7 +1187,12 @@ impl SkirmishAi {
             enemy_frames: Default::default(),
             cleared: Vec::new(),
             enemy_air_tick: None,
-            enemy_air: 0,
+            enemy_air_plant: false,
+            air_peak: (0, 0),
+            air_raids: Vec::new(),
+            own_aa: Grid::new(sim),
+            air_exposed: Vec::new(),
+            aa_posts: Vec::new(),
             enemy_silo: false,
             enemy_tactical: None,
             stuck: Vec::new(),
@@ -1206,6 +1245,7 @@ impl SkirmishAi {
             yard_losses: Vec::new(),
             paused: Vec::new(),
             retreat_until: 0,
+            commander_hit: None,
             naval: None,
             naval_checked: 0,
             naval_tries: 0,
@@ -1256,6 +1296,7 @@ impl SkirmishAi {
         if s.now % (10 * SECOND) < THINK_TICKS {
             self.mark_far_deposits(sim, &s);
         }
+        self.plan_air_cover(sim, &s);
         self.run_makers(sim, &s, &mut out);
         self.arm_defenses(sim, &s, &mut out);
         self.run_commander(sim, &s, &mut out);
@@ -1545,6 +1586,9 @@ impl SkirmishAi {
             // (An extractor taken apart to make way for a better one is no loss.)
             .filter(|(id, _)| !self.upgrades.iter().any(|up| up.old == *id))
             .map(|(_, p)| *p).collect();
+        // (Where we were hurt this think: a raid from the air where armed enemy aircraft are over
+        // it, below.)
+        let mut hurt: Vec<FxVec3> = lost.clone();
         for pos in lost {
             self.lost_spots.push((pos, now));
             self.alert(pos, now);
@@ -1583,6 +1627,10 @@ impl SkirmishAi {
         for u in &s.own {
             if let Ok(i) = self.health.binary_search_by_key(&u.id, |(id, _)| *id) && u.health + Fx::ONE < self.health[i].1 {
                 self.alert(u.pos, now);
+                hurt.push(u.pos);
+                if self.info[u.type_id].commander {
+                    self.commander_hit = Some(now);
+                }
             }
             health.push((u.id, u.health));
         }
@@ -1597,7 +1645,7 @@ impl SkirmishAi {
         // from where it was.
         self.threat.clear();
         self.enemy_aa.clear();
-        let mut air = 0;
+        let mut raiders: Vec<FxVec3> = Vec::new();
         let mut known_buildings: rustc_hash::FxHashSet<UnitId> = self.enemy_buildings.iter().map(|b| b.0).collect();
         let mut known_army: rustc_hash::FxHashMap<UnitId, usize> = self.enemy_army.iter().enumerate().map(|(k, a)| (a.0, k)).collect();
         let seen_now: rustc_hash::FxHashSet<UnitId> = s.enemies.iter().map(|e| e.id).collect();
@@ -1608,7 +1656,7 @@ impl SkirmishAi {
                 // Nanoframes are harmless, but still buildings worth knowing about.
             } else if kind == Locomotion::Air {
                 if i.ground_dps > 0 {
-                    air += 1;
+                    raiders.push(e.pos);
                 }
             } else {
                 if i.ground_dps > 0 {
@@ -1652,10 +1700,24 @@ impl SkirmishAi {
         for &c in &s.contacts {
             self.threat.add_disc(c, CONTACT_RANGE, CONTACT_WORTH);
         }
-        if air > 0 {
+        if !raiders.is_empty() {
             self.enemy_air_tick = Some(now);
-            self.enemy_air = air.max(self.enemy_air * 3 / 4);
+            if raiders.len() >= self.air_pressure(now) {
+                self.air_peak = (raiders.len(), now);
+            }
         }
+        // Raids from the air: where we were hurt this think with armed enemy aircraft over it (a
+        // player sees the bombers over what burns).
+        for &p in &hurt {
+            if !raiders.iter().any(|r| r.within_xz(p, fx(RAIDER_NEAR))) {
+                continue;
+            }
+            match self.air_raids.iter_mut().find(|(q, _)| q.within_xz(p, fx(RAID_NEAR))) {
+                Some(r) => r.1 = now,
+                None => self.air_raids.push((p, now)),
+            }
+        }
+        self.air_raids.retain(|&(_, t)| now < t + RAID_MEMORY);
         // Gone from where we look (destroyed, or taken: a building of ours or an ally's there
         // now is no enemy's).
         let friendly: rustc_hash::FxHashSet<_> = s.own.iter().chain(&s.allies).map(|u| u.id).collect();
@@ -1663,6 +1725,7 @@ impl SkirmishAi {
         let kept: rustc_hash::FxHashSet<UnitId> = self.enemy_buildings.iter().map(|b| b.0).collect();
         self.enemy_frames.retain(|id| kept.contains(id));
         self.enemy_buildings_peak = self.enemy_buildings_peak.max(self.enemy_buildings.len());
+        self.enemy_air_plant = self.enemy_buildings.iter().any(|&(_, _, t)| self.info[t].role == Role::Factory && self.info[t].kind == Locomotion::Air);
         // The player's helper keeps clear of the armed buildings it has seen when they are out of
         // sight, too: a tower is where it was, and the way back to it is no safer for the builder
         // having run from it.
@@ -1773,8 +1836,10 @@ impl SkirmishAi {
         }
     }
 
+    /// Enemy aircraft threaten us: armed ones seen in the last four minutes, or a plant of the
+    /// enemy's that makes them known (`enemy_air_plant`).
     fn air_threat(&self, now: u64) -> bool {
-        self.enemy_air_tick.is_some_and(|t| now < t + 4 * MINUTE)
+        self.enemy_air_tick.is_some_and(|t| now < t + 4 * MINUTE) || self.enemy_air_plant
     }
 
     /// The bases of players out of the game are no longer theirs: an enemy's is no target, and

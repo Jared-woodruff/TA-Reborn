@@ -53,11 +53,13 @@ pub(crate) struct TypeInfo {
     pub builds_mex: bool,
     pub builds_energy: bool,
     pub builds_factory: bool,
-    /// Damage per 10 seconds against ground and air targets, health, longest ground range.
+    /// Damage per 10 seconds against ground and air targets, health, longest ground range and
+    /// longest reach at aircraft.
     pub ground_dps: i64,
     pub air_dps: i64,
     pub hp: i64,
     pub range: i64,
+    pub air_range: i64,
     /// Combat value per unit of cost (higher is better); 0 when unarmed.
     pub value: i64,
     /// What a fixed budget of these is worth in a fight: firepower times toughness grows
@@ -249,6 +251,7 @@ pub(crate) fn classify(sim: &Sim) -> Vec<TypeInfo> {
             let ground_dps: i64 = weapons.iter().filter(|w| hits_ground(w)).map(|w| dps10(w)).sum();
             let air_dps: i64 = weapons.iter().filter(|w| hits_air(w)).map(|w| dps10(w)).sum();
             let range = weapons.iter().filter(|w| hits_ground(w)).map(|w| w.range.to_int()).max().unwrap_or(0);
+            let air_range = weapons.iter().filter(|w| hits_air(w)).map(|w| w.range.to_int()).max().unwrap_or(0);
             let hp = t.max_health.to_int().max(1);
             let cost = (t.cost_metal + t.cost_energy / 60).to_int().max(1);
             // Combat value per cost: firepower times toughness, a little extra for reach.
@@ -294,6 +297,7 @@ pub(crate) fn classify(sim: &Sim) -> Vec<TypeInfo> {
                 air_dps,
                 hp,
                 range,
+                air_range,
                 value,
                 efficiency,
                 bomber,

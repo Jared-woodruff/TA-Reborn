@@ -50,6 +50,16 @@
   - The Maps page's SUPREME COMMANDER… opens while the game runs, as the Mods page's does (the
     dialog says why an import must wait); STOP AFTER THIS MAP is offered once a map is being made;
     the map pack has tags in the library; your own maps' empty folder takes one line.
+- Computer players defend their economy from the air. Once enemy bombers or gunships (or an air
+  plant of the enemy's) have been seen, their first anti-aircraft goes up before more extractors,
+  and the more aircraft the enemy shows at once, or the harder it bombs them, the more of it:
+  anti-aircraft towers beside the extractor fields, power plants and factories with the least
+  cover, and beside an extractor put up while bombers are about, mobile anti-aircraft waiting over
+  them, and fighters on patrol where an air plant of theirs makes them. Against the Supreme
+  Commander factions' early bombers a TA side now keeps its extractors, power and constructors
+  rather than losing them all by the tenth minute. Their Commander also gets away from enemy
+  towers it meets out on the field, and from fire it cannot see, rather than reclaiming wrecks
+  under their guns.
 
 ### Fixed
 - Supreme Commander's factions in play, from a review before the import was offered to everyone

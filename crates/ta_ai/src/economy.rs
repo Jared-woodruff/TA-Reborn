@@ -128,6 +128,9 @@ impl SkirmishAi {
                     self.note_pending(&mut plan, *type_id);
                     plan.tech |= self.advanced_factory(sim, *type_id);
                     plan.tier = plan.tier.max(self.factory_tier(sim, *type_id));
+                    if self.info[*type_id].role == Role::AntiAir {
+                        plan.aa.push(*pos);
+                    }
                 }
             }
         }
@@ -197,6 +200,9 @@ impl SkirmishAi {
             Task::Build(type_id, pos) => {
                 plan.reserved.push((pos, fx(sim.types.get(type_id).radius.to_int() + 16)));
                 self.note_pending(plan, type_id);
+                if self.info[type_id].role == Role::AntiAir {
+                    plan.aa.push(pos);
+                }
                 out.push(order(Order::Build { type_id, pos }, false));
                 self.issued.push((b.id, type_id, pos, s.now));
                 // Outlying extractors get a guard tower once they have been raided.
@@ -204,6 +210,13 @@ impl SkirmishAi {
                     plan.reserved.push((site, fx(sim.types.get(tower).radius.to_int() + 16)));
                     plan.pending[Role::Defense as usize] += 1;
                     out.push(order(Order::Build { type_id: tower, pos: site }, true));
+                }
+                // And under bombers, anti-aircraft beside one where our cover does not reach.
+                if towers && self.info[type_id].role == Role::Extractor && let Some((aa, site)) = self.aa_beside(sim, s, b, pos, plan) {
+                    plan.reserved.push((site, fx(sim.types.get(aa).radius.to_int() + 16)));
+                    plan.pending[Role::AntiAir as usize] += 1;
+                    plan.aa.push(site);
+                    out.push(order(Order::Build { type_id: aa, pos: site }, true));
                 }
             }
             Task::ReclaimBuild(feature, type_id, pos) => {
@@ -530,6 +543,16 @@ impl SkirmishAi {
             return Some(t);
         }
         if !self.paused.is_empty() && let Some(t) = self.yard_tower_task(sim, s, b, &opts, plan) {
+            return Some(t);
+        }
+        // Enemy aircraft about (`air_threat`): the anti-aircraft wanted before more of what they
+        // would bomb, on an income that pays for it: under bombers (`air_heavy`) a third of the
+        // builders at it; else one at a time, and only while a tower costs twenty seconds of our
+        // metal income at most (later, below, on a small income).
+        let heavy = self.air_heavy(s.now);
+        let aa_hands = if heavy { 1 + s.builders.len() / 3 } else { 1 };
+        let aa_now = heavy || self.pick_aa_tower(s, &opts).is_some_and(|a| self.info[a].cost <= s.m_inc.to_int() * 20);
+        if self.air_threat(s.now) && s.m_inc >= fx(3) && pending(Role::AntiAir) < aa_hands && aa_now && let Some(t) = self.aa_task(sim, s, b, &opts, plan) {
             return Some(t);
         }
         // Constructors that fly or hover: first the metal no other constructor gets to.
@@ -1344,13 +1367,18 @@ impl SkirmishAi {
         self.front_tower_task(sim, s, b, opts, plan, want.min(self.p.tower_cap))
     }
 
-    /// Anti-aircraft once planes of the enemy's have been seen lately, a few more the more of
-    /// them there were.
+    /// Anti-aircraft once armed planes of the enemy's have been seen lately, more the more of them
+    /// there were (`aa_towers_wanted`): beside the part of our economy most exposed from the air
+    /// (`aa_site`; the Commander's within `reach` of home), else round the base.
     pub(crate) fn aa_task(&mut self, sim: &Sim, s: &Survey, b: &Unit, opts: &[usize], plan: &Plan) -> Option<Task> {
-        if !self.air_threat(s.now) || s.count[Role::AntiAir as usize] + plan.pending[Role::AntiAir as usize] >= (1 + self.enemy_air / 3).min(6) {
+        if !self.air_threat(s.now) || s.count[Role::AntiAir as usize] + plan.pending[Role::AntiAir as usize] >= self.aa_towers_wanted(s) {
             return None;
         }
-        let a = self.pick_best(opts, Role::AntiAir)?;
+        let a = self.pick_aa_tower(s, opts)?;
+        let reach = self.info[b.type_id].commander.then_some(1000);
+        if let Some(site) = self.aa_site(sim, b, a, reach, plan) {
+            return Some(Task::Build(a, site));
+        }
         let p = self.place(sim, b, a, Zone::Ring, 120, plan)?;
         Some(Task::Build(a, p))
     }
@@ -1700,7 +1728,14 @@ impl SkirmishAi {
         let standing = self.standing_for_projects(sim, s);
         let mut top_builders = s.own.iter().filter(|u| self.constructor(u.type_id) && self.info[u.type_id].tech >= top_tech).count()
             + s.factories.iter().flat_map(|f| f.factory_queue.iter().skip(f.build.is_some() as usize)).filter(|&&t| self.constructor(t) && self.info[t].tech >= top_tech).count();
-        let want_aa = if self.air_threat(s.now) { (1 + self.enemy_air / 2).min(8) } else { 0 };
+        let want_aa = self.aa_units_wanted(s);
+        // (Under bombers, a third of it fighters where an air plant of ours turns them out, the
+        // rest on the ground; anti-aircraft before more constructors while short of half of it.)
+        let heavy_air = self.air_heavy(s.now);
+        let makes_aa = |f: &Unit, flying: bool| sim.unit_type(f).ai_build_options.iter().any(|&o| self.info[o].role == Role::AntiAirUnit && (self.info[o].kind == Locomotion::Air) == flying && sim.is_allowed(o));
+        let ground_aa_maker = s.factories.iter().any(|f| makes_aa(f, false));
+        let want_fighters = if heavy_air && s.factories.iter().any(|f| makes_aa(f, true)) { (want_aa / 3).max(1) } else { 0 };
+        let mut fighters = s.own.iter().filter(|u| self.info[u.type_id].role == Role::AntiAirUnit && self.info[u.type_id].kind == Locomotion::Air).count();
         let (mut t1, mut t2, mut aa) = (s.builders_t1, s.builders_t2, s.aa_units);
         let has_ground_factory = s.kinds.iter().any(|k| *k != Locomotion::Air);
         // (None while strikes have not been paying for the planes they lose, unless the enemy
@@ -1782,6 +1817,7 @@ impl SkirmishAi {
                     Role::AntiAirUnit => {
                         aa += 1;
                         army += 1;
+                        fighters += (i.kind == Locomotion::Air) as usize;
                     }
                     Role::Combat => {
                         army += 1;
@@ -1843,6 +1879,19 @@ impl SkirmishAi {
                     log::debug!("{} min: P{me} makes {} for {far} deposits out of reach", s.minutes, sim.types.get(t).name);
                 }
             }
+            // Anti-aircraft this factory may make now: under bombers, fighters from an air plant (or
+            // anything that shoots aircraft, from a factory of a kind no other of ours makes it
+            // in), the rest on the ground.
+            let aa_due = |aa: usize, fighters: usize| {
+                aa < want_aa && (!heavy_air || if air { fighters < want_fighters || !ground_aa_maker } else { aa.saturating_sub(fighters) < want_aa.saturating_sub(want_fighters) })
+            };
+            // Under bombers, anti-aircraft before more constructors (the first two aside) while
+            // short of half of what is wanted.
+            if choice.is_none() && heavy_air && t1 >= 2 && aa * 2 < want_aa && aa_due(aa, fighters) {
+                choice = self.pick_best(&opts, Role::AntiAirUnit);
+                aa += choice.is_some() as usize;
+                fighters += choice.is_some_and(|t| self.info[t].kind == Locomotion::Air) as usize;
+            }
             // Constructors and army grow together: two constructors first, then one more
             // for every two combat units (an army-less economy is a gift to raiders).
             if choice.is_none() && t1 < want_t1 && (t1 < 2 || t1 < 2 + army / 2) && (!air || !has_ground_factory) {
@@ -1895,9 +1944,10 @@ impl SkirmishAi {
                 choice = self.pick_transport(sim, s, &opts);
                 lifts += choice.map_or(0, |t| self.room(t));
             }
-            if choice.is_none() && aa < want_aa {
+            if choice.is_none() && aa_due(aa, fighters) {
                 choice = self.pick_best(&opts, Role::AntiAirUnit);
                 aa += choice.is_some() as usize;
+                fighters += choice.is_some_and(|t| self.info[t].kind == Locomotion::Air) as usize;
             }
             if choice.is_none() {
                 // (At its size limit the army grows by its best alone, a quarter more at most: the

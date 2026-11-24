@@ -340,6 +340,9 @@ impl DutyOfficer {
         }
         self.ai.remember(sim, &s);
         self.ai.forget_defeated(sim);
+        // (Where the player's economy is short of cover from the air: the defence duty's
+        // anti-aircraft goes there.)
+        self.ai.plan_air_cover(sim, &s);
         if s.now % (10 * SECOND) < THINK_TICKS {
             self.ai.mark_far_deposits(sim, &s);
         }

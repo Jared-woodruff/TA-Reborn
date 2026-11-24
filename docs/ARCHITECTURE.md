@@ -1888,7 +1888,34 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   planes strike in ones and twos, and with nothing known one plane or idle air transport
   sweeps the parts of the map out of sight; mopping up (`mopping_up`: of the many enemy
   buildings once seen, a quarter or fewer left) also has air plants build bombers before
-  more transports.
+  more transports. The Commander out of the base (500 px) goes home, its job there left three
+  minutes (the wreck, the site), when an armed building of the enemy's in sight reaches it or it is
+  hit with no armed unit of theirs in sight about it (a tower or a gun out of sight, bombers): it
+  had walked to wrecks under Forged Alliance's point defences and died there.
+* Defence against the air (`air.rs`): the threat is the most armed enemy aircraft seen at once
+  lately (`air_pressure`: one fewer every 30 s once fewer are in sight), and an enemy air plant
+  seen (`air_threat` from then on); heavy (`air_heavy`) from four, or after a raid from the air
+  (`air_raids`: our units hurt or buildings lost with armed enemy aircraft in sight over them,
+  remembered three minutes). Our cover (`own_aa`: round each anti-aircraft building of ours,
+  going up too, three quarters of its reach at aircraft, one for every hundred of its cost) against
+  what the enemy's bombers strike (`exposed_to_air`: our buildings as `pick_air_target` weighs
+  them, extractors, power and makers three times their cost, factories twice, twice again where
+  raided, within 300 px one part, those of 300 or more short of `air_cover_wanted`, one and one
+  more for every eight aircraft) says where anti-aircraft goes: towers by the most exposed part not
+  planned for this think (`aa_site`), else round the base, as many as `aa_towers_wanted` (a third
+  of the aircraft seen, six at most; heavy, two thirds, or one for each exposed part, within what
+  the income pays for), the first of them before more of the economy (one builder at a time, a
+  third of them under a heavy threat); under a heavy threat one beside an extractor ordered where
+  no cover reaches (`aa_beside`, queued after it). Mobile anti-aircraft (`aa_units_wanted`: half
+  the aircraft seen; heavy, one for each and two, within a fifth of the army's limit) comes before
+  more constructors while short of half of it, a third of it fighters where an air plant of ours
+  makes them, and waits at `aa_posts` (the rally point and the three most exposed parts,
+  `post_anti_air`); idle fighters patrol between home and the most exposed parts (and keep to it).
+  Against the Supreme Commander factions' early bombers (their air plant first, 13-27 tech 1
+  bombers in ten minutes) a TA side had put up two or three towers round its base and lost its
+  extractors, power and constructors: soaks (Sherwood, 24 seeds each, 10 minutes, Normal and Hard,
+  Arm against the UEF and Core against the Seraphim) failed the soak's 8 metal a second at minute
+  10 in 31 of 96 games before, 5 after, the Commander lost in 6 and none.
 * Unit choice: from a factory whose land units can't all get at the enemy, only those that
   can (when there are any); among them by `TypeInfo::value` (firepower times health per
   cost, plus reach) or, on Hard, by `efficiency` for land units: firepower times health
@@ -1947,7 +1974,8 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   building or standing unit near the base (movers are not chased, nor are those under fire);
   **Reclaim** wrecks (richest first) then rocks, trees and other features near the base (metal
   four times energy, nothing of a kind the store is full of); **Defence** anti-aircraft once
-  planes were seen, towers on the approach (2 + minutes / 3, at most 10, only what the economy
+  planes (or a plant of them) were seen, by the parts of the economy least covered (`air.rs`),
+  towers on the approach (2 + minutes / 3, at most 10, only what the economy
   can pay for within a minute) and guard towers at outlying extractors; each ends by finishing
   unfinished buildings, helping a busy factory and heading home. A helper at a factory (a
   `Guard` among its orders; the simulation puts the repair of the product in front of it) is
