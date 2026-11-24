@@ -479,3 +479,22 @@ fn a_unit_driven_square_into_a_post_slips_round_it() {
     let u = sim.unit(id).unwrap();
     assert!(u.pos.z < Fx::from_int(488) && u.pos.x > Fx::from_int(380), "slid along the wall, short of its cells: {:?}", u.pos);
 }
+
+/// A click held for a gun aimed and loaded but short of its shot's price (its energy) fires once
+/// the energy comes, within the click's hold: the click is spent by a shot, not by the attempt.
+#[test]
+fn a_click_waits_for_the_shots_price() {
+    let data = data_of(&[unit("DRIVER", "CanMove=1; MaxVelocity=1; Weapon1=ZAP;"), weapon_file("ZAP", "range=300; turret=1; energypershot=300; reloadtime=0.1;")]);
+    let mut sim = sim_of(data, 1);
+    let id = put(&mut sim, "DRIVER", 0, 300, 300);
+    sim.take_events();
+    sim.players[0].economy.energy = Fx::ZERO;
+    drive(&mut sim, id, DirectInput { fire: true, ..STILL }, 1);
+    sim.players[0].economy.energy = Fx::ZERO;
+    drive(&mut sim, id, STILL, 1);
+    assert!(shots(&mut sim, id).is_empty(), "short of its price");
+    assert!(sim.unit(id).unwrap().direct_control.unwrap().pull.is_some(), "the click still held");
+    sim.players[0].economy.energy = Fx::from_int(1_000);
+    drive(&mut sim, id, STILL, 3);
+    assert_eq!(shots(&mut sim, id).len(), 1, "fired once the energy came, once");
+}

@@ -840,8 +840,7 @@ impl Sim {
             let trigger = input.fire || pulled || state.burst_left > 0;
             let aligned = weapon.def.turret || heading.abs() <= weapon.tolerance.max(500);
             if trigger && takes && aimed && ready && (!waiting || traversing) && aligned && !unit.packing_to_go() {
-                self.fire(id, slot, weapon, target, point, pitch);
-                fired = true;
+                fired |= self.fire(id, slot, weapon, target, point, pitch);
             }
         }
         if (fired || !pulled)
@@ -1477,17 +1476,19 @@ impl Sim {
         }
     }
 
-    fn fire(&mut self, id: UnitId, slot: usize, w: &WeaponType, target: Target, tp: FxVec3, pitch: i32) {
-        let Some(owner) = self.unit(id).map(|u| u.owner) else { return };
+    /// Fires weapon `slot` of unit `id` at `target` (`tp`): whether the shot went (none, for want
+    /// of its price, a stockpiled missile or a projectile to intercept).
+    fn fire(&mut self, id: UnitId, slot: usize, w: &WeaponType, target: Target, tp: FxVec3, pitch: i32) -> bool {
+        let Some(owner) = self.unit(id).map(|u| u.owner) else { return false };
         if w.def.interceptor && !matches!(target, Target::Projectile(pid) if self.projectiles.iter().any(|p| p.id == pid && !p.dead && self.is_enemy(owner, p.owner_player) && w.def.intercepts(&self.weapon_types.get(p.weapon).def))) {
-            return;
+            return false;
         }
         let (target, tp) = self.launch_target(w, target, tp);
         if w.def.stockpile {
             // Stockpiled missiles were paid for while being built.
-            let Some(u) = self.unit_mut(id) else { return };
+            let Some(u) = self.unit_mut(id) else { return false };
             if u.stockpile == 0 {
-                return;
+                return false;
             }
             u.stockpile -= 1;
         } else {
@@ -1500,7 +1501,7 @@ impl Sim {
                 let reload = i64::from(w.reload_ticks.max(1));
                 e.tick_energy_wanted += energy / reload;
                 e.tick_metal_wanted += w.metal_per_shot / reload;
-                return;
+                return false;
             }
             e.energy -= energy;
             e.metal -= w.metal_per_shot;
@@ -1514,7 +1515,7 @@ impl Sim {
                 let t = self.types.get(u.type_id);
                 (weapon_function(t, WeaponFunction::Query, slot), weapon_function(t, WeaponFunction::Fire, slot))
             }
-            None => return,
+            None => return false,
         };
         let muzzle_piece = self.call_script(id, query, &[0]).and_then(|p| p.first().copied());
         // The shot leaves from where the piece the query named is once the fire function has run
@@ -1536,7 +1537,7 @@ impl Sim {
             let rock = [(cos(away) * 500).to_int() as i32, (sin(away) * 500).to_int() as i32];
             self.start_script(id, "RockUnit", &rock);
         }
-        let Some(u) = self.unit(id) else { return };
+        let Some(u) = self.unit(id) else { return false };
         let t = self.types.get(u.type_id);
         let muzzle = muzzle_piece
             .and_then(|p| {
@@ -1623,6 +1624,7 @@ impl Sim {
             }
             ws.burst_timer = w.burst_ticks;
         }
+        true
     }
 
     /// Area damage at `pos`. `direct` takes full damage. Only torpedoes and depth charges
