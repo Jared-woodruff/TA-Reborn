@@ -13,8 +13,58 @@
 - A Minimalist First-Person View (Options, INTERFACE): riding in a unit, only a sight with its
   range, a wireframe of the unit with its turret turning, its health in a bar along the top and a
   radar at the bottom, without the cockpit round them.
+- Riding in a unit with a controller: the right stick looks round (and aims, in control), the left
+  stick looks round too or, in control, drives; Y takes control and lets go, X looks from behind,
+  LB is the night sight, RB or A fires, the triggers magnify the sight and Start leaves. While a
+  controller is in use the view's hints show its buttons, and they come up again when one is taken
+  up. The pause and speed keys work in a unit too, said on its glass.
 
 ### Fixed
+- Riding in a unit (Perspective), from a review of the whole view:
+  - The view's key hints covered the sight, the target or the flight figures in the Krogoth's cab,
+    on a ship's bridge, in a gun tower and in the aircraft; they now keep clear of them, low in the
+    window, in one row, or under its top. On a ship's bridge the top of the window was taken for its
+    pillars' bolts at eye level, which put the threats' ring and the messages too low.
+  - On an ultrawide screen the battle showed round the cockpit's edges (at 32:9 the cab floated in
+    the middle of it); the cab's walls now go on round the view. On a 4:3 or 16:10 screen the dash's
+    instruments were cut off at the sides; the view now sees as far across as on 16:9, the whole dash
+    in view.
+  - The cockpit was lit as if by day at night, in rain storms and on worlds without air; it now
+    takes the world's light. Rain ran down its glass with the WEATHER setting off, under the sea, and
+    while the battle was paused. The night sight blew its own screens out to white. The heat haze over
+    lava and fires dragged the cockpit's frame into the window.
+  - The system's pointer could show over the view, and pushed to the window's edge as the view
+    turned, it made the map scroll away once the ride was over. It now stays hidden, and is held in
+    the window again after switching to another program.
+  - Blasts felt in a unit shook the map's camera after leaving it; the battle went nearly silent for
+    three seconds when the unit was destroyed or the ride ended; a box being dragged or a formation
+    being drawn as the ride began was finished on the first frame back.
+  - F10, F1's page, the jukebox and the window's close question opened unseen under the ride and
+    showed only once it ended; the ride now climbs out first. E in a unit that cannot be driven now
+    says so.
+  - The unit was hidden for the whole of the dive, which went at an empty spot, and its inside showed
+    as the climb out began. Diving from TA's own top-down view started from far up in the sky, and the
+    picture jumped by the interface's share of it at both ends of the dive.
+  - The view from behind a unit was a frame behind it, shaking at speed, and could look at it through
+    a hill; it now keeps up, and rises to see the unit over the ground between them.
+  - The sight turned faster than the gun when the battle ran slow, and the turn needle read double at
+    double speed; letting go of a unit driven with the sight high snapped it down; entering counted a
+    reload under way as a shot. A touchpad's scroll or a controller's trigger went through the sight's
+    magnifications at once. A unit driven astern left no tracks, footprints or trail.
+  - The instruments: radar contacts showed what they were and when they fired, the screens' self test
+    named them in English, the weapons panel's rows ran together with four kinds of weapon or more,
+    the drive and unit pages were too small to read at 720 lines, the periscope's field was an oval
+    off the top of the picture, the radar's field of view assumed 16:9, a second D-gun showed the
+    first one's cost, long names ran past their panels in Chinese, Japanese and Korean, and the
+    distances were in TA's own units beside a speed in km/h; they are now in metres. With reduced
+    flashes on, the alarm lamps, the self test, sparks, the weapons' flashes and the night grain still
+    blinked; they now hold steady.
+  - The minimalist view showed nothing when its unit was destroyed, ignored a hull raised by an
+    enhancement, drew its sight over the dive in and behind the unit.
+  - Leaving a modelled cockpit's seat (the view from behind, or zooming) could letter its panels at a
+    size of nothing or of thousands of pixels, which could crash the game.
+  - Getting in held the first frame up while the cockpit's shader was compiled and its eight models
+    read; they are now made once and read as wanted.
 - A fighter or other plane with nothing to do that took an enemy on the ground for its target of its
   own accord (one its weapons take on only with nothing better about: a Freedom Fighter come to rest
   over a Core Raider, say) hung motionless in the air over it for good, never firing again, and a
