@@ -50,6 +50,23 @@
   - The Maps page's SUPREME COMMANDER… opens while the game runs, as the Mods page's does (the
     dialog says why an import must wait); STOP AFTER THIS MAP is offered once a map is being made;
     the map pack has tags in the library; your own maps' empty folder takes one line.
+- Computer players defend their economy from the air. Once enemy bombers or gunships (or an air
+  plant of the enemy's) have been seen, their first anti-aircraft goes up before more extractors,
+  and the more aircraft the enemy shows at once, or the harder it bombs them, the more of it:
+  anti-aircraft towers beside the extractor fields, power plants and factories with the least
+  cover, and beside an extractor put up while bombers are about, mobile anti-aircraft waiting over
+  them, and fighters on patrol where an air plant of theirs makes them. Against the Supreme
+  Commander factions' early bombers a TA side now keeps its extractors, power and constructors
+  rather than losing them all by the tenth minute. Their Commander also gets away from enemy
+  towers it meets out on the field, and from fire it cannot see, rather than reclaiming wrecks
+  under their guns.
+- Computer players of the Supreme Commander factions climb the tiers: once a factory of a higher
+  tier stands, their other land factories are upgraded to it as their income grows, and while
+  metal is short the factories still to climb leave it to the top tier's (they make constructors
+  still), so the armies of the late game are of tech 2 and 3 rather than of tech 1. Their
+  extractors and factories no longer start costly upgrades three at a time on an income that
+  cannot pay for them. Any computer player keeps artillery to under a third of its army.
+  Multiplayer and replays need everyone on this build.
 
 ### Fixed
 - Supreme Commander's factions in play, from a review before the import was offered to everyone
@@ -68,6 +85,9 @@
   - A saved game or replay whose map's pack is off offered LOAD ANYWAY, which ended in a file
     error; it now says its map is not installed with the mods on now, and offers only what can open
     it.
+- ARMY VALUE in the battle's statistics (its figure and its chart) counted the Commanders: a
+  Supreme Commander faction's, priced as a large army, put a player far ahead before anything was
+  built. It counts the army alone now, as the allies' cards and the cast's do.
 - Riding in a unit (Perspective), from a review of the whole view:
   - The view's key hints covered the sight, the target or the flight figures in the Krogoth's cab,
     on a ship's bridge, in a gun tower and in the aircraft; they now keep clear of them, low in the

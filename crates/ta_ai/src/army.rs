@@ -312,8 +312,9 @@ impl SkirmishAi {
             }
         }
 
-        // 4. Idle home units wait at the guard posts (spread by unit), anti-aircraft at the
-        // rally point.
+        // 4. Idle home units wait at the guard posts (spread by unit), anti-aircraft at its own
+        // (`post_anti_air`: the rally point, and the parts of our economy short of cover from the
+        // air while aircraft threaten; fighters on patrol over them).
         if (now / THINK_TICKS).is_multiple_of(8) {
             let rally = self.rally;
             let posts = if self.posts.is_empty() { vec![rally] } else { self.posts.clone() };
@@ -330,14 +331,12 @@ impl SkirmishAi {
                     gather[k].1.push(u.id);
                 }
             }
-            let near = gathered_within(sim, s.aa_army.len());
-            let aa: Vec<UnitId> = s.aa_army.iter().filter(|u| u.orders.is_empty() && !u.pos.within_xz(rally, near) && self.unit_reaches(sim, u, rally)).map(|u| u.id).collect();
-            gather.push((rally, aa));
             for (post, units) in gather {
                 if !units.is_empty() {
                     out.push(Command::Order { player: me, units, order: Order::Move(post), queue: false });
                 }
             }
+            self.post_anti_air(sim, s, out);
         }
         if self.p.micro {
             self.focus_fire(sim, s, out);
@@ -1005,6 +1004,29 @@ impl SkirmishAi {
             self.retreat_until = s.now + 20 * SECOND;
             out.push(Command::Order { player: me, units: vec![c.id], order: Order::Move(self.base), queue: false });
             return;
+        }
+        // Out of the base and under guns it cannot fight where it is: an armed building of the
+        // enemy's in sight that reaches it (a tower out on the field, by a wreck or a deposit it
+        // went for), or hit with no armed unit of theirs in sight about it (a tower or a gun out
+        // of sight, bombers). Home, and the job there left a while (the wreck, the site).
+        if s.now >= self.retreat_until && !c.pos.within_xz(self.base, fx(500)) {
+            let tower = s.enemies.iter().any(|e| e.is_complete() && sim.unit_type(e).locomotion == Locomotion::Static && self.info[e.type_id].ground_dps > 0 && e.pos.within_xz(c.pos, fx(self.info[e.type_id].range + 96)));
+            let hit = self.commander_hit.is_some_and(|t| s.now < t + THINK_TICKS);
+            let fought = s.enemies.iter().any(|e| e.is_complete() && sim.unit_type(e).locomotion != Locomotion::Static && self.info[e.type_id].ground_dps > 0 && e.pos.within_xz(c.pos, fx(self.info[e.type_id].range + 200)));
+            if tower || hit && !fought {
+                match c.orders.front() {
+                    Some(&Order::Reclaim(f)) => self.unreachable_features.push((f, s.now + 3 * MINUTE)),
+                    Some(&Order::Build { type_id, pos }) => {
+                        self.failed.push((type_id, pos, s.now));
+                        self.avoid_deposit(pos, s.now + 3 * MINUTE);
+                    }
+                    _ => {}
+                }
+                log::debug!("{} min: P{me}'s Commander gets away from guns at ({}, {})", s.minutes, c.pos.x.to_int(), c.pos.z.to_int());
+                self.retreat_until = s.now + 20 * SECOND;
+                out.push(Command::Order { player: me, units: vec![c.id], order: Order::Move(self.base), queue: false });
+                return;
+            }
         }
         // D-gun anything that gets too close.
         let eco = &sim.players[me as usize].economy;

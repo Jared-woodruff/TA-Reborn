@@ -1769,8 +1769,12 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   the army's cap grows a quarter for a player at tech 2 or more, more advanced factories come as
   the economy grows (`adv_factories_wanted`): upgraded where a factory of ours upgrades into one
   (`run_upgrades_in_place`, which also takes first the upgrade into a factory leading to
-  experimentals, and once a tech 3 factory stands climbs more ground factories to it,
-  `top_factories_wanted`), built where none does; and more tech 3 engineers as the income grows.
+  experimentals, and once a ground factory of a tier above others stands climbs those below to it,
+  `top_factories_wanted`: one more for every 15 metal a second past 15), built where none does; a
+  ground factory that climbs in place below the top tier at work makes no army while metal is
+  short (`leaves_metal_to_top_tier`: constructors and anti-aircraft still; the metal goes to the
+  top tier's factories and the climb; TA's factories climb nothing and make their army as
+  before); and more tech 3 engineers as the income grows.
   The way to experimentals (`experimentals_reachable`) follows a factory's upgrades and an
   engineering suite's menu as well as what builds what.
 * Clearing the way (`clear.rs`): a unit whose route stops short of where it was sent though the
@@ -1803,16 +1807,25 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   start not yet looked at only when nothing is known (scouting in force). It is never
   "dominant" (going for the kill) before it has found the enemy.
 * Upgrades in place (`upgrade.rs`, `run_upgrades_in_place`): where a factory of ours upgrades into
-  a factory of a higher tier (`factory_tier`), the tiers are climbed by upgrading it, one factory
-  at a time, on the economy the first advanced factory waits for (`builder_task` then builds no
-  factory of the next tier: `climbs_by_upgrading`), the land factory first; with metal piling up,
-  or fewer advanced factories than the economy wants (`adv_factories_wanted`), more of them (toward
-  experimentals, first one that upgrades into a factory leading there); extractors (from
-  `mex_upgrade_minute`: the persona's, Tech's sooner, Rush's later) upgrade into better ones (more
-  `extracts_metal`), the safe ones nearest
-  home first, a few at a time as the income allows and while power holds (the reclaim and rebuild of
-  `upgrade_task` leaves those alone). Builders that help factories help one upgrading
-  (`factory_to_help`). With no unit of ours that upgrades (TA's games), nothing of it runs.
+  a factory of a higher tier (`factory_tier`), the tiers are climbed by upgrading it, the step to a
+  tier none of ours has yet alone, on the economy the first advanced factory waits for
+  (`builder_task` then builds no factory of the next tier: `climbs_by_upgrading`), the land factory
+  first; then the ground factories below the top tier climb to it as the income grows
+  (`top_factories_wanted`, the nearest the top first, while power holds); with metal piling up, or
+  fewer advanced factories than the economy wants (`adv_factories_wanted`), more of them (toward
+  experimentals, first one that upgrades into a factory leading there). Another starts beside those
+  under way (three at most) only while what they have left to pay is within 30 seconds of our metal
+  income (`FACTORY_UPGRADES_LEFT`). Extractors (from `mex_upgrade_minute`: the persona's, Tech's
+  sooner, Rush's later) upgrade into better ones (more `extracts_metal`), the safe ones nearest
+  home first, a few at a time as the income allows (another only while those under way have less
+  than 45 seconds of it left to pay, `EXTRACTOR_UPGRADES_LEFT`: three of Forged Alliance's costly
+  tech 3 extractors at once had starved everything else) and while power holds (the reclaim
+  and rebuild of `upgrade_task` leaves those alone). Builders that help factories help one
+  upgrading (`factory_to_help`). With no unit of ours that upgrades (TA's games), nothing of it
+  runs. Soaks of Forged Alliance's factions against each other (48 games of 30 minutes, Sherwood,
+  six seeds, Normal and Hard): of the army finished from minute 20, tech 1 went from 92% to 69%
+  (tech 2 2% to 17%, tech 3 6% to 13%) with the climb and `leaves_metal_to_top_tier`, and mobile
+  artillery from 39% to 12% of all armed units finished.
 * Adjacency (`adjacency.rs`): a power plant whose bonuses reach a factory of ours goes up beside it
   (`plant_beside_factory`, from `plant_task`: the factory nearest the builder first, a site along
   the most of a side, out of the way out and off the ground its upgrades take, the lane round the
@@ -1888,12 +1901,42 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   planes strike in ones and twos, and with nothing known one plane or idle air transport
   sweeps the parts of the map out of sight; mopping up (`mopping_up`: of the many enemy
   buildings once seen, a quarter or fewer left) also has air plants build bombers before
-  more transports.
+  more transports. The Commander out of the base (500 px) goes home, its job there left three
+  minutes (the wreck, the site), when an armed building of the enemy's in sight reaches it or it is
+  hit with no armed unit of theirs in sight about it (a tower or a gun out of sight, bombers): it
+  had walked to wrecks under Forged Alliance's point defences and died there.
+* Defence against the air (`air.rs`): the threat is the most armed enemy aircraft seen at once
+  lately (`air_pressure`: one fewer every 30 s once fewer are in sight), and an enemy air plant
+  seen (`air_threat` from then on); heavy (`air_heavy`) from four, or after a raid from the air
+  (`air_raids`: our units hurt or buildings lost with armed enemy aircraft in sight over them,
+  remembered three minutes). Our cover (`own_aa`: round each anti-aircraft building of ours,
+  going up too, three quarters of its reach at aircraft, one for every hundred of its cost) against
+  what the enemy's bombers strike (`exposed_to_air`: our buildings as `pick_air_target` weighs
+  them, extractors, power and makers three times their cost, factories twice, twice again where
+  raided, within 300 px one part, those of 300 or more short of `air_cover_wanted`, one and one
+  more for every eight aircraft) says where anti-aircraft goes: towers by the most exposed part not
+  planned for this think (`aa_site`), else round the base, as many as `aa_towers_wanted` (a third
+  of the aircraft seen, six at most; heavy, two thirds, or one for each exposed part, within what
+  the income pays for), the first of them before more of the economy (one builder at a time, a
+  third of them under a heavy threat); under a heavy threat one beside an extractor ordered where
+  no cover reaches (`aa_beside`, queued after it). Mobile anti-aircraft (`aa_units_wanted`: half
+  the aircraft seen; heavy, one for each and two, within a fifth of the army's limit) comes before
+  more constructors while short of half of it, a third of it fighters where an air plant of ours
+  makes them, and waits at `aa_posts` (the rally point and the three most exposed parts,
+  `post_anti_air`); idle fighters patrol between home and the most exposed parts (and keep to it).
+  Against the Supreme Commander factions' early bombers (their air plant first, 13-27 tech 1
+  bombers in ten minutes) a TA side had put up two or three towers round its base and lost its
+  extractors, power and constructors: soaks (Sherwood, 24 seeds each, 10 minutes, Normal and Hard,
+  Arm against the UEF and Core against the Seraphim) failed the soak's 8 metal a second at minute
+  10 in 31 of 96 games before, 5 after, the Commander lost in 6 and none.
 * Unit choice: from a factory whose land units can't all get at the enemy, only those that
   can (when there are any); among them by `TypeInfo::value` (firepower times health per
   cost, plus reach) or, on Hard, by `efficiency` for land units: firepower times health
   grows with the square of the number of units, so per cost^1.5, less for units too slow
-  to keep up. Hard also handles its battles (`micro`): badly hurt units fall back to the
+  to keep up. Artillery (`TypeInfo::artillery`: a ground unit whose shells or missiles are lobbed
+  600 px or further), rated by its reach, made up whole armies of Forged Alliance's (72-87 a game):
+  it is held to `ARTILLERY_SHARE` (30%) of the army on the ground, those under way and queued
+  counted (`artillery_full`). Hard also handles its battles (`micro`): badly hurt units fall back to the
   rally point and a builder off factory duty repairs them (free in TA; hurt warships go
   back off the shipyard, where a naval constructor kept for it mends them), and fire is
   concentrated on the enemy in reach whose loss costs the most firepower per point of
@@ -1947,7 +1990,8 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   building or standing unit near the base (movers are not chased, nor are those under fire);
   **Reclaim** wrecks (richest first) then rocks, trees and other features near the base (metal
   four times energy, nothing of a kind the store is full of); **Defence** anti-aircraft once
-  planes were seen, towers on the approach (2 + minutes / 3, at most 10, only what the economy
+  planes (or a plant of them) were seen, by the parts of the economy least covered (`air.rs`),
+  towers on the approach (2 + minutes / 3, at most 10, only what the economy
   can pay for within a minute) and guard towers at outlying extractors; each ends by finishing
   unfinished buildings, helping a busy factory and heading home. A helper at a factory (a
   `Guard` among its orders; the simulation puts the repair of the product in front of it) is

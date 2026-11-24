@@ -260,6 +260,25 @@ fn checksums_detect_missile_inventory_production_reload_and_flight_divergence() 
     assert_ne!(held.checksum(), expected, "a hold");
 }
 
+/// The battle's readings of what each army is worth count its armed mobile units, the Commanders
+/// left out: never built, their price says nothing of an army (a Supreme Commander faction's, priced
+/// as a large army, would put a player far ahead before anything was built).
+#[test]
+fn the_army_value_leaves_the_commanders_out() {
+    let data = data_of(&[
+        unit("COMMANDER", "Commander=1; CanMove=1; MaxVelocity=1; BuildCostMetal=50000; Weapon1=GUN;"),
+        unit("TANK", "CanMove=1; MaxVelocity=1; BuildCostMetal=120; Weapon1=GUN;"),
+        weapon_file("GUN", ""),
+    ]);
+    let mut sim = sim_of(data, 1);
+    sim.spawn_unit(sim.types.id("COMMANDER").unwrap(), 0, FxVec3::from_ints(100, 60, 100), 0, true).unwrap();
+    sim.spawn_unit(sim.types.id("TANK").unwrap(), 0, FxVec3::from_ints(400, 60, 100), 0, true).unwrap();
+    while sim.players[0].stats.history.is_empty() {
+        sim.step(&[]);
+    }
+    assert_eq!(sim.players[0].stats.history[0].army_value, Fx::from_int(120));
+}
+
 #[test]
 fn queued_orders_are_bounded_and_stop_can_clear_a_full_queue() {
     let data = data_of(&[unit("TANK", "CanMove=1; MaxVelocity=1;")]);

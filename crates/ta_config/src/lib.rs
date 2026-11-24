@@ -227,8 +227,17 @@ pub const RECORD_VERSION: u32 = 47;
 /// at its turn rate and no further, slower the further it faces from it, turning on the spot from
 /// a right angle off; its throttle in hundredths of its top speed (a pad's stick part way); a
 /// click held until a weapon fires (a gun still coming round to the sight fires as it comes on);
-/// and met square on, a post or a corner slipped round rather than stopping dead.
-pub const SIMULATION_VERSION: u32 = 113;
+/// and met square on, a post or a corner slipped round rather than stopping dead. 114: computer
+/// players defend their economy from the air in proportion to the armed aircraft the enemy shows
+/// (and from an enemy air plant seen): anti-aircraft by what is worth most and least covered,
+/// beside extractors put up under bombers and before more of the economy, mobile anti-aircraft
+/// posted over it and fighters on patrol; their Commander gets away from guns it cannot fight out
+/// of the base; factories that climb the tiers in place (the Supreme Commander factions') climb to
+/// the top tier as the income grows, leave the metal to it while metal is short, and upgrades start
+/// beside those under way only while what those have left to pay is within the income's reach;
+/// artillery held to a share of the army; and an army's worth in the battle's readings leaves the
+/// Commanders out.
+pub const SIMULATION_VERSION: u32 = 114;
 /// Records shorter than one year of simulated time are supported. Shared with the
 /// launcher's metadata reader so impossible durations cannot start endless save catch-up.
 pub const MAX_RECORD_TICKS: u64 = 30 * 3600 * 24 * 365;

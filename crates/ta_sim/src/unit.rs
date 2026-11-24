@@ -1118,7 +1118,7 @@ pub struct StatSample {
     pub tick: u64,
     pub metal_income: Fx,
     pub energy_income: Fx,
-    /// Metal plus energy/60 cost of armed mobile units.
+    /// Metal plus energy/60 cost of armed mobile units, the Commanders left out.
     pub army_value: Fx,
     pub units: u32,
 }

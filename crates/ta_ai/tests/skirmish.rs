@@ -15,8 +15,8 @@
 //! `TA_TEST_MOD=<folder>` plays with a mod (a folder with its mod.toml, as the launcher
 //! installs them) mounted over the game; players then alternate the data's first two sides
 //! (`TA_TEST_SIDES=TAL,CORE` picks them by name).
-//! Diagnostics: `TA_TEST_TRACE=1` prints every building lost and what hit it last (and any
-//! unit finished a second time, with the builders at it),
+//! Diagnostics: `TA_TEST_TRACE=1` prints every building and Commander lost and what hit it last
+//! (and any unit finished a second time, with the builders at it),
 //! `TA_TEST_DUMP=<minute>` lists every unit (position, order, progress) at that minute and
 //! `TA_TEST_LOG=1` prints the AI's debug log (jobs, waves, raid responses).
 //! `TA_TEST_UNTIL_DECIDED=1` stops once one team is left (else the winner plays on to the end).
@@ -462,7 +462,7 @@ fn ai_vs_ai_plays_a_game() {
                     if by.is_some_and(|b| b.1 != o && sim.allied(b.1, o)) {
                         ally_kills += 1;
                     }
-                    if trace && t.locomotion == Locomotion::Static {
+                    if trace && (t.locomotion == Locomotion::Static || t.def.is_commander) {
                         let tag = if by.is_some_and(|b| !b.2) { "nanoframe" } else { "" };
                         println!("  {:5.1} min: P{o} {} {tag} lost at {pos:?} (last hit by {:?})", tick as f32 / 1800.0, t.name, by.map(|b| (&b.0, b.1)));
                     }

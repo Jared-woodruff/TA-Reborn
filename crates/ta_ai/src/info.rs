@@ -53,11 +53,18 @@ pub(crate) struct TypeInfo {
     pub builds_mex: bool,
     pub builds_energy: bool,
     pub builds_factory: bool,
-    /// Damage per 10 seconds against ground and air targets, health, longest ground range.
+    /// Damage per 10 seconds against ground and air targets, health, longest ground range and
+    /// longest reach at aircraft.
     pub ground_dps: i64,
     pub air_dps: i64,
     pub hp: i64,
     pub range: i64,
+    pub air_range: i64,
+    /// A combat unit on the ground (or hovering) that lobs its shells or missiles over the field
+    /// from afar: a ground weapon, ballistic or guided, reaching [`ARTILLERY_RANGE`] or more (TA's
+    /// Luger and Merl, the Supreme Commander factions' mobile artillery and missile launchers).
+    /// Rated by its reach, it would make up whole armies: `pick_combat` holds it to a share.
+    pub artillery: bool,
     /// Combat value per unit of cost (higher is better); 0 when unarmed.
     pub value: i64,
     /// What a fixed budget of these is worth in a fight: firepower times toughness grows
@@ -140,6 +147,9 @@ impl TypeInfo {
 pub(crate) const EXPERIMENTAL_COST: i64 = 5000;
 /// How far (px) a building's guns reach to count as a long-range gun.
 pub(crate) const LONG_RANGE: i64 = 2000;
+/// How far (px) a mobile unit's lobbed shells or missiles reach for it to count as artillery
+/// (as the soak's tech audit counts it).
+pub(crate) const ARTILLERY_RANGE: i64 = 600;
 
 /// Tech level from whole category tokens. TA uses LEVELn; Escalation uses LEVn.
 /// Its fourth and fifth tiers remain advanced units in the AI's three-tier planning.
@@ -249,6 +259,8 @@ pub(crate) fn classify(sim: &Sim) -> Vec<TypeInfo> {
             let ground_dps: i64 = weapons.iter().filter(|w| hits_ground(w)).map(|w| dps10(w)).sum();
             let air_dps: i64 = weapons.iter().filter(|w| hits_air(w)).map(|w| dps10(w)).sum();
             let range = weapons.iter().filter(|w| hits_ground(w)).map(|w| w.range.to_int()).max().unwrap_or(0);
+            let air_range = weapons.iter().filter(|w| hits_air(w)).map(|w| w.range.to_int()).max().unwrap_or(0);
+            let lobs = weapons.iter().any(|w| hits_ground(w) && matches!(w.trajectory, Trajectory::Ballistic | Trajectory::Guided) && w.range.to_int() >= ARTILLERY_RANGE);
             let hp = t.max_health.to_int().max(1);
             let cost = (t.cost_metal + t.cost_energy / 60).to_int().max(1);
             // Combat value per cost: firepower times toughness, a little extra for reach.
@@ -294,6 +306,8 @@ pub(crate) fn classify(sim: &Sim) -> Vec<TypeInfo> {
                 air_dps,
                 hp,
                 range,
+                air_range,
+                artillery: role == Role::Combat && matches!(t.locomotion, Locomotion::Ground | Locomotion::Hover) && lobs,
                 value,
                 efficiency,
                 bomber,

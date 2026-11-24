@@ -5838,7 +5838,9 @@ impl Sim {
         let mut army = vec![Fx::ZERO; n];
         for u in self.units.iter().flatten() {
             let t = self.types.get(u.type_id);
-            if !u.dead && u.is_complete() && t.locomotion != Locomotion::Static && u.armed(t) && let Some(a) = army.get_mut(u.owner as usize) {
+            // (Not the Commanders: never built, their price says nothing of an army; a Supreme
+            // Commander faction's, priced as a large army, would put a player far ahead.)
+            if !u.dead && u.is_complete() && t.locomotion != Locomotion::Static && !t.def.is_commander && u.armed(t) && let Some(a) = army.get_mut(u.owner as usize) {
                 *a += t.cost_metal + t.cost_energy / 60;
             }
         }
