@@ -824,20 +824,23 @@ impl CockpitRenderer {
         }
     }
 
-    /// Its depth for a picture `size` pixels with `samples` to a pixel, made when the picture's
-    /// size changes (asked for before the frame is put together: made in the frame and refused
-    /// for want of memory, the whole frame was).
-    pub(crate) fn ensure_depth(&mut self, device: &wgpu::Device, size: (u32, u32), samples: u32) {
-        if self.depth.as_ref().is_none_or(|d| (d.0, d.1) != size) {
-            // (Cleared and thrown away each frame: a card that keeps such in its tiles never
-            // gives it memory of its own.)
-            let usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TRANSIENT_ATTACHMENT;
-            self.depth = Some((size.0, size.1, Target::new(device, "cockpit depth", size.0, size.1, DEPTH_FORMAT, samples, usage)));
-        }
+    /// Whether its depth is made, for a picture `size` pixels.
+    pub(crate) fn depth_fits(&self, size: (u32, u32)) -> bool {
+        self.depth.as_ref().is_some_and(|d| (d.0, d.1) == size)
+    }
+
+    /// Makes its depth for a picture `size` pixels with `samples` to a pixel (asked for before the
+    /// frame is put together, when the picture's size changed: made in the frame and refused for
+    /// want of memory, the whole frame was).
+    pub(crate) fn make_depth(&mut self, device: &wgpu::Device, size: (u32, u32), samples: u32) {
+        // (Cleared and thrown away each frame: a card that keeps such in its tiles never gives it
+        // memory of its own.)
+        let usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TRANSIENT_ATTACHMENT;
+        self.depth = Some((size.0, size.1, Target::new(device, "cockpit depth", size.0, size.1, DEPTH_FORMAT, samples, usage)));
     }
 
     /// Draws the cockpit over the scene's picture (`color`, resolved into `resolve` when
-    /// multisampled) with its own depth (made by [`Self::ensure_depth`]; its time on the GPU taken
+    /// multisampled) with its own depth (made by [`Self::make_depth`]; its time on the GPU taken
     /// with `timestamps`, when they are).
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn draw(

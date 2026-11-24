@@ -44,7 +44,8 @@ const SETTING_TIPS: &[(When, &str)] = &[
 const TIPS: &[&str] = &[
     n("Metal extractors must sit on metal: {overlay_metal} shows the metal map, and {area_mex} puts an extractor on every metal spot you circle."),
     n("Your Commander's D-gun ({dgun}) destroys almost anything it touches, including your own units in its path."),
-    n("{perspective} climbs into the selected unit, or an ally's under the pointer, to see the battle through its eyes as it goes on with its orders. In your own ground units, hovercraft and ships, E takes the controls. Escape climbs back out."),
+    n("{perspective} climbs into the selected unit, or an ally's under the pointer, to see the battle through its eyes as it goes on with its orders. Escape climbs back out."),
+    n("Riding in one of your own ground units, hovercraft or ships ({perspective}), E takes the controls: W, A, S and D drive it, the mouse aims, a click fires."),
     n("Keep your metal and energy incomes above what you spend: building slows down for everything when a store runs dry."),
     n("Right-clicking a factory's queued unit removes it; clicking it builds it next."),
     n("Fight ({fight}) is attack-move: units stop to fight whatever they meet on the way."),

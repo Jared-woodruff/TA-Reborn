@@ -1915,9 +1915,12 @@ impl Renderer {
             return false;
         }
         let Some(c) = self.cockpit.as_mut() else { return false };
+        if c.depth_fits(size) {
+            return true;
+        }
         let device = &self.gpu.device;
         let scope = device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
-        c.ensure_depth(device, size, samples);
+        c.make_depth(device, size, samples);
         if let Some(e) = pollster::block_on(scope.pop()) {
             log::error!("cockpit: {e}");
             self.cockpit = None;
