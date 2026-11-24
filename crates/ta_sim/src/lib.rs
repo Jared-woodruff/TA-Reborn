@@ -43,6 +43,6 @@ pub use ta_data::STRATEGIC_CLASS;
 pub use ta_data::AdjacencyAffect;
 pub use sim::enhance::Fit as EnhancementFit;
 pub use sim::{Command, Feature, Sim, SimStats};
-pub use unit::{DIRECT_CONTROL_TICKS, DirectInput};
+pub use unit::{DIRECT_CONTROL_TICKS, DirectInput, PULL_TICKS};
 pub use unit::{Adjacency, Boost, Drift, GameRules, Order, Player, PlayerSetup, PlayerStats, SelfJob, SelfWork, Sharing, StatSample, Target, Unit, UnitId, WeaponState, piece_world_heading, piece_world_position};
 pub use vision::{Seen, Vision};

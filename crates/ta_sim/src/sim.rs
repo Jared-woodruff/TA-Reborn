@@ -6212,8 +6212,10 @@ impl Sim {
                 mix(control.player as i64);
                 mix(control.aim_piece.map_or(-1, |piece| piece as i64));
                 mix(control.expires as i64);
+                mix(control.pull.map_or(-1, |tick| tick as i64));
                 mix(control.input.throttle as i64);
                 mix(control.input.turn as i64);
+                mix(control.input.course.map_or(1 << 20, |course| course as i64));
                 mix(control.input.heading as i64);
                 mix(control.input.pitch as i64);
                 mix(control.input.fire as i64);

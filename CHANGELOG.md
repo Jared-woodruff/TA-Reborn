@@ -4,17 +4,24 @@
 
 ### Added
 - Taking control of a unit: riding along in one of your own ground units, hovercraft or ships (the
-  perspective key, Q), press E to drive it yourself. W and S drive it ahead and astern (astern at
-  half speed), A and D turn it, on the spot too, and the mouse aims its guns, which follow at their
-  own turning speed; a click fires them. With the sight on an enemy you can see, the guns lift for
-  its range and height as they would for an order to attack it. Its orders wait meanwhile, and E
-  again, or leaving, lets it go back to them. Riding along is as it was: the unit goes on with its
-  orders until you take control. Multiplayer and replays need everyone on this build.
+  perspective key, Q), press E to drive it yourself. It goes where you look: W ahead, A and D to
+  either side and S back, still facing what you look at (astern at half speed), the unit coming
+  round that way at its own turning speed; walkers (kbots, the Commanders, the Krogoth) turn to face
+  where you look standing too, as a person does. The mouse turns the view as far as you move it and
+  aims the guns, which come round to the sight at their own turning speed, a ring showing where a
+  turret points meanwhile; a click fires them as soon as they come on. With the sight on an enemy
+  you can see, the guns lift for its range and height as they would for an order to attack it. A
+  tree, a post or a corner met square on is slipped round rather than stopping the unit dead. Its
+  orders wait meanwhile, and E again, or leaving, lets it go back to them. Riding along is as it
+  was: the unit goes on with its orders until you take control. Options, CONTROLS, RIDING IN A UNIT
+  has the look's sensitivity, an inverted look, and tank controls for those who like them (W and S
+  along the hull, A and D turn it). Multiplayer and replays need everyone on this build.
 - A Minimalist First-Person View (Options, INTERFACE): riding in a unit, only a sight with its
   range, a wireframe of the unit with its turret turning, its health in a bar along the top and a
   radar at the bottom, without the cockpit round them.
 - Riding in a unit with a controller: the right stick looks round (and aims, in control), the left
-  stick looks round too or, in control, drives; Y takes control and lets go, X looks from behind,
+  stick looks round too or, in control, moves the unit where you look, as gently as it is pushed; Y
+  takes control and lets go, X looks from behind,
   LB is the night sight, RB or A fires, the triggers magnify the sight and Start leaves. While a
   controller is in use the view's hints show its buttons, and they come up again when one is taken
   up. The pause and speed keys work in a unit too, said on its glass.
@@ -65,6 +72,8 @@
     size of nothing or of thousands of pixels, which could crash the game.
   - Getting in held the first frame up while the cockpit's shader was compiled and its eight models
     read; they are now made once and read as wanted.
+  - In a walker the view bobbed and swayed jerkily with each step of its walk; the eye now follows its
+    head smoothly, the step felt but not shaken.
 - A fighter or other plane with nothing to do that took an enemy on the ground for its target of its
   own accord (one its weapons take on only with nothing better about: a Freedom Fighter come to rest
   over a Core Raider, say) hung motionless in the air over it for good, never firing again, and a

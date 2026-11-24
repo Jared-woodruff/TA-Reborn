@@ -111,8 +111,9 @@ pub use transport::{Client, Host, HostEvent};
 /// still told why they cannot meet.
 /// 115: deterministic possession input and release commands (simulation 110). 116: simulation
 /// 111, a mission's aircraft parked and waiting parked. 117: simulation 112, driven units' way,
-/// weapons and letting go, and idle planes with targets of their own landing.
-pub const PROTOCOL: u32 = 117;
+/// weapons and letting go, and idle planes with targets of their own landing. 118: simulation
+/// 113, a driven unit's course, its throttle in hundredths (`DirectInput`) and a click held.
+pub const PROTOCOL: u32 = 118;
 pub const DEFAULT_PORT: u16 = 7890;
 /// Ticks between state hash reports (which double as progress reports).
 pub const HASH_INTERVAL: u64 = 15;
@@ -1459,7 +1460,7 @@ mod address_tests {
     #[test]
     fn possession_commands_round_trip_and_keep_the_controlling_player() {
         let unit = ta_sim::UnitId { slot: 7, generation: 2 };
-        for input in [None, Some(ta_sim::DirectInput { throttle: -1, turn: 1, heading: -1234, pitch: 567, fire: true })] {
+        for input in [None, Some(ta_sim::DirectInput { throttle: -100, turn: 1, course: None, heading: -1234, pitch: 567, fire: true })] {
             let command = Command::DirectControl { player: 3, unit, input };
             let decoded: Command = bincode::deserialize(&bincode::serialize(&command).unwrap()).unwrap();
             assert_eq!(decoded, command);

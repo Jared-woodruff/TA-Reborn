@@ -7,7 +7,7 @@ use crate::DirectInput;
 use crate::unit::DirectControl;
 
 /// No throttle, no turn, the sight level and due south (heading 0), the trigger let go.
-const STILL: DirectInput = DirectInput { throttle: 0, turn: 0, heading: 0, pitch: 0, fire: false };
+const STILL: DirectInput = DirectInput { throttle: 0, turn: 0, course: None, heading: 0, pitch: 0, fire: false };
 
 fn drive(sim: &mut Sim, unit: UnitId, input: DirectInput, ticks: usize) {
     for _ in 0..ticks {
@@ -44,7 +44,7 @@ fn a_driven_unit_gathers_way_at_its_acceleration_and_sheds_it_at_its_brake_rate(
     let id = put(&mut sim, "DRIVER", 0, 500, 300);
     let t = sim.unit_type(sim.unit(id).unwrap()).clone();
     assert!(t.acceleration < t.brake);
-    let ahead = DirectInput { throttle: 1, ..STILL };
+    let ahead = DirectInput { throttle: 100, ..STILL };
     drive(&mut sim, id, ahead, 1);
     assert_eq!(sim.unit(id).unwrap().speed, t.acceleration, "from a stop, at its acceleration");
     drive(&mut sim, id, ahead, 60);
@@ -53,7 +53,7 @@ fn a_driven_unit_gathers_way_at_its_acceleration_and_sheds_it_at_its_brake_rate(
     assert_eq!(sim.unit(id).unwrap().speed, t.max_speed - t.brake, "throttle off: it brakes");
     let mut first_astern = None;
     for _ in 0..30 {
-        drive(&mut sim, id, DirectInput { throttle: -1, ..STILL }, 1);
+        drive(&mut sim, id, DirectInput { throttle: -100, ..STILL }, 1);
         let speed = sim.unit(id).unwrap().speed;
         if speed < Fx::ZERO && first_astern.is_none() {
             first_astern = Some(speed);
@@ -69,7 +69,7 @@ fn a_driven_unit_gathers_way_at_its_acceleration_and_sheds_it_at_its_brake_rate(
 #[test]
 fn a_unit_let_go_or_captured_astern_stops() {
     let mut sim = sim_of(data_of(&[unit("DRIVER", "CanMove=1; MaxVelocity=2; Acceleration=0.1; BrakeRate=0.1; TurnRate=1000;")]), 2);
-    let astern = DirectInput { throttle: -1, ..STILL };
+    let astern = DirectInput { throttle: -100, ..STILL };
     for capture in [false, true] {
         let id = put(&mut sim, "DRIVER", 0, 500, 300 + capture as i64 * 300);
         sim.step(&[Command::Order { player: 0, units: vec![id], order: Order::Move(FxVec3::from_ints(900, 60, 300 + capture as i64 * 300)), queue: false }]);
@@ -99,7 +99,7 @@ fn a_unit_driven_square_into_a_wall_stops() {
         sim.world.occupy(Occupant::Feature(900), (x, 30), (1, 1), &[]);
     }
     let id = put(&mut sim, "DRIVER", 0, 500, 400);
-    drive(&mut sim, id, DirectInput { throttle: 1, ..STILL }, 90);
+    drive(&mut sim, id, DirectInput { throttle: 100, ..STILL }, 90);
     let u = sim.unit(id).unwrap();
     assert!(u.pos.z > Fx::from_int(440) && u.pos.z < Fx::from_int(496), "at the wall: {:?}", u.pos);
     assert!(u.speed.is_zero() && !u.moving, "stopped against it: speed {:?}", u.speed);
@@ -181,7 +181,7 @@ fn a_driven_unit_packing_up_to_go_fires_nothing() {
     sim.take_events();
     drive(&mut sim, id, DirectInput { fire: true, ..STILL }, 10);
     assert!(!shots(&mut sim, id).is_empty(), "held still and standing, it fires");
-    drive(&mut sim, id, DirectInput { throttle: 1, fire: true, ..STILL }, 20);
+    drive(&mut sim, id, DirectInput { throttle: 100, fire: true, ..STILL }, 20);
     assert!(sim.unit(id).unwrap().packing_to_go());
     assert!(shots(&mut sim, id).is_empty(), "packing up, nothing");
 }
@@ -237,7 +237,7 @@ fn a_unit_taken_over_leaves_its_formation() {
 fn a_unit_being_taken_apart_is_let_go() {
     let mut sim = sim_of(data_of(&[unit("DRIVER", "CanMove=1; MaxVelocity=2; TurnRate=1000;")]), 1);
     let id = put(&mut sim, "DRIVER", 0, 500, 300);
-    drive(&mut sim, id, DirectInput { throttle: 1, ..STILL }, 5);
+    drive(&mut sim, id, DirectInput { throttle: 100, ..STILL }, 5);
     let total = sim.unit_type(sim.unit(id).unwrap()).build_work;
     sim.unit_mut(id).unwrap().set_build_work(total / 2, total);
     let_go(&mut sim, id);
@@ -279,14 +279,14 @@ fn letting_go_puts_the_turrets_back_to_rest() {
 fn in_the_crowd_a_driven_unit_moves_with_its_way_and_fights_only_what_it_aims_at() {
     let data = data_of(&[unit("TANK", "CanMove=1; MaxVelocity=2; FootprintX=1; FootprintZ=1;")]);
     let mut sim = sim_of(data, 2);
-    let driven = |input| DirectControl { aim_piece: None, player: 0, input, expires: u64::MAX };
+    let driven = |input| DirectControl { aim_piece: None, player: 0, input, expires: u64::MAX, pull: None };
     let (a, b) = (put(&mut sim, "TANK", 0, 500, 300), put(&mut sim, "TANK", 0, 500, 300));
     let body = sim.unit_type(sim.unit(a).unwrap()).radius * 4 / 5;
     // Overlapping by 2 px: `a` driven ahead, `b` standing idle.
     sim.unit_mut(b).unwrap().pos.x = Fx::from_int(500) + body * 2 - Fx::from_int(2);
     {
         let u = sim.unit_mut(a).unwrap();
-        u.direct_control = Some(driven(DirectInput { throttle: 1, ..STILL }));
+        u.direct_control = Some(driven(DirectInput { throttle: 100, ..STILL }));
         u.speed = Fx::ONE;
     }
     let (a0, b0) = (sim.unit(a).unwrap().pos.x, sim.unit(b).unwrap().pos.x);
@@ -322,10 +322,160 @@ fn a_cloaked_unit_going_astern_pays_for_its_cloak_on_the_move() {
     let mut sim = sim_of(data_of(&[unit("SPY", "CanMove=1; MaxVelocity=2; Acceleration=1; BrakeRate=1; TurnRate=1000; CloakCost=30; CloakCostMoving=300;")]), 1);
     let id = put(&mut sim, "SPY", 0, 500, 300);
     sim.unit_mut(id).unwrap().cloak_on = true;
-    drive(&mut sim, id, DirectInput { throttle: -1, ..STILL }, 5);
+    drive(&mut sim, id, DirectInput { throttle: -100, ..STILL }, 5);
     assert!(sim.unit(id).unwrap().speed < Fx::ZERO && sim.unit(id).unwrap().cloaked);
     let before = sim.players[0].economy.energy;
-    drive(&mut sim, id, DirectInput { throttle: -1, ..STILL }, 1);
+    drive(&mut sim, id, DirectInput { throttle: -100, ..STILL }, 1);
     let paid = before - sim.players[0].economy.energy;
     assert_eq!(paid, Fx::from_int(300) / TICKS_PER_SECOND, "on the move's cost: {paid:?}");
+}
+
+/// Steered by a course, a driven unit comes round to it at its turn rate, on the spot too, and no
+/// further (no swinging past it and back); the shorter way round; the course steers it, not `turn`
+/// beside it; and a course off the circle is refused, as the rest of the input out of its bounds.
+#[test]
+fn a_unit_steered_by_a_course_comes_round_to_it_at_its_turn_rate_and_no_further() {
+    let mut sim = sim_of(data_of(&[unit("DRIVER", "CanMove=1; MaxVelocity=2; Acceleration=0.1; BrakeRate=0.5; TurnRate=1000;")]), 1);
+    let id = put(&mut sim, "DRIVER", 0, 500, 300);
+    let rate = sim.unit_type(sim.unit(id).unwrap()).turn_rate;
+    let start = sim.unit(id).unwrap().pos;
+    let course = rate * 5 + rate / 2;
+    let face = DirectInput { course: Some(course), turn: -1, ..STILL };
+    drive(&mut sim, id, face, 1);
+    assert_eq!(sim.unit(id).unwrap().heading, rate, "at its turn rate, the course's way (not the turn's)");
+    drive(&mut sim, id, face, 10);
+    let u = sim.unit(id).unwrap();
+    assert_eq!(u.heading, course, "come round to it, and no further");
+    assert!(u.speed.is_zero() && u.pos == start, "no throttle: it turned on the spot");
+    // Just short of half a turn round to the right (past half a turn to the left): it turns right.
+    let round = crate::fixed::wrap_angle(course - 32768 + rate * 3);
+    drive(&mut sim, id, DirectInput { course: Some(round), ..STILL }, 1);
+    assert_eq!(sim.unit(id).unwrap().heading, crate::fixed::wrap_angle(course - rate), "the shorter way round");
+    let held = |sim: &Sim| sim.unit(id).unwrap().direct_control.map(|control| control.input.course);
+    let mut off = DirectInput { course: Some(40_000), ..STILL };
+    drive(&mut sim, id, off, 1);
+    assert_eq!(held(&sim), Some(Some(round)), "a course off the circle is refused (the last input holds)");
+    off.course = Some(-32_768);
+    drive(&mut sim, id, off, 1);
+    assert_eq!(held(&sim), Some(Some(-32_768)), "the circle's end is on it");
+}
+
+/// Off its course a driven unit goes slower the further it faces from it (by the angle's cosine:
+/// sixty degrees off, half its speed), and from a right angle off or more it turns on the spot
+/// first: sent the way it does not face, it goes that way rather than round in an arc.
+#[test]
+fn off_its_course_a_driven_unit_slows_and_from_a_right_angle_off_turns_on_the_spot() {
+    let mut sim = sim_of(data_of(&[unit("DRIVER", "CanMove=1; MaxVelocity=2; Acceleration=2; BrakeRate=2; TurnRate=1000;")]), 1);
+    let id = put(&mut sim, "DRIVER", 0, 500, 300);
+    let (top, rate) = {
+        let t = sim.unit_type(sim.unit(id).unwrap());
+        (t.max_speed, t.turn_rate)
+    };
+    let start = sim.unit(id).unwrap().pos;
+    // Sent straight back: on the spot until it is within a right angle of its course.
+    let back = DirectInput { throttle: DirectInput::FULL, course: Some(-32_768), ..STILL };
+    let mut ticks = 0;
+    loop {
+        drive(&mut sim, id, back, 1);
+        let u = sim.unit(id).unwrap();
+        let off = crate::fixed::wrap_angle(-32_768 - u.heading);
+        if off.abs() < crate::fixed::QUARTER_TURN {
+            assert_eq!(u.speed, top * crate::fixed::cos(off), "within a right angle it sets off, slower the further off");
+            break;
+        }
+        assert!(u.speed.is_zero() && u.pos.x == start.x && u.pos.z == start.z, "a right angle off or more: on the spot (tick {ticks})");
+        ticks += 1;
+        assert!(ticks <= 32_768 / rate as usize, "it comes round");
+    }
+    drive(&mut sim, id, back, 30);
+    let u = sim.unit(id).unwrap();
+    assert_eq!((u.heading, u.speed), (-32_768, top), "on its course, at its top speed");
+    assert!(u.pos.z < start.z, "and on its way back: {:?}", u.pos);
+    // Held sixty degrees off (a unit that barely turns), it goes at half its top speed.
+    let mut sim = sim_of(data_of(&[unit("SLOW", "CanMove=1; MaxVelocity=2; Acceleration=2; BrakeRate=2; TurnRate=1;")]), 1);
+    let id = put(&mut sim, "SLOW", 0, 500, 300);
+    let top = sim.unit_type(sim.unit(id).unwrap()).max_speed;
+    let sixty = crate::fixed::FULL_TURN / 6;
+    drive(&mut sim, id, DirectInput { throttle: DirectInput::FULL, course: Some(sixty), ..STILL }, 1);
+    let u = sim.unit(id).unwrap();
+    assert_eq!(u.speed, top * crate::fixed::cos(sixty - 1));
+    assert!((u.speed.to_f32() - top.to_f32() / 2.0).abs() < 0.001, "half its top speed: {:?}", u.speed);
+}
+
+/// The throttle is a share of the top speed in hundredths (a pad's stick pushed part way): half of
+/// it ahead, half its top speed; half of it astern, half of its speed astern (a quarter).
+#[test]
+fn the_throttle_is_a_share_of_the_top_speed() {
+    let mut sim = sim_of(data_of(&[unit("DRIVER", "CanMove=1; MaxVelocity=2; Acceleration=0.25; BrakeRate=0.25; TurnRate=1000;")]), 1);
+    let id = put(&mut sim, "DRIVER", 0, 500, 300);
+    let top = sim.unit_type(sim.unit(id).unwrap()).max_speed;
+    drive(&mut sim, id, DirectInput { throttle: 50, ..STILL }, 30);
+    assert_eq!(sim.unit(id).unwrap().speed, top / 2);
+    drive(&mut sim, id, DirectInput { throttle: -50, ..STILL }, 60);
+    assert_eq!(sim.unit(id).unwrap().speed, Fx::ZERO - top / 4);
+}
+
+/// Held still by its script (a weapon unpacked), a driven unit with a course alone (a walker
+/// facing where its driver looks) is not packed up: only a throttle, or a turn by hand, wants it
+/// on the move.
+#[test]
+fn a_course_alone_does_not_pack_up_a_held_unit() {
+    let mut sim = sim_of(data_of(&[unit("DRIVER", "CanMove=1; MaxVelocity=2; Acceleration=1; BrakeRate=1; TurnRate=1000;")]), 1);
+    let id = put(&mut sim, "DRIVER", 0, 500, 300);
+    sim.unit_mut(id).unwrap().immobile = true;
+    drive(&mut sim, id, DirectInput { course: Some(8_000), turn: 1, ..STILL }, 5);
+    let u = sim.unit(id).unwrap();
+    assert!(!u.moving && u.heading == 0, "held, facing where it faced, not wanted on the move");
+    drive(&mut sim, id, DirectInput { course: Some(8_000), throttle: DirectInput::FULL, ..STILL }, 1);
+    assert!(sim.unit(id).unwrap().moving, "with a throttle, wanted on the move");
+}
+
+/// A click on a gun not yet on the sight (a gun fixed in its hull, the hull coming round to its
+/// course) holds the trigger until the gun comes on, and fires then, once; too long coming round
+/// (past [`crate::unit::PULL_TICKS`]), the click lapses and nothing fires.
+#[test]
+fn a_click_waits_for_the_gun_to_come_round_and_fires_once() {
+    let data = data_of(&[unit("FIXED", "CanMove=1; MaxVelocity=1; TurnRate=1000; Weapon1=GUN;"), weapon_file("GUN", "range=300; reloadtime=0.1; tolerance=500;")]);
+    let mut sim = sim_of(data, 1);
+    let id = put(&mut sim, "FIXED", 0, 300, 300);
+    sim.take_events();
+    // The sight and the course a quarter turn round: some sixteen ticks coming round.
+    let round = DirectInput { course: Some(16_384), heading: 16_384, ..STILL };
+    drive(&mut sim, id, DirectInput { fire: true, ..round }, 1);
+    drive(&mut sim, id, round, 3);
+    assert!(shots(&mut sim, id).is_empty(), "not on the sight yet");
+    drive(&mut sim, id, round, 15);
+    assert_eq!(shots(&mut sim, id).len(), 1, "fired as it came on, once");
+    drive(&mut sim, id, round, 20);
+    assert!(shots(&mut sim, id).is_empty(), "the click spent");
+    // Half a turn round: longer than a click holds.
+    let back = DirectInput { course: Some(-16_384), heading: -16_384, ..STILL };
+    drive(&mut sim, id, DirectInput { fire: true, ..back }, 1);
+    drive(&mut sim, id, back, 40);
+    assert!(shots(&mut sim, id).is_empty(), "lapsed before it came round");
+    assert_eq!(sim.unit(id).unwrap().heading, -16_384);
+    assert!(sim.unit(id).unwrap().direct_control.unwrap().pull.is_none(), "and forgotten");
+}
+
+/// Driven square on into a post (a tree, a corner), a unit slips round it rather than stop dead,
+/// still facing its way, and goes on past it; along a wall met at a slant it slides as before.
+#[test]
+fn a_unit_driven_square_into_a_post_slips_round_it() {
+    let mut sim = sim_of(data_of(&[unit("DRIVER", "CanMove=1; MaxVelocity=2; Acceleration=1; BrakeRate=1; TurnRate=1000; FootprintX=1; FootprintZ=1;")]), 1);
+    sim.world.occupy(Occupant::Feature(900), (31, 30), (1, 1), &[]);
+    let id = put(&mut sim, "DRIVER", 0, 504, 400);
+    drive(&mut sim, id, DirectInput { throttle: 100, ..STILL }, 90);
+    let u = sim.unit(id).unwrap();
+    assert!(u.pos.z > Fx::from_int(530), "past the post: {:?}", u.pos);
+    assert_eq!(u.heading, 0, "still facing its way");
+    // A wall met at a slant: along it, at its x's share of the way.
+    let mut sim = sim_of(data_of(&[unit("DRIVER", "CanMove=1; MaxVelocity=2; Acceleration=1; BrakeRate=1; TurnRate=1000; FootprintX=1; FootprintZ=1;")]), 1);
+    for x in 0..64 {
+        sim.world.occupy(Occupant::Feature(900), (x, 30), (1, 1), &[]);
+    }
+    let id = put(&mut sim, "DRIVER", 0, 300, 440);
+    let slant = DirectInput { throttle: 100, course: Some(12_000), ..STILL };
+    drive(&mut sim, id, slant, 60);
+    let u = sim.unit(id).unwrap();
+    assert!(u.pos.z < Fx::from_int(488) && u.pos.x > Fx::from_int(380), "slid along the wall, short of its cells: {:?}", u.pos);
 }

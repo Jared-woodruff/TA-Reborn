@@ -17,7 +17,7 @@ fn possession_turns_in_place_even_when_normal_steering_requires_movement() {
     let mut sim = game_of(&[("DRIVER", "CanMove=1; MaxVelocity=2; SteeringMode=1; TurnRate=1000;")]);
     let unit = spawn(&mut sim, "DRIVER", 0, 300, 300);
     let position = sim.unit(unit).unwrap().pos;
-    let input = crate::DirectInput { throttle: 0, turn: 1, heading: 0, pitch: 0, fire: false };
+    let input = crate::DirectInput { throttle: 0, turn: 1, course: None, heading: 0, pitch: 0, fire: false };
     sim.step(&[crate::Command::DirectControl { player: 0, unit, input: Some(input) }]);
     let u = sim.unit(unit).unwrap();
     assert_eq!(u.heading, -sim.unit_type(u).turn_rate);
@@ -33,7 +33,7 @@ fn possession_preserves_orders_limits_motion_and_resumes_them() {
     let order = Order::Move(FxVec3::from_ints(800, 0, 300));
     sim.step(&[crate::Command::Order { player: 0, units: vec![unit], order: order.clone(), queue: false }]);
     let before = sim.unit(unit).unwrap().pos;
-    let input = crate::DirectInput { throttle: 1, turn: 1, heading: 0, pitch: 0, fire: false };
+    let input = crate::DirectInput { throttle: 100, turn: 1, course: None, heading: 0, pitch: 0, fire: false };
     let command = crate::Command::DirectControl { player: 0, unit, input: Some(input) };
     for _ in 0..20 {
         let heading = sim.unit(unit).unwrap().heading;
@@ -56,10 +56,10 @@ fn possession_preserves_orders_limits_motion_and_resumes_them() {
 fn possession_rejects_foreign_and_invalid_input_and_expires_safely() {
     let mut sim = game_of(&[("DRIVER", "CanMove=1; MaxVelocity=2; SteeringMode=2;")]);
     let unit = spawn(&mut sim, "DRIVER", 0, 300, 300);
-    let input = crate::DirectInput { throttle: -1, turn: 0, heading: 0, pitch: 0, fire: false };
+    let input = crate::DirectInput { throttle: -100, turn: 0, course: None, heading: 0, pitch: 0, fire: false };
     sim.step(&[crate::Command::DirectControl { player: 1, unit, input: Some(input) }]);
     assert!(sim.unit(unit).unwrap().direct_control.is_none());
-    sim.step(&[crate::Command::DirectControl { player: 0, unit, input: Some(crate::DirectInput { throttle: 2, ..input }) }]);
+    sim.step(&[crate::Command::DirectControl { player: 0, unit, input: Some(crate::DirectInput { throttle: 101, ..input }) }]);
     assert!(sim.unit(unit).unwrap().direct_control.is_none());
     let z = sim.unit(unit).unwrap().pos.z;
     sim.step(&[crate::Command::DirectControl { player: 0, unit, input: Some(input) }]);
@@ -83,7 +83,7 @@ fn possession_waits_for_a_held_unit_to_pack_up_and_reverses_at_half_speed() {
             sim.step(&[crate::Command::DirectControl { player: 0, unit, input: Some(input) }]);
         }
     };
-    let ahead = crate::DirectInput { throttle: 1, turn: 1, heading: 0, pitch: 0, fire: false };
+    let ahead = crate::DirectInput { throttle: 100, turn: 1, course: None, heading: 0, pitch: 0, fire: false };
     drive(&mut sim, ahead, 20);
     let u = sim.unit(unit).unwrap();
     assert_eq!((u.pos, u.heading, u.speed), (start, 0, Fx::ZERO), "held, it neither moves nor turns");
@@ -91,7 +91,7 @@ fn possession_waits_for_a_held_unit_to_pack_up_and_reverses_at_half_speed() {
     sim.unit_mut(unit).unwrap().immobile = false;
     drive(&mut sim, crate::DirectInput { turn: 0, ..ahead }, 20);
     assert_ne!(sim.unit(unit).unwrap().pos, start, "let go, it drives off");
-    drive(&mut sim, crate::DirectInput { throttle: -1, turn: 0, ..ahead }, 60);
+    drive(&mut sim, crate::DirectInput { throttle: -100, turn: 0, ..ahead }, 60);
     let u = sim.unit(unit).unwrap();
     let top = sim.unit_type(u).max_speed;
     assert_eq!(u.speed, Fx::ZERO - top / 2, "astern at half its top speed");
@@ -111,7 +111,7 @@ fn possession_fires_only_on_trigger_and_replays_deterministically() {
     let unit = ids[0];
     let mut fired = 0;
     for tick in 0..60 {
-        let input = crate::DirectInput { throttle: 0, turn: 0, heading: 0, pitch: 0, fire: tick >= 30 };
+        let input = crate::DirectInput { throttle: 0, turn: 0, course: None, heading: 0, pitch: 0, fire: tick >= 30 };
         let command = crate::Command::DirectControl { player: 0, unit, input: Some(input) };
         let decoded = command.clone();
         sim.step(&[command]);

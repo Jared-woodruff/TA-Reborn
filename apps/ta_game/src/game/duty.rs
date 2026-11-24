@@ -332,7 +332,7 @@ mod tests {
         assert!(commanded(&Command::SetStates { player: 0, units: vec![a], fire: Some(0), movement: None }).is_empty());
         assert!(commanded(&Command::SetActive { player: 0, units: vec![a], on: false }).is_empty());
         assert!(commanded(&Command::Resign { player: 0 }).is_empty());
-        let drive = ta_sim::DirectInput { throttle: 1, turn: 0, heading: 0, pitch: 0, fire: false };
+        let drive = ta_sim::DirectInput { throttle: 100, turn: 0, course: None, heading: 0, pitch: 0, fire: false };
         assert!(commanded(&Command::DirectControl { player: 0, unit: a, input: Some(drive) }).is_empty(), "driven, its duty waits");
     }
 

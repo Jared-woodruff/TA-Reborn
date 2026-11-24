@@ -58,6 +58,7 @@ impl Config {
         p.gamepad_sensitivity = clamp(p.gamepad_sensitivity, &limits::GAMEPAD_SENSITIVITY, 1.0);
         p.speed = clamp(p.speed, &limits::SPEED, 1.0);
         p.scroll_speed = clamp(p.scroll_speed, &limits::SCROLL_SPEED, 1.0);
+        p.look_sensitivity = clamp(p.look_sensitivity, &limits::LOOK_SENSITIVITY, 1.0);
         if p.player_name.chars().count() > limits::PLAYER_NAME_CHARS {
             p.player_name = p
                 .player_name
@@ -104,6 +105,7 @@ mod tests {
             config.gameplay.gamepad_sensitivity = value;
             config.gameplay.speed = value;
             config.gameplay.scroll_speed = value;
+            config.gameplay.look_sensitivity = value;
             assert!(config.sanitize());
             assert_eq!(config, Config::default());
             assert!(

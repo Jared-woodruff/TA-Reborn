@@ -6,11 +6,15 @@
 //! anyone's). The cockpit round the view is drawn by `perspective_hud` (with the Minimalist
 //! First-Person View, only a sight, the unit's health and a radar).
 //!
-//! In one of their own ground units, hovercraft or ships the player may take control (E): W and
-//! S drive it ahead and astern, A and D turn it, on the spot too, the mouse aims its guns at their
-//! script's own pace and a click fires them (`Command::DirectControl`, sent as the input changes
-//! and once a second besides: `ta_sim`'s `sim/possession.rs`). Its orders wait meanwhile; E
-//! again, or leaving, lets it go, and it takes them up where they were.
+//! In one of their own ground units, hovercraft or ships the player may take control (E): it goes
+//! where they look, W along the look, A and D to either side of it, S back from it still facing
+//! it, the unit coming round to its course at its own turn rate (a walker, and a unit whose gun
+//! cannot turn, faces where they look standing too); the mouse aims its guns, which come round
+//! to the sight at their scripts' own pace, and a click fires them as they come on (the DRIVING
+//! setting's TANK CONTROLS: W and S along the hull, A and D turn it). Its input goes to the battle
+//! as `Command::DirectControl`, sent as it changes and once a second besides (`ta_sim`'s
+//! `sim/possession.rs`). Its orders wait meanwhile; E again, or leaving, lets it go, and it takes
+//! them up where they were.
 //!
 //! Entering, the camera dives from the map view into the unit; leaving (Escape), it climbs back
 //! out. A unit destroyed with the player inside loses its signal before the camera pulls away.
@@ -47,6 +51,14 @@ pub const KEYS_FROM: f32 = 3.2;
 pub const KEYS_TO: f32 = 11.0;
 /// The sight's magnifications.
 pub const ZOOMS: [f32; 3] = [1.0, 2.5, 6.0];
+/// How slowly a walker's eye follows its head through each step (seconds: the time constant of
+/// its easing; three times as long with reduced motion).
+const HEAD_EASE: f32 = 0.16;
+/// How far the view turns for a step of the mouse (radians, at the LOOK SENSITIVITY setting's 1).
+const MOUSE_LOOK: f32 = 0.0022;
+/// A pad's stick swept round the side of the view: how far past a right angle it goes before the
+/// unit driven turns from ahead to astern, or back (radians; keys go straight to their way).
+const ASTERN_SLACK: f32 = 0.26;
 /// How much the night sight brightens the picture (the cockpit's own light is drawn that much
 /// dimmer meanwhile: it brightens the battle outside).
 pub const NIGHT_EXPOSURE: f32 = 2.6;
@@ -425,11 +437,16 @@ pub struct Perspective {
     /// The last input sent and the tick it went at: it goes again as it changes, and once a
     /// second besides ([`send_input`]).
     sent: Option<(ta_sim::DirectInput, u64)>,
-    /// A click since the last input went (a shot, however short the click).
+    /// A click since the last input went (a shot, however short the click: the battle holds the
+    /// trigger pulled until a gun still coming round to the sight comes on, `DirectControl::pull`).
     fire_pending: bool,
-    /// How fast the sight may turn while driving, across and up (radians a second): its gun's
-    /// script's turning speeds, so that the view never runs ahead of the gun.
-    aim_rates: Vec2,
+    /// How a unit taken control of is driven, and how the mouse looks round (the settings').
+    pub driving: ta_config::Driving,
+    pub look_sensitivity: f32,
+    pub invert_look: bool,
+    /// The driven unit goes astern: kept while a pad's stick is swept round its side, so that the
+    /// hull does not swing round with every wobble ([`drive`]).
+    astern: bool,
     /// The Minimalist First-Person View (the settings'): no cockpit round the view.
     pub minimalist: bool,
     /// A gamepad is what the player is using (its buttons are the ones hinted): its right stick
@@ -470,6 +487,9 @@ pub struct Perspective {
     give: [Needle; 3],
     /// How far the view from behind is lifted to see its unit over the ground between them.
     chase_lift: f32,
+    /// A walker's eye in its body's own frame, eased ([`HEAD_EASE`]): its head bobs and sways
+    /// with each step of its script's walk.
+    head: Option<Vec3>,
     /// Where the eye looks: a heading (radians, 0 along +z as units face; left is larger)
     /// and a pitch (up positive). Aircraft: an offset from the nose.
     pub look_yaw: f32,
@@ -563,7 +583,10 @@ impl Perspective {
             keys_again: None,
             sent: None,
             fire_pending: false,
-            aim_rates: Vec2::splat(std::f32::consts::FRAC_PI_2),
+            driving: ta_config::Driving::WhereYouLook,
+            look_sensitivity: 1.0,
+            invert_look: false,
+            astern: false,
             reduced_motion: false,
             minimalist: false,
             pad: false,
@@ -611,6 +634,7 @@ impl Perspective {
             smooth_acc: Vec3::ZERO,
             give: Default::default(),
             chase_lift: 0.0,
+            head: None,
         };
         // (Got into a unit already worn, its glass is cracked already.)
         p.hud.crack_to(health, id.slot, now - 1.0);
@@ -722,10 +746,7 @@ impl Perspective {
             self.blend = (self.blend + dt / ENTER_TIME).min(1.0);
         }
         if alive && !self.leaving {
-            self.update_aim_rates(game);
-            // (The battle's pace: the gun turns at its script's speed in the battle's time.)
-            let pace = if game.paused { 1.0 } else { game.speed };
-            self.look(input, dt, now, pace);
+            self.look(input, dt, now);
             // E (a pad's Y): take control of the unit, or let it go; in one that may not be
             // driven (an ally's, an aircraft, a building, a replay), said so.
             if input.pressed(winit::keyboard::KeyCode::KeyE) || input.pad_struck(gilrs::Button::North) {
@@ -771,6 +792,7 @@ impl Perspective {
         }
         if alive && !self.leaving {
             self.watch(game, now, dt);
+            self.trace(game, now);
         }
         // Seen from inside, the pieces round the eye go (not from behind it); through the
         // magnified sight or from a modelled cockpit, all of it (from up there the barrel only
@@ -925,8 +947,11 @@ impl Perspective {
     }
 
     /// Reads the mouse (and a gamepad's sticks) into where the eye looks, and the view's own keys:
-    /// the sight's magnification, the view from behind and the night sight.
-    fn look(&mut self, input: &Input, dt: f32, now: f64, pace: f32) {
+    /// the sight's magnification, the view from behind and the night sight. The view turns as far
+    /// as the mouse goes (at the LOOK SENSITIVITY setting's pace, up and down the other way round
+    /// with INVERT LOOK), driving too: the guns come round to it at their own pace, the sight's
+    /// ring showing where they point meanwhile.
+    fn look(&mut self, input: &Input, dt: f32, now: f64) {
         use winit::keyboard::KeyCode as K;
         if input.pressed(K::KeyV) || input.pad_struck(gilrs::Button::West) {
             self.chase = !self.chase;
@@ -953,8 +978,10 @@ impl Perspective {
         let delta = if input.raw_seen { input.raw_delta } else if aim != Vec2::ZERO { Vec2::ZERO } else { input.mouse_delta };
         let sticks = aim * aim.length().powf(0.7) * 2.5 + if self.controlling { Vec2::ZERO } else { input.pad_pan * 2.0 };
         let steady = ZOOMS[self.zoom].sqrt();
-        let turn = delta * (0.0022 / steady) + sticks * (dt / steady);
-        let turn = if self.controlling { limit_aim_motion(turn, self.aim_rates * pace, dt) } else { turn };
+        let turn = delta * (MOUSE_LOOK * self.look_sensitivity / steady) + sticks * (dt / steady);
+        let turn = if self.invert_look { Vec2::new(turn.x, -turn.y) } else { turn };
+        // (Captures: the view swept round to the right, `TA_PERSPECTIVE_SWEEP` degrees a second.)
+        let turn = turn + Vec2::new(capture_sweep().to_radians() * dt, 0.0);
         if self.cockpit.flies() {
             // Aircraft: round from the nose, which the view turns with.
             self.look_yaw = (self.look_yaw - turn.x).clamp(-2.4, 2.4);
@@ -963,30 +990,6 @@ impl Perspective {
             let (lo, hi) = if self.controlling { (-1.56, 1.56) } else { self.cockpit.pitch_range() };
             self.look_yaw -= turn.x;
             self.look_pitch = ease_into(self.look_pitch, self.look_pitch - turn.y, lo, hi, 2.5 * dt);
-        }
-    }
-
-    /// The sight's turning speeds while driving ([`Self::aim_rates`]): the slowest turning of each
-    /// axis (across, up) among the pieces from the gun to the body, as its script turns them.
-    fn update_aim_rates(&mut self, game: &Game) {
-        let Some(unit) = game.sim.unit(self.unit) else { return };
-        let Some(script) = unit.cob.as_ref() else { return };
-        let ty = game.sim.unit_type(unit);
-        let mut piece = unit.direct_control.and_then(|control| control.aim_piece);
-        let mut rates = [None::<i32>; 2];
-        for _ in 0..256 {
-            let Some(index) = piece else { break };
-            if let Some(animated) = ty.model_to_cob.get(index).copied().flatten().and_then(|index| script.pieces.get(index)) {
-                for (slot, axis) in [1, 0].into_iter().enumerate() {
-                    if let Some(speed) = animated.turn_speed(axis).filter(|speed| *speed > 0) {
-                        rates[slot] = Some(rates[slot].map_or(speed, |old| old.min(speed)));
-                    }
-                }
-            }
-            piece = ty.model.pieces.get(index).and_then(|piece| piece.parent);
-        }
-        for axis in 0..2 {
-            if let Some(speed) = rates[axis] { self.aim_rates[axis] = speed as f32 * std::f32::consts::TAU / 65536.0; }
         }
     }
 
@@ -1008,6 +1011,19 @@ impl Perspective {
         self.pad = pad;
     }
 
+    /// Whether the unit, left standing while driven where the player looks, comes round to where
+    /// they look: a walker (a kbot, a Commander, a Krogoth turns its body to look round, as a
+    /// person does), or a unit whose gun cannot turn across its hull (it aims with its hull).
+    /// Turrets turn on their own: a tank's or a ship's hull stays as it is.
+    fn faces_look(&self, game: &Game) -> bool {
+        if matches!(self.cockpit, Cockpit::Walker | Cockpit::Titan | Cockpit::Commander) {
+            return true;
+        }
+        let Some(u) = game.sim.unit(self.unit) else { return false };
+        let t = game.sim.unit_type(u);
+        u.weapon_slots(t).iter().flatten().next().is_some_and(|&w| !game.sim.weapon_types.get(w).def.turret)
+    }
+
     /// Lets the unit go, if the player was driving it: it takes up its orders.
     fn release_control(&mut self, game: &mut Game) {
         if self.controlling {
@@ -1016,11 +1032,14 @@ impl Perspective {
         }
         self.sent = None;
         self.fire_pending = false;
+        self.astern = false;
     }
 
     /// The player's hands on the unit, while they have taken control of it: its input goes to the
     /// battle as it changes, and once a second besides (at most once a tick), the sight where the
-    /// view looks. Let go (E again), or no longer theirs to drive, it is released.
+    /// view looks, the way it goes as [`drive`] has it (the keys, else a pad's left stick part way,
+    /// where the player looks or as a tank's controls). Let go (E again), or no longer theirs to
+    /// drive, it is released.
     fn control(&mut self, game: &mut Game, input: &Input) {
         if !(self.want_control && self.may_control(game)) {
             self.want_control = false;
@@ -1035,12 +1054,21 @@ impl Perspective {
         use winit::keyboard::KeyCode as K;
         let angle = |radians: f32| ((radians * 65536.0 / std::f32::consts::TAU).round() as i64 + 32768).rem_euclid(65536) as i32 - 32768;
         let capture = capture_control();
-        // (A pad's left stick pushed past halfway: ahead or astern, left or right.)
-        let stick = |v: f32| if v > 0.5 { 1 } else if v < -0.5 { -1 } else { 0 };
-        let (ahead, right) = (-stick(input.pad_pan.y), stick(input.pad_pan.x));
+        // The way pushed (right, ahead): the keys (and the captures' words), else a pad's left
+        // stick, part way, its sweep round the side of the view given slack.
+        let key = |plus: bool, minus: bool| (plus as i8 - minus as i8) as f32;
+        let keys = Vec2::new(
+            key(input.held(K::KeyD) || capture.right, input.held(K::KeyA) || capture.left),
+            key(input.held(K::KeyW) || capture.drive, input.held(K::KeyS) || capture.back),
+        );
+        let (way, slack) = if keys != Vec2::ZERO { (keys, 0.0) } else { (Vec2::new(input.pad_pan.x, -input.pad_pan.y), ASTERN_SLACK) };
+        let faces_look = self.faces_look(game);
+        let d = drive(way, self.look_yaw, self.driving, faces_look, self.astern, slack);
+        self.astern = d.astern;
         let command = ta_sim::DirectInput {
-            throttle: if capture.drive { 1 } else { (input.held(K::KeyW) as i8 - input.held(K::KeyS) as i8 + ahead).clamp(-1, 1) },
-            turn: (input.held(K::KeyD) as i8 - input.held(K::KeyA) as i8 + right).clamp(-1, 1),
+            throttle: d.throttle,
+            turn: d.turn,
+            course: d.course.map(angle),
             heading: angle(self.look_yaw),
             pitch: angle(self.look_pitch).clamp(-16384, 16384),
             fire: capture.fire || self.fire_pending || input.buttons_held.contains(&crate::input::MouseButtonId::Left) || input.pad_right_bumper(),
@@ -1080,11 +1108,14 @@ impl Perspective {
         self.attitude = attitude_of(&body);
         let drawn = |i: usize| self.pieces.get(i).filter(|m| **m != Mat4::ZERO);
         self.gun_azimuth = gun_mount.and_then(drawn).map(|m| turret_azimuth(&body, m));
+        // Driving, the ring is where the gun points across (its turret as turned: it comes round to
+        // the sight at its own pace, the view as fast as the mouse), at the sight's own height: it
+        // closes on the sight as the gun comes on. (Up and down, a shell's arc lifts the barrel
+        // over the sight's line: the barrel's own pitch would hold the ring over the sight.)
         self.gun_dir = if self.controlling {
-            u.weapon_slots(t).iter().position(Option::is_some).and_then(|slot| {
-                let state = u.weapons[slot];
-                state.aim_asked.then(|| aim_direction((u.heading + state.aim_heading) as f32 * std::f32::consts::TAU / 65536.0, state.aim_pitch as f32 * std::f32::consts::TAU / 65536.0))
-            })
+            let ahead = body.transform_vector3(Vec3::Z);
+            let hull = ahead.x.atan2(ahead.z);
+            self.gun_azimuth.map(|across| aim_direction(hull - across, self.look_pitch))
         } else { aim_piece.and_then(drawn).map(|matrix| matrix.transform_vector3(Vec3::Z).normalize_or(Vec3::Z)) };
         let lift = self.cockpit.lift();
         let mid = |lo: Vec3, hi: Vec3| (lo + hi) * 0.5;
@@ -1133,6 +1164,20 @@ impl Perspective {
         let eye = match piece.filter(|&i| i < self.pieces.len() && self.pieces[i] != Mat4::ZERO) {
             Some(i) => self.pieces[i].transform_point3(local),
             None => body.transform_point3(Vec3::new(0.0, t.model.height.to_f32() + lift, 0.0)),
+        };
+        // A walker's head bobs and sways with each step of its script's walk (by a tenth of the
+        // eye's height, jerkily from frame to frame): the eye goes with it eased, in the body's own
+        // frame, so that the body's turning and its way over the ground carry it at once, and the
+        // step is felt rather than shaken.
+        let eye = if matches!(self.cockpit, Cockpit::Walker | Cockpit::Titan | Cockpit::Commander) {
+            let base = body.transform_point3(Vec3::ZERO);
+            let held = body.inverse().transform_vector3(eye - base);
+            let ease = if self.reduced_motion { HEAD_EASE * 3.0 } else { HEAD_EASE };
+            let head = self.head.map_or(held, |head| head + (held - head) * (1.0 - (-dt / ease).exp()));
+            self.head = Some(head);
+            base + body.transform_vector3(head)
+        } else {
+            eye
         };
         // A submarine's periscope breaks the surface.
         let eye = if self.cockpit == Cockpit::Periscope { Vec3::new(eye.x, eye.y.max(game.sim.world.sea_level.to_f32() + lift), eye.z) } else { eye };
@@ -1191,6 +1236,34 @@ impl Perspective {
             self.eye = eye;
             self.forward = look;
         }
+    }
+
+    /// `TA_PERSPECTIVE_TRACE=1`: a line a frame on the unit and the view (for judging how it
+    /// drives in captures): the interface's time, the battle's tick, where the unit stands, its
+    /// heading, where the view looks and the course and throttle sent (degrees, round from north
+    /// as the heading tape reads), its speed (px a tick), and the eye's height over the unit.
+    fn trace(&self, game: &Game, now: f64) {
+        static ON: OnceLock<bool> = OnceLock::new();
+        if !*ON.get_or_init(|| std::env::var("TA_PERSPECTIVE_TRACE").is_ok_and(|v| v == "1")) {
+            return;
+        }
+        let Some(u) = game.sim.unit(self.unit) else { return };
+        let compass = |radians: f32| (180.0 - radians.to_degrees()).rem_euclid(360.0);
+        let angle = |a: i32| a as f32 * std::f32::consts::TAU / 65536.0;
+        let sent = self.sent.map(|(input, _)| input);
+        let pos = u.pos.to_f32();
+        eprintln!(
+            "trace t={now:.3} tick={} pos={:.1},{:.1} hull={:.1} look={:.1} course={} throttle={} speed={:.3} eye={:.1}",
+            game.sim.tick,
+            pos[0],
+            pos[2],
+            compass(angle(u.heading)),
+            compass(self.look_yaw),
+            sent.and_then(|i| i.course).map_or("-".to_string(), |c| format!("{:.1}", compass(angle(c)))),
+            sent.map_or(0, |i| i.throttle),
+            u.speed.to_f32(),
+            self.eye.y - pos[1],
+        );
     }
 
     /// Hits taken, kills scored, shots fired, and the instruments' needles.
@@ -1580,13 +1653,17 @@ fn send_input(sent: Option<(ta_sim::DirectInput, u64)>, input: ta_sim::DirectInp
     sent.is_none_or(|(last, at)| last != input || tick.saturating_sub(at) >= ta_sim::DIRECT_CONTROL_TICKS / 3)
 }
 
-/// `TA_PERSPECTIVE_CONTROL=take|drive|fire` (several, comma-separated): for captures, the view
-/// takes control of its unit as it goes in (`take`; `drive` and `fire` take it too), driving it
-/// ahead (`drive`) with its trigger held (`fire`). Read once.
+/// `TA_PERSPECTIVE_CONTROL=take|drive|back|left|right|fire` (several, comma-separated): for
+/// captures, the view takes control of its unit as it goes in (`take`; the rest take it too),
+/// its keys held: W (`drive`), S (`back`), A (`left`), D (`right`), its trigger (`fire`). Read
+/// once.
 #[derive(Clone, Copy, Default)]
 struct CaptureControl {
     take: bool,
     drive: bool,
+    back: bool,
+    left: bool,
+    right: bool,
     fire: bool,
 }
 
@@ -1595,9 +1672,57 @@ fn capture_control() -> CaptureControl {
     *ASKED.get_or_init(|| {
         let words = std::env::var("TA_PERSPECTIVE_CONTROL").unwrap_or_default().to_ascii_lowercase();
         let has = |word: &str| words.split(',').any(|w| w.trim() == word);
-        let (drive, fire) = (has("drive"), has("fire"));
-        CaptureControl { take: has("take") || drive || fire, drive, fire }
+        let (drive, back, left, right, fire) = (has("drive"), has("back"), has("left"), has("right"), has("fire"));
+        CaptureControl { take: has("take") || drive || back || left || right || fire, drive, back, left, right, fire }
     })
+}
+
+/// `TA_PERSPECTIVE_SWEEP=<degrees a second>`: for captures, the view turns round to the right
+/// that fast (left, negative), as a mouse moved steadily would turn it. Read once.
+fn capture_sweep() -> f32 {
+    static ASKED: OnceLock<f32> = OnceLock::new();
+    *ASKED.get_or_init(|| std::env::var("TA_PERSPECTIVE_SWEEP").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0))
+}
+
+/// What the player's hands ask of a driven unit (before it goes to the battle as its
+/// `DirectInput`): its throttle (hundredths of its top speed, astern negative), a turn by hand,
+/// the course it comes round to (radians, the battle's headings: left larger), and whether it goes
+/// astern.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Drive {
+    throttle: i8,
+    turn: i8,
+    course: Option<f32>,
+    astern: bool,
+}
+
+/// How a driven unit goes for `way` pushed (x to the right, y ahead, each -1..1: the keys, or a
+/// pad's stick part way) with the view looking along `look` (radians, left larger):
+/// - where the player looks (the default): the way pushed, turned by the look, is where it goes.
+///   Within a right angle of the look it goes ahead, its course that way; further round it goes
+///   astern, facing back up its way (S backs away from what it looks at, still facing it), and
+///   `astern` was so before, a stick swept round the side of the view turns from one to the other
+///   `slack` past the right angle (a key, none). The throttle is as hard as the way is pushed.
+///   Left alone, a unit that `faces_look` (a walker, a gun that cannot turn) comes round to the
+///   look, standing; the rest stand as they are.
+/// - a tank's controls: the throttle along the hull, and the turn by hand (the stick pushed past
+///   halfway to a side).
+fn drive(way: Vec2, look: f32, driving: ta_config::Driving, faces_look: bool, astern: bool, slack: f32) -> Drive {
+    let push = way.length().min(1.0);
+    let hundredths = |share: f32| (share.clamp(-1.0, 1.0) * ta_sim::DirectInput::FULL as f32).round() as i8;
+    if driving == ta_config::Driving::Tank {
+        let turn = if way.x > 0.5 { 1 } else if way.x < -0.5 { -1 } else { 0 };
+        return Drive { throttle: hundredths(way.y), turn, course: None, astern: way.y < 0.0 };
+    }
+    if push <= 0.0 {
+        return Drive { throttle: 0, turn: 0, course: faces_look.then_some(look), astern: false };
+    }
+    // (The way pushed off the look: to the right negative, as the battle's headings go.)
+    let off = (-way.x).atan2(way.y);
+    let side = std::f32::consts::FRAC_PI_2 + if astern { -slack } else { slack };
+    let astern = off.abs() > side;
+    let course = if astern { wrap(look + off + std::f32::consts::PI) } else { wrap(look + off) };
+    Drive { throttle: hundredths(if astern { -push } else { push }), turn: 0, course: Some(course), astern }
 }
 
 /// The whole lines the wheel has turned this frame (positive in), `turned` of them since the
@@ -1626,13 +1751,6 @@ fn ease_into(from: f32, to: f32, lo: f32, hi: f32, back: f32) -> f32 {
     }
 }
 
-/// The sight's turn this frame, `motion` (radians across and up), held to `rates` (radians a
-/// second) over `dt`.
-fn limit_aim_motion(motion: Vec2, rates: Vec2, dt: f32) -> Vec2 {
-    let limit = rates * dt.max(0.0);
-    motion.clamp(-limit, limit)
-}
-
 /// The way a view `yaw` round from north and `pitch` up from the level looks.
 fn aim_direction(yaw: f32, pitch: f32) -> Vec3 {
     let (sy, cy) = yaw.sin_cos();
@@ -1649,7 +1767,7 @@ mod tests {
     /// from), and never so seldom that the battle lets the unit go.
     #[test]
     fn driving_sends_input_as_it_changes_and_once_a_second() {
-        let still = ta_sim::DirectInput { throttle: 0, turn: 0, heading: 100, pitch: 0, fire: false };
+        let still = ta_sim::DirectInput { throttle: 0, turn: 0, course: None, heading: 100, pitch: 0, fire: false };
         assert!(send_input(None, still, 7), "the first goes at once");
         let keep = ta_sim::DIRECT_CONTROL_TICKS / 3;
         let sent = Some((still, 10));
@@ -1658,8 +1776,9 @@ mod tests {
         assert!(send_input(sent, still, 10 + keep), "unchanged: once a second");
         assert!(keep * 2 < ta_sim::DIRECT_CONTROL_TICKS, "with room to spare before the battle lets the unit go");
         for changed in [
-            ta_sim::DirectInput { throttle: 1, ..still },
+            ta_sim::DirectInput { throttle: 100, ..still },
             ta_sim::DirectInput { turn: -1, ..still },
+            ta_sim::DirectInput { course: Some(100), ..still },
             ta_sim::DirectInput { heading: 101, ..still },
             ta_sim::DirectInput { pitch: -5, ..still },
             ta_sim::DirectInput { fire: true, ..still },
@@ -1744,20 +1863,63 @@ mod tests {
         assert_eq!(wheel_steps(&mut kept, -0.5), -1);
     }
 
+    /// Driven where the player looks, a unit goes the way pushed turned by the look: W along the
+    /// look, A and D square to either side of it (left a larger heading), W and A between; S, and
+    /// S with A or D, astern, facing back up its way (its front to the look, or across it); as
+    /// hard as it is pushed. Left alone, a walker comes round to the look, a tank stands as it is.
     #[test]
-    fn controlled_vertical_aim_remains_free_and_rate_limited() {
-        let rates = Vec2::new(0.5, 1.0);
-        for frames in [30, 60, 144] {
-            let dt = 1.0 / frames as f32;
-            let mut aim = Vec2::ZERO;
-            for _ in 0..frames { aim += limit_aim_motion(Vec2::new(10.0, 10.0), rates, dt); }
-            assert!((aim - rates).length() < 0.0001);
-            let up = aim_direction(aim.x, aim.y);
-            let down = aim_direction(aim.x, -aim.y);
-            assert!(up.y > 0.8 && down.y < -0.8);
-        }
-        assert_eq!(limit_aim_motion(Vec2::new(0.001, -0.002), rates, 1.0 / 60.0), Vec2::new(0.001, -0.002));
-        assert_eq!(limit_aim_motion(Vec2::ONE, rates, 0.0), Vec2::ZERO);
+    fn driven_where_you_look_the_keys_go_round_with_the_look() {
+        use std::f32::consts::{FRAC_PI_2, FRAC_PI_4, PI};
+        let look = 0.7;
+        let go = |x: f32, y: f32| drive(Vec2::new(x, y), look, ta_config::Driving::WhereYouLook, false, false, 0.0);
+        let near = |a: Option<f32>, b: f32| a.is_some_and(|a| wrap(a - b).abs() < 1e-5);
+        let w = go(0.0, 1.0);
+        assert!(near(w.course, look) && w.throttle == 100 && !w.astern && w.turn == 0, "{w:?}");
+        assert!(near(go(-1.0, 0.0).course, look + FRAC_PI_2) && go(-1.0, 0.0).throttle == 100, "A: square to the left, ahead");
+        assert!(near(go(1.0, 0.0).course, look - FRAC_PI_2) && !go(1.0, 0.0).astern, "D: square to the right, ahead");
+        assert!(near(go(-1.0, 1.0).course, look + FRAC_PI_4) && go(-1.0, 1.0).throttle == 100, "W and A: between, no faster");
+        let s = go(0.0, -1.0);
+        assert!(near(s.course, look) && s.throttle == -100 && s.astern, "S: astern, still facing the look: {s:?}");
+        let sa = go(-1.0, -1.0);
+        assert!(near(sa.course, look - FRAC_PI_4) && sa.throttle == -100, "S and A: astern to the left behind, facing right ahead: {sa:?}");
+        assert!(near(go(0.0, 1.0).course.map(|c| c - look), 0.0) && near(go(0.0, -1.0).course.map(|c| c + PI - look), PI));
+        // A pad's stick part way: a share of the throttle.
+        assert_eq!(go(0.0, 0.5).throttle, 50);
+        assert_eq!(go(0.0, -0.25).throttle, -25);
+        // Left alone: a walker comes round to the look; a tank stands as it is.
+        let walker = drive(Vec2::ZERO, look, ta_config::Driving::WhereYouLook, true, true, 0.0);
+        assert!(near(walker.course, look) && walker.throttle == 0 && !walker.astern, "{walker:?}");
+        let tank = drive(Vec2::ZERO, look, ta_config::Driving::WhereYouLook, false, false, 0.0);
+        assert_eq!(tank, Drive { throttle: 0, turn: 0, course: None, astern: false });
+    }
+
+    /// A pad's stick swept round the side of the view turns the unit from ahead to astern only a
+    /// little past the right angle, and back only a little short of it: it does not swing its
+    /// hull round with every wobble there. Keys have no slack: A after S goes ahead to the left.
+    #[test]
+    fn a_stick_swept_round_the_side_turns_astern_with_slack() {
+        let at = |degrees: f32| {
+            let a = degrees.to_radians();
+            Vec2::new(-a.sin(), a.cos())
+        };
+        let go = |way: Vec2, astern: bool, slack: f32| drive(way, 0.0, ta_config::Driving::WhereYouLook, false, astern, slack);
+        assert!(!go(at(100.0), false, ASTERN_SLACK).astern, "ahead: still ahead a little past the side");
+        assert!(go(at(110.0), false, ASTERN_SLACK).astern, "further round, astern");
+        assert!(go(at(80.0), true, ASTERN_SLACK).astern, "astern: still astern a little short of the side");
+        assert!(!go(at(70.0), true, ASTERN_SLACK).astern, "further back round, ahead");
+        assert!(!go(Vec2::new(-1.0, 0.0), true, 0.0).astern, "A after S: ahead to the left");
+    }
+
+    /// With a tank's controls, W and S drive along the hull and A and D turn it (a stick past
+    /// halfway to a side); nothing comes round to the look.
+    #[test]
+    fn a_tanks_controls_drive_along_the_hull_and_turn_it() {
+        let go = |x: f32, y: f32| drive(Vec2::new(x, y), 1.2, ta_config::Driving::Tank, true, false, 0.0);
+        assert_eq!(go(0.0, 1.0), Drive { throttle: 100, turn: 0, course: None, astern: false });
+        assert_eq!(go(1.0, 0.0), Drive { throttle: 0, turn: 1, course: None, astern: false });
+        assert_eq!(go(-1.0, -1.0), Drive { throttle: -100, turn: -1, course: None, astern: true });
+        assert_eq!(go(-0.4, 0.3).turn, 0, "a stick short of halfway to a side does not turn it");
+        assert_eq!(go(0.0, 0.0).course, None, "left alone, it stands as it is (a walker too)");
     }
 
     /// The nearest point of the triangle `a`, `b`, `c` to `p` (Ericson's regions).

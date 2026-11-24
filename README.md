@@ -212,9 +212,12 @@ sags into its rubble.
 Select a unit and press **Q**. The camera dives into it: onto a tank's turret, into a walker's
 head, onto a ship's bridge, up a submarine's periscope, into a fighter's canopy. You ride along
 while it goes on with its orders, or, in one of your own ground units, hovercraft or ships, press
-**E** to take the controls: W and S drive it, A and D turn it, the mouse aims its guns and a click
-fires them. The mouse looks round, the wheel magnifies the sight, and Escape climbs back out. A
-controller works too: the right stick looks and aims, the left stick drives.
+**E** to take the controls: it goes where you look (W ahead, A and D to either side, S backs away
+still facing what you look at), walkers turn to face where you look, the mouse aims its guns and a
+click fires them as they come round. The mouse looks round, the wheel magnifies the sight, and
+Escape climbs back out. A controller works too: the right stick looks and aims, the left stick
+moves, as gently as it is pushed. Options, Controls has the look's sensitivity, an inverted look,
+and tank controls (A and D turn the hull) for those who like them.
 
 <table>
   <tr>

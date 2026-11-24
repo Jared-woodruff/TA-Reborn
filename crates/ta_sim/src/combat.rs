@@ -778,12 +778,14 @@ impl Sim {
     /// with the weapon's own firing solution (`direct_aim_target`), else at the place on the
     /// ground or the water the sight looks at (`sight_point`); with the trigger held it fires once
     /// aimed, loaded and, unless it is on a turret, with the hull turned its way, and a burst it
-    /// began goes on to its end (a click fires it whole). A weapon that would not fire on that
-    /// place by order ([`Sim::takes_order`]: a torpedo out of the water, a weapon naming its only
-    /// targets) aims with the sight and holds its fire; nothing fires while the unit's script
-    /// packs it up to go, as in `update_weapons`. Missiles kept in stock, interceptors and the
-    /// weapons fired only on order (the Commander's D-gun), unless one is the unit's first, are
-    /// left out: they are not the trigger's.
+    /// began goes on to its end (a click fires it whole). A click, the trigger pulled and let go
+    /// before the gun came round to the sight, holds it until a weapon fires, or for
+    /// [`crate::unit::PULL_TICKS`] at the most (`DirectControl::pull`). A weapon that would not
+    /// fire on that place by order ([`Sim::takes_order`]: a torpedo out of the water, a weapon
+    /// naming its only targets) aims with the sight and holds its fire; nothing fires while the
+    /// unit's script packs it up to go, as in `update_weapons`. Missiles kept in stock,
+    /// interceptors and the weapons fired only on order (the Commander's D-gun), unless one is the
+    /// unit's first, are left out: they are not the trigger's.
     fn direct_weapons(&mut self, id: UnitId, types: &crate::defs::UnitTypes, weapons: &crate::defs::WeaponTypes) {
         let Some(unit) = self.unit(id) else { return };
         let Some(control) = unit.direct_control else { return };
@@ -793,6 +795,10 @@ impl Sim {
         let heading = wrap_angle(control.input.heading - unit.heading);
         let pitch = control.input.pitch;
         let input = control.input;
+        // A pull of the trigger holds it until a weapon fires (all that are ready then fire), or
+        // until it lapses.
+        let pulled = control.pull.is_some_and(|until| self.tick < until);
+        let mut fired = false;
         for slot in 0..MAX_WEAPONS {
             let Some(weapon) = slots[slot] else { continue };
             let weapon = weapons.get(weapon);
@@ -831,11 +837,17 @@ impl Sim {
             let ready = state.reload == 0 || state.burst_left > 0 && state.burst_timer == 0;
             // (A click holds the trigger for a tick: the burst it began fires whole, not a round a
             // pull, the rest of it after the next pull with no reload between.)
-            let trigger = input.fire || state.burst_left > 0;
+            let trigger = input.fire || pulled || state.burst_left > 0;
             let aligned = weapon.def.turret || heading.abs() <= weapon.tolerance.max(500);
             if trigger && takes && aimed && ready && (!waiting || traversing) && aligned && !unit.packing_to_go() {
                 self.fire(id, slot, weapon, target, point, pitch);
+                fired = true;
             }
+        }
+        if (fired || !pulled)
+            && let Some(control) = self.unit_mut(id).and_then(|unit| unit.direct_control.as_mut())
+        {
+            control.pull = None;
         }
     }
 
