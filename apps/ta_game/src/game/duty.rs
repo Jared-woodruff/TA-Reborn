@@ -69,7 +69,9 @@ pub fn blurb(duty: Duty) -> &'static str {
 
 /// The units a command of the player's gives orders to (those that leave their duty for it): the
 /// orders, the formations and the edits of a constructor's queue; not the standing orders (hold
-/// fire, on and off), which leave a unit's work as it is.
+/// fire, on and off), which leave a unit's work as it is, nor taking a unit over from the
+/// first-person view (`DirectControl`): its duty waits, as its orders do, until it is let go (the
+/// officer gives a driven unit no orders: `ta_ai`'s `can_command`).
 fn commanded(c: &Command) -> &[UnitId] {
     match c {
         Command::Order { units, .. } | Command::Formation { units, .. } => units,
@@ -330,6 +332,8 @@ mod tests {
         assert!(commanded(&Command::SetStates { player: 0, units: vec![a], fire: Some(0), movement: None }).is_empty());
         assert!(commanded(&Command::SetActive { player: 0, units: vec![a], on: false }).is_empty());
         assert!(commanded(&Command::Resign { player: 0 }).is_empty());
+        let drive = ta_sim::DirectInput { throttle: 1, turn: 0, heading: 0, pitch: 0, fire: false };
+        assert!(commanded(&Command::DirectControl { player: 0, unit: a, input: Some(drive) }).is_empty(), "driven, its duty waits");
     }
 
     #[test]

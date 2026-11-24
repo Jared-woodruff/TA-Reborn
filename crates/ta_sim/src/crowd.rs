@@ -113,7 +113,9 @@ impl Sim {
                 x: u.pos.x.0,
                 z: u.pos.z.0,
                 r: (t.radius * 4 / 5).0,
-                moving: u.path_goal.is_some(),
+                // (A driven unit has no way of its own: it moves while it has way on, ahead or
+                // astern.)
+                moving: u.path_goal.is_some() || u.direct_control.is_some() && !u.speed.is_zero(),
                 hx: h.x.0,
                 hz: h.z.0,
                 owner: u.owner,
@@ -189,6 +191,12 @@ impl Sim {
 /// Crowds at least this big separate on all cores.
 const PARALLEL_BODIES: usize = 1_500;
 
+/// Whether a unit holds a fight: a weapon of its on a target. (A driven unit's sight is always
+/// on something, the ground where nothing else is under it: only a unit under it is a fight.)
+fn fighting(u: &crate::unit::Unit) -> bool {
+    u.weapons.iter().any(|w| w.target.is_some_and(|t| u.direct_control.is_none() || !matches!(t, crate::unit::Target::Ground(_))))
+}
+
 /// The push on body `i` of the snapshot from every body overlapping it (quarters of the
 /// overlap by who is moving), clamped to [`MAX_STEP`], and whether its own side's units coming
 /// the other way, or standing idle in its way, pushed it; `None` when there is none. Two of a
@@ -240,7 +248,7 @@ fn body_push(grid: &CrowdGrid, units: &[Option<crate::unit::Unit>], i: usize) ->
                 // or one moving not yet known to be held up.
                 if side && a.moving != b.moving && (squeezing || a.moving && !head_on) {
                     let slot = if a.moving { b.slot } else { a.slot };
-                    let standing = !units[slot as usize].as_ref().is_some_and(|u| u.weapons.iter().any(|w| w.target.is_some()));
+                    let standing = !units[slot as usize].as_ref().is_some_and(fighting);
                     if standing && squeezing {
                         continue;
                     }

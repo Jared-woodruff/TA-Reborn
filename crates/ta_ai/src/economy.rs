@@ -282,7 +282,9 @@ impl SkirmishAi {
         let mut refused = Vec::new();
         self.issued.retain(|&(id, type_id, pos, at)| {
             let Some(b) = sim.unit(id).filter(|b| !b.dead && b.owner == me) else { return false };
-            if s.now > at + WINDOW {
+            // (One its owner drives takes no orders: what it does tells nothing of the site, nor,
+            // below, of a feature to reclaim or of its way home.)
+            if s.now > at + WINDOW || b.direct_control.is_some() {
                 return false;
             }
             if s.now > at && b.orders.is_empty() && b.build.is_none() {
@@ -312,7 +314,7 @@ impl SkirmishAi {
         let mut given_up = Vec::new();
         self.issued_reclaims.retain(|&(id, feature, at)| {
             let Some(b) = sim.unit(id).filter(|b| !b.dead && b.owner == me) else { return false };
-            if s.now > at + if helper { 6 * MINUTE } else { WINDOW } {
+            if s.now > at + if helper { 6 * MINUTE } else { WINDOW } || b.direct_control.is_some() {
                 return false;
             }
             // (Sent on to something else since: nothing to learn from it.)
@@ -333,7 +335,7 @@ impl SkirmishAi {
         let base = self.base;
         self.issued_homes.retain(|&(id, at)| {
             let Some(b) = sim.unit(id).filter(|b| !b.dead && b.owner == me) else { return false };
-            if s.now > at + 6 * THINK_TICKS {
+            if s.now > at + 6 * THINK_TICKS || b.direct_control.is_some() {
                 return false;
             }
             if s.now > at && b.orders.is_empty() && b.build.is_none() {

@@ -2979,6 +2979,7 @@ impl State {
                 if resume_at_tick > 0 {
                     self.game.profile_progress.needs_baseline = true;
                     self.game.profile_progress.resume_at_tick = resume_at_tick;
+                    self.game.rejoined_at = Some(resume_at_tick);
                 }
                 self.game.net = Some(session);
                 self.game.player_name = self.menu.connect.name.clone();

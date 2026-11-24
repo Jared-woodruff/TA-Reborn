@@ -545,6 +545,52 @@ fn planes_with_nowhere_to_set_down_circle_where_they_came_to_rest() {
     assert!(sim.unit(fighter).unwrap().pos.within_xz(there, Fx::from_int(200)), "and goes where it is sent");
 }
 
+/// An idle plane in the air that takes an enemy on the ground for its own target (one its weapon
+/// takes on last, one of its bad targets: nothing better about, and not one it sets off after)
+/// still does as an idle plane does: over land it lands, over the sea it circles. Kept in the air
+/// by its target it hung still over it for good, its forward-firing weapon never brought to bear.
+#[test]
+fn an_idle_plane_with_a_target_of_its_own_lands_or_circles() {
+    for sea in [false, true] {
+        let mut map = flat_map();
+        if sea {
+            map.sea_level = 150;
+        }
+        let data = data_of(&[
+            unit("FIGHTER", "CanFly=1; CanMove=1; MaxVelocity=5; Acceleration=1; BrakeRate=1; TurnRate=2048; CruiseAlt=80; Weapon1=MISSILE; BadTargetCategory=NOTAIR; FootprintX=1; FootprintZ=1;"),
+            unit("HOVER", "CanMove=1; CanHover=1; MaxVelocity=1; Category=NOTAIR; FootprintX=1; FootprintZ=1;"),
+            weapon_file("MISSILE", "range=300; reloadtime=1; weaponvelocity=300; tolerance=1000;"),
+        ]);
+        let mut sim = sim_on_map(data, 2, &map);
+        for p in &mut sim.players { p.endless = true; }
+        sim.los_enabled = false;
+        let fighter = put(&mut sim, "FIGHTER", 0, 300);
+        let flying = sim.world.sea_level.max(Fx::from_int(60)) + Fx::from_int(80);
+        {
+            let u = sim.unit_mut(fighter).unwrap();
+            u.landed = false;
+            u.pos.y = flying;
+        }
+        let enemy = sim.spawn_unit(sim.types.id("HOVER").unwrap(), 1, FxVec3::from_ints(420, 60, 300), 0, true).unwrap();
+        let mut aimed = false;
+        let mut still = 0;
+        for _ in 0..600 {
+            sim.step(&[]);
+            let u = sim.unit(fighter).unwrap();
+            aimed |= u.weapons[0].target == Some(Target::Unit(enemy));
+            still = if !u.landed && u.speed.is_zero() { still + 1 } else { 0 };
+            assert!(still < 240, "hanging still in the air (sea {sea}): {:?}", u.pos);
+        }
+        let u = sim.unit(fighter).unwrap();
+        assert!(aimed && u.orders.is_empty(), "it took the enemy for its target, with nothing to do (sea {sea})");
+        if sea {
+            assert!(!u.landed && u.orbit.is_some() && !u.speed.is_zero(), "circling over the sea");
+        } else {
+            assert!(u.landed, "landed");
+        }
+    }
+}
+
 /// Hovering aircraft other than gunships (scouts, builders, transports) with nothing to do over
 /// the sea circle where they came to rest, as planes do, rather than hang there on top of each
 /// other: several sent to one place keep apart, each round its own size of circle, and a
