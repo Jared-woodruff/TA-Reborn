@@ -206,7 +206,7 @@ fn projected_box(view: &View, points: &[Vec3]) -> Option<Rect> {
 /// A unit's box on the screen (points), fitted to its model as it is drawn standing at `at` (its
 /// pieces as its script has them, see `perspective::drawn_corners`); a box of its radius and
 /// height for a model not loaded yet. None when any of it is behind the eye.
-fn unit_box(view: &View, game: &Game, u: &ta_sim::Unit, at: Vec3, scratch: &mut Vec<Vec3>) -> Option<Rect> {
+pub(super) fn unit_box(view: &View, game: &Game, u: &ta_sim::Unit, at: Vec3, scratch: &mut Vec<Vec3>) -> Option<Rect> {
     crate::perspective::drawn_corners(game, u, at, scratch);
     if scratch.is_empty() {
         let ty = game.sim.unit_type(u);

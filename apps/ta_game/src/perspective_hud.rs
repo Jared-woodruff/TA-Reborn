@@ -310,8 +310,13 @@ pub fn draw(p: &Perspective, ctx: &egui::Context, game: &Game, camera: &Camera, 
     // (The keys keep off the sight; else they stand under the top of the window and what is
     // written along it.)
     let high = heading_end.map_or(f32::MIN, |end| end + pen.s(14.0)).max(tag.map_or(f32::MIN, |t| t.bottom() + pen.s(10.0))).max(window.rect.top() + pen.s(14.0));
-    // (Off the target's line too.)
+    // (Off the target's line too; and from behind the unit, off the unit itself.)
     room.extend(target);
+    if p.chase
+        && let Some(at) = game.scene.unit_position(p.unit, game.alpha())
+    {
+        room.extend(sight::unit_box(&view, game, u, at, &mut Vec::new()));
+    }
     let keys = hints(&top, rect, p, since, game, now, KeysRoom { above: None, high, avoid: &room, across: window.rect, alpha: on });
     // (The message keeps off everything else written low in the window.)
     room.extend(chevrons);
