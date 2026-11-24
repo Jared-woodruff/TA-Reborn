@@ -324,7 +324,13 @@ impl Sim {
         // mission's script, it has nothing to do until then: `Unit::holding`.)
         let trip = current.repair_trip;
         let ordered = !current.orders.is_empty() && !current.holding();
-        let external = !trip && (ordered || current.build.is_some() || !current.cargo.is_empty() || current.weapons.iter().any(|w| w.target.is_some()));
+        // (A plane's targets of its own, with nothing to do, keep it neither in the air nor off its
+        // deck: it lands, or circles over the sea, as an idle plane does, its weapons firing on
+        // them as they come to bear. Kept up by them it hung still over them for good, never
+        // turning to bring its guns to bear: only a hovering aircraft, a gunship, holds over its
+        // targets and turns to them.)
+        let aiming = !t.is_plane() && current.weapons.iter().any(|w| w.target.is_some());
+        let external = !trip && (ordered || current.build.is_some() || !current.cargo.is_empty() || aiming);
         let old_pad = current.air_pad;
         let lost_pad = old_pad.is_some_and(|pad| self.air_pad_point(current.owner, pad).is_none());
         if old_pad.is_some() && (external || lost_pad) && let Some(u) = self.unit_mut(id) {
@@ -409,7 +415,7 @@ impl Sim {
         // Carrying a passenger keeps the aircraft in flight even after Move or Stop.
         // Landing would drag the unit hanging below it through the terrain. (On a repair trip
         // only its way to the deck keeps it up.)
-        let busy = u.path_goal.is_some() || !trip && (!u.orders.is_empty() && !u.holding() || u.build.is_some() || !u.cargo.is_empty() || u.weapons.iter().any(|w| w.target.is_some()));
+        let busy = u.path_goal.is_some() || !trip && (!u.orders.is_empty() && !u.holding() || u.build.is_some() || !u.cargo.is_empty() || aiming);
         // A self-chosen parking approach is part of landing, not a new external
         // task that restarts the idle delay after reaching the clear footprint.
         u.idle_ticks = if external { 0 } else { u.idle_ticks.saturating_add(1) };

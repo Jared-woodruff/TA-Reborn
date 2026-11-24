@@ -15,6 +15,36 @@
   radar at the bottom, without the cockpit round them.
 
 ### Fixed
+- A fighter or other plane with nothing to do that took an enemy on the ground for its target of its
+  own accord (one its weapons take on only with nothing better about: a Freedom Fighter come to rest
+  over a Core Raider, say) hung motionless in the air over it for good, never firing again, and a
+  landed one that took such a target took off to hang there too. A plane's own targets no longer
+  keep it in the air: with nothing to do it lands, or over the sea circles, as any idle plane does,
+  and takes off when given an order. Gunships still hover over their targets and turn to them.
+- Driving a unit (E, riding in it): it set off with a lurch, at its braking rate; driven square into
+  a wall it ran on the spot at full speed; going astern it counted as standing (its cloak cost what
+  a standing one's does, and the units round it shoved it and steered round it as if it stood), and
+  let go astern it was slow to set off on its orders again. It now gathers speed at its acceleration
+  and sheds it at its braking rate, stops at a wall, counts as moving astern, and comes to a stop
+  when let go astern.
+- Driving a unit's guns: with nothing under the sight they fired at a point in the air at their
+  range, where missiles circled and burst; torpedoes fired on dry land, and anti-air that takes on
+  aircraft alone (the Supreme Commander factions') at the ground; a click fired only the first round
+  of a burst (the rest went with the next click, skipping the reload); a unit fired while packing up
+  to move; and let go, its turrets stayed where you had aimed them. The guns now fire at the ground
+  or the water the sight looks at, within their range (looking over it, at their range ahead), with
+  only the weapons that would fire there if ordered to attack it; a click fires a whole burst;
+  nothing fires while the unit packs up; and let go, its turrets go back to rest as when a target is
+  lost.
+- Taking control of a unit left the rest of the battle out of step with it: a constructor taken over
+  at work kept its nano stream going, one in a formation held the rest up as they formed up, one on
+  a duty was sent orders it could not take (and the duty passed over the places it was sent to for
+  two minutes after), one captured moved and fired once more on your input, letting go of one being
+  reclaimed was missed, and a saved game made while driving loaded with the unit still driven on
+  your last input, as did a multiplayer battle you came back to. Taken over, a constructor now stops
+  work (it goes back to it when let go), a unit leaves its formation, the duty waits until you let
+  it go, a unit given away or captured is let go at once, as is one being reclaimed, and a loaded
+  game or a battle you come back to lets your units go.
 - In the Arm campaign's The Defense of Larab Harbor, the Core's fighters and bombers waiting along
   the south edge for their turn to attack hung motionless in the air over the spot for up to 28
   minutes. A mission's aircraft now stand parked where the mission places them, as in TA, and one

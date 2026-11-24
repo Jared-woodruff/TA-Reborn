@@ -216,7 +216,14 @@ pub const RECORD_VERSION: u32 = 47;
 /// 110: direct unit possession, steering and assisted weapon aiming. 111: a mission's aircraft
 /// stand parked where they are placed, and one its script holds (`w`, `wa`) waits parked, no
 /// busier than an idle one, rather than climbing off to hang over the spot (`Unit::holding`).
-pub const SIMULATION_VERSION: u32 = 111;
+/// 112: driving a unit: it gathers way at its acceleration and sheds it at its brake rate, stops
+/// square against a wall, moves astern too (its cloak's cost, the crowd, giving way), leaves its
+/// formations and ends its build job when taken over, and is let go however it stands (being
+/// taken apart, given away, captured: astern it stops, its turrets go back to rest); with nothing
+/// under the sight it fires at the ground the sight looks at, with the weapons that would by order,
+/// a burst begun goes on, and nothing fires while it packs up to go; and an idle plane's targets of
+/// its own keep it in the air no more (it lands, or circles over the sea).
+pub const SIMULATION_VERSION: u32 = 112;
 /// Records shorter than one year of simulated time are supported. Shared with the
 /// launcher's metadata reader so impossible durations cannot start endless save catch-up.
 pub const MAX_RECORD_TICKS: u64 = 30 * 3600 * 24 * 365;

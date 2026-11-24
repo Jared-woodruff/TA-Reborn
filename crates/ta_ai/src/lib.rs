@@ -1309,9 +1309,11 @@ impl SkirmishAi {
 
     // ---- Survey and memory -----------------------------------------------------------------
 
-    /// Units under script control or aboard a transport retain their own orders.
+    /// Units under script control, aboard a transport or driven by their owner (the first-person
+    /// view's `Command::DirectControl`, which takes no orders until it is let go) retain their own
+    /// orders.
     fn can_command(sim: &Sim, u: &Unit) -> bool {
-        !u.dead && u.is_complete() && u.carried_by.is_none() && !sim.runs_mission_script(u.id)
+        !u.dead && u.is_complete() && u.carried_by.is_none() && u.direct_control.is_none() && !sim.runs_mission_script(u.id)
             && !matches!(u.orders.front(), Some(Order::Wait(_) | Order::WaitAttacked(_) | Order::AttackType(_) | Order::SetStates { .. } | Order::Patrol(_)))
     }
 

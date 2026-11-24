@@ -161,6 +161,9 @@ mod land_original;
 #[path = "naval_tests.rs"]
 mod naval;
 
+#[path = "possession_tests.rs"]
+mod possession;
+
 #[path = "naval_original_tests.rs"]
 mod naval_original;
 

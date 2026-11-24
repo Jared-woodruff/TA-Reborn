@@ -886,6 +886,36 @@ fn the_officer_orders_only_the_constructors_on_duty_and_runs_no_factory() {
     assert_eq!(officer.units().collect::<Vec<_>>(), [(on_duty, Duty::Economy)], "and it stays on duty");
 }
 
+/// A constructor on duty its owner drives from the first-person view (`Command::DirectControl`)
+/// takes no orders, and the officer gives it none (it gave them every beat, refused, and marked
+/// their sites as failed); its duty waits, and let go it goes back to the duty's work.
+#[test]
+fn the_officer_leaves_a_driven_constructor_alone_until_it_is_let_go() {
+    let mut sim = fixture();
+    let on_duty = sim.spawn_unit(sim.types.id("BUILDER").unwrap(), 0, FxVec3::from_ints(300, 0, 300), 0, true).unwrap();
+    let frame = sim.spawn_unit(sim.types.id("EXTRACTOR").unwrap(), 0, FxVec3::from_ints(360, 0, 240), 0, false).unwrap();
+    let mut officer = DutyOfficer::new(0, &sim);
+    officer.set(on_duty, Some(Duty::Economy));
+    let still = ta_sim::DirectInput { throttle: 0, turn: 0, heading: 0, pitch: 0, fire: false };
+    let drive = Command::DirectControl { player: 0, unit: on_duty, input: Some(still) };
+    sim.step(std::slice::from_ref(&drive));
+    for _ in 0..30 * 20 {
+        let commands = officer.think(&sim);
+        assert!(commands.is_empty(), "no orders for a driven constructor: {commands:?}");
+        sim.step(std::slice::from_ref(&drive));
+    }
+    assert!(officer.ai.failed.is_empty(), "no site taken for one that cannot be built on");
+    assert_eq!(officer.duty(on_duty), Some(Duty::Economy), "its duty waits");
+    sim.step(&[Command::DirectControl { player: 0, unit: on_duty, input: None }]);
+    let mut ordered = Vec::new();
+    for _ in 0..30 * 20 {
+        let commands = officer.think(&sim);
+        ordered.extend(commands.iter().cloned());
+        sim.step(&commands);
+    }
+    assert!(ordered.iter().any(|c| matches!(c, Command::Order { order: Order::Repair(id), .. } if *id == frame)), "let go, back to work: {ordered:?}");
+}
+
 /// A constructor that comes to the economy duty helping at a factory (the player's order, or the
 /// repair or defence duty's help) leaves it when the duty has nothing of its own for it, for the
 /// economy duty never helps at the factories, and is told of as idle only once it is.

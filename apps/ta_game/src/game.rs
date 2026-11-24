@@ -563,6 +563,9 @@ pub struct Game {
     /// Multiplayer: how long (seconds, wall clock) the battle has been waiting for players
     /// who fell behind (0: it is not).
     pub net_wait: f32,
+    /// Multiplayer, back in a battle in progress: the tick its history catches up to, when the
+    /// local player's units it has driven are let go ([`Game::let_go_of_driven_units`]).
+    pub rejoined_at: Option<u64>,
     /// Testing: record the state checksum right after this tick.
     pub probe_tick: Option<u64>,
     pub probe_hash: Option<u64>,
@@ -996,6 +999,7 @@ impl Game {
             stats_series: Default::default(),
             net: None,
             net_wait: 0.0,
+            rejoined_at: None,
             probe_tick: None,
             probe_hash: None,
             record: crate::replay::Recording::default(),
@@ -1482,6 +1486,10 @@ impl Game {
             self.settle();
             arrived(&mut self.in_flight, &bundle);
             self.run_tick(bundle);
+            if self.rejoined_at.is_some_and(|tick| self.sim.tick >= tick) {
+                self.rejoined_at = None;
+                self.let_go_of_driven_units();
+            }
             self.accumulator = (self.accumulator - TICK_SECONDS).max(0.0);
             steps += 1;
             // Hashes are only exchanged every HASH_INTERVAL ticks; they cost a pass over
@@ -1536,14 +1544,19 @@ impl Game {
             let target = if pb.resume { pb.end_tick } else { pb.seek_to.unwrap_or(0) };
             if self.sim.tick >= target {
                 let mut duties = Vec::new();
-                if pb.resume {
+                let resumed = pb.resume;
+                if resumed {
                     duties = std::mem::take(&mut pb.duties);
                     self.playback = None;
                 } else {
                     pb.seek_to = None;
                 }
-                // (A saved game is the player's again: its constructors go back on their duties.)
+                // (A saved game is the player's again: its constructors go back on their duties,
+                // and the units it was saved driving are let go.)
                 self.restore_duties(&duties);
+                if resumed {
+                    self.let_go_of_driven_units();
+                }
                 self.skip_past_transmissions();
                 self.scene.skin_viewer = self.hud_player();
                 self.scene.after_tick(&self.sim);
@@ -1571,6 +1584,20 @@ impl Game {
             if self.probe_tick == Some(self.sim.tick) {
                 self.probe_hash = Some(self.sim.checksum());
             }
+        }
+    }
+
+    /// Lets go of the local player's units the battle has driven (`Command::DirectControl`) as it
+    /// goes live from a saved game or a rejoin: the first-person view that drove them is gone,
+    /// and each would carry on with its last input (its throttle, its trigger) until that lapsed.
+    pub(crate) fn let_go_of_driven_units(&mut self) {
+        if self.spectator {
+            return;
+        }
+        let me = self.local_player;
+        let driven: Vec<UnitId> = self.sim.units().filter(|u| u.owner == me && u.direct_control.is_some_and(|c| c.player == me)).map(|u| u.id).collect();
+        for unit in driven {
+            self.issue(Command::DirectControl { player: me, unit, input: None });
         }
     }
 
