@@ -9236,7 +9236,7 @@ fn options_panel(
     let (dirs, languages) = languages();
     let width = panel::fit_width(ctx, 1100.0);
     let compact = ta_ui::settings::compact(width) || ctx.content_rect().height() < 540.0;
-    let host = ta_ui::settings::Host { in_game: true, msaa_running: msaa_started, ray_tracing_running, native, gpu_kind: Some(gpu_kind), languages, language_dirs: dirs, height: (!compact).then(|| panel::fit_height(ctx, 260.0, 260.0, 640.0)) };
+    let host = ta_ui::settings::Host { in_game: true, msaa_running: msaa_started, ray_tracing_running, native, gpu_kind: Some(gpu_kind), languages, language_dirs: dirs, height: (!compact).then(|| panel::fit_height(ctx, 260.0, 260.0, 640.0)), experimental: false };
     // (A dialog: its close cross, Escape or a click outside closes it, the settings saved.)
     let mut page = Panel::new("OPTIONS").subtitle("CHANGES TAKE EFFECT AT ONCE").width(width).exit(Exit::Close);
     if compact {

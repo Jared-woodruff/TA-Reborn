@@ -172,17 +172,15 @@ impl LauncherApp {
     fn maps_header(&mut self, ui: &mut Ui, short: bool, idle: bool) {
         let game = self.detection.install().is_some();
         let busy = self.maps_busy_reason();
-        let supcom = self.experimental(crate::experimental::Feature::SupremeCommander);
         super::library_header(ui, n("MAPS"), n("Explore your installed worlds, manage battle maps and create your own."), short,
-            if supcom { &["IMPORT MAPS…", "SUPREME COMMANDER…", "NEW MAP", "RESCAN"] } else { &["IMPORT MAPS…", "NEW MAP", "RESCAN"] }, |ui, height| {
+            &["IMPORT MAPS…", "SUPREME COMMANDER…", "NEW MAP", "RESCAN"], |ui, height| {
             if ui.add_enabled(idle, ActionButton::primary("IMPORT MAPS…").height(height)).hover_tip(t("Add maps from a map archive (UFO, HPI, ZIP, 7z or RAR). You can also drop one on this page."))
                 .disabled_tip(busy.unwrap_or_default()).clicked() {
                 self.push(Action::Maps(maps::Action::Browse));
             }
-            // (An experimental feature's: `crate::experimental`.)
-            if supcom && ui.add_enabled(idle, ActionButton::secondary("SUPREME COMMANDER…").height(height))
-                .hover_tip(t("Import the maps of Supreme Commander: Forged Alliance from your own copy of the game (GOG's or Steam's), to play in skirmish."))
-                .disabled_tip(busy.unwrap_or_default()).clicked() {
+            // (Open whatever else is under way: the dialog says why an import cannot start.)
+            if ui.add(ActionButton::secondary("SUPREME COMMANDER…").height(height))
+                .hover_tip(t("Import the maps of Supreme Commander: Forged Alliance from your own copy of the game (GOG's or Steam's), to play in skirmish.")).clicked() {
                 self.push(Action::SupcomOpen(crate::supcom::Tab::Maps));
             }
             let new_map_why = if !game { Some(t("Find your Total Annihilation install on the Play page first.")) } else { self.map_work_blocked() };

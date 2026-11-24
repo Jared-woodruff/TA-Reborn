@@ -52,6 +52,7 @@ impl LauncherApp {
             languages: &self.languages,
             language_dirs: &self.language_dirs,
             height: (!compact).then_some(height),
+            experimental: !crate::experimental::Feature::ALL.is_empty(),
         };
         let enabled = !self.dialog_open();
         // (A name another commander has is said at once by the name's setting: the profile would

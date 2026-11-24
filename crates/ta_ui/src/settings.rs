@@ -69,7 +69,7 @@ impl Category {
             Category::Graphics => n("Detail, antialiasing, effects, lighting and the camera"),
             Category::Display => n("Resolution, window and frame rate"),
             Category::Sound => n("Volumes, units' replies, and how many sounds play at once"),
-            Category::Launcher => n("When the game starts, the launcher's music and sounds, updates, its pointers and experimental features"),
+            Category::Launcher => n("When the game starts, the launcher's music and sounds, updates and its pointers"),
         }
     }
 
@@ -106,6 +106,9 @@ pub struct Host<'a> {
     pub language_dirs: &'a [PathBuf],
     /// The height the list of settings scrolls in; None: as tall as it needs to be.
     pub height: Option<f32>,
+    /// In the launcher: some of its features are still being tried out (its
+    /// `experimental::Feature::ALL`), so LAUNCHER shows ENABLE EXPERIMENTAL FEATURES.
+    pub experimental: bool,
 }
 
 /// What changed, for the host to apply.
@@ -426,7 +429,7 @@ impl SettingsView {
                 Category::Graphics => level_picked = graphics(ui, &mut rows, &mut config.graphics, host),
                 Category::Display => self.display(ui, &mut rows, &mut config.graphics, host),
                 Category::Sound => sound(ui, &mut rows, &mut config.audio),
-                Category::Launcher => launcher(ui, &mut rows, &mut config.launcher, &mut config.audio, &mut config.updates),
+                Category::Launcher => launcher(ui, &mut rows, &mut config.launcher, &mut config.audio, &mut config.updates, host.experimental),
             }
         }
         if rows.searching() && rows.shown == 0 {
@@ -907,8 +910,9 @@ fn interface(ui: &mut Ui, rows: &mut Rows, p: &mut Gameplay, launcher: &mut Laun
     });
 }
 
-/// The launcher's own settings (its category is shown in the launcher only).
-fn launcher(ui: &mut Ui, rows: &mut Rows, launcher: &mut Launcher, a: &mut Audio, updates: &mut ta_config::Updates) {
+/// The launcher's own settings (its category is shown in the launcher only); ENABLE
+/// EXPERIMENTAL FEATURES while it has some (`experimental`).
+fn launcher(ui: &mut Ui, rows: &mut Rows, launcher: &mut Launcher, a: &mut Audio, updates: &mut ta_config::Updates, experimental: bool) {
     let value_box = rows.value_box;
     setting_row(ui, rows, "WHEN THE GAME STARTS", "What the launcher does once you press Play (minimised, it comes back when the game ends)", "launcher minimise minimize close hide stay open taskbar", |ui| {
         widgets::segmented_fill(ui, &mut launcher.on_play, &[(OnPlay::Stay, n("STAY OPEN")), (OnPlay::Minimise, n("MINIMISE")), (OnPlay::Close, n("CLOSE"))]);
@@ -918,7 +922,9 @@ fn launcher(ui: &mut Ui, rows: &mut Rows, launcher: &mut Launcher, a: &mut Audio
     toggle_row(ui, rows, "LAUNCHER SOUNDS", "TA's own button sounds in the launcher, from your install", "launcher clicks ui sound effects", &mut a.launcher_sounds);
     toggle_row(ui, rows, "LOOK FOR UPDATES", "Ask for a newer version of TA Reborn each time the launcher starts (About has CHECK NOW)", "update version new release download automatic check", &mut updates.check);
     toggle_row(ui, rows, "THEMED LAUNCHER CURSORS", "Use Reborn cursors in the launcher. Turn off to use your system pointer.", "launcher mouse pointer cursor accessibility", &mut launcher.themed_cursor);
-    toggle_row(ui, rows, "ENABLE EXPERIMENTAL FEATURES", "Try features still being tested before they become a normal part of the game, such as the Supreme Commander import. They may change, or not always work as they should.", "experimental features beta test testing early preview supreme commander import", &mut launcher.experimental_features);
+    if experimental {
+        toggle_row(ui, rows, "ENABLE EXPERIMENTAL FEATURES", "Try features still being tested before they become a normal part of the game. They may change, or not always work as they should.", "experimental features beta test testing early preview", &mut launcher.experimental_features);
+    }
 }
 
 fn accessibility(ui: &mut Ui, rows: &mut Rows, p: &mut Gameplay) {
@@ -1309,7 +1315,7 @@ mod tests {
     }
 
     fn host() -> Host<'static> {
-        Host { in_game: true, msaa_running: 4, ray_tracing_running: false, native: Some((2560, 1440)), gpu_kind: None, languages: &[], language_dirs: &[], height: Some(600.0) }
+        Host { in_game: true, msaa_running: 4, ray_tracing_running: false, native: Some((2560, 1440)), gpu_kind: None, languages: &[], language_dirs: &[], height: Some(600.0), experimental: true }
     }
 
     #[test]
@@ -1638,19 +1644,20 @@ mod tests {
     }
 
     /// ENABLE EXPERIMENTAL FEATURES: the launcher's alone, found by searching for it there and
-    /// never in the game's options, off as it comes, and off again with the launcher's defaults.
+    /// never in the game's options, and only while the launcher has a feature being tried out;
+    /// off as it comes, and off again with the launcher's defaults.
     #[test]
     fn experimental_features_are_the_launchers_and_off_by_default() {
         let mut config = Config::default();
         assert!(!config.launcher.experimental_features);
-        for in_game in [false, true] {
+        for (in_game, experimental) in [(false, true), (true, true), (false, false)] {
             let mut host = host();
             host.in_game = in_game;
-            for search in ["experimental", "supreme commander"] {
-                let mut view = SettingsView { search: search.into(), ..Default::default() };
-                let (_, texts) = frame(&mut view, &mut config, &host);
-                assert_eq!(texts.iter().any(|text| text == "ENABLE EXPERIMENTAL FEATURES"), !in_game, "{search} in_game={in_game}: {texts:?}");
-            }
+            host.experimental = experimental;
+            let mut view = SettingsView { search: "experimental".into(), ..Default::default() };
+            let (_, texts) = frame(&mut view, &mut config, &host);
+            let shown = texts.iter().any(|text| text == "ENABLE EXPERIMENTAL FEATURES");
+            assert_eq!(shown, !in_game && experimental, "in_game={in_game} experimental={experimental}: {texts:?}");
         }
         config.launcher.experimental_features = true;
         restore(Category::Interface, &mut config);

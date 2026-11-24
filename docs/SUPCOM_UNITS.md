@@ -6,10 +6,16 @@ against ARM and CORE. As with the maps (docs/SUPCOM_MAPS.md), they are made on t
 computer from their own copy of the game into their mods folder: nothing of Supreme Commander's is
 shipped with TA Reborn or kept in this repository.
 
-As with the maps, the import is an **experimental feature**: the launcher shows it with **ENABLE
-EXPERIMENTAL FEATURES** on (Settings, LAUNCHER; off by default). A factions mod made before stays
-installed and plays as any mod; `--experimental`, or `--show supcom-factions`, shows the import for
-one run.
+As with the maps, the import was an experimental feature up to 1.0.9; it is now offered to every
+player (the launcher's Mods page, SUPREME COMMANDER…). Made, the mod is turned on, and each faction
+is a side to choose for a player when a skirmish is set up.
+
+**Online:** the mod adds units, so it is part of the game data players compare: everyone in a
+multiplayer battle needs it, made by the same version of TA Reborn with the same factions chosen,
+or nobody (it is turned off on the Mods page to join battles without it). The dialog says so, and a
+player turned away is told to make it from their own copy rather than to install it. The maps'
+pack is maps alone and keeps nobody apart, though a battle on one of its maps needs that map on
+every computer.
 
 This page records what the game's units are made of (`crates/ta_supcom`: [`unit`], [`projectile`],
 [`behaviour`], [`motions`], [`scm`], [`sca`]) and how they are made into TA's ([`factions`]): their

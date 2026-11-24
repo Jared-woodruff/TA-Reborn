@@ -531,10 +531,9 @@ https://github.com/user-attachments/assets/0c29747c-1139-4f19-877a-3661836a55c5
   map in miniature, a check for problems and TEST PLAY; it takes your pictures as heights, art or
   tile brushes, shows features as pictures and scatters them, and saves maps as mods the skirmish
   page lists at once.
-- **Supreme Commander's maps play too** (an experimental feature for now: Settings, LAUNCHER,
-  ENABLE EXPERIMENTAL FEATURES): with Supreme Commander: Forged Alliance installed (GOG's or
-  Steam's), the Maps page's SUPREME COMMANDER… makes its skirmish maps (and your own downloaded and
-  Forged Alliance Forever ones) into TA Reborn maps from your copy: their land and painted ground,
+- **Supreme Commander's maps and factions play too**: with Supreme Commander: Forged Alliance
+  installed (GOG's or Steam's), the Maps page's SUPREME COMMANDER… makes its skirmish maps (and your
+  own downloaded and Forged Alliance Forever ones) into TA Reborn maps from your copy: their land and painted ground,
   cliffs that still stop tanks, forests, rocks, mass points as metal, hydrocarbons as vents, and
   starts, for skirmish ([SUPCOM_MAPS.md](docs/SUPCOM_MAPS.md)). The Mods page's SUPREME COMMANDER…
   makes its four factions into a mod: the UEF, the Cybran, the Aeon and the Seraphim, every unit

@@ -20,6 +20,10 @@ use ta_vfs::install::{find_dir_ci, find_file_ci, join_ci};
 pub const GOG_ID: &str = "1444785261";
 /// Steam's app id of Forged Alliance.
 pub const STEAM_APP_ID: u32 = 9420;
+/// The game's pages in its stores, for a player without it: GOG's Gold Edition (Supreme Commander
+/// with Forged Alliance, installed under [`GOG_ID`]) and Steam's Forged Alliance ([`STEAM_APP_ID`]).
+pub const GOG_STORE_URL: &str = "https://www.gog.com/en/game/supreme_commander_gold_edition";
+pub const STEAM_STORE_URL: &str = "https://store.steampowered.com/app/9420/";
 /// The folder Steam installs it in, unless its app manifest names another.
 pub const STEAM_DIR: &str = "Supreme Commander Forged Alliance";
 /// The players' own maps under Documents.

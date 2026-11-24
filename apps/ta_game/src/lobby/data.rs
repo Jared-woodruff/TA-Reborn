@@ -13,6 +13,11 @@ use crate::setup::Assets;
 /// The most lines a refusal names; then how many more.
 const MOST: usize = 6;
 
+/// The mod the launcher makes from the player's own copy of Supreme Commander: Forged Alliance
+/// (`ta_supcom::factions::make::MOD_ID`): there is nothing to download, it is made again, by the
+/// same version of TA Reborn, to be the host's.
+const SUPCOM_FACTIONS: &str = "supcom-factions";
+
 /// Our mods in load order, as a host tells them: each with whether it gives the game anything
 /// besides maps (waits for their digests, worked out as the game starts, if they are not done).
 pub(super) fn our_mods(assets: &Assets) -> Vec<NetMod> {
@@ -55,8 +60,13 @@ pub(super) fn differences(host: &[NetMod], ours: &[NetMod], installed: &[RecordM
     let mut lines = Vec::new();
     for (m, need) in &check.needed {
         let name = m.label();
+        // (The factions' mod by its name alone: its version is the converter's.)
+        let made = m.id == SUPCOM_FACTIONS;
+        let name = if made { m.name.clone() } else { name };
         let line = match need {
             Need::Same => continue,
+            Need::Missing if made => tf("{mod} is not installed here, and the host plays with it: make it from your own copy of Supreme Commander: Forged Alliance (SUPREME COMMANDER… on the launcher's Mods page), then turn it on.", &[("mod", &name)]),
+            Need::OtherVersion(_) | Need::OtherFiles if made => tf("Your {mod} differ from the host's: you both need the same version of TA Reborn, and the same factions made (SUPREME COMMANDER… on the launcher's Mods page makes them again).", &[("mod", &name)]),
             Need::Missing => tf("{mod} is not installed here, and the host plays with it: install it, then turn it on in the launcher's Mods page.", &[("mod", &name)]),
             Need::Off { version, .. } if !version.is_empty() && *version != m.version => {
                 tf("Turn on {mod} in the launcher's Mods page: the host plays with it (yours is version {version}: you both need the same one).", &[("mod", &name), ("version", version)])

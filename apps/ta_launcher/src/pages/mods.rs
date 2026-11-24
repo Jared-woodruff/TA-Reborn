@@ -81,14 +81,12 @@ impl LauncherApp {
     }
 
     fn mods_header(&mut self, ui: &mut Ui, short: bool) {
-        let supcom = self.experimental(crate::experimental::Feature::SupremeCommander);
         super::library_header(ui, n("MODS"), n("Mods change Total Annihilation's units, maps and look. Lower in the load order wins."), short,
-            if supcom { &["INSTALL FROM FILE…", "SUPREME COMMANDER…", "MOD FOLDERS…", "RESCAN"] } else { &["INSTALL FROM FILE…", "MOD FOLDERS…", "RESCAN"] }, |ui, height| {
+            &["INSTALL FROM FILE…", "SUPREME COMMANDER…", "MOD FOLDERS…", "RESCAN"], |ui, height| {
             if ui.add(ActionButton::primary("INSTALL FROM FILE…").height(height)).hover_tip(t("Install a mod you have downloaded (or drop it on this window)")).clicked() {
                 self.push(Action::BrowsePackage);
             }
-            // (An experimental feature's: `crate::experimental`.)
-            if supcom && ui.add(ActionButton::secondary("SUPREME COMMANDER…").height(height))
+            if ui.add(ActionButton::secondary("SUPREME COMMANDER…").height(height))
                 .hover_tip(t("Import the factions of Supreme Commander: Forged Alliance from your own copy of the game (GOG's or Steam's): their units and buildings, to play in skirmish.")).clicked() {
                 self.push(Action::SupcomOpen(crate::supcom::Tab::Factions));
             }
@@ -246,7 +244,7 @@ impl LauncherApp {
     /// The library's mods on show, in order (the hidden ones in HIDDEN, the others otherwise).
     pub(crate) fn visible_mods(&self) -> Vec<Item> {
         let status = |id: &str| self.mod_validation.status(id);
-        let facts = mod_library::Facts { mods: &self.mods, enabled: &self.config.mods.enabled, status: &status, hidden: &self.config.mods.hidden, supcom: self.experimental(crate::experimental::Feature::SupremeCommander) };
+        let facts = mod_library::Facts { mods: &self.mods, enabled: &self.config.mods.enabled, status: &status, hidden: &self.config.mods.hidden };
         self.mod_library.visible(&facts)
     }
 

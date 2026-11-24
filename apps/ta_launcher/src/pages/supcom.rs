@@ -59,6 +59,9 @@ struct Footer {
     listed: bool,
     chosen: usize,
     blocked: Option<&'static str>,
+    /// What is chosen is installed already, made by this TA Reborn: IMPORT would make it again
+    /// for nothing (the factions' tab).
+    current: bool,
 }
 
 /// Where the game is, as a tab's look found it.
@@ -180,6 +183,7 @@ impl LauncherApp {
                     listed: found.as_ref().is_some_and(|found| found.install.is_some() && !found.maps.is_empty()),
                     chosen: found.as_ref().map_or(0, |found| found.maps.iter().filter(|e| self.supcom.is_chosen(&e.folder)).count()),
                     blocked: self.supcom_blocked(),
+                    current: false,
                 }
             }
             Tab::Factions => {
@@ -194,6 +198,10 @@ impl LauncherApp {
                     listed: found.as_ref().is_some_and(|found| found.install.is_some() && !found.factions.is_empty()),
                     chosen: factions.chosen_entries().len(),
                     blocked: self.factions_blocked(),
+                    // (Each chosen made by this converter, and the mod holds no other.)
+                    current: found.as_ref().is_some_and(|found| !found.factions.is_empty()
+                        && found.factions.iter().all(|e| if factions.is_chosen(e.side()) { e.state == State::Imported } else { e.state == State::New })
+                        && found.factions.iter().any(|e| e.state == State::Imported)),
                 }
             }
         }
@@ -203,14 +211,7 @@ impl LauncherApp {
     fn supcom_body(&mut self, ui: &mut Ui, actions: &mut Vec<Action>) {
         ui.spacing_mut().item_spacing.y = 6.0;
         let mut tab = self.supcom.tab;
-        // (Beside the tabs, the tag of a feature still being tried out: `crate::experimental`.)
-        let changed = ui.horizontal(|ui| {
-            let changed = widgets::segmented(ui, &mut tab, &[(Tab::Maps, Tab::Maps.label()), (Tab::Factions, Tab::Factions.label())]).changed();
-            ui.add_space(space::M);
-            crate::experimental::tag(ui);
-            changed
-        }).inner;
-        if changed {
+        if widgets::segmented(ui, &mut tab, &[(Tab::Maps, Tab::Maps.label()), (Tab::Factions, Tab::Factions.label())]).changed() {
             self.supcom.set_tab(tab);
         }
         ui.add_space(space::XS);
@@ -282,7 +283,7 @@ impl LauncherApp {
         let summary = if chosen.is_empty() {
             tf("{total} maps to choose from", &[("total", &total)])
         } else {
-            tf("{n} of {total} maps chosen, about {size} on the disk", &[("n", &chosen.len()), ("total", &total), ("size", &supcom::size_text(supcom::size_estimate(&chosen)))])
+            tf("{n} of {total} maps chosen: about {size} on the disk, and {time} to make", &[("n", &chosen.len()), ("total", &total), ("size", &supcom::size_text(supcom::size_estimate(&chosen))), ("time", &supcom::time_text(supcom::time_estimate(&chosen)))])
         };
         let held = importing.then(|| t("Held until the import ends"));
         ui.horizontal_wrapped(|ui| {
@@ -351,10 +352,13 @@ impl LauncherApp {
         if found.factions.iter().any(|e| e.state != State::New && !self.supcom.factions.is_chosen(e.side())) {
             ui.add(egui::Label::new(RichText::new(t("The factions not chosen are taken out of the mod when it is made again.")).color(AMBER)).wrap());
         }
+        // (The mod is turned on once made, and the units it adds are compared with the other
+        // players' online: said where the factions are chosen.)
+        ui.add(egui::Label::new(RichText::new(t("Once made, the factions' mod is on: choose a faction as a player's side when you set up a skirmish. Online, everyone in a battle needs it, made by the same version of TA Reborn; turn it off on the Mods page to join battles without it.")).color(STEEL)).wrap());
         ui.add_space(space::XS);
         // (A footnote: at the foot of the room where the tab leaves some, under the cards where it
         // does not.)
-        let note = RichText::new(t("Still to come: Forged Alliance's own sounds and weapon effects, shields, stealth fields and teleporting.")).color(STEEL);
+        let note = RichText::new(t("Not played yet: Forged Alliance's own sounds and weapon effects (TA's of their kinds play in their place), shields, stealth fields and teleporting.")).color(STEEL);
         let tall = widgets::wrapped_galley(ui, note.clone(), ui.available_width()).size().y;
         let spare = ui.available_height() - tall - ui.spacing().item_spacing.y - 2.0;
         if spare > 0.0 {
@@ -430,9 +434,6 @@ impl LauncherApp {
             if button.clicked() {
                 actions.push(Action::SupcomBrowse);
             }
-            if let Some(held) = held {
-                ui.label(RichText::new(held).color(AMBER));
-            }
         });
         if let Some(dir) = &checking {
             widgets::busy_line(ui, &tf("Looking through {folder}…", &[("folder", &dir.display())]));
@@ -442,11 +443,15 @@ impl LauncherApp {
                 path_label(ui, &game.root, TEXT);
             }
             None if failed => {
-                ui.add(egui::Label::new(RichText::new(t("Looking for the game failed: close this dialog and open it again to try again.")).color(AMBER)).wrap());
+                ui.horizontal_wrapped(|ui| {
+                    ui.add(egui::Label::new(RichText::new(t("Looking for the game failed.")).color(AMBER)).wrap());
+                    if ui.add(ActionButton::secondary("LOOK AGAIN").height(26.0)).hover_tip(t("Look for Supreme Commander: Forged Alliance again.")).clicked() {
+                        actions.push(Action::SupcomLookAgain);
+                    }
+                });
             }
-            None => {
-                ui.add(egui::Label::new(RichText::new(t("Supreme Commander: Forged Alliance was not found. TA Reborn looks for GOG's and Steam's copies of it: if yours is elsewhere, choose its folder.")).color(AMBER)).wrap());
-            }
+            None if checking.is_none() => game_needed(ui, actions),
+            None => {}
         }
         if let Some(gone) = &found.picked_gone {
             ui.add(egui::Label::new(RichText::new(tf("The folder chosen before, {folder}, no longer holds the game: the copy found is used meanwhile.", &[("folder", &gone.display())])).color(AMBER)).wrap());
@@ -463,12 +468,17 @@ impl LauncherApp {
         let found = self.supcom.found().unwrap_or_default();
         if found.install.is_some() {
             ui.add_space(space::XS);
-            ui.label(widgets::caption("YOUR OWN MAPS"));
             if found.own_folders.is_empty() {
-                ui.add(egui::Label::new(RichText::new(t("None found: downloaded maps, and Forged Alliance Forever's, are listed from this folder once it has some.")).color(STEEL)).wrap());
-                if let Some(hint) = &found.own_hint {
-                    path_label(ui, hint, STEEL);
-                }
+                // (Most players have none: a line, the folder they would be in on hover.)
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(widgets::caption("YOUR OWN MAPS"));
+                    let none = ui.add(egui::Label::new(RichText::new(t("None found yet")).color(STEEL)).sense(Sense::hover()));
+                    if let Some(hint) = &found.own_hint {
+                        none.hover_tip(tf("Downloaded maps, and Forged Alliance Forever's, are listed from {folder} once it has some.", &[("folder", &hint.display())]));
+                    }
+                });
+            } else {
+                ui.label(widgets::caption("YOUR OWN MAPS"));
             }
             for folder in &found.own_folders {
                 path_label(ui, folder, TEXT);
@@ -693,8 +703,8 @@ fn supcom_footer(ui: &mut Ui, footer: &Footer, asked: &mut Asked) {
             ui.spacing_mut().item_spacing.x = 10.0;
             let label = match (maps, footer.stopping) {
                 (_, true) => n("STOPPING…"),
-                (true, false) => n("STOP AFTER THIS MAP"),
-                (false, false) => n("STOP"),
+                (true, false) if p.phase == Phase::Making => n("STOP AFTER THIS MAP"),
+                _ => n("STOP"),
             };
             let tip = if maps { t("The maps made so far are kept.") } else { t("Nothing is installed: the factions stay as they were.") };
             let stop = ui.add_enabled(!installing && !footer.stopping, ActionButton::secondary(label)).hover_tip(tip);
@@ -732,12 +742,19 @@ fn supcom_footer(ui: &mut Ui, footer: &Footer, asked: &mut Asked) {
         ui.spacing_mut().item_spacing.x = 10.0;
         if footer.listed {
             let (label, tip, none) = if maps {
-                (n("IMPORT MAPS"), t("Makes the chosen maps into TA Reborn maps, in a map pack of their own. Most take seconds, the largest a few minutes."), t("Choose the maps to import."))
+                (n("IMPORT MAPS"), t("Makes the chosen maps into TA Reborn maps, in a map pack of their own, turned on once made: the smallest in seconds, the largest in about a minute each on a fast computer."), t("Choose the maps to import."))
             } else {
                 (n("IMPORT FACTIONS"), t("Makes the chosen factions into a mod of TA Reborn units, turned on once made. All four take about half a minute on a fast computer."), t("Choose the factions to import."))
             };
             let why = footer.blocked.or((footer.chosen == 0).then_some(none));
-            if ui.add_enabled(why.is_none(), ActionButton::primary(label)).hover_tip(tip).disabled_tip(why.unwrap_or_default()).clicked() {
+            // (Everything chosen made already, by this TA Reborn: the button makes it again, no
+            // longer the way on.)
+            let (button, tip) = if footer.current {
+                (ActionButton::secondary("MAKE AGAIN"), t("The factions chosen are imported already, made by this version of TA Reborn: makes their mod again all the same."))
+            } else {
+                (ActionButton::primary(label), tip)
+            };
+            if ui.add_enabled(why.is_none(), button).hover_tip(tip).disabled_tip(why.unwrap_or_default()).clicked() {
                 asked.actions.push(if maps { Action::SupcomImport } else { Action::SupcomFactionsImport });
             }
             if ui.add(ActionButton::secondary("CLOSE")).clicked() {
@@ -746,10 +763,37 @@ fn supcom_footer(ui: &mut Ui, footer: &Footer, asked: &mut Asked) {
             // (Why IMPORT cannot be pressed, in words: a greyed button takes no keys to say it.)
             if let Some(why) = why {
                 ui.add(egui::Label::new(RichText::new(why).color(if footer.blocked.is_some() { AMBER } else { STEEL })).wrap());
+            } else if footer.current {
+                ui.add(egui::Label::new(RichText::new(t("Imported and up to date.")).color(GREEN)).wrap());
             }
         } else if ui.add(ActionButton::secondary("CLOSE")).clicked() {
             asked.close = true;
         }
+    });
+}
+
+/// The game not found (most players have no copy): what the import needs, that nothing of it is
+/// downloaded or shipped, where to get it, and LOOK AGAIN for a copy installed since (CHOOSE
+/// FOLDER… is in the row above, for one installed elsewhere).
+fn game_needed(ui: &mut Ui, actions: &mut Vec<Action>) {
+    ui.add_space(space::XS);
+    widgets::card(ui, |ui| {
+        ui.spacing_mut().item_spacing.y = 6.0;
+        ui.label(RichText::new(t("SUPREME COMMANDER: FORGED ALLIANCE NEEDED")).font(strong(15.0)).color(TEXT_BRIGHT).extra_letter_spacing(ta_ui::i18n::tracking(1.0)));
+        ui.add(egui::Label::new(RichText::new(t("The maps and factions are made on your computer from your own installed copy of Supreme Commander: Forged Alliance: GOG's Gold Edition, or Steam's Forged Alliance. The original Supreme Commander alone will not do. TA Reborn downloads nothing of it and includes none of it.")).color(TEXT)).wrap());
+        ui.add(egui::Label::new(RichText::new(t("It looks for GOG's, Steam's and a boxed copy. Installed it since this opened? LOOK AGAIN. Installed it somewhere else? CHOOSE FOLDER… above.")).color(STEEL)).wrap());
+        ui.add_space(space::XS);
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 10.0;
+            for (label, url) in [(n("GET IT ON GOG"), ta_supcom::install::GOG_STORE_URL), (n("GET IT ON STEAM"), ta_supcom::install::STEAM_STORE_URL)] {
+                if ui.add(ActionButton::secondary(label)).hover_tip(url).clicked() {
+                    actions.push(Action::OpenUrl(url.into()));
+                }
+            }
+            if ui.add(ActionButton::secondary("LOOK AGAIN")).hover_tip(t("Look for Supreme Commander: Forged Alliance again.")).clicked() {
+                actions.push(Action::SupcomLookAgain);
+            }
+        });
     });
 }
 
@@ -825,6 +869,39 @@ mod tests {
         }
         for shape in &output.shapes { walk(&shape.shape, shape.clip_rect, &mut texts); }
         (output, texts)
+    }
+
+    /// Without the game (most players): the dialog says what is needed, and that nothing of it is
+    /// downloaded or shipped, with its stores, CHOOSE FOLDER… and LOOK AGAIN, which looks for it
+    /// afresh, the tab shown at once and the other when shown (never with an import under way).
+    #[test]
+    fn without_the_game_the_dialog_says_what_is_needed_and_looks_again() {
+        let (root, ctx, mut app) = launcher("needed");
+        app.supcom.open = true;
+        app.supcom.tab = Tab::Maps;
+        app.supcom.pretend_found(supcom::Found::default(), supcom::Previews::new());
+        let size = egui::vec2(900.0, 900.0);
+        for _ in 0..3 { frame(&ctx, &mut app, size, Vec::new()); }
+        let (_, texts) = frame(&ctx, &mut app, size, Vec::new());
+        for words in ["SUPREME COMMANDER: FORGED ALLIANCE NEEDED", "GET IT ON GOG", "GET IT ON STEAM", "LOOK AGAIN", "CHOOSE FOLDER…"] {
+            assert!(texts.iter().any(|(text, _, _)| text == words), "{words}: {:?}", texts_of(&texts));
+        }
+        assert!(texts.iter().any(|(text, _, _)| text.contains("TA Reborn downloads nothing of it and includes none of it")), "{:?}", texts_of(&texts));
+        assert!(!texts.iter().any(|(text, _, _)| text == "IMPORT MAPS"), "nothing to import: {:?}", texts_of(&texts));
+        let (_, look, _) = texts.iter().find(|(text, _, _)| text == "LOOK AGAIN").unwrap().clone();
+        app.actions.clear();
+        let press = |pressed: bool| egui::Event::PointerButton { pos: look.center(), button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+        frame(&ctx, &mut app, size, vec![egui::Event::PointerMoved(look.center()), press(true)]);
+        frame(&ctx, &mut app, size, vec![press(false)]);
+        assert!(app.actions.iter().any(|a| matches!(a, Action::SupcomLookAgain)), "LOOK AGAIN asked");
+        // (Never this computer's copy: what a look finds in a test is canned.)
+        app.supcom.look.canned = Some(std::sync::Arc::new(|| (supcom::Found::default(), supcom::Previews::new())));
+        app.supcom.factions.look.canned = Some(std::sync::Arc::new(|| (supcom_factions::Found::default(), Default::default())));
+        app.apply(Action::SupcomLookAgain, &eframe::Frame::_new_kittest());
+        assert!(app.supcom.scanning(), "the tab shown looks again");
+        assert!(!app.supcom.factions.look.current(), "the other looks again when shown");
+        drop(app);
+        let _ = std::fs::remove_dir_all(root);
     }
 
     /// The list's rows share its room: it ends on a row's edge, its cards near their own height.
@@ -1010,7 +1087,8 @@ mod tests {
         let (_, texts) = frame(&ctx, &mut app, size, Vec::new());
         // (The mod holds the UEF and the Aeon: those are chosen at first.)
         assert!(texts.iter().any(|(text, _, _)| text == "2 of 4 factions chosen, 178 units, about 0.3 GB on the disk"), "{:?}", texts_of(&texts));
-        assert!(texts.iter().any(|(text, _, _)| text.starts_with("Still to come: Forged Alliance's own sounds")), "{:?}", texts_of(&texts));
+        assert!(texts.iter().any(|(text, _, _)| text.starts_with("Not played yet: Forged Alliance's own sounds")), "{:?}", texts_of(&texts));
+        assert!(texts.iter().any(|(text, _, _)| text.contains("Online, everyone in a battle needs it")), "online play said: {:?}", texts_of(&texts));
         // The keys stop at each faction's box once.
         let tab = egui::Event::Key { key: egui::Key::Tab, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE };
         let mut boxes = Vec::new();

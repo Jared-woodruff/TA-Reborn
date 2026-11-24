@@ -294,9 +294,9 @@ pub struct Launcher {
     /// once after an update); empty before the first start.
     pub seen_version: String,
     /// The launcher shows the features still being tried out (Settings, LAUNCHER: ENABLE
-    /// EXPERIMENTAL FEATURES), the Supreme Commander import among them; off, they are left out of
-    /// it, and what they made before stays as it is. Off by default: they ship before they are
-    /// ready for everyone, for testers to try early.
+    /// EXPERIMENTAL FEATURES, shown while there are some); off, they are left out of it, and what
+    /// they made before stays as it is. Off by default: they ship before they are ready for
+    /// everyone, for testers to try early. (Kept while none is being tried, for the next.)
     pub experimental_features: bool,
 }
 
