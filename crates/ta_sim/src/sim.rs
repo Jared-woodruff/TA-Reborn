@@ -864,7 +864,8 @@ impl Sim {
             }
             return;
         }
-        let moving = u.speed > Fx::ZERO;
+        // (Astern too: a driven unit backing away.)
+        let moving = !u.speed.is_zero();
         // (Its own cloak, or its enhancements'.)
         let (still, on_the_move, within) = u.cloak_costs(t).unwrap_or((Fx::ZERO, Fx::ZERO, Fx::ZERO));
         let per_second = if moving && on_the_move > Fx::ZERO { on_the_move } else { still };
@@ -2381,13 +2382,7 @@ impl Sim {
         // A driven unit let go: no input for a while (its player gone), or no longer theirs to
         // drive (given away, taken aboard, destroyed). It stops and takes up its orders.
         if self.unit(id).and_then(|u| u.direct_control).is_some_and(|control| control.expires <= self.tick || self.unit(id).is_none_or(|u| u.owner != control.player || u.carried_by.is_some() || u.dead)) {
-            if let Some(u) = self.unit_mut(id) {
-                u.direct_control = None;
-                for slot in 0..ta_data::unit::MAX_WEAPONS {
-                    u.retarget(slot, None);
-                }
-            }
-            self.halt(id);
+            self.let_go(id);
         }
         let Some(u) = self.unit(id) else { return };
         let t = types.get(u.type_id);
@@ -2888,8 +2883,10 @@ impl Sim {
     }
 
     /// Moves a unit to another player's side. It drops its orders, targets, factory queue,
-    /// routes and any self-destruct countdown; passengers change sides with their transport,
-    /// and a factory finishes the unit in its yard for the new owner.
+    /// routes, its old owner's hands on it (driven: `Sim::set_direct_control`; captured in the
+    /// orders' phase, it moved and fired once more on their input) and any self-destruct
+    /// countdown; passengers change sides with their transport, and a factory finishes the unit
+    /// in its yard for the new owner.
     fn change_owner(&mut self, id: UnitId, to: u8) {
         // Ground transports can themselves be carried: walk their contents without using
         // the call stack. Changing ownership before visiting children also breaks cycles.
@@ -2901,6 +2898,10 @@ impl Sim {
                 continue;
             }
             u.owner = to;
+            // (Let go going astern, it stops: `Sim::let_go`.)
+            if u.direct_control.take().is_some() {
+                u.speed = u.speed.max(Fx::ZERO);
+            }
             u.orders.clear();
             u.repair_trip = false;
             u.path.clear();

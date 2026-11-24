@@ -730,6 +730,18 @@ impl Sim {
         });
     }
 
+    /// Unit `id` leaves every formation it is in, its orders kept (its owner has taken it over:
+    /// `Sim::set_direct_control`): those forming up do not wait for it, nor those marching pace
+    /// themselves by it, and it turns to face no formation's way.
+    pub(crate) fn leave_formations(&mut self, id: UnitId) {
+        let Some(u) = self.unit_mut(id) else { return };
+        u.formations.clear();
+        u.face = None;
+        for f in &mut self.formations {
+            f.mates.retain(|m| m.id != id);
+        }
+    }
+
     /// Unit `id`'s order to `dest` is done: it leaves the formation it marched there in, and,
     /// with nothing more to do, turns to face the way the formation faces.
     pub(crate) fn arrived(&mut self, id: UnitId, dest: FxVec3) {

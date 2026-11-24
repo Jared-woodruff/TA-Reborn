@@ -67,7 +67,8 @@ pub fn plan(steers: &mut Vec<Steer>, units: &[Option<Unit>], types: &UnitTypes, 
     let body_of = |u: &Option<Unit>| -> Body {
         match u {
             Some(u) if surface_unit(u, types) => {
-                let v = if u.speed > Fx::ZERO { heading_vector(u.heading).scale(u.speed) } else { FxVec3::ZERO };
+                // (Astern too: a driven unit backing away moves against its heading.)
+                let v = if !u.speed.is_zero() { heading_vector(u.heading).scale(u.speed) } else { FxVec3::ZERO };
                 Body { x: u.pos.x, z: u.pos.z, vx: v.x, vz: v.z, r: body(types.get(u.type_id).radius), surface: true }
             }
             _ => Body::default(),

@@ -774,10 +774,14 @@ impl Sim {
     }
 
     /// Weapon update for a unit its owner drives (`update_weapons` hands it over): every weapon
-    /// counts down its reload and aims where the sight looks, at the ground at its range, or at
-    /// the visible enemy under the sight with the weapon's own firing solution
-    /// (`direct_aim_target`); with the trigger held it fires once aimed, loaded and, unless it is
-    /// on a turret, with the hull turned its way. Missiles kept in stock, interceptors and the
+    /// counts down its reload and aims where the sight looks, at the visible enemy under the sight
+    /// with the weapon's own firing solution (`direct_aim_target`), else at the place on the
+    /// ground or the water the sight looks at (`sight_point`); with the trigger held it fires once
+    /// aimed, loaded and, unless it is on a turret, with the hull turned its way, and a burst it
+    /// began goes on to its end (a click fires it whole). A weapon that would not fire on that
+    /// place by order ([`Sim::takes_order`]: a torpedo out of the water, a weapon naming its only
+    /// targets) aims with the sight and holds its fire; nothing fires while the unit's script
+    /// packs it up to go, as in `update_weapons`. Missiles kept in stock, interceptors and the
     /// weapons fired only on order (the Commander's D-gun), unless one is the unit's first, are
     /// left out: they are not the trigger's.
     fn direct_weapons(&mut self, id: UnitId, types: &crate::defs::UnitTypes, weapons: &crate::defs::WeaponTypes) {
@@ -785,6 +789,7 @@ impl Sim {
         let Some(control) = unit.direct_control else { return };
         let ty = types.get(unit.type_id);
         let slots = *unit.weapon_slots(ty);
+        let owner = unit.owner;
         let heading = wrap_angle(control.input.heading - unit.heading);
         let pitch = control.input.pitch;
         let input = control.input;
@@ -801,9 +806,14 @@ impl Sim {
             let body_heading = unit.heading;
             let from = self.aim_from_point(id, slot);
             let direction = rotate_y(rotate_x(FxVec3::new(Fx::ZERO, Fx::ZERO, Fx::ONE), -pitch), input.heading);
-            let point = from + direction.scale(weapon.range);
             let assisted = self.direct_aim_target(id, from, direction, weapon);
-            let (target, point, pitch) = assisted.unwrap_or((Target::Ground(point), point, pitch));
+            let (target, point, pitch, takes) = match assisted {
+                Some((target, point, pitch)) => (target, point, pitch, true),
+                None => {
+                    let point = self.sight_point(from, direction, input.heading, weapon.range);
+                    (Target::Ground(point), point, pitch, self.takes_order(ty, slot, weapon, Target::Ground(point), owner))
+                }
+            };
             let heading = if assisted.is_some() { wrap_angle(heading_of(point - from) - body_heading) } else { heading };
             if control.aim_piece.is_none() && slots.iter().position(Option::is_some) == Some(slot) {
                 let query = weapon_function(ty, WeaponFunction::Query, slot);
@@ -817,9 +827,13 @@ impl Sim {
             let aimed = self.aim_weapon(id, slot, heading, pitch);
             let Some(unit) = self.unit(id) else { return };
             let waiting = unit.cob.as_ref().is_some_and(|script| script.is_running(ThreadTag::Aim(slot as u16)));
-            let ready = unit.weapons[slot].reload == 0 || unit.weapons[slot].burst_left > 0 && unit.weapons[slot].burst_timer == 0;
+            let state = unit.weapons[slot];
+            let ready = state.reload == 0 || state.burst_left > 0 && state.burst_timer == 0;
+            // (A click holds the trigger for a tick: the burst it began fires whole, not a round a
+            // pull, the rest of it after the next pull with no reload between.)
+            let trigger = input.fire || state.burst_left > 0;
             let aligned = weapon.def.turret || heading.abs() <= weapon.tolerance.max(500);
-            if input.fire && aimed && ready && (!waiting || traversing) && aligned {
+            if trigger && takes && aimed && ready && (!waiting || traversing) && aligned && !unit.packing_to_go() {
                 self.fire(id, slot, weapon, target, point, pitch);
             }
         }
@@ -829,23 +843,63 @@ impl Sim {
     /// weapon's range, that its player sees (not on radar alone), the weapon may take on and has a
     /// clear line of fire to, within its hit sphere and a little more (wider farther off); with
     /// where to aim at it and the pitch to fire at to hit it (a shell's arc, not the sight's line).
-    fn direct_aim_target(&self, shooter: UnitId, from: FxVec3, direction: FxVec3, weapon: &WeaponType) -> Option<(Target, FxVec3, i32)> {
+    /// Only the enemies in the grid's cells within reach are looked at, the nearest across the
+    /// ground first, and what it takes to see and to hit one is asked only of one nearer along the
+    /// sight than the best so far.
+    fn direct_aim_target(&mut self, shooter: UnitId, from: FxVec3, direction: FxVec3, weapon: &WeaponType) -> Option<(Target, FxVec3, i32)> {
         let owner = self.unit(shooter)?.owner;
-        self.units().filter_map(|unit| {
-            if unit.id == shooter || unit.dead || unit.carried_by.is_some() || !self.is_enemy(owner, unit.owner)
-                || self.seen_by(unit, owner) != crate::Seen::Visible || !self.can_engage(weapon, unit) { return None; }
+        let mut near = std::mem::take(&mut self.scratch);
+        self.grid.query_owned(from, weapon.range + self.types.collision_reach, self.enemy_mask(owner), &mut near);
+        let mut best: Option<(Fx, UnitId, Target, FxVec3, i32)> = None;
+        for &slot in &near {
+            let Some(unit) = self.units.get(slot as usize).and_then(|u| u.as_ref()) else { continue };
+            if unit.id == shooter || unit.dead || unit.carried_by.is_some() || !self.is_enemy(owner, unit.owner) { continue; }
             let target = Target::Unit(unit.id);
-            let point = self.weapon_target_point(weapon, target)?;
+            let Some(point) = self.weapon_target_point(weapon, target) else { continue };
             let to = point - from;
-            let along = to.dot(direction);
             let radius = hit_sphere(unit, self).1;
-            if along <= Fx::ZERO || to.length_xz() > weapon.range + radius { return None; }
+            if to.length_xz() > weapon.range + radius { continue; }
+            let along = to.dot(direction);
+            if along <= Fx::ZERO || best.is_some_and(|(nearest, id, ..)| (along, unit.id) >= (nearest, id)) { continue; }
             let tolerance = radius + Fx::from_int(12) + along / 128;
-            if (to - direction.scale(along)).length() > tolerance { return None; }
-            let pitch = self.launch_pitch(weapon, to)?;
-            if !self.line_of_fire_clear(from, point, weapon, pitch) { return None; }
-            Some((along, unit.id, target, point, pitch))
-        }).min_by_key(|(distance, id, ..)| (*distance, *id)).map(|(_, _, target, point, pitch)| (target, point, pitch))
+            if (to - direction.scale(along)).length() > tolerance { continue; }
+            if self.seen_by(unit, owner) != crate::Seen::Visible || !self.can_engage(weapon, unit) { continue; }
+            let Some(pitch) = self.launch_pitch(weapon, to) else { continue };
+            if !self.line_of_fire_clear(from, point, weapon, pitch) { continue; }
+            best = Some((along, unit.id, target, point, pitch));
+        }
+        self.scratch = near;
+        best.map(|(_, _, target, point, pitch)| (target, point, pitch))
+    }
+
+    /// The place a driven unit's sight looks at for a weapon of `range`, with no enemy under it:
+    /// where the sight from `from` along `direction` (its heading `heading`) first meets the ground,
+    /// or the water from above it, within that range across the ground (as TA measures a weapon's
+    /// range); looking over the ground there (level, up, or down a falling slope), the ground or the
+    /// water at that range ahead along its heading. (The point at the sight's range in the air,
+    /// guided missiles circled it and burst in the air.)
+    fn sight_point(&self, from: FxVec3, direction: FxVec3, heading: i32, range: Fx) -> FxVec3 {
+        let (world, sea) = (&self.world, self.world.sea_level);
+        // (Looking steeply up or down, as far along as four ranges at most. A sight that sets off
+        // under the ground, from a gun low on a slope, meets none there: it would fire at its own
+        // feet.)
+        let end = from + direction.scale(range / direction.length_xz().max(Fx::from_ratio(1, 4)));
+        let ground = ground_entry(world, from, end).filter(|&share| share > Fx::ZERO);
+        let wet = (from.y > sea && end.y < sea).then(|| (from.y - sea) / (from.y - end.y));
+        match (ground, wet) {
+            (Some(g), w) if w.is_none_or(|w| g <= w) => {
+                let p = from + (end - from).scale(g);
+                FxVec3::new(p.x, world.height_at(p.x, p.z), p.z)
+            }
+            (_, Some(w)) => {
+                let p = from + (end - from).scale(w);
+                FxVec3::new(p.x, sea, p.z)
+            }
+            _ => {
+                let p = from + heading_vector(heading).scale(range);
+                FxVec3::new(p.x, world.height_at(p.x, p.z).max(sea), p.z)
+            }
+        }
     }
 
     /// Ask the weapon's script to aim and wait for its newest readiness answer. Shared
