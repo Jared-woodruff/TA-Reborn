@@ -7,11 +7,14 @@
 //! The glass carries only what the eyes need while looking out: the unit's own state is on the
 //! console's screens (or, where none shows, on panels along the picture's edge).
 
+use std::sync::OnceLock;
+
 use egui::{Align2, Color32, Mesh, Pos2, Rect, Shape, Vec2, pos2, vec2};
-use glam::Vec3;
+use glam::{Mat4, Quat, Vec3};
 use ta_sim::{Fx, Seen, Target};
 use ta_ui::i18n::t;
 
+use super::data::{Readouts, metres};
 use super::kit::{Pen, clock};
 use super::{PHOSPHOR, PHOSPHOR_DIM, View};
 use crate::game::Game;
@@ -24,7 +27,8 @@ use crate::theme::{AMBER, AMBER_BRIGHT, AMBER_DIM, GREEN, RED};
 #[derive(Clone, Copy, Debug)]
 pub struct Window {
     pub rect: Rect,
-    /// Round (a periscope's field, the magnified sight): the threats' ring is a circle in it.
+    /// Round (a periscope's field, the magnified sight): the threats' ring is a circle in it, and
+    /// what is written in it keeps inside the circle (black stands round it).
     pub round: bool,
 }
 
@@ -36,6 +40,47 @@ impl Window {
         let radii = vec2((r.width() * 0.5 - inset).max(pen.s(60.0)), (r.height() * 0.5 - inset).max(pen.s(60.0)));
         let radii = if self.round { Vec2::splat(radii.x.min(radii.y)) } else { radii };
         (r.center(), radii)
+    }
+
+    /// Whether a point is in the window grown by `margin` points (shrunk, where it is less than
+    /// none): a round one's circle.
+    pub fn reaches(&self, q: Pos2, margin: f32) -> bool {
+        if self.round {
+            q.distance(self.rect.center()) <= self.rect.width().min(self.rect.height()) * 0.5 + margin
+        } else {
+            self.rect.expand(margin).contains(q)
+        }
+    }
+
+    /// Whether `r` is wholly in the window (a round one's: every corner in its circle).
+    pub fn holds(&self, r: Rect) -> bool {
+        if !self.round {
+            return self.rect.contains_rect(r);
+        }
+        r.is_finite() && [r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom()].into_iter().all(|q| self.reaches(q, 0.0))
+    }
+
+    /// `r` moved as little as brings it into the window (a round one's: towards its middle), as
+    /// far as it goes in.
+    pub fn pull_in(&self, r: Rect) -> Rect {
+        if self.holds(r) || !r.is_finite() {
+            return r;
+        }
+        let w = self.rect;
+        if !self.round {
+            let along = |lo: f32, hi: f32, min: f32, max: f32| (min - lo).max(0.0) + (max - hi).min(0.0);
+            return r.translate(vec2(along(r.left(), r.right(), w.left(), w.right()), along(r.top(), r.bottom(), w.top(), w.bottom())));
+        }
+        let to = w.center() - r.center();
+        if !self.holds(r.translate(to)) {
+            return r.translate(to);
+        }
+        let (mut out, mut inside) = (0.0f32, 1.0f32);
+        for _ in 0..12 {
+            let mid = (out + inside) * 0.5;
+            if self.holds(r.translate(to * mid)) { inside = mid } else { out = mid }
+        }
+        r.translate(to * inside)
     }
 }
 
@@ -94,24 +139,17 @@ fn state_colour(w: &WeaponState, starved: bool) -> Color32 {
 /// The weapons' readiness on arcs round the reticle's middle `c`, `r` units out: one arc a weapon
 /// (a lone weapon's on both lower arcs), filling as it reloads, lit when it is ready, flashing as
 /// it fires. `numbered`: each arc has its weapon's number beside it (a mech's weapon groups).
-#[allow(clippy::too_many_arguments)]
-pub(super) fn readiness(pen: &Pen, c: Pos2, r: f32, p: &Perspective, game: &Game, now: f64, numbered: bool) {
-    let weapons = p.weapons(game);
-    let Some(u) = game.sim.unit(p.unit) else { return };
-    let ty = game.sim.unit_type(u);
-    let energy = game.sim.players.get(u.owner as usize).map_or(0.0, |pl| pl.economy.energy.to_f32());
-    let layout = slots(weapons.len());
-    let numbered = numbered || weapons.len() > 1;
-    for (i, (w, arcs)) in weapons.iter().zip(&layout).enumerate() {
-        let wt = u.weapon_slots(ty).get(w.slot).copied().flatten().map(|id| game.sim.weapon_types.get(id));
-        let cost = wt.filter(|wt| wt.command_fire && w.manual).map_or(0.0, |wt| game.sim.shot_energy(u.id, wt).to_f32());
-        let starved = w.manual && cost > energy;
+pub(super) fn readiness(pen: &Pen, c: Pos2, r: f32, p: &Perspective, rd: &Readouts, now: f64, numbered: bool) {
+    let layout = slots(rd.weapons.len());
+    let numbered = numbered || rd.weapons.len() > 1;
+    for (i, (w, arcs)) in rd.weapons.iter().zip(&layout).enumerate() {
+        let starved = w.starved;
         let col = state_colour(w, starved);
         let fired = (now - w.latest(&p.hud.last_shot)) as f32;
         let came = (now - w.latest(&p.hud.ready_since)) as f32;
-        // (A pulse as it comes ready, a flash as it fires.)
+        // (A pulse as it comes ready, a flash as it fires: not with flashes reduced.)
         let pulse = if w.ready && (0.0..0.35).contains(&came) { 1.0 - came / 0.35 } else { 0.0 };
-        let flash = if (0.0..0.15).contains(&fired) { 1.0 - fired / 0.15 } else { 0.0 };
+        let flash = if !p.reduced_flashes && (0.0..0.15).contains(&fired) { 1.0 - fired / 0.15 } else { 0.0 };
         let frac = if w.ready || starved { 1.0 } else { (1.0 - w.left).clamp(0.0, 1.0) };
         let width = 3.2 + 1.6 * pulse;
         for &slot in arcs {
@@ -134,11 +172,11 @@ pub(super) fn readiness(pen: &Pen, c: Pos2, r: f32, p: &Perspective, game: &Game
             let at = c + clock(slot.middle.to_radians()) * pen.s(r + 14.0);
             pen.text(at, Align2::CENTER_CENTER, format!("{}", i + 1), 13.0, if w.ready || starved { col } else { AMBER.gamma_multiply(0.85) });
         }
-        if wt.is_some_and(|wt| wt.def.stockpile)
+        if w.stockpile
             && let Some(slot) = arcs.last()
         {
             let at = c + clock(slot.middle.to_radians()) * pen.s(r + 14.0) + vec2(0.0, pen.s(15.0));
-            pen.text(at, Align2::CENTER_CENTER, format!("×{}", u.stockpile), 12.0, AMBER_BRIGHT);
+            pen.text(at, Align2::CENTER_CENTER, format!("×{}", rd.stockpile), 12.0, AMBER_BRIGHT);
         }
     }
 }
@@ -168,7 +206,7 @@ fn projected_box(view: &View, points: &[Vec3]) -> Option<Rect> {
 /// A unit's box on the screen (points), fitted to its model as it is drawn standing at `at` (its
 /// pieces as its script has them, see `perspective::drawn_corners`); a box of its radius and
 /// height for a model not loaded yet. None when any of it is behind the eye.
-fn unit_box(view: &View, game: &Game, u: &ta_sim::Unit, at: Vec3, scratch: &mut Vec<Vec3>) -> Option<Rect> {
+pub(super) fn unit_box(view: &View, game: &Game, u: &ta_sim::Unit, at: Vec3, scratch: &mut Vec<Vec3>) -> Option<Rect> {
     crate::perspective::drawn_corners(game, u, at, scratch);
     if scratch.is_empty() {
         let ty = game.sim.unit_type(u);
@@ -177,8 +215,55 @@ fn unit_box(view: &View, game: &Game, u: &ta_sim::Unit, at: Vec3, scratch: &mut 
     projected_box(view, scratch)
 }
 
-/// How near (world units) the other units' brackets are fitted to their models as drawn.
+/// A unit's box on the screen (points) from its model's pieces where they stand, moved as its
+/// script has them but not turned (a turret's turn left out): close to the box fitted to the model
+/// as drawn (`unit_box`), for a little of the work. Its radius and height before the models are
+/// loaded. None when any of it is behind the eye.
+fn standing_box(view: &View, game: &Game, u: &ta_sim::Unit, at: Vec3, places: &mut Vec<Vec3>) -> Option<Rect> {
+    let ty = game.sim.unit_type(u);
+    let rough = || bounds(view, at, ty.radius.to_f32().max(6.0), ty.model.height.to_f32().max(8.0));
+    let Some(pieces) = game.scene.piece_bounds(u.type_id) else { return rough() };
+    // Each piece's place on the model (its parent's, then its own offset and move), and the box
+    // round those its script shows.
+    places.clear();
+    let (mut lo, mut hi) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
+    for (i, piece) in ty.model.pieces.iter().enumerate() {
+        let (moved, _, shown) = u.piece_anim(ty, i);
+        // (A script's moves along x go the other way, as `scene::piece_matrices` has them.)
+        let own = Vec3::from_array(piece.offset.to_f32()) + Vec3::new(-moved[0] as f32, moved[1] as f32, moved[2] as f32) / 65536.0;
+        let place = match piece.parent {
+            Some(q) if q < i => places[q] + own,
+            _ => own,
+        };
+        places.push(place);
+        if let (true, Some(b)) = (shown, pieces.get(i).copied().flatten()) {
+            lo = lo.min(place + b.min);
+            hi = hi.max(place + b.max);
+        }
+    }
+    if lo.x > hi.x {
+        return rough();
+    }
+    let root = Mat4::from_rotation_translation(Quat::from_rotation_y(u.heading as f32 * std::f32::consts::TAU / 65536.0), at);
+    let corners: [Vec3; 8] = std::array::from_fn(|k| root.transform_point3(Vec3::new(if k & 1 == 0 { lo.x } else { hi.x }, if k & 2 == 0 { lo.y } else { hi.y }, if k & 4 == 0 { lo.z } else { hi.z })));
+    projected_box(view, &corners)
+}
+
+/// How many of the units in view have their brackets fitted to their models as drawn: the
+/// nearest (a battle puts hundreds in view), within `NEAR` (world units). One fitted stays fitted
+/// while it is among the nearest `FIT_KEEP` within `NEAR_KEEP`, so that a bracket does not change
+/// its size back and forth. The others stand as their models do, unturned (`standing_box`).
+const FIT: usize = 24;
+const FIT_KEEP: usize = 32;
 const NEAR: f32 = 700.0;
+const NEAR_KEEP: f32 = 760.0;
+
+/// Whether friends are marked as well as enemies (`TA_PERSPECTIVE_ALLIES=0` marks enemies only,
+/// for captures inside a crowd of one's own); read once.
+fn allies_marked() -> bool {
+    static ALLIES: OnceLock<bool> = OnceLock::new();
+    *ALLIES.get_or_init(|| std::env::var("TA_PERSPECTIVE_ALLIES").map_or(true, |v| v != "0"))
+}
 
 /// A bracket's four corners round `r`, each `len` points long.
 fn corners(pen: &Pen, r: Rect, len: f32, w: f32, col: Color32) {
@@ -188,16 +273,32 @@ fn corners(pen: &Pen, r: Rect, len: f32, w: f32, col: Color32) {
     }
 }
 
+/// Which of the units in view (each's distance from the eye, its id, and whether it is seen, not
+/// only on radar) have their brackets fitted to their models, by [`FIT`]: the nearest, and those
+/// fitted last frame (`before`) while they are near enough still.
+fn fitted(units: &[(f32, ta_sim::UnitId, bool)], before: &[ta_sim::UnitId]) -> Vec<bool> {
+    let mut order: Vec<usize> = (0..units.len()).filter(|&i| units[i].2 && units[i].0 < NEAR_KEEP).collect();
+    order.sort_by(|&a, &b| units[a].0.total_cmp(&units[b].0));
+    let mut fit = vec![false; units.len()];
+    for (rank, &i) in order.iter().enumerate() {
+        let (dist, id, _) = units[i];
+        fit[i] = rank < FIT && dist < NEAR || rank < FIT_KEEP && before.contains(&id);
+    }
+    fit
+}
+
 /// The other units in view: the enemy's in small red brackets (those firing at this unit
-/// brighter), friends near by as green carets over them; what radar alone sees, dim amber.
+/// brighter), friends near by as green carets over them; what radar alone sees as a contact, a
+/// dim amber mark of one size (not what it is, nor what it fires at: the map shows radar's
+/// contacts as plain blips).
 pub(super) fn marks(pen: &Pen, view: &View, window: &Window, p: &Perspective, game: &Game, now: f64) {
     let me = game.sim.unit(p.unit).map_or(game.local_player, |u| u.owner);
     let alpha = game.alpha();
     let target = p.target(game);
-    // (`TA_PERSPECTIVE_ALLIES=0` marks enemies only, for captures inside a crowd of one's own.)
-    let allies = std::env::var("TA_PERSPECTIVE_ALLIES").map_or(true, |v| v != "0");
+    let allies = allies_marked();
     let blink = p.reduced_flashes || (now * 3.0).fract() < 0.6;
-    let mut scratch = Vec::new();
+    // The units to mark: how far each is, where it stands, how it is seen, whose it is.
+    let mut shown = Vec::new();
     for u in game.sim.units() {
         if u.id == p.unit || u.dead || u.carried_by.is_some() || Some(u.id) == target {
             continue;
@@ -213,26 +314,35 @@ pub(super) fn marks(pen: &Pen, view: &View, window: &Window, p: &Perspective, ga
             continue;
         }
         let enemy = game.sim.is_enemy(me, u.owner);
-        if !enemy && (!allies || dist > 700.0 || ty.locomotion == ta_sim::Locomotion::Static) {
+        if !enemy && (!allies || dist > 700.0 || ty.locomotion == ta_sim::Locomotion::Static || seen != Seen::Visible) {
             continue;
         }
-        // (Far out of the window, not worth fitting a box to.)
+        // (Far out of the window, not worth a box.)
         if view.project(pos).is_none_or(|q| !window.rect.expand(window.rect.height() * 0.3).contains(q)) {
             continue;
         }
-        // (Fitted to the model near by; far off, where it is small, its radius and height do: a
-        // battle puts hundreds in view.)
-        let b = if dist < NEAR { unit_box(view, game, u, pos, &mut scratch) } else { bounds(view, pos, ty.radius.to_f32().max(6.0) * 0.8, ty.model.height.to_f32().max(8.0)) };
-        let Some(b) = b else { continue };
-        if !window.rect.expand(20.0).contains(b.center()) {
+        shown.push((dist, u, pos, seen == Seen::Visible, enemy));
+    }
+    // (Fitted to the model, the nearest; the rest, small, as their models stand.)
+    let mut before = p.hud.fitted.take();
+    let fit = fitted(&shown.iter().map(|s| (s.0, s.1.id, s.3)).collect::<Vec<_>>(), &before);
+    before.clear();
+    before.extend(shown.iter().zip(&fit).filter(|(_, f)| **f).map(|(s, _)| s.1.id));
+    p.hud.fitted.set(before);
+    let (mut corners_at, mut places) = (Vec::new(), Vec::new());
+    for (&(dist, u, pos, visible, enemy), &fit) in shown.iter().zip(&fit) {
+        let a = (1.0 - dist / 1900.0).clamp(0.35, 0.85);
+        if !visible {
+            let Some(q) = view.project(pos).filter(|q| window.reaches(*q, 20.0)) else { continue };
+            corners(pen, Rect::from_center_size(q, Vec2::splat(pen.s(16.0))), pen.s(5.0), 1.2, AMBER_DIM.gamma_multiply(a));
             continue;
         }
-        let a = (1.0 - dist / 1900.0).clamp(0.35, 0.85);
+        let b = if fit { unit_box(view, game, u, pos, &mut corners_at) } else { standing_box(view, game, u, pos, &mut places) };
+        let Some(b) = b.filter(|b| window.reaches(b.center(), 20.0)) else { continue };
         if enemy {
             let on_us = firing_at(u, p);
-            let col = if seen == Seen::Radar { AMBER_DIM } else { RED };
             let b = b.expand(pen.s(3.0)).union(Rect::from_center_size(b.center(), Vec2::splat(pen.s(14.0))));
-            corners(pen, b, pen.s(7.0), if on_us { 1.8 } else { 1.3 }, col.gamma_multiply(if on_us && blink { 1.0 } else { a }));
+            corners(pen, b, pen.s(7.0), if on_us { 1.8 } else { 1.3 }, RED.gamma_multiply(if on_us && blink { 1.0 } else { a }));
         } else {
             let top = pos2(b.center().x, b.top() - pen.s(5.0));
             pen.fill(vec![top, top + vec2(pen.s(6.0), -pen.s(9.0)), top + vec2(-pen.s(6.0), -pen.s(9.0))], GREEN.gamma_multiply(a));
@@ -252,6 +362,15 @@ fn firing_at(u: &ta_sim::Unit, p: &Perspective) -> bool {
 /// same line. Returns where the line was written.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn bracket(pen: &Pen, view: &View, window: &Window, p: &Perspective, game: &Game, now: f64, avoid: &[Rect]) -> Option<Rect> {
+    let marked = target_bracket(pen, view, window, p, game, now, avoid);
+    p.hud.target_line.set(marked.map(|(id, _, inside, place)| (id, inside, place)));
+    marked.map(|m| m.1)
+}
+
+/// [`bracket`]'s work: the target, the room its line took, whether it is in the window, and which
+/// of its line's places it took.
+#[allow(clippy::too_many_arguments)]
+fn target_bracket(pen: &Pen, view: &View, window: &Window, p: &Perspective, game: &Game, now: f64, avoid: &[Rect]) -> Option<(ta_sim::UnitId, Rect, bool, u8)> {
     let id = p.target(game)?;
     let u = game.sim.unit(id)?;
     let ty = game.sim.unit_type(u);
@@ -262,10 +381,10 @@ pub(super) fn bracket(pen: &Pen, view: &View, window: &Window, p: &Perspective, 
     let frac = (u.health / u.max_health(ty).max(Fx::ONE)).to_f32().clamp(0.0, 1.0);
     let since = p.hud.target.filter(|t| t.0 == id).map_or(now, |t| t.1);
     let taken = crate::perspective::ease(((now - since) as f32 / 0.3).clamp(0.0, 1.0));
-    // NAME · 0000: the name in the side's colour, the range in amber.
+    // NAME · 0000 M: the name in the side's colour, the range (metres) in amber.
     let size = 16.0;
     let name = pen.fitted(&ty.def.display_name.to_uppercase(), size, pen.s(220.0));
-    let figure = format!(" · {:04}", range.round().min(9999.0) as i32);
+    let figure = format!(" · {:04} {}", metres(range).round().min(9999.0) as i32, t("M"));
     let (nw, fw) = (pen.width(&name, size), pen.width(&figure, size));
     let line_size = vec2(nw + fw, pen.s(size));
     let line = |r: Rect| -> Rect {
@@ -273,7 +392,22 @@ pub(super) fn bracket(pen: &Pen, view: &View, window: &Window, p: &Perspective, 
         pen.text(pos2(r.left() + nw, r.center().y), Align2::LEFT_CENTER, figure.clone(), size, AMBER_BRIGHT);
         r
     };
-    let inside = unit_box(view, game, u, at, &mut Vec::new()).filter(|b| window.rect.contains(b.center()));
+    // How it was marked last frame. (In the window, a round one's circle, it is bracketed; out of
+    // it, a chevron points the way. A margin either way at the window's edge, and its line's place
+    // kept while that is clear: they do not change back and forth from frame to frame.)
+    let last = p.hud.target_line.get().filter(|l| l.0 == id);
+    let margin = pen.s(14.0);
+    let inside = unit_box(view, game, u, at, &mut Vec::new()).filter(|b| window.reaches(b.center(), if last.is_some_and(|l| l.1) { margin } else { -margin }));
+    let choose = |places: &[Rect], inside: bool| -> (Rect, u8) {
+        let clear = |r: Rect| window.holds(r) && !avoid.iter().any(|a| a.intersects(r));
+        let edge = pen.s(3.0);
+        let kept = last.filter(|l| l.1 == inside).map(|l| l.2 as usize).filter(|&k| places.get(k).is_some_and(|r| clear(r.shrink(edge))));
+        match kept.or_else(|| places.iter().position(|r| clear(r.expand(edge)))) {
+            Some(k) => (places[k], k as u8),
+            // (Nowhere clear: the first, in the window.)
+            None => (window.pull_in(places[0]), 0),
+        }
+    };
     match inside {
         Some(b) => {
             // At least so big; while being taken, wider.
@@ -294,8 +428,8 @@ pub(super) fn bracket(pen: &Pen, view: &View, window: &Window, p: &Perspective, 
                 Align2::LEFT_CENTER.anchor_size(pos2(b.right() + gap, b.center().y), line_size),
                 Align2::RIGHT_CENTER.anchor_size(pos2(b.left() - gap, b.center().y), line_size),
             ];
-            let clear = |r: &Rect| window.rect.contains_rect(*r) && !avoid.iter().any(|a| a.intersects(*r));
-            Some(line(places.iter().copied().find(clear).unwrap_or(places[0])))
+            let (place, k) = choose(&places, true);
+            Some((id, line(place), true, k))
         }
         None => {
             // The way to it, on the threats' ring.
@@ -321,8 +455,8 @@ pub(super) fn bracket(pen: &Pen, view: &View, window: &Window, p: &Perspective, 
                 places.push(Align2::LEFT_CENTER.anchor_size(pos2(a.right() + pen.s(8.0), q.y), line_size));
                 places.push(Align2::RIGHT_CENTER.anchor_size(pos2(a.left() - pen.s(8.0), q.y), line_size));
             }
-            let clear = |r: &Rect| window.rect.contains_rect(*r) && !avoid.iter().any(|a| a.intersects(*r));
-            Some(line(places.iter().copied().find(clear).unwrap_or(places[0])).union(mark))
+            let (place, k) = choose(&places, false);
+            Some((id, line(place).union(mark), false, k))
         }
     }
 }
@@ -380,20 +514,27 @@ pub(super) fn threats(pen: &Pen, view: &View, window: &Window, p: &Perspective, 
     let mut room = Vec::new();
     let Some(me) = game.sim.unit(p.unit) else { return room };
     let (c, radii) = window.ring(pen);
-    // Per bearing: the nearest's distance, and whether any of them is firing at the unit.
-    let mut ways: [(f32, bool, Vec2); BEARINGS] = [(f32::MAX, false, Vec2::ZERO); BEARINGS];
+    // Per bearing: the nearest's distance, whether any of them is firing at the unit, the way to
+    // the nearest, and whether any of them is seen (radar's contacts alone: dim amber, as their
+    // marks, and not whether they fire at the unit).
+    let mut ways: [(f32, bool, Vec2, bool); BEARINGS] = [(f32::MAX, false, Vec2::ZERO, false); BEARINGS];
     for u in game.sim.units() {
-        if u.dead || u.carried_by.is_some() || !game.sim.is_enemy(me.owner, u.owner) || game.seen(u) == Seen::Hidden {
+        if u.dead || u.carried_by.is_some() || !game.sim.is_enemy(me.owner, u.owner) {
+            continue;
+        }
+        let seen = game.seen(u);
+        if seen == Seen::Hidden {
             continue;
         }
         let pos = game.scene.unit_position(u.id, game.alpha()).unwrap_or(Vec3::from_array(u.pos.to_f32()));
         let dist = pos.distance(p.eye);
-        let on_us = firing_at(u, p);
+        let visible = seen == Seen::Visible;
+        let on_us = visible && firing_at(u, p);
         if dist > 1400.0 && !on_us {
             continue;
         }
         // (In the window, its bracket marks it.)
-        if view.project(pos).is_some_and(|q| window.rect.contains(q)) {
+        if view.project(pos).is_some_and(|q| window.reaches(q, 0.0)) {
             continue;
         }
         let dir = view.toward(pos);
@@ -404,23 +545,24 @@ pub(super) fn threats(pen: &Pen, view: &View, window: &Window, p: &Perspective, 
             w.2 = dir;
         }
         w.1 |= on_us;
+        w.3 |= visible;
     }
     let pulse = if p.reduced_flashes { 1.0 } else { 0.65 + 0.35 * ((now * 6.0) as f32).sin() };
-    for (dist, on_us, dir) in ways {
+    for (dist, on_us, dir, visible) in ways {
         if dist == f32::MAX {
             continue;
         }
         let near = (1.0 - dist / 1400.0).clamp(0.0, 1.0);
         let size = 9.0 + 6.0 * near;
         let a = if on_us { pulse } else { 0.45 + 0.4 * near };
-        room.push(chevron(pen, on_ring(c, radii, dir), dir, size, RED.gamma_multiply(a), if on_us { 1.2 } else { 1.0 }));
+        room.push(chevron(pen, on_ring(c, radii, dir), dir, size, (if visible { RED } else { AMBER_DIM }).gamma_multiply(a), if on_us { 1.2 } else { 1.0 }));
     }
     // Hits from out of the window: the chevron the way each came from, bright, and the window's
     // edge glowing red on that side. (An attacker in the window is bracketed, blinking.)
     for &(at, from, blow) in &p.hud.hits {
         let age = (now - at) as f32;
         let Some(from) = from else { continue };
-        if !(0.0..1.4).contains(&age) || view.project(from).is_some_and(|q| window.rect.contains(q)) {
+        if !(0.0..1.4).contains(&age) || view.project(from).is_some_and(|q| window.reaches(q, 0.0)) {
             continue;
         }
         let dir = view.toward(from);
@@ -571,8 +713,8 @@ pub(super) fn message(pen: &Pen, window: &Window, p: &Perspective, now: f64, avo
         places.push(Align2::LEFT_CENTER.anchor_size(pos2(a.right() + pen.s(12.0), low.y), size));
         places.push(Align2::CENTER_BOTTOM.anchor_size(pos2(low.x, a.top()), size));
     }
-    let clear = |r: &Rect| window.rect.contains_rect(*r) && !avoid.iter().any(|a| a.intersects(*r)) && !keys.is_some_and(|k| k.expand(pen.s(6.0)).intersects(*r));
-    let place = places.iter().copied().find(clear).unwrap_or_else(|| Rect::from_center_size(pos2(low.x, window.rect.top() + pen.s(if window.round { 120.0 } else { 46.0 })), size));
+    let clear = |r: &Rect| window.holds(*r) && !avoid.iter().any(|a| a.intersects(*r)) && !keys.is_some_and(|k| k.expand(pen.s(6.0)).intersects(*r));
+    let place = places.iter().copied().find(clear).unwrap_or_else(|| window.pull_in(Rect::from_center_size(pos2(low.x, window.rect.top() + pen.s(if window.round { 120.0 } else { 46.0 })), size)));
     pen.name(place.center(), Align2::CENTER_CENTER, shown, 17.0, (if *urgent == 1 { RED } else { AMBER_BRIGHT }).gamma_multiply(a));
 }
 
@@ -633,6 +775,49 @@ mod tests {
         assert_eq!(flash_strength(HIT_FLASH, 1.0), 0.0);
         assert_eq!(flash_strength(2.0, 1.0), 0.0);
         assert_eq!(flash_strength(-0.1, 1.0), 0.0);
+    }
+
+    #[test]
+    fn what_is_written_in_a_round_window_keeps_inside_its_circle() {
+        let round = Window { rect: Rect::from_center_size(pos2(960.0, 540.0), Vec2::splat(994.0)), round: true };
+        let square = Window { round: false, ..round };
+        // A line in the corner of the circle's square: in the square, not in the circle (the
+        // magnified sight's black stands there: it was cut off, "IDER · 0358").
+        let corner = Rect::from_min_size(pos2(480.0, 60.0), vec2(160.0, 18.0));
+        assert!(square.holds(corner) && !round.holds(corner));
+        assert!(round.reaches(pos2(960.0, 540.0), 0.0) && !round.reaches(corner.left_top(), 0.0));
+        assert!(round.reaches(pos2(960.0 + 500.0, 540.0), 10.0) && !round.reaches(pos2(960.0 + 490.0, 540.0), -10.0));
+        // Pulled in, it is in the circle, moved no further than it had to be.
+        let pulled = round.pull_in(corner);
+        assert!(round.holds(pulled) && pulled.size() == corner.size(), "{pulled:?}");
+        assert!(pulled.center().distance(corner.center()) < corner.center().distance(round.rect.center()));
+        // (One that is in already stays where it is; a square window pulls along each side.)
+        let inside = Rect::from_center_size(pos2(1000.0, 500.0), vec2(160.0, 18.0));
+        assert_eq!(round.pull_in(inside), inside);
+        let off = Rect::from_min_size(pos2(1400.0, 300.0), vec2(160.0, 18.0));
+        assert_eq!(square.pull_in(off), off.translate(vec2(square.rect.right() - off.right(), 0.0)));
+        // (Larger than the window: round its middle.)
+        let wide = Rect::from_center_size(pos2(200.0, 200.0), vec2(2000.0, 20.0));
+        assert_eq!(round.pull_in(wide).center(), round.rect.center());
+    }
+
+    #[test]
+    fn the_nearest_are_fitted_to_their_models_and_stay_so_while_near() {
+        let id = |slot: u32| ta_sim::UnitId { slot, generation: 0 };
+        // Forty units in view, 20 apart from 100 on: the nearest FIT of those within NEAR.
+        let units: Vec<(f32, ta_sim::UnitId, bool)> = (0..40).map(|k| (100.0 + 20.0 * k as f32, id(k), true)).collect();
+        let fit = fitted(&units, &[]);
+        assert_eq!(fit.iter().filter(|&&f| f).count(), FIT);
+        assert!(fit[..FIT].iter().all(|&f| f) && !fit[FIT]);
+        // One fitted last frame stays fitted among the nearest FIT_KEEP, not beyond.
+        let fit = fitted(&units, &[id(FIT as u32 + 2), id(FIT_KEEP as u32 + 1)]);
+        assert!(fit[FIT + 2] && !fit[FIT + 1] && !fit[FIT_KEEP + 1]);
+        // Past NEAR none is newly fitted; one fitted already is, to NEAR_KEEP.
+        let far = [(NEAR + 20.0, id(1), true), (NEAR_KEEP + 5.0, id(2), true)];
+        assert_eq!(fitted(&far, &[]), [false, false]);
+        assert_eq!(fitted(&far, &[id(1), id(2)]), [true, false]);
+        // What radar alone sees never is (its mark is of one size).
+        assert_eq!(fitted(&[(50.0, id(3), false)], &[id(3)]), [false]);
     }
 
     #[test]

@@ -53,7 +53,7 @@ impl Def {
         match self.kind {
             Kind::Stop => format!("{} ({key})", t("Stop")),
             Kind::Mode(mode) => format!("{} ({key}): {}", t(mode.label_for(game)), t(mode.hint_for(game))),
-            Kind::Perspective(_) => format!("{} ({key}): {}", t("Perspective"), t("See through its eyes as it goes on with its orders. Escape leaves.")),
+            Kind::Perspective(_) => format!("{} ({key}): {}", t("Perspective"), t("See through its eyes as it goes on with its orders. In your own ground units, hovercraft and ships, E takes the controls. Escape leaves.")),
             Kind::Upgrade => upgrade_tip(game, &key),
         }
     }

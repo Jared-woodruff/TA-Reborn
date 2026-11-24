@@ -2362,10 +2362,7 @@ impl Game {
                 self.message(ta_ui::i18n::t("Cheats are for games with one person in them"));
             }
         }
-        // (TA's PAUSE key pauses too.)
-        if self.keys.pressed(input, "pause") || input.pressed(KeyCode::Pause) {
-            self.set_pace(Some(!self.paused), None);
-        }
+        self.pace_keys(input);
         if self.keys.pressed(input, "share") && !self.spectator {
             if self.allies().is_empty() {
                 self.message(ta_ui::i18n::t("No allies to share with"));
@@ -2382,17 +2379,6 @@ impl Game {
             if let Some((place, stops)) = nth_alert(&self.alerts, step) {
                 self.alert_press = Some((step % stops, now));
                 self.focus_request = Some(place);
-            }
-        }
-        let faster = self.keys.pressed(input, "faster") || input.pressed(KeyCode::NumpadAdd);
-        let slower = self.keys.pressed(input, "slower") || input.pressed(KeyCode::NumpadSubtract);
-        if faster || slower {
-            let speed = step_speed(self.speed, faster);
-            self.set_pace(None, Some(speed));
-            // (In multiplayer everyone is told, by name.)
-            if self.net.is_none() && (speed - self.speed).abs() < 0.001 {
-                let shown = format!("{speed:.2}");
-                self.message(ta_ui::i18n::tf("Game speed ×{speed}", &[("speed", &shown.trim_end_matches('0').trim_end_matches('.'))]));
             }
         }
         if self.keys.pressed(input, "select_all") {
@@ -3241,6 +3227,30 @@ impl Game {
             out.push(p);
         }
         out
+    }
+
+    /// The pause key (TA's PAUSE too) and the speed keys, as a battle takes them (from a unit's
+    /// eyes too, `perspective`): what they changed, said as the battle says it (a speed
+    /// changed alone, in a battle of one, by message; in multiplayer everyone is told, by name).
+    /// Returns what a key asked for, if one did.
+    pub fn pace_keys(&mut self, input: &Input) -> Option<PaceChange> {
+        let mut changed = None;
+        if self.keys.pressed(input, "pause") || input.pressed(KeyCode::Pause) {
+            let paused = !self.paused;
+            self.set_pace(Some(paused), None);
+            changed = Some(PaceChange::Paused(paused));
+        }
+        let faster = self.keys.pressed(input, "faster") || input.pressed(KeyCode::NumpadAdd);
+        let slower = self.keys.pressed(input, "slower") || input.pressed(KeyCode::NumpadSubtract);
+        if faster || slower {
+            let speed = step_speed(self.speed, faster);
+            self.set_pace(None, Some(speed));
+            if self.net.is_none() && (speed - self.speed).abs() < 0.001 {
+                self.message(speed_message(speed));
+            }
+            changed = Some(PaceChange::Speed(speed));
+        }
+        changed
     }
 
     /// Pauses or resumes and/or sets the game speed. In multiplayer these belong to the
@@ -4543,6 +4553,20 @@ const ATTACK_FAR: f32 = 700.0;
 
 /// The speeds the faster and slower keys step through (1.0 is TA's 30 ticks a second).
 const SPEED_STEPS: [f32; 11] = [0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0, 10.0];
+
+/// What the pace keys asked for ([`Game::pace_keys`]): paused or not, or a speed (in multiplayer
+/// it comes once the host has it).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum PaceChange {
+    Paused(bool),
+    Speed(f32),
+}
+
+/// The game's speed said as a message ("Game speed ×1.5").
+pub fn speed_message(speed: f32) -> String {
+    let shown = format!("{speed:.2}");
+    ta_ui::i18n::tf("Game speed ×{speed}", &[("speed", &shown.trim_end_matches('0').trim_end_matches('.'))])
+}
 
 /// The battle's speed after a press of the faster key (`faster`) or the slower: the next of
 /// [`SPEED_STEPS`] past `speed`, which itself may lie between them (a battle started at the

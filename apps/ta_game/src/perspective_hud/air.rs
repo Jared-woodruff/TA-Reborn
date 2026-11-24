@@ -13,7 +13,7 @@ use egui::{Align2, Color32, Painter, Pos2, Rect, pos2, vec2};
 use glam::Vec3;
 use ta_ui::i18n::t;
 
-use super::data::{Readouts, bearing_of};
+use super::data::{Readouts, bearing_of, metres};
 use super::kit::{Pen, clock};
 use super::{PHOSPHOR, View};
 use crate::game::Game;
@@ -81,10 +81,11 @@ pub(super) fn heading_tape(painter: &Painter, view: &View, p: &Perspective, game
 /// The symbology over the world. `top`: where the heading tape ended. Returns the room its tapes,
 /// gun cross and bank scale take (what else is written over the world keeps off it).
 #[allow(clippy::too_many_arguments)]
-pub(super) fn symbology(painter: &Painter, view: &View, p: &Perspective, game: &Game, rd: &Readouts, on: f32, top: f32, now: f64) -> Vec<Rect> {
+pub(super) fn symbology(painter: &Painter, view: &View, p: &Perspective, rd: &Readouts, on: f32, top: f32, now: f64) -> Vec<Rect> {
     let rect = view.rect;
     let pen = Pen::new(painter, rect.height() / 1080.0, true, on);
-    let sill = p.sill_y.map_or(rect.bottom(), |y| y / view.ppp);
+    // (Over a modelled cockpit's sill while it is in round the eye.)
+    let sill = p.sill_y.filter(|_| !p.chase && p.zoom == 0 && p.seat > 0.02).map_or(rect.bottom(), |y| y / view.ppp);
     let (top, bottom) = (top + pen.s(8.0), (sill - pen.s(14.0)).min(rect.bottom() - pen.s(10.0)));
     let centre = rect.center();
     // (The tapes stand in the middle of the band over the bank scale.)
@@ -96,7 +97,7 @@ pub(super) fn symbology(painter: &Painter, view: &View, p: &Perspective, game: &
         ladder(&Pen::new(&clipped, pen.u, true, on), view, p);
         if let Some(nose) = path_marker(&pen, view, p) {
             // The weapons' readiness round the gun cross: the guns fire where the nose points.
-            super::sight::readiness(&pen, nose, 30.0, p, game, now, false);
+            super::sight::readiness(&pen, nose, 30.0, p, rd, now, false);
             room.push(Rect::from_center_size(nose, egui::Vec2::splat(pen.s(96.0))));
         }
     }
@@ -104,7 +105,8 @@ pub(super) fn symbology(painter: &Painter, view: &View, p: &Perspective, game: &
     let reach = (rect.width() * 0.5 - pen.s(60.0)).min(pen.s(560.0));
     let x = reach.min(pen.s(384.0));
     tape(&pen, pos2(centre.x - x, mid), -1.0, rd.speed.max(0.0).round(), TapeScale { per_value: 1.35, step: 10.0, major: 50.0 }, t("KM/H").to_string());
-    tape(&pen, pos2(centre.x + x, mid), 1.0, rd.altitude.max(0.0).round(), TapeScale { per_value: 3.0, step: 5.0, major: 20.0 }, t("ALT").to_string());
+    // (The height in metres, as the speed is in km/h.)
+    tape(&pen, pos2(centre.x + x, mid), 1.0, metres(rd.altitude).max(0.0).round(), TapeScale { per_value: 8.0, step: 2.0, major: 10.0 }, format!("{} {}", t("ALT"), t("M")));
     for side in [-1.0f32, 1.0] {
         let line = centre.x + side * x;
         room.push(Rect::from_min_max(pos2(line.min(line + side * pen.s(104.0)), mid - pen.s(96.0)), pos2(line.max(line + side * pen.s(104.0)), mid + pen.s(110.0))));

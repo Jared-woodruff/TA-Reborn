@@ -11,10 +11,17 @@ use glam::Vec3;
 
 use crate::effects::Weather;
 use crate::game::Game;
-use crate::perspective::Perspective;
+use crate::perspective::{Perspective, WeaponState};
 
 /// A TA pixel taken as a quarter of a metre: a speed of one pixel a tick is 27 km/h.
+pub const METRES_PER_PX: f32 = 0.25;
 pub const KMH_PER_SPEED: f32 = 27.0;
+
+/// A distance or a height in the world (TA's pixels) in metres, as the displays give it (with the
+/// speed in km/h, see [`KMH_PER_SPEED`]).
+pub fn metres(px: f32) -> f32 {
+    px * METRES_PER_PX
+}
 
 /// A compass bearing (degrees clockwise from north, which is -z on the map) of the way (`x`, `z`)
 /// points over the ground.
@@ -77,8 +84,28 @@ pub struct Environment {
     pub elevation: f32,
 }
 
-/// What the displays read of one unit this frame.
-#[derive(Clone, Debug)]
+/// One of the unit's weapons (or several that read the same, see `Perspective::weapons`), with
+/// what a shot of it costs.
+pub struct Weapon {
+    pub state: WeaponState,
+    /// The energy a shot takes, for one fired on command (the Commander's D-gun); else none.
+    pub cost: f32,
+    /// Fired on command, without the energy for a shot.
+    pub starved: bool,
+    /// It fires from a stockpile it builds (missiles).
+    pub stockpile: bool,
+}
+
+impl std::ops::Deref for Weapon {
+    type Target = WeaponState;
+
+    fn deref(&self) -> &WeaponState {
+        &self.state
+    }
+}
+
+/// What the displays read of one unit this frame (gathered once a frame: every display reads
+/// these).
 pub struct Readouts {
     pub name: String,
     pub kind: String,
@@ -115,6 +142,10 @@ pub struct Readouts {
     /// A walker's armour by section: how whole each is (see `perspective::Armour`).
     pub armour: [f32; 8],
     pub env: Environment,
+    /// Its weapons (what each fired on command costs against its side's energy), and the
+    /// missiles it has stockpiled.
+    pub weapons: Vec<Weapon>,
+    pub stockpile: u32,
 }
 
 /// Where each rank begins on the veterancy scale (see `Unit::rank`).
@@ -132,8 +163,18 @@ impl Readouts {
         let to_deg = f32::to_degrees;
         let look = bearing_of(p.forward.x, p.forward.z);
         let heading = heading_bearing(u.heading);
-        // (Whether it rains is the weather's own clock, as the glass of the cockpit sees it.)
-        let now = crate::scene::game_seconds(game.sim.tick, game.alpha()) as f32;
+        let energy = game.sim.players.get(u.owner as usize).map_or(0.0, |pl| pl.economy.energy.to_f32());
+        // (Each weapon's own cost: a mod's unit may carry two fired on command.)
+        let slots = u.weapon_slots(ty);
+        let weapons = p
+            .weapons(game)
+            .into_iter()
+            .map(|state| {
+                let wt = slots.get(state.slot).copied().flatten().map(|id| game.sim.weapon_types.get(id));
+                let cost = wt.filter(|wt| wt.command_fire && state.manual).map_or(0.0, |wt| game.sim.shot_energy(u.id, wt).to_f32());
+                Weapon { starved: state.manual && cost > energy, stockpile: wt.is_some_and(|wt| wt.def.stockpile), cost, state }
+            })
+            .collect();
         Some(Readouts {
             name: ty.def.display_name.clone(),
             kind: ty.def.description.clone(),
@@ -159,9 +200,12 @@ impl Readouts {
                 wind: game.sim.wind.to_f32(),
                 wind_to,
                 weather: game.effects.weather_kind(),
-                rain: game.effects.rain(now),
+                // (As the world shows it: no storm told of with the WEATHER setting off.)
+                rain: game.effects.rain_shown(),
                 elevation: (ground - world.sea_level).to_f32(),
             },
+            weapons,
+            stockpile: u.stockpile,
         })
     }
 }
@@ -227,6 +271,8 @@ impl Readouts {
             altitude: 120.0,
             armour: [1.0, 0.8, 0.5, 0.9, 1.0, 0.3, 1.0, 0.7],
             env: Environment { hours: Some(14.5), wind: 12.0, wind_to: 270.0, weather: Weather::Dust, rain: 0.0, elevation: 42.0 },
+            weapons: Vec::new(),
+            stockpile: 0,
         }
     }
 }
@@ -246,6 +292,15 @@ mod tests {
         assert_eq!(at(49152), 270.0);
         assert_eq!(bearing_of(0.0, -1.0).round() % 360.0, 0.0);
         assert_eq!(bearing_of(1.0, 0.0).round(), 90.0);
+    }
+
+    #[test]
+    fn distances_are_in_the_same_metres_as_the_speed() {
+        // A pixel a tick, at TA's thirty ticks a second, a quarter of a metre a pixel: 27 km/h.
+        let ticks = ta_sim::cob::TICKS_PER_SECOND as f32;
+        assert!((METRES_PER_PX * ticks * 3.6 - KMH_PER_SPEED).abs() < 1e-4);
+        // The radar's reach, 1400 pixels, is 350 metres.
+        assert_eq!(metres(1400.0), 350.0);
     }
 
     #[test]

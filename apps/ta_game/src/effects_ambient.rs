@@ -1049,7 +1049,9 @@ impl Effects {
                     self.burst(Burst::new(Kind::Spark, at.to_array(), 4).radius(2.0).spread(PI).speed(50.0, 160.0).life(0.06, 0.2).size(1.8, 0.6).color(blue).intensity(9.0).gravity(0.0).drag(3.0).collide(false).cold());
                 }
             }
-            if u.speed <= Fx::from_ratio(1, 4) {
+            // (Driven astern from a unit's eyes, its speed is below nought: it leaves its trail
+            // too, the way it goes.)
+            if u.speed.abs() <= Fx::from_ratio(1, 4) {
                 continue;
             }
             match t.locomotion {
@@ -1060,8 +1062,8 @@ impl Effects {
                     if now - last >= WAKE_EVERY && !on_water {
                         self.ambient.last_wake.insert(u.id, now);
                         let heading = u.heading as f32 * std::f32::consts::TAU / 65536.0;
-                        let fwd = Vec3::new(heading.sin(), 0.0, heading.cos());
-                        wakes.push((p, fwd, t.radius.to_f32(), u.speed.to_f32()));
+                        let fwd = Vec3::new(heading.sin(), 0.0, heading.cos()) * u.speed.to_f32().signum();
+                        wakes.push((p, fwd, t.radius.to_f32(), u.speed.to_f32().abs()));
                     }
                 }
                 Locomotion::Ground => {

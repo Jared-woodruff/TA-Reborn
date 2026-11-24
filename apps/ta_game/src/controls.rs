@@ -105,7 +105,7 @@ const SECTIONS: &[(&str, &[(&str, &str)])] = &[
             ("{quit}", n("Quit")),
             ("{screenshot}", n("Screenshot (saved in your Pictures folder)")),
             ("{photo_mode}", n("Photo mode: free camera, time of day, focus; F12 takes a photo")),
-            ("{perspective}", n("Perspective: see through the eyes of the selected unit, or the one under the pointer, as it goes on with its orders (Escape leaves)")),
+            ("{perspective}", n("Perspective: see through the eyes of the selected unit, or the one under the pointer, as it goes on with its orders; in your own ground units, hovercraft and ships, E takes the controls (Escape leaves)")),
             (n("{game_menu} / Esc (nothing selected)"), n("Menu: save, options, statistics")),
         ],
     ),

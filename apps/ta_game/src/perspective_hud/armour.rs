@@ -11,7 +11,7 @@
 use egui::{Align2, Pos2, Rect, Vec2, pos2, vec2};
 use ta_ui::i18n::t;
 
-use super::data::{Readouts, ground_range};
+use super::data::{Readouts, ground_range, metres};
 use super::kit::{Pen, clock};
 use super::sight::Window;
 use super::{PHOSPHOR, View, sight};
@@ -36,7 +36,7 @@ pub(super) fn sight(pen: &Pen, view: &View, window: &Window, p: &Perspective, ga
     }
     gun_cue(&pen, view, p);
     let ring = if own { 58.0 } else { 70.0 };
-    sight::readiness(&pen, c, ring, p, game, now, false);
+    sight::readiness(&pen, c, ring, p, rd, now, false);
     let mut room = vec![Rect::from_min_max(c - vec2(pen.s(100.0), pen.s(ring + 22.0)), c + vec2(pen.s(100.0), pen.s(if own { ring + 22.0 } else { 134.0 })))];
     // Beside it: the hull under the turret, or a ship's gun director, its figures and all inside
     // the window (a bridge's sill stands close under the middle of the view).
@@ -49,17 +49,19 @@ pub(super) fn sight(pen: &Pen, view: &View, window: &Window, p: &Perspective, ga
         Cockpit::Periscope => {}
         _ => room.push(hull(&pen.scaled(1.25), beside, rd, !rd.mobile)),
     } }
-    // The range finder, while nothing is bracketed (the bracket gives the target's range).
+    // The range finder (metres), while nothing is bracketed (the bracket gives the target's range).
     if p.minimalist || p.target(game).is_none() {
         let range = ground_range(game, p.eye, p.forward, REACH);
         let at = c + vec2(pen.s(if own { 70.0 } else { 104.0 }), -pen.s(if own { 46.0 } else { 9.0 }));
-        let label = pen.text(at, Align2::LEFT_BOTTOM, t("RNG"), 13.0, PHOSPHOR.gamma_multiply(0.8));
+        let dim = PHOSPHOR.gamma_multiply(0.8);
+        let label = pen.text(at, Align2::LEFT_BOTTOM, t("RNG"), 13.0, dim);
         let figure = match range {
-            Some(r) => format!("{:04}", r.round().min(9999.0) as i32),
+            Some(r) => format!("{:04}", metres(r).round().min(9999.0) as i32),
             None => "----".to_string(),
         };
         let figure = pen.text(pos2(label.right() + pen.s(5.0), at.y + pen.s(1.5)), Align2::LEFT_BOTTOM, figure, 18.0, if range.is_some() { AMBER_BRIGHT } else { PHOSPHOR.gamma_multiply(0.6) });
-        room.push(label.union(figure));
+        let unit = pen.text(pos2(figure.right() + pen.s(3.0), at.y), Align2::LEFT_BOTTOM, t("M"), 13.0, dim);
+        room.push(label.union(figure).union(unit));
     }
     room
 }

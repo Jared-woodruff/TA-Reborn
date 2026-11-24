@@ -1371,6 +1371,13 @@ impl ApplicationHandler<egui_winit::accesskit_winit::Event> for App {
                 state.input.on_event(&event, false, false);
                 state.game.cancel_pointer_gestures();
             }
+            // Back in the window while riding in a unit: the pointer held in it again (the system
+            // lets go of it when another program is brought forward), and hidden.
+            WindowEvent::Focused(true) if state.perspective.is_some() && state.screenshot_path.is_none() => {
+                use winit::window::CursorGrabMode;
+                let _ = state.window.set_cursor_grab(CursorGrabMode::Confined).or_else(|_| state.window.set_cursor_grab(CursorGrabMode::Locked));
+                state.window.set_cursor_visible(false);
+            }
             _ => {}
         }
         let response = state.egui.state.on_window_event(&state.window, &event);
@@ -1412,6 +1419,13 @@ impl ApplicationHandler<egui_winit::accesskit_winit::Event> for App {
                     state.in_game_menu = true;
                     state.window.request_redraw();
                     return;
+                }
+                // (A unit driven from its eyes is let go, and the word sent before the window goes:
+                // in a battle over the network it went on with its last input in the others' games
+                // until the battle let it go.)
+                state.drop_perspective();
+                if let Some(net) = state.game.net.as_mut() {
+                    net.flush();
                 }
                 state.archive_replay();
                 event_loop.exit();
@@ -4614,6 +4628,9 @@ impl State {
         self.perspective_post = Some(self.settled_post());
         self.game.command_mode = None;
         self.game.placement = None;
+        // (A box being dragged, a formation being drawn: gone, not finished by a release in the
+        // unit or ordered on the first frame back over the map.)
+        self.game.cancel_pointer_gestures();
         // The cursor stays in the window, hidden: the mouse looks round.
         if self.screenshot_path.is_none() {
             use winit::window::CursorGrabMode;
@@ -4633,10 +4650,12 @@ impl State {
         }
         p.reduced_motion = self.settings.gameplay.reduced_motion;
         p.reduced_flashes = self.settings.gameplay.reduced_flashes;
+        // (A pad in use: its buttons are the ones hinted.)
+        p.set_pad(self.gamepad.active, now);
         // (The clock's hour is the one the world is lit by.)
         p.hours = self.renderer.lighting.time_of_day;
-        // (The unit's eye looks out of the middle of the window, cockpit and sights with it.)
-        self.camera.view_offset = Vec2::ZERO;
+        // (The unit's eye looks out of the middle of the window, cockpit and sights with it: the
+        // view's update eases the interface's offset out as it dives in, and back as it leaves.)
         // The battle decided: out, to its end.
         if self.game.outcome.is_some() {
             p.leave(&mut self.game);
@@ -4648,7 +4667,9 @@ impl State {
         p.update(&mut self.game, input, &mut self.camera, dt, now);
         self.renderer.set_cockpit_frame(p.cockpit_frame(&self.game, now));
         // A modelled cockpit's instruments, painted onto its glass before the frame is drawn.
-        if !p.minimalist && p.model.is_some()
+        // (Not while nobody sees them: the cockpit is not drawn from behind the unit, through the
+        // magnified sight, or the signal lost.)
+        if !p.minimalist && p.model.is_some() && p.seat > 0.0
             && let Some(atlas) = self.renderer.cockpit_instruments()
         {
             let gpu = &self.renderer.gpu;
@@ -4672,7 +4693,7 @@ impl State {
         if let Some(before) = self.perspective_post {
             let mut post = before;
             if p.night_vision {
-                post.exposure = before.exposure * 2.6;
+                post.exposure = before.exposure * crate::perspective::NIGHT_EXPOSURE;
                 post.saturation = 0.12;
             }
             self.renderer.post.settings = post;
@@ -4686,21 +4707,32 @@ impl State {
         }
     }
 
+    /// Where the ears are while riding in a unit: in its eye, turned the way the view looks; the
+    /// signal lost, or climbing back out, where the camera is, as widely.
+    fn perspective_ear(&self) -> Option<(Vec3, Vec3)> {
+        let p = self.perspective.as_ref()?;
+        Some(if p.lost.is_none() && !p.leaving { (p.eye, p.forward) } else { (self.camera.eye(), self.camera.focus - self.camera.eye()) })
+    }
+
     /// Out of the unit at once, the cockpit and the picture's settings as they were (a new
     /// battle: nothing of the last one's ride stays in it).
     fn drop_perspective(&mut self) {
-        if self.perspective.take().is_none() {
-            return;
-        }
+        let Some(mut p) = self.perspective.take() else { return };
+        // (A unit driven is let go: dropped at once, by a new battle or the window closing in a
+        // battle over the network, it went on with its last input in everyone's game until the
+        // battle let it go.)
+        p.leave(&mut self.game);
         self.game.scene.hide_near = None;
+        // (Blasts felt in the unit do not shake the map's camera once out of it.)
+        self.game.effects.shake = 0.0;
         self.renderer.set_cockpit(None);
         if let Some(post) = self.perspective_post.take() {
             self.renderer.post.settings = post;
         }
         use winit::window::CursorGrabMode;
         let _ = self.window.set_cursor_grab(CursorGrabMode::None);
-        // (A benchmark keeps the pointer hidden throughout.)
-        self.window.set_cursor_visible(self.benchmark.is_none());
+        // (The pointer is shown again, or not, as the interface asks from the next frame: TA's
+        // own drawn, the system's stays hidden. Shown here, both were.)
     }
 
     /// How the 3D trees and rocks are seen: only by the perspective camera, from a unit's eyes or
@@ -5616,9 +5648,17 @@ impl State {
                 // the one under the pointer, an ally's or, spectating, anyone's; Escape (or the
                 // key again) out.
                 let now_ui = self.egui.ctx.input(|i| i.time);
-                let perspective_key = !self.game.history_open && self.game.keys.pressed(&self.input, "perspective") && !self.egui.ctx.egui_wants_keyboard_input() && self.game.chat_input.is_none();
-                if self.perspective.is_none() && self.photo.is_none() && self.reel.is_none() && self.game.outcome.is_none() && !self.in_game_menu {
-                    let wanted = self.game.perspective_request.take().or_else(|| {
+                let keyboard_free = !self.egui.ctx.egui_wants_keyboard_input() && self.game.chat_input.is_none();
+                let perspective_key = !self.game.history_open && self.game.keys.pressed(&self.input, "perspective") && keyboard_free;
+                // (Asked for by the deck's button, a unit's radial menu or a staged scene: now or
+                // not at all, not once a dialog in the way has closed.)
+                let request = self.game.perspective_request.take();
+                // A dialog, page or menu open (F10's, F1's, the jukebox, the window's close asked
+                // about...) takes the pointer: never riding under it, where it showed only once
+                // the ride was over.
+                let overlay = self.battle_overlay_open();
+                if self.perspective.is_none() && self.photo.is_none() && self.reel.is_none() && !overlay {
+                    let wanted = request.or_else(|| {
                         let game = &self.game;
                         perspective_key.then(|| game.selection.iter().copied().chain(game.hovered).find(|&id| crate::perspective::Perspective::can_enter(game, id))).flatten()
                     });
@@ -5626,13 +5666,27 @@ impl State {
                         self.enter_perspective(id, now_ui);
                     }
                 } else if let Some(p) = self.perspective.as_mut()
-                    && (self.input.pressed(KeyCode::Escape) || perspective_key)
+                    && (self.input.pressed(KeyCode::Escape) || perspective_key || overlay)
                 {
                     p.leave(&mut self.game);
                 }
                 if self.perspective.is_some() {
-                    self.perspective_frame(dt, now_ui);
+                    // The battle's pause and speed keys work in the unit too, said on its glass.
+                    if keyboard_free && !overlay && let Some(change) = self.game.pace_keys(&self.input) {
+                        let text = match change {
+                            crate::game::PaceChange::Paused(true) => ta_ui::i18n::t("PAUSED").to_string(),
+                            crate::game::PaceChange::Paused(false) => crate::game::speed_message(self.game.speed),
+                            crate::game::PaceChange::Speed(speed) => crate::game::speed_message(speed),
+                        };
+                        if let Some(p) = self.perspective.as_mut() {
+                            p.hud.say(text, now_ui, false);
+                        }
+                    }
+                    // (The battle first, then the eye put in the unit as it is now drawn: placed
+                    // before, it was a frame behind the unit, which ran ahead of the view from
+                    // behind it by its speed.)
                     self.game.update(dt);
+                    self.perspective_frame(dt, now_ui);
                 } else if self.photo.is_some() {
                     self.photo_frame(dt);
                     // (The battle goes on in multiplayer.)
@@ -5816,7 +5870,9 @@ impl State {
         }
         // Route game events and voice requests to audio.
         // In a unit, the ears are in it too. Place them before new sounds are culled/panned.
-        let ear = self.perspective.as_ref().filter(|p| p.lost.is_none() && !p.leaving).map(|p| (p.eye, p.forward));
+        // (The signal lost, or climbing out, where the camera is: its own listening, a few units
+        // ahead of the eye, heard next to nothing of the battle till it was back over the map.)
+        let ear = self.perspective_ear();
         self.audio.set_listener(&self.camera, ear);
         let local = if self.game.spectator { 255 } else { self.game.local_player };
         let viewer = self.game.viewer();
@@ -5927,7 +5983,9 @@ impl State {
         if (self.egui.ctx.global_style().interaction.tooltip_delay - hint_delay).abs() > 0.001 {
             self.egui.ctx.all_styles_mut(|style| style.interaction.tooltip_delay = hint_delay);
         }
-        let on_glass = self.renderer.cockpit_instruments().is_some();
+        // (Not while the card refuses the instruments their painter: the unit's state is on the
+        // panels along the picture's foot then, rather than nowhere.)
+        let on_glass = self.renderer.cockpit_instruments().is_some() && self.instruments.is_some();
         if self.dev.visible {
             self.dev.particles = self.renderer.particle_stats();
             self.dev.gpu_times = self.renderer.gpu_timings().iter().map(|p| (p.pass, p.ms)).collect();
@@ -6429,7 +6487,10 @@ impl State {
         // (Nor while the menu's film plays on its own, once the menu has stepped aside: a move
         // brings both back.)
         let film_alone = self.screen == Screen::Menu && self.menu_film.as_ref().is_some_and(|f| f.watching && f.watched() > crate::backdrop::HIDE_POINTER_AFTER);
-        if self.benchmark.is_some() || (self.screen == Screen::Playing && self.hud.ta_cursor_drawn()) || film_alone {
+        // (Nor in a unit's eyes: the mouse looks round there. Shown again, a grabbed pointer was
+        // pushed to the window's edge as the view turned, and edge scrolling took the map away
+        // from the unit once it was left.)
+        if self.benchmark.is_some() || (self.screen == Screen::Playing && (self.hud.ta_cursor_drawn() || self.perspective.is_some())) || film_alone {
             platform.cursor_icon = egui::CursorIcon::None;
         }
         self.egui.state.handle_platform_output(&self.window, platform);

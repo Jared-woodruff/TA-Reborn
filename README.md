@@ -211,8 +211,10 @@ sags into its rubble.
 
 Select a unit and press **Q**. The camera dives into it: onto a tank's turret, into a walker's
 head, onto a ship's bridge, up a submarine's periscope, into a fighter's canopy. You ride along
-while it goes on with its orders. The mouse looks round, the wheel magnifies the sight, and Escape
-climbs back out.
+while it goes on with its orders, or, in one of your own ground units, hovercraft or ships, press
+**E** to take the controls: W and S drive it, A and D turn it, the mouse aims its guns and a click
+fires them. The mouse looks round, the wheel magnifies the sight, and Escape climbs back out. A
+controller works too: the right stick looks and aims, the left stick drives.
 
 <table>
   <tr>
@@ -240,6 +242,9 @@ climbs back out.
 - **Yours, an ally's, or anyone's**: ride along with an ally's unit, or any unit in a replay or as a
   spectator. You hear the battle from inside the hull, the glass cracks as it wears, the cabin lamp
   stutters as the hull fails, and a unit lost takes its signal with it.
+- **Any screen**: on an ultrawide screen the cab's walls go on round the view, and on a 4:3 or 16:10
+  one the view sees as far across as on 16:9, the whole dash in view. A Minimalist First-Person View
+  (Options) leaves only a sight, the unit's health and a radar.
 
 </details>
 

@@ -17,6 +17,25 @@ pub fn clock(angle: f32) -> Vec2 {
     vec2(angle.sin(), -angle.cos())
 }
 
+/// `text` cut short (an ellipsis at its end, at least a letter before it) to fit `room` points in
+/// `font`, measured as it is laid out: a full-width letter (Chinese, Japanese, Korean) takes two
+/// figures' room, a narrow one less than one.
+pub fn fit(painter: &Painter, text: &str, font: &FontId, room: f32) -> String {
+    let wide = |s: String| painter.layout_no_wrap(s, font.clone(), Color32::WHITE).size().x;
+    if wide(text.to_string()) <= room {
+        return text.to_string();
+    }
+    let letters: Vec<char> = text.chars().collect();
+    let cut = |n: usize| letters[..n].iter().collect::<String>().trim_end().to_string() + "…";
+    // (The most letters that fit with the ellipsis.)
+    let (mut lo, mut hi) = (1, letters.len().saturating_sub(1).max(1));
+    while lo < hi {
+        let mid = (lo + hi).div_ceil(2);
+        if wide(cut(mid)) <= room { lo = mid } else { hi = mid - 1 }
+    }
+    cut(lo.min(letters.len()))
+}
+
 /// What the weather's symbol is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Glyph {
@@ -102,9 +121,12 @@ impl<'a> Pen<'a> {
 
     /// `text` cut short (an ellipsis at its end) to fit `room` points at `size` units.
     pub fn fitted(&self, text: &str, size: f32, room: f32) -> String {
-        let per = self.width("0", size).max(1.0);
-        let fit = (room / per).floor().max(2.0) as usize;
-        if text.chars().count() <= fit { text.to_string() } else { text.chars().take(fit - 1).collect::<String>() + "…" }
+        fit(self.painter, text, &mono(self.s(size)), room)
+    }
+
+    /// `text` in the names' semi-bold face cut short to fit `room` points at `size` units.
+    pub fn fitted_name(&self, text: &str, size: f32, room: f32) -> String {
+        fit(self.painter, text, &strong(self.s(size)), room)
     }
 
     /// A figure of `places` digits, its leading zeros dim (an unlit digit's ghost), `size` units
@@ -304,6 +326,31 @@ impl<'a> Pen<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn text_is_cut_short_to_the_room_it_takes_as_laid_out() {
+        let ctx = egui::Context::default();
+        crate::theme::install_compact(&ctx);
+        ctx.begin_pass(egui::RawInput::default());
+        let painter = ctx.layer_painter(egui::LayerId::background());
+        let font = mono(14.0);
+        let wide = |s: &str| painter.layout_no_wrap(s.to_string(), font.clone(), Color32::WHITE).size().x;
+        let figure = wide("0");
+        // (Short enough, as it is.)
+        assert_eq!(fit(&painter, "READY", &font, figure * 8.0), "READY");
+        // Whatever its letters' widths (a full-width letter takes two figures' room): cut to the
+        // room the letters take, not to as many letters as figures would fit.
+        for text in ["攻撃中の目標を追跡しています", "ATTACKING THE ENEMY COMMANDER", "АТАКУЕТ ВРАЖЕСКИЙ КОМАНДИР"] {
+            for room in [figure * 6.0, figure * 11.0] {
+                let cut = fit(&painter, text, &font, room);
+                assert!(cut.ends_with('…') && wide(&cut) <= room + 0.01, "{text} in {room}: {cut}, {} wide", wide(&cut));
+                assert!(cut.chars().count() >= 2);
+            }
+        }
+        // (Even with no room, a letter and the ellipsis.)
+        assert_eq!(fit(&painter, "LOADING", &font, -5.0), "L…");
+        ctx.end_pass().drop_without_applying_deltas();
+    }
 
     #[test]
     fn a_clock_angle_points_up_then_clockwise() {

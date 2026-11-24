@@ -800,6 +800,8 @@ pub struct Renderer {
     space: Option<space::SpaceRenderer>,
     /// Perspective: the cockpit round the view, and how it is this frame (none: not drawn).
     cockpit: Option<cockpit::CockpitRenderer>,
+    /// What every cockpit is drawn with (its pipelines and textures), kept from one to the next.
+    cockpit_kit: Option<cockpit::CockpitKit>,
     cockpit_frame: Option<cockpit::CockpitFrame>,
     /// This frame's heat haze sources (see [`Renderer::add_heat_source`]).
     heat_sources: Vec<HeatSource>,
@@ -1139,6 +1141,7 @@ impl Renderer {
             room: None,
             space: None,
             cockpit: None,
+            cockpit_kit: None,
             cockpit_frame: None,
             heat_sources: Vec::new(),
             heat,
@@ -1870,11 +1873,80 @@ impl Renderer {
         cover + (0.95 - cover).max(0.0) * self.overcast(camera)
     }
 
+    /// The sky the frame is lit by: the horizon's haze and the zenith (the hour's, the map's or
+    /// the world's, greyed under rain clouds), how much the sun's and the sky's light are dimmed
+    /// by those clouds, and how much cooler they are. The world's uniform and the cockpit's light
+    /// are both made from it.
+    fn frame_sky(&self, camera: &Camera) -> FrameSky {
+        let l = &self.frame_lighting;
+        // Rain clouds: less sun, a darker haze.
+        let overcast = self.overcast(camera);
+        let (sun_dim, haze_dim) = (1.0 - RAIN_DIM * overcast, 1.0 - 0.3 * overcast);
+        // The perspective sky: horizon haze (the fog colour, tinted per map) and zenith. The
+        // classic view keeps the plain fog colour and never reads the sky fields.
+        let sky_on = self.sky_visible(camera);
+        let s = &l.sky;
+        let (fog_color, zenith) = if let Some(d) = &self.frame_daylight {
+            (d.horizon * haze_dim, if sky_on { d.zenith * haze_dim } else { Vec3::ZERO })
+        } else if sky_on {
+            let atmosphere = self.ground_average().map(|average| MapAtmosphere { average, fluid: self.fluid() });
+            let (fog, zenith) = sky::sky_colors(s, l.fog_color, l.ambient, atmosphere, &self.world_sky);
+            (fog * haze_dim, zenith * haze_dim)
+        } else {
+            (l.fog_color, Vec3::ZERO)
+        };
+        // Under rain clouds the haze and the sky above it go a cool, colourless grey (a desert's
+        // warm haze, only darkened, hung over the land as a sepia wash; see also `fog` below).
+        let rainy = |c: Vec3| c.lerp(Vec3::splat(c.dot(Vec3::new(0.2126, 0.7152, 0.0722))) * Vec3::new(0.94, 0.99, 1.06), 0.65 * overcast);
+        // (And the light they let through is a little cooler: the land under them is not the
+        // sunlit land, darkened, but it keeps its own colour.)
+        let cool = Vec3::ONE.lerp(Vec3::new(0.95, 0.985, 1.04), overcast);
+        FrameSky { fog_color: rainy(fog_color), zenith: rainy(zenith), sun_dim, cool }
+    }
+
+    /// The cockpit's depth for the picture as it now is, made before the frame is put together (in
+    /// an error scope: refused for want of memory, the cockpit goes, not the frame). Whether it
+    /// can be drawn.
+    fn prepare_cockpit(&mut self) -> bool {
+        let (size, samples) = (self.post.size(), self.post.samples);
+        if self.cockpit_kit.as_ref().is_none_or(|k| k.samples != samples) {
+            // (The antialiasing changed under it: made again at the next dive in.)
+            self.cockpit = None;
+            return false;
+        }
+        let Some(c) = self.cockpit.as_mut() else { return false };
+        if c.depth_fits(size) {
+            return true;
+        }
+        let device = &self.gpu.device;
+        let scope = device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
+        c.make_depth(device, size, samples);
+        if let Some(e) = pollster::block_on(scope.pop()) {
+            log::error!("cockpit: {e}");
+            self.cockpit = None;
+            return false;
+        }
+        true
+    }
+
+    /// The light in a cockpit round the eye this frame: the world's own, as the frame's uniform
+    /// has it (the hour's sky, dimmed and greyed under rain clouds; a world without air's dark).
+    fn cockpit_light(&self, camera: &Camera) -> cockpit::CockpitLight {
+        let l = &self.frame_lighting;
+        let sky = self.frame_sky(camera);
+        cockpit::CockpitLight {
+            sun_dir: l.sun_dir,
+            sun: l.sun_color * sky.cool * l.sun_intensity * sky.sun_dim,
+            horizon: sky.fog_color,
+            ambient: l.ambient * sky.sun_dim * sky.cool,
+        }
+    }
+
     fn write_frame_uniform(&self, camera: &Camera, grid: &LightGrid, fx: FrameEffects, time: f32) {
         let l = &self.frame_lighting;
         // Rain clouds: less sun, softer shadows, a darker haze.
         let overcast = self.overcast(camera);
-        let (sun_dim, shadow_dim, haze_dim) = (1.0 - RAIN_DIM * overcast, 1.0 - 0.5 * overcast, 1.0 - 0.3 * overcast);
+        let (sun_dim, shadow_dim) = (1.0 - RAIN_DIM * overcast, 1.0 - 0.5 * overcast);
         let sun = l.sun_dir.normalize();
         let (map_w, map_h, sea) = match &self.terrain {
             Some(t) => {
@@ -1895,26 +1967,9 @@ impl Renderer {
         let clarity = if acid { w.clarity.min(20.0) } else { w.clarity };
         let eye = camera.eye();
         let view_proj = camera.view_proj();
-        // The perspective sky: horizon haze (the fog colour, tinted per map) and zenith. The
-        // classic view keeps the plain fog colour and never reads the sky fields.
         let sky_on = self.sky_visible(camera);
         let s = &l.sky;
-        let (fog_color, zenith) = if let Some(d) = &self.frame_daylight {
-            (d.horizon * haze_dim, if sky_on { d.zenith * haze_dim } else { Vec3::ZERO })
-        } else if sky_on {
-            let atmosphere = self.ground_average().map(|average| MapAtmosphere { average, fluid: self.fluid() });
-            let (fog, zenith) = sky::sky_colors(s, l.fog_color, l.ambient, atmosphere, &self.world_sky);
-            (fog * haze_dim, zenith * haze_dim)
-        } else {
-            (l.fog_color, Vec3::ZERO)
-        };
-        // Under rain clouds the haze and the sky above it go a cool, colourless grey (a desert's
-        // warm haze, only darkened, hung over the land as a sepia wash; see also `fog` below).
-        let rainy = |c: Vec3| c.lerp(Vec3::splat(c.dot(Vec3::new(0.2126, 0.7152, 0.0722))) * Vec3::new(0.94, 0.99, 1.06), 0.65 * overcast);
-        let (fog_color, zenith) = (rainy(fog_color), rainy(zenith));
-        // (And the light they let through is a little cooler: the land under them is not the
-        // sunlit land, darkened, but it keeps its own colour.)
-        let cool = Vec3::ONE.lerp(Vec3::new(0.95, 0.985, 1.04), overcast);
+        let FrameSky { fog_color, zenith, cool, .. } = self.frame_sky(camera);
         let reach = if self.skirt.is_some() { s.horizon_extent } else { 0.0 };
         let painted = self.water.as_ref().and_then(|w| w.painted);
         let beyond_sea = painted.map_or([0.0; 4], |p| [p.sea[0], p.sea[1], p.sea[2], 1.0]);
@@ -2224,8 +2279,27 @@ impl Renderer {
 
     /// Puts up the cockpit a Perspective view is seen from (see [`cockpit`]), or takes it down.
     pub fn set_cockpit(&mut self, model: Option<&cockpit::CockpitModel>) {
-        self.cockpit = model.map(|m| cockpit::CockpitRenderer::new(&self.gpu.device, &self.gpu.queue, m, self.post.samples));
         self.cockpit_frame = None;
+        self.cockpit = None;
+        let Some(model) = model else { return };
+        let device = &self.gpu.device;
+        // (Refused, for want of memory or by a shader of `TA_COCKPITS`' that does not build: no
+        // cockpit, the view without one, rather than every frame refused whole while it is up.)
+        let (memory, invalid) = (device.push_error_scope(wgpu::ErrorFilter::OutOfMemory), device.push_error_scope(wgpu::ErrorFilter::Validation));
+        // (Its pipelines and textures made once for a picture's antialiasing; made afresh from
+        // `TA_COCKPITS`' folder, to try a shader there unbuilt.)
+        let samples = self.post.samples;
+        if std::env::var_os("TA_COCKPITS").is_some() || self.cockpit_kit.as_ref().is_none_or(|k| k.samples != samples) {
+            self.cockpit_kit = Some(cockpit::CockpitKit::new(device, &self.gpu.queue, samples));
+        }
+        let renderer = self.cockpit_kit.as_ref().map(|kit| cockpit::CockpitRenderer::new(device, model, kit));
+        let failed = [pollster::block_on(invalid.pop()), pollster::block_on(memory.pop())];
+        if let Some(e) = failed.iter().flatten().next() {
+            log::error!("cockpit: {e}");
+            self.cockpit_kit = None;
+            return;
+        }
+        self.cockpit = renderer;
     }
 
     /// How the cockpit is this frame; none hides it.
@@ -2487,7 +2561,7 @@ impl Renderer {
         });
         self.sprites.sort_transparency(&self.gpu.device, &self.gpu.queue, view_depth.to_array(), reflected_depth);
         let particles_on = self.particles.prepare(&self.gpu.device, &self.gpu.queue, liquid, view_depth.to_array(), reflected_depth);
-        let cockpit_on = camera.mode == CameraMode::Perspective && self.cockpit.is_some() && self.cockpit_frame.is_some();
+        let cockpit_on = camera.mode == CameraMode::Perspective && self.cockpit.is_some() && self.cockpit_frame.is_some() && self.prepare_cockpit();
         let mut timestamps = |label| self.timer.as_mut().filter(|_| timed).and_then(|t| t.pass(label));
         // Passes are timed in the order the GPU runs them (the timer's `full` span runs from the
         // first to the last). The cloud and contact occlusion passes are not timed on their own:
@@ -2739,8 +2813,10 @@ impl Renderer {
 
         // Perspective: the cockpit over the scene, before the picture is finished (its lamps
         // bloom like the world's).
-        if cockpit_on && let (Some(c), Some(f)) = (self.cockpit.as_mut(), self.cockpit_frame.as_ref()) {
-            c.draw(device, &self.gpu.queue, &mut encoder, self.post.scene_attachment(), self.post.size(), camera, &self.frame_lighting, f, cockpit_ts.as_ref());
+        // (Lit by the world's light as the frame has it: the hour's sky, the rain clouds.)
+        let light = cockpit_on.then(|| self.cockpit_light(camera));
+        if let (Some(light), Some(c), Some(kit), Some(f)) = (light, self.cockpit.as_mut(), self.cockpit_kit.as_ref(), self.cockpit_frame.as_ref()) {
+            c.draw(kit, &self.gpu.queue, &mut encoder, self.post.scene_attachment(), camera, &light, f, cockpit_ts.as_ref());
         }
         let view = texture.create_view(&wgpu::TextureViewDescriptor {
             format: Some(self.gpu.view_format),
@@ -3441,4 +3517,15 @@ mod tests {
         assert!(post::PostSettings::default().heat_haze > 0.0);
         assert_eq!(l.water_reflections, WaterReflections::Half);
     }
+}
+
+/// The sky a frame is lit by (`Renderer::frame_sky`).
+#[derive(Clone, Copy, Debug)]
+struct FrameSky {
+    /// The horizon's haze and the zenith (linear).
+    fog_color: Vec3,
+    zenith: Vec3,
+    /// How much of the sun's and the sky's light the rain clouds let through, and its tint.
+    sun_dim: f32,
+    cool: Vec3,
 }

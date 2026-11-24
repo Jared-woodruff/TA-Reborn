@@ -434,9 +434,10 @@ pub struct Effects {
 }
 
 impl Effects {
-    /// How hard it rains at game time `now` (0..1; see the weather in `effects_ambient.rs`).
-    pub fn rain(&self, now: f32) -> f32 {
-        self.rain_strength(now)
+    /// How hard it rains as the world is drawn this frame (0..1): the sky's rain, as much of it
+    /// as the WEATHER setting shows (none with it off).
+    pub fn rain_shown(&self) -> f32 {
+        self.ambient.raining
     }
 
     /// The weather over the world as it is drawn: snow, embers, showers, dust, spores or glitter,

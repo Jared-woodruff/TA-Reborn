@@ -171,6 +171,13 @@ impl CockpitModel {
         self.parts.iter().position(|p| p.0 == name)
     }
 
+    /// How many of its indices are its opaque triangles' (they come first, the decals and the
+    /// glass after them: see [`CockpitModel::from_glb`]).
+    pub fn opaque_indices(&self) -> u32 {
+        let layer = |t: &[u32]| self.vertices.get(t[0] as usize).and_then(|v| self.materials.get(v.material as usize)).map_or(0, |m| m.role.layer());
+        self.indices.chunks_exact(3).take_while(|t| layer(t) == 0).count() as u32 * 3
+    }
+
     pub fn screen(&self, name: &str) -> Option<&Screen> {
         self.screens.iter().find(|s| s.name == name)
     }
@@ -238,7 +245,12 @@ impl CockpitModel {
                 let base = model.vertices.len() as u32;
                 for k in 0..positions.len() / 3 {
                     let p = placed.transform_point3(Vec3::new(positions[k * 3], positions[k * 3 + 1], positions[k * 3 + 2]));
-                    let n = normal_matrix.transform_vector3(Vec3::new(normals[k * 3], normals[k * 3 + 1], normals[k * 3 + 2])).normalize_or_zero();
+                    // (A model without normals, or with fewer than positions: lit as facing the
+                    // eye, rather than read past the end.)
+                    let n = match normals.get(k * 3..k * 3 + 3) {
+                        Some(n) => normal_matrix.transform_vector3(Vec3::new(n[0], n[1], n[2])).normalize_or(Vec3::Z),
+                        None => Vec3::Z,
+                    };
                     let uv = [uvs.get(k * 2).copied().unwrap_or(0.0), uvs.get(k * 2 + 1).copied().unwrap_or(0.0)];
                     model.vertices.push(CockpitVertex { pos: p.to_array(), normal: n.to_array(), masks: masks.get(k).copied().unwrap_or(open), uv, material, part });
                     if let Some(points) = screen_points.get_mut(material as usize).filter(|_| model.materials[material as usize].role == Role::Screen) {
@@ -246,7 +258,17 @@ impl CockpitModel {
                     }
                 }
                 match prim["indices"].as_u64() {
-                    Some(a) => model.indices.extend(glb.read_indices(a as usize)?.into_iter().map(|i| base + i)),
+                    Some(a) => {
+                        let indices = glb.read_indices(a as usize)?;
+                        let count = model.vertices.len() as u32 - base;
+                        if let Some(bad) = indices.iter().find(|&&i| i >= count) {
+                            bail!("cockpit GLB: index {bad} past a primitive's {count} vertices");
+                        }
+                        if indices.len() % 3 != 0 {
+                            bail!("cockpit GLB: {} indices, not whole triangles", indices.len());
+                        }
+                        model.indices.extend(indices.into_iter().map(|i| base + i));
+                    }
                     None => model.indices.extend(base..model.vertices.len() as u32),
                 }
             }
@@ -330,10 +352,30 @@ pub struct CockpitFrame {
     pub sun: f32,
     /// Seconds, for blinking.
     pub time: f32,
-    /// How hard it rains (0..1, drops on the glass), and whether it flies (blown back over a
-    /// canopy rather than running down).
+    /// How hard it rains (0..1, drops on the glass), the drops' clock (seconds of the battle's
+    /// time: still while it is paused), and whether it flies (blown back over a canopy rather
+    /// than running down).
     pub rain: f32,
+    pub rain_time: f32,
     pub flies: bool,
+    /// How bright it is drawn (1; under it while the picture is brightened, by the night sight:
+    /// that brightens the battle outside, not the cab's own lamps and screens).
+    pub brightness: f32,
+    /// How far what the model leaves uncovered is the cab's walls, in their shadow (0..1): a
+    /// picture wider than the cab is modelled for (ultrawide screens) shows the battle round its
+    /// edges otherwise. None while it comes in round the eye (the battle is seen round it then).
+    pub walls: f32,
+}
+
+/// The world's light as it reaches a cockpit this frame (linear): the way to the sun and its light
+/// (dimmed by rain clouds), the horizon's haze (the hour's: dark at night, grey in the rain) and
+/// the sky's light.
+#[derive(Clone, Copy, Debug)]
+pub struct CockpitLight {
+    pub sun_dir: Vec3,
+    pub sun: Vec3,
+    pub horizon: Vec3,
+    pub ambient: Vec3,
 }
 
 #[repr(C)]
@@ -351,9 +393,14 @@ struct Uniform {
     params: [f32; 4],
     weather: [f32; 4],
     paint: [f32; 4],
+    /// The cabin lamp, where it hangs this frame (eye space).
+    lamp: [f32; 4],
     /// The instruments' glow as lights, two each (see the shader).
     lights: [[f32; 4]; MAX_LIGHTS * 2],
 }
+
+/// The cabin lamp, over and behind the eye (cockpit space, metres).
+const CABIN_LAMP: Vec3 = Vec3::new(0.0, 0.3, 0.18);
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -543,26 +590,30 @@ fn texture_from_png(device: &wgpu::Device, queue: &wgpu::Queue, label: &str, png
     texture.create_view(&Default::default())
 }
 
-/// The GPU side of a cockpit.
-pub struct CockpitRenderer {
-    pipeline: wgpu::RenderPipeline,
-    vertices: wgpu::Buffer,
-    indices: wgpu::Buffer,
-    count: u32,
-    uniform: wgpu::Buffer,
-    parts: wgpu::Buffer,
-    bind_group: wgpu::BindGroup,
-    samples: u32,
-    depth: Option<(u32, u32, Target)>,
-    /// Where each moving part rests.
-    rests: Vec<Mat4>,
-    /// The instruments' glow (cockpit space).
-    lights: Vec<ScreenLight>,
-    pub instruments: InstrumentAtlas,
+/// What every cockpit is drawn with, whatever its model: the shader's pipelines and their layout,
+/// the samplers, and the paint's wear and decal textures. Made once for a picture's antialiasing
+/// (made at every dive in, the shader compiled and the textures' mipmaps built held up its first
+/// frame).
+pub struct CockpitKit {
+    layout: wgpu::BindGroupLayout,
+    /// The opaque triangles (written over what is there, the haze's alpha cleared: the heat over
+    /// the battle behind them neither shimmers on them nor takes their paint into the window), the
+    /// decals and the glass blended over them (the battle's heat under the glass kept), and the cab's
+    /// walls where the model leaves the picture uncovered ([`CockpitFrame::walls`]).
+    opaque: wgpu::RenderPipeline,
+    translucent: wgpu::RenderPipeline,
+    walls: wgpu::RenderPipeline,
+    sampler: wgpu::Sampler,
+    wear: wgpu::TextureView,
+    decals: wgpu::TextureView,
+    wrap: wgpu::Sampler,
+    clamp: wgpu::Sampler,
+    /// The antialiasing it was made for (the picture's samples).
+    pub samples: u32,
 }
 
-impl CockpitRenderer {
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, model: &CockpitModel, samples: u32) -> CockpitRenderer {
+impl CockpitKit {
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, samples: u32) -> CockpitKit {
         // (`TA_COCKPITS=<folder>` with a `cockpit.wgsl` in it: that one, to try it unbuilt.)
         let source = std::env::var_os("TA_COCKPITS").and_then(|dir| std::fs::read_to_string(std::path::Path::new(&dir).join("cockpit.wgsl")).ok());
         let module = crate::util::shader_standalone(device, "cockpit", source.as_deref().unwrap_or(include_str!("shaders/cockpit.wgsl")));
@@ -589,12 +640,7 @@ impl CockpitRenderer {
                 },
                 storage(1),
                 storage(2),
-                wgpu::BindGroupLayoutEntry {
-                    binding: 3,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: true }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false },
-                    count: None,
-                },
+                texture(3),
                 wgpu::BindGroupLayoutEntry { binding: 4, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering), count: None },
                 storage(5),
                 texture(6),
@@ -605,33 +651,114 @@ impl CockpitRenderer {
         });
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some("cockpit"), bind_group_layouts: &[Some(&layout)], immediate_size: 0 });
         let attributes = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x4, 3 => Float32x2, 4 => Uint32, 5 => Uint32];
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("cockpit"),
+        let depth = |write: bool| wgpu::DepthStencilState {
+            format: DEPTH_FORMAT,
+            depth_write_enabled: Some(write),
+            depth_compare: Some(wgpu::CompareFunction::LessEqual),
+            stencil: Default::default(),
+            bias: Default::default(),
+        };
+        // (The heat haze reads the picture's alpha: over 1, the heat in front; 0 or less, no haze
+        // there, and none taken from there.)
+        let cleared = wgpu::BlendComponent { src_factor: wgpu::BlendFactor::Zero, dst_factor: wgpu::BlendFactor::Zero, operation: wgpu::BlendOperation::Add };
+        let model_pipeline = |label: &'static str, target: wgpu::ColorTargetState| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &module,
+                    entry_point: Some("vs_main"),
+                    compilation_options: Default::default(),
+                    buffers: &[Some(wgpu::VertexBufferLayout { array_stride: std::mem::size_of::<CockpitVertex>() as u64, step_mode: wgpu::VertexStepMode::Vertex, attributes: &attributes })],
+                },
+                fragment: Some(wgpu::FragmentState { module: &module, entry_point: Some("fs_main"), compilation_options: Default::default(), targets: &[Some(target)] }),
+                primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+                depth_stencil: Some(depth(true)),
+                multisample: wgpu::MultisampleState { count: samples, ..Default::default() },
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+        let opaque = model_pipeline("cockpit", wgpu::ColorTargetState { format: HDR_FORMAT, blend: Some(wgpu::BlendState { color: wgpu::BlendComponent::REPLACE, alpha: cleared }), write_mask: wgpu::ColorWrites::ALL });
+        let translucent = model_pipeline("cockpit glass", wgpu::ColorTargetState { format: HDR_FORMAT, blend: Some(wgpu::BlendState::ALPHA_BLENDING), write_mask: wgpu::ColorWrites::COLOR });
+        // The walls beyond the model: a triangle over the whole picture at the far plane, drawn
+        // after it where nothing of it (frame, wall or glass) came nearer; the haze's alpha taken
+        // away as far as they cover.
+        let walls = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("cockpit walls"),
             layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &module,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[Some(wgpu::VertexBufferLayout { array_stride: std::mem::size_of::<CockpitVertex>() as u64, step_mode: wgpu::VertexStepMode::Vertex, attributes: &attributes })],
-            },
+            vertex: wgpu::VertexState { module: &module, entry_point: Some("vs_walls"), compilation_options: Default::default(), buffers: &[] },
             fragment: Some(wgpu::FragmentState {
                 module: &module,
-                entry_point: Some("fs_main"),
+                entry_point: Some("fs_walls"),
                 compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState { format: HDR_FORMAT, blend: Some(wgpu::BlendState::ALPHA_BLENDING), write_mask: wgpu::ColorWrites::ALL })],
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: HDR_FORMAT,
+                    blend: Some(wgpu::BlendState {
+                        color: wgpu::BlendState::ALPHA_BLENDING.color,
+                        alpha: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::Zero, dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha, operation: wgpu::BlendOperation::Add },
+                    }),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
             }),
             primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: DEPTH_FORMAT,
-                depth_write_enabled: Some(true),
-                depth_compare: Some(wgpu::CompareFunction::LessEqual),
-                stencil: Default::default(),
-                bias: Default::default(),
-            }),
+            depth_stencil: Some(depth(false)),
             multisample: wgpu::MultisampleState { count: samples, ..Default::default() },
             multiview_mask: None,
             cache: None,
         });
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("cockpit instruments"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            ..Default::default()
+        });
+        // The wear (repeating across every face, filtered steeply: the console is seen at a
+        // slant) and the decals.
+        let (wear_png, decals_png) = crate::cockpit_textures();
+        let wear = texture_from_png(device, queue, "cockpit wear", wear_png, wgpu::TextureFormat::Rgba8Unorm);
+        let decals = texture_from_png(device, queue, "cockpit decals", decals_png, wgpu::TextureFormat::Rgba8UnormSrgb);
+        let mipped = |label: &'static str, address: wgpu::AddressMode| {
+            device.create_sampler(&wgpu::SamplerDescriptor {
+                label: Some(label),
+                address_mode_u: address,
+                address_mode_v: address,
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Linear,
+                mipmap_filter: wgpu::MipmapFilterMode::Linear,
+                anisotropy_clamp: 8,
+                ..Default::default()
+            })
+        };
+        let wrap = mipped("cockpit wear", wgpu::AddressMode::Repeat);
+        let clamp = mipped("cockpit decals", wgpu::AddressMode::ClampToEdge);
+        CockpitKit { layout, opaque, translucent, walls, sampler, wear, decals, wrap, clamp, samples }
+    }
+}
+
+/// The GPU side of a cockpit's model (drawn with a [`CockpitKit`]).
+pub struct CockpitRenderer {
+    vertices: wgpu::Buffer,
+    indices: wgpu::Buffer,
+    /// The indices of its opaque triangles (they come first: the decals and the glass after
+    /// them), and of all of them.
+    opaque: u32,
+    count: u32,
+    uniform: wgpu::Buffer,
+    parts: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
+    depth: Option<(u32, u32, Target)>,
+    /// Where each moving part rests.
+    rests: Vec<Mat4>,
+    /// The instruments' glow (cockpit space).
+    lights: Vec<ScreenLight>,
+    pub instruments: InstrumentAtlas,
+}
+
+impl CockpitRenderer {
+    pub fn new(device: &wgpu::Device, model: &CockpitModel, kit: &CockpitKit) -> CockpitRenderer {
         let vertices = device.create_buffer_checked(&wgpu::util::BufferInitDescriptor { label: Some("cockpit vertices"), contents: bytemuck::cast_slice(&model.vertices), usage: wgpu::BufferUsages::VERTEX });
         let indices = device.create_buffer_checked(&wgpu::util::BufferInitDescriptor { label: Some("cockpit indices"), contents: bytemuck::cast_slice(&model.indices), usage: wgpu::BufferUsages::INDEX });
         let uniform = device.create_buffer(&wgpu::BufferDescriptor { label: Some("cockpit uniform"), size: std::mem::size_of::<Uniform>() as u64, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
@@ -666,58 +793,30 @@ impl CockpitRenderer {
             };
         }
         let screens = device.create_buffer_checked(&wgpu::util::BufferInitDescriptor { label: Some("cockpit screens"), contents: bytemuck::cast_slice(&screens), usage: wgpu::BufferUsages::STORAGE });
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("cockpit instruments"),
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            ..Default::default()
-        });
-        // The wear (repeating across every face, filtered steeply: the console is seen at a
-        // slant) and the decals.
-        let (wear_png, decals_png) = crate::cockpit_textures();
-        let wear = texture_from_png(device, queue, "cockpit wear", wear_png, wgpu::TextureFormat::Rgba8Unorm);
-        let decals = texture_from_png(device, queue, "cockpit decals", decals_png, wgpu::TextureFormat::Rgba8UnormSrgb);
-        let mipped = |label: &'static str, address: wgpu::AddressMode| {
-            device.create_sampler(&wgpu::SamplerDescriptor {
-                label: Some(label),
-                address_mode_u: address,
-                address_mode_v: address,
-                mag_filter: wgpu::FilterMode::Linear,
-                min_filter: wgpu::FilterMode::Linear,
-                mipmap_filter: wgpu::MipmapFilterMode::Linear,
-                anisotropy_clamp: 8,
-                ..Default::default()
-            })
-        };
-        let wrap = mipped("cockpit wear", wgpu::AddressMode::Repeat);
-        let clamp = mipped("cockpit decals", wgpu::AddressMode::ClampToEdge);
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("cockpit"),
-            layout: &layout,
+            layout: &kit.layout,
             entries: &[
                 wgpu::BindGroupEntry { binding: 0, resource: uniform.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 1, resource: parts.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 2, resource: materials.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(&instruments.view) },
-                wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::Sampler(&sampler) },
+                wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::Sampler(&kit.sampler) },
                 wgpu::BindGroupEntry { binding: 5, resource: screens.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(&wear) },
-                wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::TextureView(&decals) },
-                wgpu::BindGroupEntry { binding: 8, resource: wgpu::BindingResource::Sampler(&wrap) },
-                wgpu::BindGroupEntry { binding: 9, resource: wgpu::BindingResource::Sampler(&clamp) },
+                wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(&kit.wear) },
+                wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::TextureView(&kit.decals) },
+                wgpu::BindGroupEntry { binding: 8, resource: wgpu::BindingResource::Sampler(&kit.wrap) },
+                wgpu::BindGroupEntry { binding: 9, resource: wgpu::BindingResource::Sampler(&kit.clamp) },
             ],
         });
         CockpitRenderer {
-            pipeline,
             vertices,
             indices,
+            opaque: model.opaque_indices(),
             count: model.indices.len() as u32,
             uniform,
             parts,
             bind_group,
-            samples,
             depth: None,
             rests: model.parts.iter().map(|p| p.1).collect(),
             lights: screen_lights(&model.screens),
@@ -725,32 +824,44 @@ impl CockpitRenderer {
         }
     }
 
+    /// Whether its depth is made, for a picture `size` pixels.
+    pub(crate) fn depth_fits(&self, size: (u32, u32)) -> bool {
+        self.depth.as_ref().is_some_and(|d| (d.0, d.1) == size)
+    }
+
+    /// Makes its depth for a picture `size` pixels with `samples` to a pixel (asked for before the
+    /// frame is put together, when the picture's size changed: made in the frame and refused for
+    /// want of memory, the whole frame was).
+    pub(crate) fn make_depth(&mut self, device: &wgpu::Device, size: (u32, u32), samples: u32) {
+        // (Cleared and thrown away each frame: a card that keeps such in its tiles never gives it
+        // memory of its own.)
+        let usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TRANSIENT_ATTACHMENT;
+        self.depth = Some((size.0, size.1, Target::new(device, "cockpit depth", size.0, size.1, DEPTH_FORMAT, samples, usage)));
+    }
+
     /// Draws the cockpit over the scene's picture (`color`, resolved into `resolve` when
-    /// multisampled), `size` pixels, with its own depth (its time on the GPU taken with
-    /// `timestamps`, when they are).
+    /// multisampled) with its own depth (made by [`Self::make_depth`]; its time on the GPU taken
+    /// with `timestamps`, when they are).
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn draw(
         &mut self,
-        device: &wgpu::Device,
+        kit: &CockpitKit,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         (color, resolve): (&wgpu::TextureView, Option<&wgpu::TextureView>),
-        size: (u32, u32),
         camera: &crate::Camera,
-        lighting: &crate::Lighting,
+        light: &CockpitLight,
         frame: &CockpitFrame,
         timestamps: Option<&crate::timing::PassTimestamps>,
     ) {
-        if self.depth.as_ref().is_none_or(|d| (d.0, d.1) != size) {
-            self.depth = Some((size.0, size.1, Target::new(device, "cockpit depth", size.0, size.1, DEPTH_FORMAT, self.samples, wgpu::TextureUsages::RENDER_ATTACHMENT)));
-        }
+        let Some((_, _, depth)) = &self.depth else { return };
         let aspect = camera.viewport.x / camera.viewport.y.max(1.0);
         let proj = glam::camera::rh::proj::directx::perspective(frame.fov_y, aspect, 0.01, 30.0);
         // The world's light, turned into the eye's space.
         let view = camera.view();
-        let sun = view.transform_vector3(lighting.sun_dir.normalize_or(Vec3::Y)).normalize_or(Vec3::Y);
-        let sun_color = lighting.sun_color * lighting.sun_intensity;
-        let sky = lighting.fog_color.lerp(lighting.ambient, 0.5);
+        let sun = view.transform_vector3(light.sun_dir.normalize_or(Vec3::Y)).normalize_or(Vec3::Y);
+        let sun_color = light.sun;
+        let sky = light.horizon.lerp(light.ambient, 0.5);
         // The instruments' glow, where they are this frame (moving with the cockpit).
         let mut lights = [[0.0f32; 4]; MAX_LIGHTS * 2];
         for (k, l) in self.lights.iter().enumerate().take(MAX_LIGHTS) {
@@ -759,19 +870,22 @@ impl CockpitRenderer {
             lights[k * 2] = [at.x, at.y, at.z, l.reach];
             lights[k * 2 + 1] = [facing.x, facing.y, facing.z, l.strength];
         }
+        // (The cabin lamp hangs in the cab: it moves with it as it comes in and gives.)
+        let lamp = frame.mount.transform_point3(CABIN_LAMP);
         let u = Uniform {
             proj: proj.to_cols_array_2d(),
             mount: frame.mount.to_cols_array_2d(),
             sun_dir: [sun.x, sun.y, sun.z, frame.sun],
             sun_color: [sun_color.x, sun_color.y, sun_color.z, 0.0],
             sky: [sky.x, sky.y, sky.z, 0.0],
-            ground: [lighting.ambient.x * 0.5, lighting.ambient.y * 0.45, lighting.ambient.z * 0.4, 0.0],
+            ground: [light.ambient.x * 0.5, light.ambient.y * 0.45, light.ambient.z * 0.4, 0.0],
             trim: [frame.trim.x, frame.trim.y, frame.trim.z, 0.0],
             cabin: [frame.cabin.x, frame.cabin.y, frame.cabin.z, 0.0],
             glow: [frame.glow.x, frame.glow.y, frame.glow.z, 0.0],
             params: [frame.time, frame.alarm, frame.flash, frame.lamps],
-            weather: [frame.rain, if frame.flies { 1.0 } else { 0.0 }, 0.0, 0.0],
+            weather: [frame.rain, if frame.flies { 1.0 } else { 0.0 }, frame.walls.clamp(0.0, 1.0), frame.rain_time],
             paint: [frame.paint.x, frame.paint.y, frame.paint.z, self.lights.len().min(MAX_LIGHTS) as f32],
+            lamp: [lamp.x, lamp.y, lamp.z, frame.brightness],
             lights,
         };
         queue.write_buffer(&self.uniform, 0, bytemuck::bytes_of(&u));
@@ -783,10 +897,11 @@ impl CockpitRenderer {
             .map(|m| m.to_cols_array_2d())
             .collect();
         queue.write_buffer(&self.parts, 0, bytemuck::cast_slice(&parts));
-        let Some((_, _, depth)) = &self.depth else { return };
+        // (Multisampled, only what is resolved is read after: the samples are not kept.)
+        let store = if resolve.is_some() { wgpu::StoreOp::Discard } else { wgpu::StoreOp::Store };
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("cockpit"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: color, resolve_target: resolve, ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store }, depth_slice: None })],
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: color, resolve_target: resolve, ops: wgpu::Operations { load: wgpu::LoadOp::Load, store }, depth_slice: None })],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: &depth.view,
                 depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Discard }),
@@ -796,11 +911,19 @@ impl CockpitRenderer {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(0, self.vertices.slice(..));
         pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
-        pass.draw_indexed(0..self.count, 0, 0..1);
+        pass.set_pipeline(&kit.opaque);
+        pass.draw_indexed(0..self.opaque, 0, 0..1);
+        if self.opaque < self.count {
+            pass.set_pipeline(&kit.translucent);
+            pass.draw_indexed(self.opaque..self.count, 0, 0..1);
+        }
+        if frame.walls > 0.0 {
+            pass.set_pipeline(&kit.walls);
+            pass.draw(0..3, 0..1);
+        }
     }
 }
 
