@@ -595,3 +595,10 @@ clauses without 。. Effect lines are terse nouns (建設力 +{n}, 視界 +{n}).
 | Builds {n} more kinds: {names} and {more} others | 新たに{n}種を建設可能：{names}ほか{more}種 |
 | Mends {n} hit points a second | 毎秒HPを{n}回復 |
 | {weapon}: range {from} to {to} / stronger / Weapon: {weapon} | {weapon}：射程 {from} → {to} / 威力上昇 / 武器：{weapon} |
+| SOUNDTRACK (Options, Sound) | サウンドトラック |
+| BY SIDE (its choice) | 陣営別 |
+| Supreme Commander music (the mod) | Supreme Commander の音楽 |
+| Menu theme | メニューテーマ |
+| Building theme {n} | 建設テーマ {n} |
+| Briefing {n} | ブリーフィング {n} |
+| THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | メニュー / ブリーフィング / ムービー |

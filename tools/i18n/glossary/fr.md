@@ -694,3 +694,10 @@ Straight apostrophes and no-break spaces, as the HUD's other strings.
 | Mends {n} hit points a second | Régénère {n} de santé par seconde |
 | {n} of the selection upgrade | Unités de la sélection concernées : {n} |
 | refusals after "Ordre impossible :" it has no build power / cannot upgrade into that / needs another enhancement first | aucune puissance de construction / aucune mise à niveau vers ce type / nécessite d'abord une autre amélioration |
+| SOUNDTRACK (Options, Sound) | BANDE-SON |
+| BY SIDE (its choice) | PAR CAMP |
+| Supreme Commander music (the mod) | Musique de Supreme Commander |
+| Menu theme | Thème du menu |
+| Building theme {n} | Thème de construction {n} |
+| Briefing {n} | Briefing {n} |
+| THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | MENUS / BRIEFINGS / CINÉMATIQUES |

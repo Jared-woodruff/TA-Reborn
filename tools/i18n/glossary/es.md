@@ -690,3 +690,10 @@ quitarla, esta. "Stop" en las frases: Parar, con mayúscula (el nombre de la ord
 | Mends {n} hit points a second | Regenera {n} de vida por segundo (como "{rate} de energía") |
 | Builds {n} more kinds | Construye más tipos ({n}) |
 | {weapon}: stronger | {weapon}: más potente |
+| SOUNDTRACK (Options, Sound) | BANDA SONORA |
+| BY SIDE (its choice) | POR BANDO |
+| Supreme Commander music (the mod) | Música de Supreme Commander |
+| Menu theme | Tema del menú |
+| Building theme {n} | Tema de construcción {n} |
+| Briefing {n} | Informe {n} |
+| THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | LOS MENÚS / INFORMES / PELÍCULAS |

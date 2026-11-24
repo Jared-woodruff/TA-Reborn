@@ -53,6 +53,8 @@ thiserror = "2"
 log = "0.4"
 env_logger = "0.11"
 rayon = "1.12"
+# FLAC, lossless, for the music made from a player's own copy of Supreme Commander (Apache-2.0).
+flacenc = { version = "0.5.1", default-features = false, features = ["par"] }
 rustc-hash = "2"
 bytemuck = { version = "1.25", features = ["derive"] }
 memmap2 = "0.9"

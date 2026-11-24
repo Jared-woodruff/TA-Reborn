@@ -14,7 +14,7 @@ use egui::{
 };
 use ta_config::{
     ArtStyle, Audio, CameraStyle, Config, Driving, Gameplay, Graphics, HealthBars, Keys, Launcher, MenuBackdrop, OnPlay, OrderButton, Preset, Quality, RadialOpens,
-    RangeOverlays, Reflections, SeasonalTheme, TimeOfDay, UserMusic, WindowMode, limits,
+    RangeOverlays, Reflections, SeasonalTheme, Soundtrack, TimeOfDay, UserMusic, WindowMode, limits,
 };
 
 use crate::i18n::{n, t, tf};
@@ -109,6 +109,9 @@ pub struct Host<'a> {
     /// In the launcher: some of its features are still being tried out (its
     /// `experimental::Feature::ALL`), so LAUNCHER shows ENABLE EXPERIMENTAL FEATURES.
     pub experimental: bool,
+    /// Supreme Commander: Forged Alliance's soundtrack is installed and on (its music mod, made
+    /// from the player's own copy): SOUNDTRACK offers it.
+    pub fa_soundtrack: bool,
 }
 
 /// What changed, for the host to apply.
@@ -428,7 +431,7 @@ impl SettingsView {
                 Category::Accessibility => accessibility(ui, &mut rows, &mut config.gameplay),
                 Category::Graphics => level_picked = graphics(ui, &mut rows, &mut config.graphics, host),
                 Category::Display => self.display(ui, &mut rows, &mut config.graphics, host),
-                Category::Sound => sound(ui, &mut rows, &mut config.audio),
+                Category::Sound => sound(ui, &mut rows, &mut config.audio, host.fa_soundtrack),
                 Category::Launcher => launcher(ui, &mut rows, &mut config.launcher, &mut config.audio, &mut config.updates, host.experimental),
             }
         }
@@ -1066,10 +1069,19 @@ fn graphics(ui: &mut Ui, rows: &mut Rows, g: &mut Graphics, host: &Host) -> bool
     picked
 }
 
-fn sound(ui: &mut Ui, rows: &mut Rows, a: &mut Audio) {
+fn sound(ui: &mut Ui, rows: &mut Rows, a: &mut Audio, fa_soundtrack: bool) {
     let value_box = rows.value_box;
     setting_row(ui, rows, "MASTER VOLUME", "", "sound audio loudness mute", |ui| percent(ui, &mut a.master, limits::VOLUME, value_box));
     setting_row(ui, rows, "MUSIC", "", "soundtrack volume", |ui| percent(ui, &mut a.music, limits::VOLUME, value_box));
+    // (Forged Alliance's choices once its music is installed; before, said where it comes from.)
+    setting_row(ui, rows, "SOUNDTRACK", "Whose music plays in the menus and battles: Total Annihilation's, Supreme Commander: Forged Alliance's, both, or by side (Forged Alliance's when you command one of its factions). TA's victory and defeat stay.", "music soundtrack supreme commander forged alliance songs themes side faction", |ui| {
+        ui.add_enabled_ui(fa_soundtrack, |ui| {
+            widgets::segmented_fill(ui, &mut a.soundtrack, &[(Soundtrack::TotalAnnihilation, "TA"), (Soundtrack::ForgedAlliance, "FORGED ALLIANCE"), (Soundtrack::Both, "BOTH"), (Soundtrack::BySide, "BY SIDE")]);
+        });
+        if !fa_soundtrack {
+            ui.add(Label::new(RichText::new(t("Forged Alliance's music is made from your own copy of the game: the launcher's Mods page, SUPREME COMMANDER…, MUSIC.")).font(body(12.0)).color(STEEL)).wrap());
+        }
+    });
     setting_row(ui, rows, "SOUND EFFECTS", "Weapons, explosions, machines and the interface", "sfx volume", |ui| percent(ui, &mut a.effects, limits::VOLUME, value_box));
     setting_row(ui, rows, "UNIT VOICES", "Units answering orders, and briefings", "speech acknowledgements volume", |ui| percent(ui, &mut a.voice, limits::VOLUME, value_box));
     toggle_row(ui, rows, "UNIT REPLIES", "Units answer when selected and given orders. Off: they keep quiet; alerts, the self-destruct count, briefings and the tutorial still speak.", "acknowledgements voices speech select order response chatter quiet", &mut a.unit_replies);
@@ -1315,7 +1327,7 @@ mod tests {
     }
 
     fn host() -> Host<'static> {
-        Host { in_game: true, msaa_running: 4, ray_tracing_running: false, native: Some((2560, 1440)), gpu_kind: None, languages: &[], language_dirs: &[], height: Some(600.0), experimental: true }
+        Host { in_game: true, msaa_running: 4, ray_tracing_running: false, native: Some((2560, 1440)), gpu_kind: None, languages: &[], language_dirs: &[], height: Some(600.0), experimental: true, fa_soundtrack: false }
     }
 
     #[test]

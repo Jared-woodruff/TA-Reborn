@@ -25,6 +25,16 @@
   LB is the night sight, RB or A fires, the triggers magnify the sight and Start leaves. While a
   controller is in use the view's hints show its buttons, and they come up again when one is taken
   up. The pause and speed keys work in a unit too, said on its glass.
+- Supreme Commander: Forged Alliance's soundtrack, made from your own copy of the game: the
+  Supreme Commander dialog (SUPREME COMMANDER… on the launcher's Maps and Mods pages) has a MUSIC
+  tab, whose IMPORT MUSIC makes the game's menu theme, building and battle themes, the campaign's
+  briefings and the films' music into lossless tracks of TA Reborn's own (on GOG's Gold Edition 21
+  tracks, 44 minutes, 226 MB, made in seconds), in a mod turned on once made. Options, SOUND:
+  SOUNDTRACK then chooses whose music plays: Total Annihilation's, Forged Alliance's (its building
+  themes while a battle is at peace, its battle themes in battle, its menu theme and briefings in
+  the menus), both together, or by side (Forged Alliance's while you command one of its factions);
+  TA's victory and defeat stay. The jukebox lists the tracks under SUPREME COMMANDER. Nothing of it
+  is shipped, and online the other players need not have it ([SUPCOM_MUSIC.md](docs/SUPCOM_MUSIC.md)).
 
 ### Changed
 - The enemy Commanders' transmissions (their greetings, taunts and answers coming in at the top

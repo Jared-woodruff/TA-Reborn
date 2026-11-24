@@ -2990,7 +2990,20 @@ where the units go (`hud/domain.rs`, below).
   `Audio::music_folder`) play as `file:` paths, which the decoder streams from disk.
   Titles and durations are read on a background worker; rescanning invalidates metadata for
   files changed in place and ignores the old worker's replies. Custom-file duration probes
-  seek through the container without reading its entire audio payload.
+  seek through the container without reading its entire audio payload. Supreme Commander's
+  soundtrack, where its mod is on (docs/SUPCOM_MUSIC.md: `music/supcom/*.flac`, listed in
+  `music/supcom/soundtrack.toml`, read by `audio::fa_tracks`), has a section of its own, its
+  tracks by their parts (`fa_track_name`).
+* **Soundtrack** (`audio.rs`, Options, SOUND: SOUNDTRACK, `ta_config::Soundtrack`): the playlists
+  are TA's (`GameAudio::ta_music`: the player's `music.toml`, or the game's), or made by
+  `audio::soundtrack_music` with Forged Alliance's tracks: its building themes at peace, its
+  battle themes in battle, its menu theme and briefings in the menus (`Mood::Briefing`), in TA's
+  place, beside them (BOTH), or by side (`GameAudio::set_side`, each frame: Forged Alliance's
+  while the battle's player commands one of `FORGED_ALLIANCE_SIDES`). TA's victory and defeat
+  stay; TA's alone without the mod. A change goes to the music player at once
+  (`apply_soundtrack`), a track playing that its mood's new playlist lacks skipped; the player's
+  own music (`UserMusic`) is laid over whichever playlists these are. `ta_audio` lists
+  `music/supcom/` beside `music/` (`engine::music_files`).
 * **Audio transitions** (`audio.rs`, `ta_audio`): scene changes clear old effects, voices and
   combat intensity while keeping music running; loading frames service track sequencing and
   output recovery. Replaying the intro fades out both music decks before the movies. New

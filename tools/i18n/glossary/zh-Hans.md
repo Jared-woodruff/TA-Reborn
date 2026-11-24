@@ -584,3 +584,10 @@ characters, none against full-width punctuation.
 | the unit stands meanwhile | 期间单位原地不动 |
 | Mends {n} hit points a second / {weapon}: stronger | 每秒恢复 {n} 点生命值 / {weapon}：威力增强 |
 | Builds {n} more kinds | 可额外建造 {n} 种 |
+| SOUNDTRACK (Options, Sound) | 配乐 |
+| BY SIDE (its choice) | 按阵营 |
+| Supreme Commander music (the mod) | Supreme Commander 音乐 |
+| Menu theme | 菜单主题 |
+| Building theme {n} | 建造主题 {n} |
+| Briefing {n} | 简报 {n} |
+| THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | 菜单 / 简报 / 影片 |

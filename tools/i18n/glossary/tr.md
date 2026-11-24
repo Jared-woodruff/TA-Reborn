@@ -622,3 +622,10 @@ follows "olur" or a colon.
 | {duration} on its own build power | kendi inşa gücüyle {duration} |
 | hit points / Mends {n} hit points a second | can puanı / Saniyede {n} can puanı onarır |
 | range {from} to {to} (a weapon replaced) | menzil {from} yerine {to} |
+| SOUNDTRACK (Options, Sound) | MÜZİK SEÇİMİ |
+| BY SIDE (its choice) | TARAFA GÖRE |
+| Supreme Commander music (the mod) | Supreme Commander müziği |
+| Menu theme | Menü teması |
+| Building theme {n} | İnşa teması {n} |
+| Briefing {n} | Brifing {n} |
+| THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | MENÜLER / BRİFİNGLER / VİDEOLAR |

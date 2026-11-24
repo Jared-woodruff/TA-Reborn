@@ -662,3 +662,10 @@ livello sul posto" of the retired launcher line.
 | Mends {n} hit points a second | Rigenera {n} di salute al secondo (no "punti": right for any number) |
 | {weapon}: range {from} to {to} / stronger | {weapon}: gittata da {from} a {to} / più potente |
 | {n} of the selection upgrade | Unità della selezione da migliorare: {n} |
+| SOUNDTRACK (Options, Sound) | COLONNA SONORA |
+| BY SIDE (its choice) | PER FAZIONE |
+| Supreme Commander music (the mod) | Musica di Supreme Commander |
+| Menu theme | Tema del menu |
+| Building theme {n} | Tema di costruzione {n} |
+| Briefing {n} | Briefing {n} |
+| THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | MENU / BRIEFING / FILMATI |

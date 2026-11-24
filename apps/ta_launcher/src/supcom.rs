@@ -62,24 +62,30 @@ pub fn mod_name(manifest: &ModManifest) -> &str {
     match manifest.id.as_str() {
         PACK_ID if manifest.name.trim() == PACK_NAME => pack_name(),
         crate::supcom_factions::MOD_ID if manifest.name.trim() == crate::supcom_factions::MOD_NAME => crate::supcom_factions::mod_name(),
+        crate::supcom_music::MOD_ID if manifest.name.trim() == crate::supcom_music::MOD_NAME => crate::supcom_music::mod_name(),
         _ => &manifest.name,
     }
 }
 
-/// The dialog's tabs: the game's maps, or its factions.
+/// The dialog's tabs: the game's maps, its factions, or its music.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Tab {
     #[default]
     Maps,
     Factions,
+    Music,
 }
 
 impl Tab {
+    /// The tabs as the dialog's strip shows them.
+    pub const ALL: [Tab; 3] = [Tab::Maps, Tab::Factions, Tab::Music];
+
     /// Its name on the dialog's tab strip (marked for translation).
     pub fn label(self) -> &'static str {
         match self {
             Tab::Maps => n("MAPS"),
             Tab::Factions => n("FACTIONS"),
+            Tab::Music => n("MUSIC"),
         }
     }
 }
@@ -97,9 +103,10 @@ pub struct Entry {
 /// The game's pictures of the maps a look found, made small (RGBA), by map folder.
 pub type Previews = BTreeMap<PathBuf, egui::ColorImage>;
 
-/// Whether a map (or a faction) is in the pack (or the mod) already.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Whether a map (or a faction, or the music) is in the pack (or the mod) already.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum State {
+    #[default]
     New,
     Imported,
     /// Imported by an older version of the converter: importing it again makes it better.
@@ -574,6 +581,7 @@ pub fn update_tab(mods: &ModList, id: &str) -> Option<Tab> {
     let (tab, current, ours) = match id {
         PACK_ID => (Tab::Maps, convert::VERSION, PACK_NAME),
         crate::supcom_factions::MOD_ID => (Tab::Factions, crate::supcom_factions::VERSION, crate::supcom_factions::MOD_NAME),
+        crate::supcom_music::MOD_ID => (Tab::Music, crate::supcom_music::VERSION, crate::supcom_music::MOD_NAME),
         _ => return None,
     };
     let copy = Installed::listed(mods, id, ours)?;
@@ -721,8 +729,10 @@ pub struct Import {
     /// Maps to choose and import as soon as the game's maps are listed (their folders' names, in
     /// lower case): a capture's (`--show supcom:<folder>,<folder>`).
     pub auto_start: Option<Vec<String>>,
-    /// The game's factions, the other tab's.
+    /// The game's factions, the second tab's.
     pub factions: crate::supcom_factions::Factions,
+    /// The game's music, the third tab's.
+    pub music: crate::supcom_music::Music,
     /// An import asked for over another mod of its id, waiting for the player's word.
     pub confirm_replace: Option<(Tab, Installed)>,
 }
@@ -757,25 +767,37 @@ impl Import {
         self.look.found.clone()
     }
 
-    /// Opens the dialog at `tab`, or at the other where only its import is under way (the one
-    /// shown could not start meanwhile), looking for the game again where the tab's look is not
+    /// Whether the import of the tab `tab` is under way.
+    pub fn importing_at(&self, tab: Tab) -> bool {
+        match tab {
+            Tab::Maps => self.importing(),
+            Tab::Factions => self.factions.importing(),
+            Tab::Music => self.music.importing(),
+        }
+    }
+
+    /// Whether any tab's import is under way (one at a time: each reads the game, and makes a mod
+    /// the others' wait for).
+    pub fn any_importing(&self) -> bool {
+        Tab::ALL.into_iter().any(|tab| self.importing_at(tab))
+    }
+
+    /// Opens the dialog at `tab`, or at another where only its import is under way (the one shown
+    /// could not start meanwhile), looking for the game again where the tab's look is not
     /// current: the pictures were let go of when it last closed. (An import under way goes on.)
     pub fn show(&mut self, tab: Tab, roots: Roots) {
         self.open = true;
         self.roots = roots;
-        let tab = match tab {
-            Tab::Maps if !self.importing() && self.factions.importing() => Tab::Factions,
-            Tab::Factions if !self.factions.importing() && self.importing() => Tab::Maps,
-            tab => tab,
-        };
+        let tab = if self.importing_at(tab) { tab } else { Tab::ALL.into_iter().find(|&other| self.importing_at(other)).unwrap_or(tab) };
         self.set_tab(tab);
     }
 
-    /// LOOK AGAIN (the game not found, or the look failed): both tabs look for it afresh, the one
+    /// LOOK AGAIN (the game not found, or the look failed): every tab looks for it afresh, the one
     /// shown at once; the game may have been installed since the dialog opened.
     pub fn look_again(&mut self) {
         self.look.outdate();
         self.factions.look.outdate();
+        self.music.look.outdate();
         self.set_tab(self.tab);
     }
 
@@ -795,6 +817,12 @@ impl Import {
                     self.factions.rescan(self.picked.clone(), &self.roots);
                 }
             }
+            Tab::Music => {
+                self.music.unseen = false;
+                if !self.music.look.current() && !self.music.look.scanning() {
+                    self.music.rescan(self.picked.clone(), &self.roots);
+                }
+            }
         }
     }
 
@@ -805,6 +833,7 @@ impl Import {
         self.confirm_replace = None;
         self.look.let_go();
         self.factions.look.let_go();
+        self.music.look.let_go();
     }
 
     /// Looks for the game and its maps (in the player's chosen folder, else wherever a copy is).
@@ -867,8 +896,9 @@ impl Import {
         self.folder_error = None;
     }
 
-    /// Uses the game in `root` (a copy found, or a folder chosen and checked): both tabs list that
-    /// copy's then (the factions' where they have been looked at), and the settings keep it.
+    /// Uses the game in `root` (a copy found, or a folder chosen and checked): every tab lists that
+    /// copy's then (the factions' and the music's where they have been looked at), and the settings
+    /// keep it.
     pub fn pick(&mut self, root: PathBuf) {
         self.picked = Some(root);
         self.choice_changed = true;
@@ -878,6 +908,9 @@ impl Import {
         }
         if self.factions.look.found.is_some() || self.tab == Tab::Factions {
             self.factions.rescan(self.picked.clone(), &self.roots);
+        }
+        if self.music.look.found.is_some() || self.tab == Tab::Music {
+            self.music.rescan(self.picked.clone(), &self.roots);
         }
     }
 
@@ -931,7 +964,7 @@ impl Import {
     /// (or, with `TA_SUPCOM_SHOT_IMPORTING=1`, while they are).
     pub fn capture_ready(&self) -> bool {
         let during = std::env::var_os("TA_SUPCOM_SHOT_IMPORTING").is_some_and(|v| v == "1");
-        !self.open || (!self.scanning() && self.checking.is_none() && self.auto_start.is_none() && (during || !self.importing()) && self.factions.capture_ready())
+        !self.open || (!self.scanning() && self.checking.is_none() && self.auto_start.is_none() && (during || !self.importing()) && self.factions.capture_ready() && self.music.capture_ready())
     }
 
     /// Stops the import after the map being made (not once it installs them).
@@ -1740,6 +1773,7 @@ mod tests {
         import.show(Tab::Maps, Roots::default());
         assert_eq!(import.tab, Tab::Factions, "at the tab whose import is under way");
         assert!(import.factions.look.scanning());
+        assert!(import.any_importing() && import.importing_at(Tab::Factions) && !import.importing_at(Tab::Music));
         take_in(&mut import);
         assert_eq!(import.factions.pictures_held(), (1, 0));
         import.factions.stop();
@@ -1981,6 +2015,12 @@ mod tests {
         assert_eq!(updates(&list()), [PACK_ID]);
         write(crate::supcom_factions::MOD_ID, crate::supcom_factions::MOD_NAME, "1");
         assert_eq!(update_tab(&list(), crate::supcom_factions::MOD_ID), Some(Tab::Factions));
+        // (The music's mod likewise, at its own tab.)
+        write(crate::supcom_music::MOD_ID, crate::supcom_music::MOD_NAME, &crate::supcom_music::VERSION.to_string());
+        assert_eq!(update_tab(&list(), crate::supcom_music::MOD_ID), None, "made by this converter");
+        write(crate::supcom_music::MOD_ID, crate::supcom_music::MOD_NAME, "0");
+        assert_eq!(update_tab(&list(), crate::supcom_music::MOD_ID), Some(Tab::Music));
+        std::fs::remove_dir_all(dir.join(crate::supcom_music::MOD_ID)).unwrap();
         write(PACK_ID, "Bob's own maps", "0");
         assert_eq!(update_tab(&list(), PACK_ID), None, "another mod of the pack's id is not the import's to update");
         assert_eq!(updates(&list()), [crate::supcom_factions::MOD_ID]);

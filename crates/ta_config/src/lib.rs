@@ -1175,6 +1175,9 @@ pub struct Audio {
     /// Units answer when selected and given orders (TA's select, ok and can't); off: they keep
     /// quiet, while alerts, the self-destruct count, briefings and the tutorial still speak.
     pub unit_replies: bool,
+    /// Whose music plays in the menus and battles: Total Annihilation's, Supreme Commander:
+    /// Forged Alliance's (imported from the player's own copy), both, or by the side commanded.
+    pub soundtrack: Soundtrack,
 }
 
 impl Default for Audio {
@@ -1194,8 +1197,23 @@ impl Default for Audio {
             music_repeat: false,
             mute_in_background: false,
             unit_replies: true,
+            soundtrack: Soundtrack::TotalAnnihilation,
         }
     }
+}
+
+/// Whose music plays: TA's own; Forged Alliance's (its menu, building and battle themes and its
+/// briefings' music, imported in the launcher from the player's own copy; TA's victory and defeat
+/// stay); both mixed; or by side: Forged Alliance's when the player commands one of its factions
+/// (UEF, Cybran, Aeon, Seraphim), TA's otherwise and in the menus. Without Forged Alliance's
+/// music installed, TA's plays whatever the choice.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub enum Soundtrack {
+    #[default]
+    TotalAnnihilation,
+    ForgedAlliance,
+    Both,
+    BySide,
 }
 
 /// How the player's own music plays (the jukebox): not at all, mixed in with TA's, or in its

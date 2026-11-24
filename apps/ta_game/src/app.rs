@@ -5922,6 +5922,11 @@ impl State {
         } else {
             1.0
         };
+        // (The soundtrack by side: Forged Alliance's music while the battle's player commands one
+        // of its factions.)
+        let forged_alliance = self.screen == Screen::Playing
+            && self.game.sim.players.get(self.game.local_player as usize).is_some_and(|p| crate::audio::FORGED_ALLIANCE_SIDES.iter().any(|s| p.side.eq_ignore_ascii_case(s)));
+        self.audio.set_side(forged_alliance);
         self.audio.update(&self.camera, ear, dt);
 
         // UI. (TA's ~ steps through when units show health bars, and keeps the choice.)
@@ -6030,6 +6035,7 @@ impl State {
         let settings = &mut self.settings;
         let controls_open = &mut self.controls_open;
         let options_open = &mut self.options_open;
+        let fa_soundtrack = audio.has_fa_soundtrack();
         let loading = self.loading.clone();
         let curtain = &mut self.curtain;
         let tutorial = &mut self.tutorial;
@@ -6120,7 +6126,7 @@ impl State {
                     }
                 }
                 Screen::Menu if *options_open => {
-                    if options_panel(ui.ctx(), settings_view, settings, msaa_started, ray_tracing_running, native, gpu_kind, &mut changes) {
+                    if options_panel(ui.ctx(), settings_view, settings, msaa_started, ray_tracing_running, native, gpu_kind, fa_soundtrack, &mut changes) {
                         *options_open = false;
                         options_closed = true;
                     }
@@ -6252,7 +6258,7 @@ impl State {
                         }
                     }
                     if *options_open {
-                        if options_panel(ui.ctx(), settings_view, settings, msaa_started, ray_tracing_running, native, gpu_kind, &mut changes) {
+                        if options_panel(ui.ctx(), settings_view, settings, msaa_started, ray_tracing_running, native, gpu_kind, fa_soundtrack, &mut changes) {
                             *options_open = false;
                             options_closed = true;
                         }
@@ -9255,6 +9261,7 @@ fn options_panel(
     ray_tracing_running: bool,
     native: Option<(u32, u32)>,
     gpu_kind: ta_config::GpuKind,
+    fa_soundtrack: bool,
     changes: &mut ta_ui::settings::Changes,
 ) -> bool {
     use crate::theme::*;
@@ -9263,7 +9270,7 @@ fn options_panel(
     let (dirs, languages) = languages();
     let width = panel::fit_width(ctx, 1100.0);
     let compact = ta_ui::settings::compact(width) || ctx.content_rect().height() < 540.0;
-    let host = ta_ui::settings::Host { in_game: true, msaa_running: msaa_started, ray_tracing_running, native, gpu_kind: Some(gpu_kind), languages, language_dirs: dirs, height: (!compact).then(|| panel::fit_height(ctx, 260.0, 260.0, 640.0)), experimental: false };
+    let host = ta_ui::settings::Host { in_game: true, msaa_running: msaa_started, ray_tracing_running, native, gpu_kind: Some(gpu_kind), languages, language_dirs: dirs, height: (!compact).then(|| panel::fit_height(ctx, 260.0, 260.0, 640.0)), experimental: false, fa_soundtrack };
     // (A dialog: its close cross, Escape or a click outside closes it, the settings saved.)
     let mut page = Panel::new("OPTIONS").subtitle("CHANGES TAKE EFFECT AT ONCE").width(width).exit(Exit::Close);
     if compact {

@@ -655,3 +655,10 @@ Forged Alliance's two features, in the terms the launcher's "Ще в плана�
 | {n} more kinds (to build) / and {more} others | "Будує нові типи ({n}): {names} і ще {more}" (типи as УСІ ТИПИ) |
 | range {from} to {to} / mends {n} hit points a second | "дальність {to} замість {from}" (no arrow, no span reading) / "Відновлює {n} здоров'я за секунду" |
 | {n} of the selection upgrade | Серед виділених модернізуються: {n} |
+| SOUNDTRACK (Options, Sound) | САУНДТРЕК |
+| BY SIDE (its choice) | ЗА СТОРОНОЮ |
+| Supreme Commander music (the mod) | Музика Supreme Commander |
+| Menu theme | Тема меню |
+| Building theme {n} | Тема будівництва {n} |
+| Briefing {n} | Брифінг {n} |
+| THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | МЕНЮ / БРИФІНГИ / РОЛИКИ |

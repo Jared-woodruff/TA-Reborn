@@ -30,6 +30,8 @@ pub(crate) enum UpdateWait {
     SupcomMaps,
     /// Supreme Commander's factions being made, likewise.
     SupcomFactions,
+    /// Supreme Commander's music being made, likewise.
+    SupcomMusic,
     /// The profile being edited, which closing would lose.
     Profile,
     /// The skin editor's unsaved changes, likewise.
@@ -46,6 +48,7 @@ impl UpdateWait {
             UpdateWait::Maps(status) => t(status),
             UpdateWait::SupcomMaps => t("Wait for the Supreme Commander maps being made, then try again."),
             UpdateWait::SupcomFactions => t("Wait for the Supreme Commander factions being made, then try again."),
+            UpdateWait::SupcomMusic => t("Wait for the Supreme Commander music being made, then try again."),
             UpdateWait::Profile | UpdateWait::SkinEdits => self.queued(),
         }
     }
@@ -59,6 +62,7 @@ impl UpdateWait {
             UpdateWait::Maps(status) => t(status),
             UpdateWait::SupcomMaps => t("READY · IT INSTALLS AFTER THE SUPREME COMMANDER MAPS"),
             UpdateWait::SupcomFactions => t("READY · IT INSTALLS AFTER THE SUPREME COMMANDER FACTIONS"),
+            UpdateWait::SupcomMusic => t("READY · IT INSTALLS AFTER THE SUPREME COMMANDER MUSIC"),
             UpdateWait::Profile => t("READY · IT INSTALLS WHEN THE PROFILE IS CLOSED"),
             UpdateWait::SkinEdits => t("READY · IT INSTALLS WHEN THE SKIN IS SAVED"),
         }
@@ -122,6 +126,7 @@ impl LauncherApp {
         else if self.installer.busy() { Some(UpdateWait::Install) }
         else if self.supcom.importing() { Some(UpdateWait::SupcomMaps) }
         else if self.supcom.factions.importing() { Some(UpdateWait::SupcomFactions) }
+        else if self.supcom.music.importing() { Some(UpdateWait::SupcomMusic) }
         else { self.maps.status().map(UpdateWait::Maps) }
     }
 

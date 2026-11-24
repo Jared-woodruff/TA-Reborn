@@ -732,3 +732,10 @@ Refusals after "Nicht ausführbar: " stay lower-case fragments ("hat keine Baule
 | Shift: queued (in a tip's hints) | Shift: einreihen |
 | hit points / mends (its own) | Lebenspunkte / regeneriert |
 | Builds {n} more kinds: (an enhancement's new build options) | Neue Bauoptionen ({n}): (reads for any number) |
+| SOUNDTRACK (Options, Sound) | SOUNDTRACK |
+| BY SIDE (its choice) | NACH SEITE |
+| Supreme Commander music (the mod) | Supreme-Commander-Musik |
+| Menu theme | Menüthema |
+| Building theme {n} | Bauthema {n} |
+| Briefing {n} | Briefing {n} |
+| THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | MENÜS / BRIEFINGS / FILME |
