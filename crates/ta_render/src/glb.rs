@@ -163,9 +163,11 @@ pub fn node_matrix(node: &Value) -> Mat4 {
 pub fn material_factors(m: &Value) -> ([f32; 4], f32, f32, Vec3) {
     let pbr = &m["pbrMetallicRoughness"];
     let num = |v: &Value, d: f32| v.as_f64().map_or(d, |x| x as f32);
-    let base = pbr["baseColorFactor"].as_array().map_or([0.5, 0.5, 0.5, 1.0], |c| [num(&c[0], 0.5), num(&c[1], 0.5), num(&c[2], 0.5), c.get(3).map_or(1.0, |a| num(a, 1.0))]);
+    // (A factor with fewer figures than it should have: the rest as if missing, not read past it.)
+    let at = |c: &Vec<Value>, i: usize, d: f32| c.get(i).map_or(d, |v| num(v, d));
+    let base = pbr["baseColorFactor"].as_array().map_or([0.5, 0.5, 0.5, 1.0], |c| [at(c, 0, 0.5), at(c, 1, 0.5), at(c, 2, 0.5), at(c, 3, 1.0)]);
     let strength = num(&m["extensions"]["KHR_materials_emissive_strength"]["emissiveStrength"], 1.0);
-    let emissive = m["emissiveFactor"].as_array().map_or(Vec3::ZERO, |c| Vec3::new(num(&c[0], 0.0), num(&c[1], 0.0), num(&c[2], 0.0))) * strength;
+    let emissive = m["emissiveFactor"].as_array().map_or(Vec3::ZERO, |c| Vec3::new(at(c, 0, 0.0), at(c, 1, 0.0), at(c, 2, 0.0))) * strength;
     (base, num(&pbr["metallicFactor"], 1.0), num(&pbr["roughnessFactor"], 1.0), emissive)
 }
 

@@ -439,6 +439,12 @@ impl Effects {
         self.rain_strength(now)
     }
 
+    /// How hard it rains as the world is drawn this frame (0..1): the sky's rain, as much of it
+    /// as the WEATHER setting shows (none with it off).
+    pub fn rain_shown(&self) -> f32 {
+        self.ambient.raining
+    }
+
     /// The weather over the world as it is drawn: snow, embers, showers, dust, spores or glitter,
     /// or none (the cockpit's instruments say so).
     pub fn weather_kind(&self) -> Weather {

@@ -47,6 +47,9 @@ pub const KEYS_FROM: f32 = 3.2;
 pub const KEYS_TO: f32 = 11.0;
 /// The sight's magnifications.
 pub const ZOOMS: [f32; 3] = [1.0, 2.5, 6.0];
+/// How much the night sight brightens the picture (the cockpit's own light is drawn that much
+/// dimmer meanwhile: it brightens the battle outside).
+pub const NIGHT_EXPOSURE: f32 = 2.6;
 /// How wide the heading tape over the view is, as a share of the view's width (but see
 /// [`Cockpit::tape_width`]).
 pub const TAPE_WIDTH: f32 = 0.42;
@@ -123,22 +126,10 @@ impl Cockpit {
         if self == Cockpit::Canopy { 0.26 } else { TAPE_WIDTH }
     }
 
-    /// Its modelled cockpit (see `tools/cockpits/build.py`), if it has one: the models are
-    /// read once.
+    /// Its modelled cockpit (see `tools/cockpits/build.py`), if it has one: each model read the
+    /// first time it is wanted, and kept (all of them read at the first ride held it up).
     pub fn model(self) -> Option<Arc<CockpitModel>> {
-        static MODELS: OnceLock<Vec<(&'static str, Arc<CockpitModel>)>> = OnceLock::new();
-        let models = MODELS.get_or_init(|| {
-            ta_render::cockpit_models()
-                .iter()
-                .filter_map(|(name, bytes)| match CockpitModel::from_glb(bytes) {
-                    Ok(m) => Some((*name, Arc::new(m))),
-                    Err(e) => {
-                        log::warn!("cockpit {name}: {e}");
-                        None
-                    }
-                })
-                .collect()
-        });
+        static MODELS: std::sync::Mutex<Vec<(&'static str, Option<Arc<CockpitModel>>)>> = std::sync::Mutex::new(Vec::new());
         let name = match self {
             Cockpit::Vehicle | Cockpit::Hover => "vehicle",
             Cockpit::Walker => "walker",
@@ -150,7 +141,19 @@ impl Cockpit {
             Cockpit::Emplacement => "emplacement",
             Cockpit::Periscope => return None,
         };
-        models.iter().find(|m| m.0 == name).map(|m| m.1.clone())
+        let mut models = MODELS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some((_, model)) = models.iter().find(|m| m.0 == name) {
+            return model.clone();
+        }
+        let model = ta_render::cockpit_models().iter().find(|m| m.0 == name).and_then(|(_, bytes)| match CockpitModel::from_glb(bytes) {
+            Ok(m) => Some(Arc::new(m)),
+            Err(e) => {
+                log::warn!("cockpit {name}: {e}");
+                None
+            }
+        });
+        models.push((name, model.clone()));
+        model
     }
 
     /// Vertical field of view (degrees) without magnification.
@@ -452,6 +455,8 @@ pub struct Perspective {
     smooth_vel: Vec3,
     smooth_acc: Vec3,
     give: [Needle; 3],
+    /// How far the view from behind is lifted to see its unit over the ground between them.
+    chase_lift: f32,
     /// Where the eye looks: a heading (radians, 0 along +z as units face; left is larger)
     /// and a pitch (up positive). Aircraft: an offset from the nose.
     pub look_yaw: f32,
@@ -533,6 +538,8 @@ impl Perspective {
         let heading = u.heading as f32 * std::f32::consts::TAU / 65536.0;
         let health = (u.health / u.max_health(t).max(Fx::ONE)).to_f32();
         let kills = u.kills;
+        // (A weapon reloading as the view gets in is not a shot.)
+        let reloads = std::array::from_fn(|s| u.weapons[s].reload);
         let type_id = u.type_id;
         let ours = u.owner == game.local_player || game.spectator;
         let model = cockpit.model();
@@ -570,7 +577,7 @@ impl Perspective {
             body: Mat4::IDENTITY,
             pieces: Vec::new(),
             gun_line: None,
-            hud: HudState { entered: now, health, kills_before: kills, kills, armour: Armour::worn(1.0 - health), ..Default::default() },
+            hud: HudState { entered: now, health, kills_before: kills, kills, reloads, armour: Armour::worn(1.0 - health), ..Default::default() },
             hours: None,
             attitude: (0.0, 0.0),
             gun_azimuth: None,
@@ -590,6 +597,7 @@ impl Perspective {
             smooth_vel: Vec3::ZERO,
             smooth_acc: Vec3::ZERO,
             give: Default::default(),
+            chase_lift: 0.0,
         };
         // (Got into a unit already worn, its glass is cracked already.)
         p.hud.crack_to(health, id.slot, now - 1.0);
@@ -661,7 +669,6 @@ impl Perspective {
         }
         self.leaving = true;
         self.release_control(game);
-        game.scene.hide_near = None;
     }
 
     /// The camera the map view goes back to: as it was, over where the unit is now.
@@ -703,11 +710,18 @@ impl Perspective {
         }
         if alive && !self.leaving {
             self.update_aim_rates(game);
-            self.look(input, dt, now);
-            // E (a pad's Y): take control of the unit, or let it go.
-            if (input.pressed(winit::keyboard::KeyCode::KeyE) || input.pad_struck(gilrs::Button::North)) && self.may_control(game) {
-                self.want_control = !self.want_control;
-                self.keys_again = Some(now);
+            // (The battle's pace: the gun turns at its script's speed in the battle's time.)
+            let pace = if game.paused { 1.0 } else { game.speed };
+            self.look(input, dt, now, pace);
+            // E (a pad's Y): take control of the unit, or let it go; in one that may not be
+            // driven (an ally's, an aircraft, a building, a replay), said so.
+            if input.pressed(winit::keyboard::KeyCode::KeyE) || input.pad_struck(gilrs::Button::North) {
+                if self.may_control(game) {
+                    self.want_control = !self.want_control;
+                    self.keys_again = Some(now);
+                } else {
+                    self.hud.say(ta_ui::i18n::t("CANNOT TAKE CONTROL"), now, false);
+                }
             }
             self.control(game, input);
             self.place_eye(game, dt);
@@ -723,8 +737,17 @@ impl Perspective {
         let fov = self.fov / ZOOMS[self.zoom];
         if e >= 1.0 {
             aim_camera(camera, self.eye, self.view_dir(), fov, self.roll);
+            camera.view_offset = Vec2::ZERO;
         } else {
-            let from = if self.leaving { self.camera_after(game) } else { self.before.clone() };
+            let mut from = if self.leaving { self.camera_after(game) } else { self.before.clone() };
+            // (As the window is now; TA's own top-down view as the 3D camera framing what it
+            // framed: its eye, thousands of units out, made the dive a leap from the sky.)
+            from.viewport = viewport;
+            if from.mode == CameraMode::Classic {
+                from.mode = CameraMode::Perspective;
+            }
+            // (The interface's share of the window eases out of the picture's middle and back.)
+            camera.view_offset = from.view_offset * (1.0 - e);
             let (e0, f0) = (from.eye(), (from.focus - from.eye()).normalize_or(Vec3::NEG_Z));
             let arc = Vec3::Y * (e * (1.0 - e) * 4.0 * 30.0);
             let eye = e0.lerp(self.eye, e) + arc;
@@ -735,12 +758,15 @@ impl Perspective {
         }
         if alive && !self.leaving {
             self.watch(game, now, dt);
-            // Seen from inside, the pieces round the eye go (not from behind it); through the
-            // magnified sight or from a modelled cockpit, all of it (from up there the barrel
-            // only showed as a pale slab).
-            let margin = if self.zoom > 0 || self.model.is_some() { 1000.0 } else { 1.2 };
-            game.scene.hide_near = (!self.chase).then_some((self.unit, self.eye, margin));
         }
+        // Seen from inside, the pieces round the eye go (not from behind it); through the
+        // magnified sight or from a modelled cockpit, all of it (from up there the barrel only
+        // showed as a pale slab). Only while the camera is close to the eye, diving in and
+        // climbing out: hidden from the first frame, the dive went at an empty spot; shown at
+        // once on leaving, the climb began inside the turret.
+        let margin = if self.zoom > 0 || self.model.is_some() { 1000.0 } else { 1.2 };
+        let close = alive && !self.chase && self.blend >= SEAT_AT;
+        game.scene.hide_near = close.then_some((self.unit, self.eye, margin));
         self.ride(camera, dt);
     }
 
@@ -795,12 +821,18 @@ impl Perspective {
         self.lintel_y = self.lintel.and_then(|s| ta_render::cockpit::project(camera, self.fov, self.mount, s)).map(|q| q.y);
     }
 
+    /// How hard it rains on the glass (0..1): as the world shows it (none with the WEATHER setting
+    /// off), and none with the eye under the sea (a Commander on the sea bed).
+    pub fn rain_on_glass(&self, game: &Game) -> f32 {
+        if self.eye.y < game.sim.world.sea_level.to_f32() { 0.0 } else { game.effects.rain_shown().clamp(0.0, 1.0) }
+    }
+
     /// How the modelled cockpit is drawn this frame; none while it is down.
     pub fn cockpit_frame(&self, game: &Game, now: f64) -> Option<CockpitFrame> {
         if self.minimalist {
             return None;
         }
-        let rain = game.effects.rain(crate::scene::game_seconds(game.sim.tick, game.alpha()) as f32);
+        let rain = self.rain_on_glass(game);
         let model = self.model.as_ref()?;
         if self.seat <= 0.0 {
             return None;
@@ -859,10 +891,13 @@ impl Perspective {
             // Hold blinking warning lamps visibly on; health text and directional hit
             // indicators remain available without pulsing the whole cabin.
             time: if self.reduced_flashes { 0.25 } else { now as f32 },
-            rain: rain.clamp(0.0, 1.0),
+            rain,
+            // (The drops run in the battle's time: still while it is paused.)
+            rain_time: crate::scene::game_seconds(game.sim.tick, game.alpha()) as f32,
             flies: self.cockpit.flies(),
             // (Once it is in place round the eye: coming in, the battle is seen round it.)
             walls: ((self.seat - 0.8) / 0.2).clamp(0.0, 1.0),
+            brightness: if self.night_vision { 1.0 / NIGHT_EXPOSURE } else { 1.0 },
         })
     }
 
@@ -878,7 +913,7 @@ impl Perspective {
 
     /// Reads the mouse (and a gamepad's sticks) into where the eye looks, and the view's own keys:
     /// the sight's magnification, the view from behind and the night sight.
-    fn look(&mut self, input: &Input, dt: f32, now: f64) {
+    fn look(&mut self, input: &Input, dt: f32, now: f64, pace: f32) {
         use winit::keyboard::KeyCode as K;
         if input.pressed(K::KeyV) || input.pad_struck(gilrs::Button::West) {
             self.chase = !self.chase;
@@ -906,7 +941,7 @@ impl Perspective {
         let sticks = aim * aim.length().powf(0.7) * 2.5 + if self.controlling { Vec2::ZERO } else { input.pad_pan * 2.0 };
         let steady = ZOOMS[self.zoom].sqrt();
         let turn = delta * (0.0022 / steady) + sticks * (dt / steady);
-        let turn = if self.controlling { limit_aim_motion(turn, self.aim_rates, dt) } else { turn };
+        let turn = if self.controlling { limit_aim_motion(turn, self.aim_rates * pace, dt) } else { turn };
         if self.cockpit.flies() {
             // Aircraft: round from the nose, which the view turns with.
             self.look_yaw = (self.look_yaw - turn.x).clamp(-2.4, 2.4);
@@ -914,7 +949,7 @@ impl Perspective {
         } else {
             let (lo, hi) = if self.controlling { (-1.56, 1.56) } else { self.cockpit.pitch_range() };
             self.look_yaw -= turn.x;
-            self.look_pitch = (self.look_pitch - turn.y).clamp(lo, hi);
+            self.look_pitch = ease_into(self.look_pitch, self.look_pitch - turn.y, lo, hi, 2.5 * dt);
         }
     }
 
@@ -1127,9 +1162,14 @@ impl Perspective {
             let centre = body.transform_point3(Vec3::new(0.0, t.model.height.to_f32() * 0.5, 0.0));
             self.centre = centre;
             let mut at = centre - flat * (r * 4.0 + 40.0) + Vec3::Y * (r * 1.4 + 18.0);
-            // (Over the ground as it is drawn: a building's pad and its bank raise it.)
-            let ground = crate::scene::drawn_ground(&game.sim.world, at.x, at.z).max(game.sim.world.sea_level.to_f32());
-            at.y = at.y.max(ground + 6.0);
+            // (Over the ground as it is drawn: a building's pad and its bank raise it; and high
+            // enough to see the unit over a ridge between them, risen at once, settling back.)
+            let world = &game.sim.world;
+            let ground = |x: f32, z: f32| crate::scene::drawn_ground(world, x, z).max(world.sea_level.to_f32());
+            at.y = at.y.max(ground(at.x, at.z) + 6.0);
+            let over_ridge = chase_clearance(centre, at, |x, z| ground(x, z) + 4.0);
+            self.chase_lift = if over_ridge >= self.chase_lift { over_ridge } else { self.chase_lift + (over_ridge - self.chase_lift) * (1.0 - (-dt * 2.0).exp()) };
+            at.y += self.chase_lift;
             self.eye = at;
             self.forward = (centre + look * 120.0 - at).normalize_or(look);
         } else {
@@ -1212,7 +1252,9 @@ impl Perspective {
         // smaller heading).
         let heading = u.heading as f32 * std::f32::consts::TAU / 65536.0;
         let fastest = (t.turn_rate.max(1) as f32 * std::f32::consts::TAU / 65536.0 * ta_sim::cob::TICKS_PER_SECOND as f32).max(0.01);
-        let turning = self.hud.heading.map_or(0.0, |h| -wrap(heading - h) / dt.max(1e-3) / fastest);
+        // (In the battle's time: at twice the speed it read twice the turn.)
+        let battle_dt = dt * game.speed.max(0.01);
+        let turning = self.hud.heading.map_or(0.0, |h| -wrap(heading - h) / battle_dt.max(1e-3) / fastest);
         self.hud.heading = Some(heading);
         self.hud.turn.step(turning.clamp(-1.0, 1.0), 8.0, 0.7, dt);
         self.hud.controls_speed.step(self.hud.speed.x, 3.0, 1.0, dt);
@@ -1339,19 +1381,72 @@ fn sill(model: &CockpitModel) -> Option<Vec3> {
 }
 
 /// The top of a modelled cockpit's window over the middle of the view (eye space, metres): where
-/// its own geometry comes lowest above the line of sight, across as much of the view as a
-/// heading tape `tape` wide (a share of the view's width) spans, with a margin for wide screens
-/// (its moving parts and see-through glass aside). Under it is the window.
+/// its own geometry first stands above the line of sight, looking up, across as much of the view
+/// as a heading tape `tape` wide (a share of the view's width) spans, with a margin for wide
+/// screens (its moving parts and see-through glass aside), the lowest of those. Looked for up
+/// each of a row of lines across the view, in the model's triangles as the eye sees them: a line
+/// that meets the model at the line of sight itself crosses a pillar, not the window, and is passed
+/// over (a ship's bridge's pillars, bolted all the way up, put its top at the eye's level).
 fn lintel(model: &CockpitModel, tape: f32) -> Option<Vec3> {
+    const LINES: usize = 96;
     let reach = tape * 1.8;
-    model
-        .vertices
-        .iter()
-        .filter(|v| v.part == 0 && model.materials.get(v.material as usize).is_none_or(|m| m.role != ta_render::cockpit::Role::Glass))
-        .map(|v| Vec3::from_array(v.pos))
-        .filter(|q| q.z < -0.05 && q.y > 0.0 && q.x.abs() < -q.z * reach)
-        .min_by(|a, b| (a.y / -a.z).total_cmp(&(b.y / -b.z)))
-        .map(|q| Vec3::new(0.0, q.y, q.z))
+    // Its triangles a metre ahead of the eye (x and y over its distance), with their distance.
+    let seen: Vec<([glam::Vec2; 3], f32)> = model
+        .indices
+        .chunks_exact(3)
+        .filter_map(|t| {
+            let q = [0, 1, 2].map(|k| model.vertices.get(t[k] as usize));
+            let [Some(a), Some(b), Some(c)] = q else { return None };
+            let shown = |v: &ta_render::cockpit::CockpitVertex| v.part == 0 && model.materials.get(v.material as usize).is_none_or(|m| m.role != ta_render::cockpit::Role::Glass);
+            if ![a, b, c].iter().all(|v| shown(v) && v.pos[2] < -0.05) {
+                return None;
+            }
+            let flat = |v: &ta_render::cockpit::CockpitVertex| glam::Vec2::new(v.pos[0], v.pos[1]) / -v.pos[2];
+            Some(([flat(a), flat(b), flat(c)], -(a.pos[2] + b.pos[2] + c.pos[2]) / 3.0))
+        })
+        .collect();
+    // Each line: whether it crosses a pillar, and where the model first stands over the line of
+    // sight (how far up, and how far off).
+    let lines: Vec<(bool, Option<(f32, f32)>)> = (0..=LINES)
+        .map(|k| {
+            let x = -reach + 2.0 * reach * k as f32 / LINES as f32;
+            let mut top: Option<(f32, f32)> = None;
+            for (t, depth) in &seen {
+                let Some((lo, hi)) = span_at(t, x) else { continue };
+                if lo <= 0.0 && hi >= 0.0 {
+                    return (true, None);
+                }
+                if lo > 0.0 && top.is_none_or(|t| lo < t.0) {
+                    top = Some((lo, *depth));
+                }
+            }
+            (false, top)
+        })
+        .collect();
+    // (Nor the lines just beside a pillar: what is bolted to it stands out past its edges.)
+    const BESIDE: usize = 3;
+    let clear = |k: usize| !lines[k.saturating_sub(BESIDE)..=(k + BESIDE).min(LINES)].iter().any(|l| l.0);
+    let lowest = (0..=LINES).filter(|&k| clear(k)).filter_map(|k| lines[k].1).min_by(|a, b| a.0.total_cmp(&b.0));
+    lowest.map(|(up, depth)| Vec3::new(0.0, up * depth, -depth))
+}
+
+/// Where a triangle (in the plane a metre ahead) crosses the upright line at `x`: from how low to
+/// how high, if it does.
+fn span_at(t: &[glam::Vec2; 3], x: f32) -> Option<(f32, f32)> {
+    let mut range: Option<(f32, f32)> = None;
+    let mut take = |y: f32| range = Some(range.map_or((y, y), |(lo, hi)| (lo.min(y), hi.max(y))));
+    for (a, b) in [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])] {
+        if (a.x - x) * (b.x - x) > 0.0 {
+            continue;
+        }
+        if (b.x - a.x).abs() < 1e-9 {
+            take(a.y);
+            take(b.y);
+        } else {
+            take(a.y + (b.y - a.y) * (x - a.x) / (b.x - a.x));
+        }
+    }
+    range
 }
 
 /// Where a turret's guns run out ahead, across it (the turret piece's own x): the middle of the
@@ -1396,6 +1491,20 @@ fn view_fov(cockpit: Cockpit, viewport: Vec2) -> f32 {
         return fov;
     }
     (2.0 * ((fov * 0.5).tan() * WIDE / aspect).atan()).min(100f32.to_radians())
+}
+
+/// How far a camera at `eye` must rise to see `target` over the ground between them (`ground`:
+/// how high it must clear at a place): none when the line between them clears it.
+fn chase_clearance(target: Vec3, eye: Vec3, ground: impl Fn(f32, f32) -> f32) -> f32 {
+    const SAMPLES: usize = 12;
+    (1..=SAMPLES)
+        .map(|k| {
+            let t = k as f32 / SAMPLES as f32;
+            let p = target.lerp(eye, t);
+            // (Raised by `lift`, the line is `t` of it higher there.)
+            ((ground(p.x, p.z) - p.y) / t).max(0.0)
+        })
+        .fold(0.0, f32::max)
 }
 
 /// Sets `cam` to look from `eye` along `forward` with a vertical field of view and a roll.
@@ -1489,6 +1598,19 @@ fn wheel_steps(kept: &mut f32, turned: f32) -> i32 {
     steps as i32
 }
 
+/// A look's pitch `from`, turned to `to`, held to `lo..hi`: out of it (let go of a unit driven
+/// with the sight further up or down than the seat sees), back into it by `back` at most, and
+/// turned no further out meanwhile (clamped, it jumped there in a frame).
+fn ease_into(from: f32, to: f32, lo: f32, hi: f32, back: f32) -> f32 {
+    if to > hi {
+        (to.min(from) - back).max(hi)
+    } else if to < lo {
+        (to.max(from) + back).min(lo)
+    } else {
+        to
+    }
+}
+
 /// The sight's turn this frame, `motion` (radians across and up), held to `rates` (radians a
 /// second) over `dt`.
 fn limit_aim_motion(motion: Vec2, rates: Vec2, dt: f32) -> Vec2 {
@@ -1546,6 +1668,44 @@ mod tests {
         // A tall window, at most 100 degrees; a window of no size, the kind's own.
         assert_eq!(view_fov(Cockpit::Vehicle, Vec2::new(400.0, 1600.0)), 100f32.to_radians());
         assert_eq!(view_fov(Cockpit::Vehicle, Vec2::ZERO), wide);
+    }
+
+    #[test]
+    fn a_pitch_out_of_reach_eases_back_and_goes_no_further() {
+        // Within reach: as turned.
+        assert_eq!(ease_into(0.2, 0.3, -0.95, 0.7, 0.05), 0.3);
+        // Let go looking up at 1.5: back towards 0.7 a step at a time, not at once.
+        assert!((ease_into(1.5, 1.5, -0.95, 0.7, 0.05) - 1.45).abs() < 1e-6);
+        // Turned further up meanwhile: no further; turned down: as far as that.
+        assert!((ease_into(1.45, 1.6, -0.95, 0.7, 0.05) - 1.4).abs() < 1e-6);
+        assert!((ease_into(1.45, 1.0, -0.95, 0.7, 0.05) - 0.95).abs() < 1e-6);
+        // Never past the edge of the reach coming back.
+        assert_eq!(ease_into(0.72, 0.72, -0.95, 0.7, 0.05), 0.7);
+        assert_eq!(ease_into(-1.0, -1.0, -0.95, 0.7, 0.5), -0.95);
+    }
+
+    #[test]
+    fn the_view_from_behind_rises_to_see_over_a_ridge() {
+        let target = Vec3::new(0.0, 10.0, 0.0);
+        let eye = Vec3::new(0.0, 40.0, -100.0);
+        // Flat ground under the line: no rise.
+        assert_eq!(chase_clearance(target, eye, |_, _| 0.0), 0.0);
+        // A ridge 60 high halfway: the line there is at 25; raised by 70, at 60.
+        let ridge = |_: f32, z: f32| if (-55.0..=-45.0).contains(&z) { 60.0 } else { 0.0 };
+        let lift = chase_clearance(target, eye, ridge);
+        assert!((lift - 70.0).abs() < 1e-3, "{lift}");
+        let raised = eye + Vec3::Y * lift;
+        assert!(chase_clearance(target, raised, ridge) < 1e-3);
+    }
+
+    #[test]
+    fn every_modelled_cockpits_window_top_stands_well_above_the_eye() {
+        // (A pillar's bolts read as the top of a bridge's window put it at the eye's level.)
+        for k in [Cockpit::Vehicle, Cockpit::Walker, Cockpit::Titan, Cockpit::Commander, Cockpit::Bridge, Cockpit::Canopy, Cockpit::Gunship, Cockpit::Emplacement] {
+            let Some(m) = k.model() else { continue };
+            let up = lintel(&m, k.tape_width()).map(|q| (q.y / -q.z).atan().to_degrees());
+            assert!(up.is_some_and(|a| (8.0..k.fov() * 0.5).contains(&a)), "{k:?}: {up:?}");
+        }
     }
 
     #[test]
@@ -1703,24 +1863,31 @@ mod tests {
     #[test]
     fn the_lintel_is_the_top_of_the_window() {
         use ta_render::cockpit::{CockpitMaterial, CockpitVertex, Role};
-        let v = |pos: [f32; 3], material: u32, part: u32| CockpitVertex { pos, material, part, ..Default::default() };
         let material = CockpitMaterial::plain;
-        let model = CockpitModel {
-            vertices: vec![
-                // The roof over the middle; the frame coming lower towards the side, still over
-                // the heading tape's span.
-                v([0.0, 0.3, -0.6], 0, 0),
-                v([0.3, 0.2, -0.6], 0, 0),
-                // Not it: glass, a moving part, a pillar off to the side, the dashboard below.
-                v([0.0, 0.05, -0.6], 1, 0),
-                v([0.0, 0.04, -0.6], 0, 1),
-                v([0.7, 0.01, -0.6], 0, 0),
-                v([0.0, -0.3, -0.6], 0, 0),
-            ],
-            materials: vec![material(Role::Surface), material(Role::Glass)],
-            ..Default::default()
+        // Quads at a depth of 0.6, from (x0, y0) to (x1, y1), of a material and a part.
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+        let mut quad = |x0: f32, y0: f32, x1: f32, y1: f32, material: u32, part: u32| {
+            let base = vertices.len() as u32;
+            for (x, y) in [(x0, y0), (x1, y0), (x1, y1), (x0, y1)] {
+                vertices.push(CockpitVertex { pos: [x, y, -0.6], material, part, ..Default::default() });
+            }
+            indices.extend([base, base + 1, base + 2, base, base + 2, base + 3]);
         };
-        assert_eq!(lintel(&model, TAPE_WIDTH), Some(Vec3::new(0.0, 0.2, -0.6)));
+        // The roof over the middle, the frame coming lower towards the side, still over the
+        // heading tape's span; the dashboard below.
+        quad(-0.5, 0.3, 0.5, 0.6, 0, 0);
+        quad(0.25, 0.2, 0.32, 0.3, 0, 0);
+        quad(-0.5, -0.6, 0.5, -0.2, 0, 0);
+        // Not it: the glass, a moving part, a pillar standing across the line of sight beside the
+        // middle, bolted all the way up.
+        quad(-0.5, -0.2, 0.5, 0.3, 1, 0);
+        quad(-0.05, 0.05, 0.05, 0.1, 0, 1);
+        quad(-0.4, -0.6, -0.35, 0.6, 0, 0);
+        quad(-0.42, 0.01, -0.33, 0.02, 0, 0);
+        let model = CockpitModel { vertices, indices, materials: vec![material(Role::Surface), material(Role::Glass)], ..Default::default() };
+        let top = lintel(&model, TAPE_WIDTH).expect("a window top");
+        assert!((top.y / -top.z - 0.2 / 0.6).abs() < 1e-4 && (top.z + 0.6).abs() < 1e-4, "{top:?}");
         assert_eq!(lintel(&CockpitModel::default(), TAPE_WIDTH), None);
         // The cockpits without a heading screen of their own leave the tape room under their
         // window's top, well inside the view.

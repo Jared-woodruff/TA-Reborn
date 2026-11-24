@@ -29,11 +29,16 @@ struct Uniform {
     glow: vec4<f32>,
     // Seconds, alarm (0..1), a hit's flash (0..1), lamps on (0..1).
     params: vec4<f32>,
-    // How hard it rains (0..1), whether it flies (1: drops are blown back over a canopy), and how
-    // far what the model leaves uncovered is the cab's walls (0..1, `vs_walls`).
+    // How hard it rains (0..1), whether it flies (1: drops are blown back over a canopy), how far
+    // what the model leaves uncovered is the cab's walls (0..1, `vs_walls`), and the drops' clock
+    // (seconds of the battle's time).
     weather: vec4<f32>,
     // The side's paint (linear); w: how many screen lights there are.
     paint: vec4<f32>,
+    // The cabin lamp, over and behind the eye, where it hangs this frame (it moves with the cab);
+    // w: how bright the cockpit is drawn (under 1 while the night sight brightens the picture: it
+    // brightens the battle outside, not the cab's own lamps and screens, which glared white).
+    lamp: vec4<f32>,
     // The instruments' glow as lights, two each: their middle (eye space) and how far their
     // light reaches; the way they face and how bright they are.
     lights: array<vec4<f32>, 16>,
@@ -76,8 +81,6 @@ const EDGE_REACH: f32 = 0.03;
 // The wear texture's tiles per metre: fine (its chips, scratches and grain), coarse (stains).
 const TILE: f32 = 5.6;
 const TILE_COARSE: f32 = 1.3;
-// The cabin lamp, over and behind the eye.
-const CABIN_LAMP: vec3<f32> = vec3<f32>(0.0, 0.3, 0.18);
 // Roles (cockpit.rs's `Role`).
 const SURFACE: u32 = 0u;
 const TRIM: u32 = 1u;
@@ -182,11 +185,13 @@ fn v_smith(nv: f32, nl: f32, a: f32) -> f32 {
 
 // What a light from `l` reflects towards `v` (times the light, as the diffuse is albedo times
 // the light), held to a few times the light (a lamp an inch from a bolt's rim would blaze).
+// (Every pow's base is kept from going below 0: a dot of two unit vectors can round past 1, and
+// some drivers take pow as exp2(y * log2(x)), NaN for a base under 0.)
 fn gloss(n: vec3<f32>, v: vec3<f32>, l: vec3<f32>, a: f32, f0: vec3<f32>) -> vec3<f32> {
     let h = normalize(l + v);
     let nl = max(dot(n, l), 0.0);
     let nv = max(dot(n, v), 1e-3);
-    let f = f0 + (1.0 - f0) * pow(1.0 - max(dot(v, h), 0.0), 5.0);
+    let f = f0 + (1.0 - f0) * pow(saturate(1.0 - dot(v, h)), 5.0);
     return min(d_ggx(max(dot(n, h), 0.0), a) * v_smith(nv, nl, a) * nl * PI, 6.0) * f;
 }
 
@@ -470,7 +475,9 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
         base = u.paint.rgb;
     }
     let v = normalize(-in.eye_pos);
-    var n = normalize(in.normal);
+    // (A normal of no length, two opposite ones met across a triangle: facing the eye, not NaN,
+    // which bloomed into a black block.)
+    var n = select(vec3<f32>(0.0, 0.0, 1.0), normalize(in.normal), dot(in.normal, in.normal) > 1e-12);
     if (dot(n, v) < 0.0) {
         n = -n;
     }
@@ -529,7 +536,7 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
     var diffuse = hemi * ao + sun;
     var spec = u.sun_color.rgb * through * gloss(nb, v, sun_l, a, f0);
     // The cabin lamp over the eye.
-    let to_lamp = CABIN_LAMP - in.eye_pos;
+    let to_lamp = u.lamp.xyz - in.eye_pos;
     let lamp_d = length(to_lamp);
     let lamp_l = to_lamp / max(lamp_d, 1e-4);
     let lamp_fall = 1.0 / (1.0 + (lamp_d / 0.55) * (lamp_d / 0.55)) * mix(0.55, 1.0, masks.x);
@@ -560,16 +567,16 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
     let inside = u.sky.rgb * 0.05 + u.ground.rgb * 0.035 + u.cabin.rgb * 0.06;
     let env = mix(mix(inside, outside, window), inside * 0.8 + outside * 0.12, s.rough);
     let nv = max(dot(nb, v), 1e-3);
-    let fresnel = f0 + (max(vec3<f32>(1.0 - s.rough), f0) - f0) * pow(1.0 - nv, 5.0);
+    let fresnel = f0 + (max(vec3<f32>(1.0 - s.rough), f0) - f0) * pow(saturate(1.0 - nv), 5.0);
     spec += env * fresnel * ao + red * 0.3 * f0;
     var color = s.albedo * (1.0 - s.metal) * diffuse * ao + spec;
     // The instruments' glass and the windows' are lit as they always were (their own gloss).
-    let cab = point_light(in.eye_pos, n, v, CABIN_LAMP, u.cabin.rgb, 0.55, 160.0);
+    let cab = point_light(in.eye_pos, n, v, u.lamp.xyz, u.cabin.rgb, 0.55, 160.0);
     if (role == SCREEN) {
         // An instrument's glass: dark, a faint glow of its phosphor, the lamp's reflection; and
         // behind it the instrument's picture, lit. (Four taps across the footprint: seen at an
         // angle the lettering stays whole.)
-        let fres = pow(1.0 - max(dot(n, v), 0.0), 5.0);
+        let fres = pow(saturate(1.0 - dot(n, v)), 5.0);
         var ink = vec4<f32>(0.0);
         if (scr.centre.w > 0.5) {
             let lo = scr.region.xy;
@@ -584,7 +591,7 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
         let scan = 1.0 - 0.2 * (0.5 + 0.5 * cos(rows * 6.2831853)) * (1.0 - smoothstep(0.3, 0.5, rows_per_px));
         // The tube's edge darker, as on a curved face.
         let edge = glass_uv * (1.0 - glass_uv);
-        let vignette = clamp(pow(edge.x * edge.y * 16.0, 0.25), 0.0, 1.0);
+        let vignette = clamp(pow(max(edge.x * edge.y * 16.0, 0.0), 0.25), 0.0, 1.0);
         let lit = ink.rgb * PHOSPHOR_GAIN * lamps * scan * mix(0.7, 1.0, vignette);
         color = vec3<f32>(0.002, 0.007, 0.004) + emit * 0.04 * lamps + lit + u.cabin.rgb * cab.y * 0.08 + (u.sky.rgb * 0.1 + hemi * 0.05) * fres;
     } else if (role == LAMP) {
@@ -599,7 +606,7 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
     } else if (role == GLASS) {
         // The openings' glass: faint, more at a glance along it; dust and fine scratches that
         // catch the sun and the cabin lamp; and in the rain, drops on it, lensing the sky.
-        let fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);
+        let fres = pow(saturate(1.0 - dot(n, v)), 3.0);
         let sun_spec = min(pow(max(dot(n, normalize(u.sun_dir.xyz + v)), 0.0), 160.0) * (162.0) / 8.0, 4.0) * step(0.0, dot(n, u.sun_dir.xyz));
         let glint = min(sun_spec * u.sun_dir.w + cab.y * 0.5, 2.0);
         let dust = smoothstep(0.8, 0.96, noise3(in.local * 230.0)) * 0.6 + smoothstep(0.93, 0.99, noise3(in.local * vec3<f32>(900.0, 30.0, 900.0))) * 0.4;
@@ -609,16 +616,16 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
         if (rain > 0.01) {
             // A drop shows the world upside down (the sky at its foot, the ground at its top),
             // a dark rim round it and the light caught on it; a running one's trail is wet.
-            let d = raindrops(in.local.xy, t, rain, u.weather.y);
+            let d = raindrops(in.local.xy, u.weather.w, rain, u.weather.y);
             let world = mix(u.ground.rgb * 0.6, u.sky.rgb * 0.95, 0.5 + 0.5 * d.lens);
             col = mix(col, world, d.cover * 0.75);
             col *= 1.0 - d.rim * 0.45;
             col += vec3<f32>(1.0) * d.glint * (0.6 + glint) + u.sky.rgb * 0.15 * d.trail;
             alpha = max(alpha, d.cover * 0.2 + d.rim * 0.28 + d.glint * 0.75 + d.trail * 0.08);
         }
-        return vec4<f32>(col, alpha);
+        return vec4<f32>(col * u.lamp.w, alpha);
     }
-    return vec4<f32>(color, s.alpha);
+    return vec4<f32>(color * u.lamp.w, s.alpha);
 }
 
 // The cab's walls beyond the model: a picture wider than it is modelled for (an ultrawide
@@ -637,5 +644,5 @@ fn fs_walls() -> @location(0) vec4<f32> {
     let pulse = 0.5 + 0.5 * sin(u.params.x * 7.0);
     let red = vec3<f32>(1.0, 0.08, 0.04) * (u.params.y * pulse * 0.5 + u.params.z * 1.4);
     let light = mix(u.ground.rgb, u.sky.rgb, 0.5) * 0.12 + u.cabin.rgb * 0.08 + red * 0.5;
-    return vec4<f32>(u.paint.rgb * light, u.weather.z);
+    return vec4<f32>(u.paint.rgb * light * u.lamp.w, u.weather.z);
 }
