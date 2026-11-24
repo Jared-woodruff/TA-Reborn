@@ -112,8 +112,10 @@ pub use transport::{Client, Host, HostEvent};
 /// 115: deterministic possession input and release commands (simulation 110). 116: simulation
 /// 111, a mission's aircraft parked and waiting parked. 117: simulation 112, driven units' way,
 /// weapons and letting go, and idle planes with targets of their own landing. 118: simulation
-/// 113, a driven unit's course, its throttle in hundredths (`DirectInput`) and a click held.
-pub const PROTOCOL: u32 = 118;
+/// 113, a driven unit's course, its throttle in hundredths (`DirectInput`) and a click held. 119:
+/// simulation 114, the computer players' defence from the air, their Commander's retreat from guns
+/// and their climb up the tiers, and armies' worth without the Commanders.
+pub const PROTOCOL: u32 = 119;
 pub const DEFAULT_PORT: u16 = 7890;
 /// Ticks between state hash reports (which double as progress reports).
 pub const HASH_INTERVAL: u64 = 15;
