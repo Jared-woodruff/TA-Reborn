@@ -260,19 +260,36 @@ pub struct BuildJob {
 /// a game that stopped sending, lets it go this way.
 pub const DIRECT_CONTROL_TICKS: u64 = 90;
 
+/// Ticks a pull of a driven unit's trigger waits for a weapon to fire (a fifth of a second over
+/// half of one): its gun still coming round to the sight fires as it comes on, rather than the
+/// click being lost with the next input.
+pub const PULL_TICKS: u64 = 18;
+
 /// A player's hands on a unit they drive (`Command::DirectControl`, from the first-person view).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DirectInput {
-    /// Ahead (1), astern (-1) or neither (0).
+    /// How hard ahead (positive) or astern (negative), in hundredths of its top speed
+    /// ([`DirectInput::FULL`]; astern it goes at half its top speed at the most): a key gives it
+    /// all, a pad's stick pushed part way a share.
     pub throttle: i8,
-    /// The hull turning right (1), left (-1) or neither (0).
+    /// The hull turning right (1), left (-1) or neither (0), steered by hand (no `course`).
     pub turn: i8,
+    /// The world's heading the hull is to come round to (TA's angle units): it turns that way at
+    /// its turn rate and no further, slower the further it faces from it (`Sim::direct_step`);
+    /// none, `turn` steers it. The first-person view sends the way the player would go, worked
+    /// out from where they look.
+    pub course: Option<i32>,
     /// Where the sight looks: the world's heading (TA's angle units, -32768..32767)...
     pub heading: i32,
     /// ...and its pitch above the level (-16384..16384, straight down to straight up).
     pub pitch: i32,
     /// The trigger held (or clicked since the last input).
     pub fire: bool,
+}
+
+impl DirectInput {
+    /// A throttle all the way ahead (or, negative, astern).
+    pub const FULL: i8 = 100;
 }
 
 /// A unit driven by its owner (`Sim::set_direct_control`): their latest input, held until the next.
@@ -285,6 +302,9 @@ pub struct DirectControl {
     pub input: DirectInput,
     /// The tick it is let go at unless another input comes first ([`DIRECT_CONTROL_TICKS`]).
     pub expires: u64,
+    /// A pull of the trigger not yet fired (an input's `fire` came on): until the tick it lapses
+    /// at ([`PULL_TICKS`] on), or a weapon fires (`Sim::direct_weapons`).
+    pub pull: Option<u64>,
 }
 
 #[derive(Clone)]

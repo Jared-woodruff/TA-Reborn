@@ -896,7 +896,7 @@ fn the_officer_leaves_a_driven_constructor_alone_until_it_is_let_go() {
     let frame = sim.spawn_unit(sim.types.id("EXTRACTOR").unwrap(), 0, FxVec3::from_ints(360, 0, 240), 0, false).unwrap();
     let mut officer = DutyOfficer::new(0, &sim);
     officer.set(on_duty, Some(Duty::Economy));
-    let still = ta_sim::DirectInput { throttle: 0, turn: 0, heading: 0, pitch: 0, fire: false };
+    let still = ta_sim::DirectInput { throttle: 0, turn: 0, course: None, heading: 0, pitch: 0, fire: false };
     let drive = Command::DirectControl { player: 0, unit: on_duty, input: Some(still) };
     sim.step(std::slice::from_ref(&drive));
     for _ in 0..30 * 20 {

@@ -2978,8 +2978,16 @@ where the units go (`hud/domain.rs`, below).
   spectating alike, unless the player takes control of one of their own ground units, hovercraft
   or ships (E; a pad's Y): its input then goes to the battle as `Command::DirectControl`, as it
   changes and once a second besides, until E again or leaving lets it go (`sim/possession.rs`: the
-  battle lets go of one it hears nothing from for 90 ticks; W and S, A and D, a pad's left stick
-  drive it, the sight aims its guns at their scripts' turning speeds, a click, RB or A fires). The key takes the first selected unit, else the
+  battle lets go of one it hears nothing from for 90 ticks). It goes where the player looks
+  (`perspective::drive`): W, A, S and D (a pad's left stick, its throttle as far as it is pushed)
+  give a way, turned by the look, and the battle steers the hull to that course at its turn rate
+  and no further (`DirectInput::course`; off its course it slows, by the angle's cosine, and from
+  a right angle off turns on the spot; S and its diagonals go astern, the hull facing back up the
+  way); a walker, or a unit whose gun cannot turn, comes round to the look standing too. The
+  view turns as fast as the mouse (LOOK SENSITIVITY, INVERT LOOK); the guns come round to the
+  sight at their scripts' pace, the vehicles' ring marking where the turret points; a click, RB or
+  A fires, the battle holding the pull until a gun comes on (`DirectControl::pull`, 0.6 s). The
+  DRIVING setting's TANK CONTROLS drive along the hull and turn it by hand (`DirectInput::turn`). The key takes the first selected unit, else the
   one under the pointer: the player's own or an ally's (a spectator's, anyone's), finished, in
   sight, and mobile or armed (`Perspective::can_enter`). The camera dives into the unit
   (1.1 s) and climbs back out on Escape, or when a transport picks the unit up, over where the

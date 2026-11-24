@@ -3,7 +3,7 @@
 //! it by hand, its orders waiting until it is let go.
 
 use super::*;
-use crate::unit::{DIRECT_CONTROL_TICKS, DirectControl, DirectInput};
+use crate::unit::{DIRECT_CONTROL_TICKS, DirectControl, DirectInput, PULL_TICKS};
 use ta_data::unit::MAX_WEAPONS;
 
 impl Sim {
@@ -11,10 +11,10 @@ impl Sim {
     /// where it stands ([`Sim::take_over`]); its orders wait (`order_unit` gives it no new ones,
     /// `update_orders` leaves them be). Let go, it stops again and takes up its orders where they
     /// were ([`Sim::let_go`]). Only the owner's own finished ground, hover or naval unit, standing
-    /// free (not carried), is driven, and only with input within its bounds (a throttle and a turn
-    /// of -1, 0 or 1, an aim's heading and pitch on the circle); its owner lets it go in whatever
-    /// state it is (one being taken apart too: built up again before its input lapsed, it would
-    /// carry on with that input).
+    /// free (not carried), is driven, and only with input within its bounds (a throttle of a
+    /// hundred hundredths either way at the most, a turn of -1, 0 or 1, a course, an aim's heading
+    /// and pitch on the circle); its owner lets it go in whatever state it is (one being taken
+    /// apart too: built up again before its input lapsed, it would carry on with that input).
     pub(super) fn set_direct_control(&mut self, player: u8, id: UnitId, input: Option<DirectInput>) {
         let Some(unit) = self.unit(id).filter(|unit| unit.owner == player) else { return };
         let Some(input) = input else {
@@ -28,18 +28,23 @@ impl Sim {
             || !matches!(ty.locomotion, Locomotion::Ground | Locomotion::Hover | Locomotion::Naval) {
             return;
         }
-        if !(-1..=1).contains(&input.throttle) || !(-1..=1).contains(&input.turn) || !(-32768..=32767).contains(&input.heading) || !(-16384..=16384).contains(&input.pitch) {
+        let full = DirectInput::FULL;
+        let on_circle = |angle: i32| (-32768..=32767).contains(&angle);
+        if !(-full..=full).contains(&input.throttle) || !(-1..=1).contains(&input.turn) || !input.course.is_none_or(on_circle) || !on_circle(input.heading) || !(-16384..=16384).contains(&input.pitch) {
             return;
         }
         let entering = unit.direct_control.is_none();
         // (The piece its sight is drawn from, found on its first tick driven: kept.)
         let aim_piece = unit.direct_control.and_then(|control| control.aim_piece);
+        // (The trigger pulled: held until a weapon fires, or a moment.)
+        let pulled = input.fire && unit.direct_control.is_none_or(|control| !control.input.fire);
+        let pull = if pulled { Some(self.tick + PULL_TICKS) } else { unit.direct_control.and_then(|control| control.pull) };
         if entering {
             self.take_over(id);
         }
         let expires = self.tick + DIRECT_CONTROL_TICKS;
         if let Some(unit) = self.unit_mut(id) {
-            unit.direct_control = Some(DirectControl { player, input, expires, aim_piece });
+            unit.direct_control = Some(DirectControl { player, input, expires, aim_piece, pull });
         }
     }
 
@@ -86,15 +91,21 @@ impl Sim {
     }
 
     /// One tick of a driven unit's movement (`move_ground_units`, in place of `ground_step`): it
-    /// turns at its turn rate, on the spot too, gathers speed towards its top speed (half of it in
-    /// reverse) at its acceleration and sheds it at its brake rate, slides along what it runs into,
-    /// and settles on the ground or the water. Held still by its script (`IMMOBILE`: a weapon
-    /// unpacked) it stays where it stands, told it is wanted on the move (`StartMoving`) so that
-    /// its script packs up and lets it go, as `ground_step` tells one with somewhere to go.
+    /// turns at its turn rate, on the spot too (towards its course, and no further, when it has
+    /// one; else by hand), gathers speed towards the throttle's share of its top speed (half of it
+    /// in reverse) at its acceleration and sheds it at its brake rate, slides along what it runs
+    /// into (and slips round a post or a corner met square on), and settles on the ground or the
+    /// water. Off its course it goes slower the further it faces from it (by the angle's cosine),
+    /// and from a right angle off or more it turns on the spot before it sets off, as the kbots
+    /// that turn standing do on their way (`ground_step`): so it goes where it was sent rather
+    /// than round in an arc. Held still by its script (`IMMOBILE`: a weapon unpacked) it stays where it stands, told it is wanted on
+    /// the move (`StartMoving`) so that its script packs up and lets it go, as `ground_step` tells
+    /// one with somewhere to go; a course alone (a walker facing where its driver looks) does not
+    /// pack it up.
     pub(super) fn direct_step(unit: &mut Unit, ty: &UnitType, spec: MoveSpec, world: &World, input: DirectInput) {
         if unit.immobile {
             unit.speed = Fx::ZERO;
-            let wants = input.throttle != 0 || input.turn != 0;
+            let wants = input.throttle != 0 || input.course.is_none() && input.turn != 0;
             if wants != unit.moving {
                 unit.moving = wants;
                 if wants {
@@ -107,15 +118,32 @@ impl Sim {
             }
             return;
         }
-        unit.heading = wrap_angle(unit.heading - input.turn as i32 * ty.turn_rate);
+        let off = match input.course {
+            Some(course) => {
+                let off = wrap_angle(course - unit.heading);
+                unit.heading = wrap_angle(unit.heading + off.clamp(-ty.turn_rate, ty.turn_rate));
+                wrap_angle(course - unit.heading)
+            }
+            None => {
+                unit.heading = wrap_angle(unit.heading - input.turn as i32 * ty.turn_rate);
+                0
+            }
+        };
         let top = if input.throttle < 0 { ty.max_speed / 2 } else { ty.max_speed };
-        let target = top * input.throttle as i64;
+        let target = top * input.throttle as i64 / DirectInput::FULL as i64 * cos(off).max(Fx::ZERO);
         unit.speed = Self::driven_speed(unit.speed, target, ty);
-        // Straight on, else sliding along what it met (its x alone, its z alone). A slide that goes
-        // nowhere (driven square into a wall, the step all along one axis) is as blocked as the
-        // rest: taken, the unit ran on the spot at full speed.
+        // Straight on; else along what it met (the larger of its x and its z); else round it, the
+        // step turned an eighth of a turn to the left or the right, at that much less of its way (a
+        // tree, a post or a corner met square on: it slips past rather than stop dead, left first,
+        // so that it keeps to one side of it from tick to tick, still facing its way); else the
+        // smaller of its x and its z. A slide that goes nowhere (driven square into a wall, the
+        // step all along one axis) is as blocked as the rest: taken, the unit ran on the spot at
+        // full speed.
         let step = heading_vector(unit.heading).scale(unit.speed);
-        let candidates = [unit.pos + step, unit.pos + FxVec3::new(step.x, Fx::ZERO, Fx::ZERO), unit.pos + FxVec3::new(Fx::ZERO, Fx::ZERO, step.z)];
+        let (along_x, along_z) = (FxVec3::new(step.x, Fx::ZERO, Fx::ZERO), FxVec3::new(Fx::ZERO, Fx::ZERO, step.z));
+        let (larger, smaller) = if step.x.abs() >= step.z.abs() { (along_x, along_z) } else { (along_z, along_x) };
+        let round = |turn: i32| rotate_y(step, turn).scale(cos(turn));
+        let candidates = [step, larger, round(QUARTER_TURN / 2), round(-QUARTER_TURN / 2), smaller].map(|s| unit.pos + s);
         let ignore = unit.factory.map(|factory| factory.slot);
         let current_ok = world.passable(&spec, World::pos_to_anchor(unit.pos, ty.footprint), ignore);
         let here = unit.pos;

@@ -13,7 +13,7 @@ use egui::{
     Slider, Stroke, TextEdit, Ui, vec2,
 };
 use ta_config::{
-    ArtStyle, Audio, CameraStyle, Config, Gameplay, Graphics, HealthBars, Keys, Launcher, MenuBackdrop, OnPlay, OrderButton, Preset, Quality, RadialOpens,
+    ArtStyle, Audio, CameraStyle, Config, Driving, Gameplay, Graphics, HealthBars, Keys, Launcher, MenuBackdrop, OnPlay, OrderButton, Preset, Quality, RadialOpens,
     RangeOverlays, Reflections, SeasonalTheme, TimeOfDay, UserMusic, WindowMode, limits,
 };
 
@@ -470,6 +470,19 @@ impl SettingsView {
         });
         toggle_row(ui, rows, "EDGE SCROLLING", "Scroll the map when the cursor touches the edge of the screen", "camera pan mouse border", &mut p.edge_scroll);
         toggle_row(ui, rows, "GAMEPAD", "Play with a controller (the Steam Deck's included): sticks scroll and aim, A and B click. Read when the game starts.", "controller joystick xbox steam deck", &mut p.gamepad);
+
+        rows.group(ui, n("RIDING IN A UNIT"));
+        let driving = match p.driving {
+            Driving::WhereYouLook => n("A unit you took control of (E) goes where you look: W ahead, A and D to either side, S back, the unit turning itself that way. Walkers face where you look standing too."),
+            Driving::Tank => n("A unit you took control of (E) drives like a tank: W and S along its hull, A and D turn it, and the mouse aims its guns alone."),
+        };
+        setting_row(ui, rows, "DRIVING", driving, "first person perspective drive driving control steer keys wasd mouse look tank hull", |ui| {
+            widgets::segmented_fill(ui, &mut p.driving, &[(Driving::WhereYouLook, n("WHERE YOU LOOK")), (Driving::Tank, n("TANK CONTROLS"))]);
+        });
+        setting_row(ui, rows, "LOOK SENSITIVITY", "How fast the mouse turns the view when you ride in a unit", "first person perspective mouse look aim turn speed sensitivity", |ui| {
+            widgets::value_slider(ui, Slider::new(&mut p.look_sensitivity, limits::LOOK_SENSITIVITY).step_by(0.05).custom_formatter(|v, _| format!("{v:.2}×")).custom_parser(times), value_box);
+        });
+        toggle_row(ui, rows, "INVERT LOOK", "In a unit, pushing the mouse or a controller's right stick forward looks down", "first person perspective mouse look aim invert flip vertical y axis", &mut p.invert_look);
 
         rows.group(ui, n("KEYS"));
         if !rows.searching() {

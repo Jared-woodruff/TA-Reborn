@@ -26,7 +26,7 @@ fn possession_adjusts_elevation_for_a_visible_enemy_under_the_sight() {
     let u = sim.unit(driver).unwrap();
     let from = u.model_pos(sim.unit_type(u)) + FxVec3::new(Fx::ZERO, sim.unit_type(u).model.height / 2, Fx::ZERO);
     let to = sim.target_point(Target::Unit(enemy)).unwrap() - from;
-    let input = crate::DirectInput { throttle: 0, turn: 0, heading: 0, pitch: atan2(to.y, to.length_xz()), fire: true };
+    let input = crate::DirectInput { throttle: 0, turn: 0, course: None, heading: 0, pitch: atan2(to.y, to.length_xz()), fire: true };
     sim.step(&[Command::DirectControl { player: 0, unit: driver, input: Some(input) }]);
     let state = sim.unit(driver).unwrap().weapons[0];
     assert_eq!(state.target, Some(Target::Unit(enemy)));
@@ -62,7 +62,7 @@ fn possession_tracks_continuous_mouse_aim_without_pausing_or_exceeding_script_sp
     };
     ty.script = Some(Arc::new(CobProgram::new(script, &["gun".into()])));
     let id = sim.spawn_unit(kind, 0, FxVec3::from_ints(300, 60, 300), 0, true).unwrap();
-    let idle = crate::DirectInput { throttle: 0, turn: 0, heading: 0, pitch: 0, fire: false };
+    let idle = crate::DirectInput { throttle: 0, turn: 0, course: None, heading: 0, pitch: 0, fire: false };
     for _ in 0..3 { sim.step(&[Command::DirectControl { player: 0, unit: id, input: Some(idle) }]); }
     let mut previous = 0;
     let mut fired = false;
@@ -99,7 +99,7 @@ fn possession_aim_does_not_follow_a_decorative_muzzle_axis() {
     let id = sim.spawn_unit(kind, 0, FxVec3::from_ints(300, 60, 300), 0, true).unwrap();
     sim.unit_mut(id).unwrap().cob.as_mut().unwrap().pieces[0].rotation[1] = 4096;
     sim.unit_mut(id).unwrap().cob.as_mut().unwrap().pieces[0].rotation[0] = 16384;
-    let input = crate::DirectInput { throttle: 0, turn: 0, heading: 0, pitch: 0, fire: true };
+    let input = crate::DirectInput { throttle: 0, turn: 0, course: None, heading: 0, pitch: 0, fire: true };
     let mut shot = None;
     for _ in 0..5 {
         sim.step(&[Command::DirectControl { player: 0, unit: id, input: Some(input) }]);
@@ -127,7 +127,7 @@ fn possession_waits_for_scripted_aim_and_obeys_a_refusal() {
         };
         Arc::get_mut(&mut sim.types).unwrap().types[kind].script = Some(Arc::new(CobProgram::new(script, &[])));
         let unit = sim.spawn_unit(kind, 0, FxVec3::from_ints(300, 60, 300), 0, true).unwrap();
-        let input = crate::DirectInput { throttle: 0, turn: 0, heading: 0, pitch: 0, fire: true };
+        let input = crate::DirectInput { throttle: 0, turn: 0, course: None, heading: 0, pitch: 0, fire: true };
         let command = Command::DirectControl { player: 0, unit, input: Some(input) };
         for _ in 0..29 {
             sim.step(&[command.clone()]);

@@ -7,7 +7,7 @@ fn possession_turns_a_stationary_ship_on_the_spot() {
     let mut sim = sea();
     let ship = put(&mut sim, "SHIP", 0, 300, 300);
     let position = sim.unit(ship).unwrap().pos;
-    let input = crate::DirectInput { throttle: 0, turn: -1, heading: 0, pitch: 0, fire: false };
+    let input = crate::DirectInput { throttle: 0, turn: -1, course: None, heading: 0, pitch: 0, fire: false };
     sim.step(&[Command::DirectControl { player: 0, unit: ship, input: Some(input) }]);
     let u = sim.unit(ship).unwrap();
     assert_eq!(u.heading, sim.unit_type(u).turn_rate);
@@ -22,11 +22,11 @@ fn possession_steers_ships_without_driving_them_onto_land() {
     let ship = put(&mut sim, "SHIP", 0, 650, 300);
     sim.unit_mut(ship).unwrap().heading = 16384;
     assert_eq!(sim.unit_type(sim.unit(ship).unwrap()).locomotion, Locomotion::Naval);
-    let input = crate::DirectInput { throttle: 1, turn: 0, heading: 16384, pitch: 0, fire: false };
+    let input = crate::DirectInput { throttle: 100, turn: 0, course: None, heading: 16384, pitch: 0, fire: false };
     for _ in 0..180 { sim.step(&[Command::DirectControl { player: 0, unit: ship, input: Some(input) }]); }
     let edge = sim.unit(ship).unwrap().pos.x;
     assert!(edge > Fx::from_int(650) && edge < Fx::from_int(768));
-    for _ in 0..40 { sim.step(&[Command::DirectControl { player: 0, unit: ship, input: Some(crate::DirectInput { throttle: -1, ..input }) }]); }
+    for _ in 0..40 { sim.step(&[Command::DirectControl { player: 0, unit: ship, input: Some(crate::DirectInput { throttle: -100, ..input }) }]); }
     assert!(sim.unit(ship).unwrap().pos.x < edge);
 }
 

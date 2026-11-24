@@ -222,8 +222,13 @@ pub const RECORD_VERSION: u32 = 47;
 /// taken apart, given away, captured: astern it stops, its turrets go back to rest); with nothing
 /// under the sight it fires at the ground the sight looks at, with the weapons that would by order,
 /// a burst begun goes on, and nothing fires while it packs up to go; and an idle plane's targets of
-/// its own keep it in the air no more (it lands, or circles over the sea).
-pub const SIMULATION_VERSION: u32 = 112;
+/// its own keep it in the air no more (it lands, or circles over the sea). 113: a driven unit
+/// steered to a course (the way its driver would go, from where they look): it comes round to it
+/// at its turn rate and no further, slower the further it faces from it, turning on the spot from
+/// a right angle off; its throttle in hundredths of its top speed (a pad's stick part way); a
+/// click held until a weapon fires (a gun still coming round to the sight fires as it comes on);
+/// and met square on, a post or a corner slipped round rather than stopping dead.
+pub const SIMULATION_VERSION: u32 = 113;
 /// Records shorter than one year of simulated time are supported. Shared with the
 /// launcher's metadata reader so impossible durations cannot start endless save catch-up.
 pub const MAX_RECORD_TICKS: u64 = 30 * 3600 * 24 * 365;
@@ -707,6 +712,18 @@ pub enum OrderButton {
     /// TA's original interface: the left button selects and gives orders, the right one
     /// clears the selection (and cancels a pending order).
     Left,
+}
+
+/// How a unit taken control of in the first-person view (E) is driven.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub enum Driving {
+    /// W goes where the player looks, A and D to either side of it and S back from it, the unit
+    /// turning itself that way; a walker (and a unit whose guns cannot turn) faces where they look
+    /// standing too.
+    #[default]
+    WhereYouLook,
+    /// A tank's: W and S along the hull, A and D turn it; the mouse aims the guns alone.
+    Tank,
 }
 
 /// How the right button opens the radial menu on one of your units (a middle click on the unit
@@ -1300,6 +1317,12 @@ pub struct Gameplay {
     /// the modern HUD.
     pub classic_interface: bool,
     pub minimalist_first_person: bool,
+    /// How a unit taken control of in the first-person view is driven.
+    pub driving: Driving,
+    /// How fast the mouse turns the view in a unit (1: the game's own).
+    pub look_sensitivity: f32,
+    /// In a unit, the mouse (and a controller's right stick) pushed forward looks down.
+    pub invert_look: bool,
     /// The classic interface's art and lettering in TA's own square pixels, enlarged as they
     /// are (off: smoothed for the screen, sharp at any size).
     pub classic_pixels: bool,
@@ -1386,6 +1409,9 @@ impl Default for Gameplay {
             ta_cursors: true,
             classic_interface: false,
             minimalist_first_person: false,
+            driving: Driving::WhereYouLook,
+            look_sensitivity: 1.0,
+            invert_look: false,
             classic_pixels: false,
             mod_themes: true,
             colour_blind: false,
@@ -1449,6 +1475,7 @@ pub mod limits {
     pub const MESSAGE_DURATION: RangeInclusive<f32> = 1.0..=4.0;
     pub const SPEED: RangeInclusive<f32> = 0.25..=4.0;
     pub const SCROLL_SPEED: RangeInclusive<f32> = 0.25..=4.0;
+    pub const LOOK_SENSITIVITY: RangeInclusive<f32> = 0.25..=3.0;
     pub const PLAYER_NAME_CHARS: usize = 24;
 
     /// The largest interface scale on the settings' 5% steps at which a screen of `pixels` (at
@@ -2483,6 +2510,31 @@ mod tests {
         let saved = toml::to_string_pretty(&config).unwrap();
         let restored: Config = toml::from_str(&saved).unwrap();
         assert_eq!(restored, config);
+    }
+
+    /// Driving a unit goes where the player looks unless they chose a tank's controls, the look
+    /// at the game's own pace and the right way up, in files from before the choices too; the
+    /// choices round-trip, and a sensitivity out of its bounds is held to them.
+    #[test]
+    fn the_first_person_drive_and_look_default_and_round_trip() {
+        for source in ["", "[gameplay]
+minimalist_first_person = true
+"] {
+            let config: Config = toml::from_str(source).unwrap();
+            assert_eq!(config.gameplay.driving, Driving::WhereYouLook);
+            assert_eq!(config.gameplay.look_sensitivity, 1.0);
+            assert!(!config.gameplay.invert_look);
+        }
+        let mut config = Config::default();
+        config.gameplay.driving = Driving::Tank;
+        config.gameplay.look_sensitivity = 2.25;
+        config.gameplay.invert_look = true;
+        let saved = toml::to_string_pretty(&config).unwrap();
+        let restored: Config = toml::from_str(&saved).unwrap();
+        assert_eq!(restored, config);
+        config.gameplay.look_sensitivity = 40.0;
+        assert!(config.sanitize());
+        assert_eq!(config.gameplay.look_sensitivity, *limits::LOOK_SENSITIVITY.end());
     }
 
     /// The seasons are the launcher's settings, but the game's options show them too: what the

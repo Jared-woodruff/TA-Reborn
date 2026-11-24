@@ -1976,11 +1976,14 @@ fn hints(painter: &Painter, rect: Rect, p: &Perspective, since: f32, game: &Game
         None => return None,
     } * place.alpha.min(1.0);
     // (A pad's buttons while it is what the player is using.)
+    let tank = p.driving == ta_config::Driving::Tank;
     let text = match (p.pad, p.controlling, p.may_control(game)) {
-        (false, true, _) => t("W S DRIVES · A D TURNS · CLICK FIRES · E LETS GO · ESC LEAVES"),
+        (false, true, _) if tank => t("W S DRIVES · A D TURNS · CLICK FIRES · E LETS GO · ESC LEAVES"),
+        (false, true, _) => t("W A S D MOVE · MOUSE AIMS · CLICK FIRES · E LETS GO · ESC LEAVES"),
         (false, false, true) => t("MOUSE LOOKS ROUND · WHEEL ZOOM · V VIEW · N NIGHT · E TAKES CONTROL · ESC LEAVES"),
         (false, false, false) => t("MOUSE LOOKS ROUND · WHEEL ZOOM · V VIEW · N NIGHT · ESC LEAVES"),
-        (true, true, _) => t("LEFT STICK DRIVES · RIGHT STICK AIMS · RB FIRES · Y LETS GO · START LEAVES"),
+        (true, true, _) if tank => t("LEFT STICK DRIVES · RIGHT STICK AIMS · RB FIRES · Y LETS GO · START LEAVES"),
+        (true, true, _) => t("LEFT STICK MOVES · RIGHT STICK AIMS · RB FIRES · Y LETS GO · START LEAVES"),
         (true, false, true) => t("RIGHT STICK LOOKS ROUND · LT RT ZOOM · X VIEW · LB NIGHT · Y TAKES CONTROL · START LEAVES"),
         (true, false, false) => t("RIGHT STICK LOOKS ROUND · LT RT ZOOM · X VIEW · LB NIGHT · START LEAVES"),
     };

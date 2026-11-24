@@ -4650,6 +4650,10 @@ impl State {
         }
         p.reduced_motion = self.settings.gameplay.reduced_motion;
         p.reduced_flashes = self.settings.gameplay.reduced_flashes;
+        // (How the player drives and looks round, as the options have it now.)
+        p.driving = self.settings.gameplay.driving;
+        p.look_sensitivity = self.settings.gameplay.look_sensitivity;
+        p.invert_look = self.settings.gameplay.invert_look;
         // (A pad in use: its buttons are the ones hinted.)
         p.set_pad(self.gamepad.active, now);
         // (The clock's hour is the one the world is lit by.)
