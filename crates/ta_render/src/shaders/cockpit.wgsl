@@ -643,6 +643,7 @@ fn vs_walls(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
 fn fs_walls() -> @location(0) vec4<f32> {
     let pulse = 0.5 + 0.5 * sin(u.params.x * 7.0);
     let red = vec3<f32>(1.0, 0.08, 0.04) * (u.params.y * pulse * 0.5 + u.params.z * 1.4);
-    let light = mix(u.ground.rgb, u.sky.rgb, 0.5) * 0.12 + u.cabin.rgb * 0.08 + red * 0.5;
+    // (As bright as the model's own walls round the view, by day and by night.)
+    let light = mix(u.ground.rgb, u.sky.rgb, 0.5) * 0.38 + u.cabin.rgb * 0.22 + red * 0.5;
     return vec4<f32>(u.paint.rgb * light * u.lamp.w, u.weather.z);
 }
