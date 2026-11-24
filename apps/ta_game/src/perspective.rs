@@ -41,6 +41,10 @@ const SLIDE: f32 = 1.0;
 pub const LAMPS_AT: f32 = 1.0;
 /// Seconds a lost signal shows before the camera pulls away.
 const LOST_TIME: f64 = 2.4;
+/// Seconds after getting in that the view's keys are hinted (once the link's message has gone),
+/// and until when.
+pub const KEYS_FROM: f32 = 3.2;
+pub const KEYS_TO: f32 = 11.0;
 /// The sight's magnifications.
 pub const ZOOMS: [f32; 3] = [1.0, 2.5, 6.0];
 /// How wide the heading tape over the view is, as a share of the view's width (but see
@@ -356,6 +360,9 @@ pub struct HudState {
     pub cracks: Vec<Crack>,
     /// A walker's armour by section.
     pub armour: Armour,
+    /// Where the view's keys stand while they show (`perspective_hud`'s `hints`): since when they
+    /// show, and which of their places they took then.
+    pub keys_at: std::cell::Cell<Option<(f64, usize)>>,
 }
 
 impl HudState {
@@ -394,11 +401,11 @@ pub struct Perspective {
     /// beside the sight, each piece as it is turned this frame; [`Self::load_wireframe`]).
     pub wireframe: Vec<(usize, Vec<[Vec3; 2]>)>,
     /// The player asked to drive the unit (E), and whether its input goes to the battle now (they
-    /// may: [`Self::may_control`]); when they last took control or let go (the keys' hints
-    /// show again then).
+    /// may: [`Self::may_control`]); when the keys' hints show again (the player took control or
+    /// let go, or took up a pad).
     want_control: bool,
     pub(crate) controlling: bool,
-    pub(crate) control_toggled: Option<f64>,
+    pub(crate) keys_again: Option<f64>,
     /// The last input sent and the tick it went at: it goes again as it changes, and once a
     /// second besides ([`send_input`]).
     sent: Option<(ta_sim::DirectInput, u64)>,
@@ -409,6 +416,10 @@ pub struct Perspective {
     aim_rates: Vec2,
     /// The Minimalist First-Person View (the settings'): no cockpit round the view.
     pub minimalist: bool,
+    /// A gamepad is what the player is using (its buttons are the ones hinted): its right stick
+    /// looks round, its left one too or, driving, drives; Y takes control, X the view from
+    /// behind, LB the night sight, RB (or A) fires, the triggers zoom and Start leaves.
+    pub pad: bool,
     pub reduced_motion: bool,
     pub reduced_flashes: bool,
     pub unit: UnitId,
@@ -445,8 +456,11 @@ pub struct Perspective {
     /// and a pitch (up positive). Aircraft: an offset from the nose.
     pub look_yaw: f32,
     pub look_pitch: f32,
-    /// The sight's magnification (an index into [`ZOOMS`]).
+    /// The sight's magnification (an index into [`ZOOMS`]), and the wheel turned towards the next
+    /// (lines: a step a whole line, so that a touchpad's or a pad's triggers' fractions of one
+    /// add up rather than each go all the way).
     pub zoom: usize,
+    wheel: f32,
     /// Behind the unit instead of in it (V).
     pub chase: bool,
     /// The night sight (N).
@@ -458,11 +472,13 @@ pub struct Perspective {
     pub leaving: bool,
     /// Leaving is over: the app drops the mode.
     pub done: bool,
-    /// This frame's eye, view direction, roll and field of view (in the unit).
+    /// This frame's eye, view direction, roll and field of view (in the unit), and the picture's
+    /// shape (its width over its height).
     pub eye: Vec3,
     pub forward: Vec3,
     pub roll: f32,
     pub fov: f32,
+    pub aspect: f32,
     /// The middle of the unit's body this frame (behind it, what the eye keeps in sight).
     pub centre: Vec3,
     /// The unit's body at this frame (its matrix), and its pieces' matrices.
@@ -524,12 +540,13 @@ impl Perspective {
             wireframe: Vec::new(),
             want_control: false,
             controlling: false,
-            control_toggled: None,
+            keys_again: None,
             sent: None,
             fire_pending: false,
             aim_rates: Vec2::splat(std::f32::consts::FRAC_PI_2),
             reduced_motion: false,
             minimalist: false,
+            pad: false,
             reduced_flashes: false,
             unit: id,
             type_id,
@@ -537,6 +554,7 @@ impl Perspective {
             look_yaw: if cockpit.flies() { 0.0 } else { heading },
             look_pitch: if cockpit.flies() { 0.0 } else { -0.12 },
             zoom: 0,
+            wheel: 0.0,
             chase: false,
             night_vision: false,
             before: camera.clone(),
@@ -548,6 +566,7 @@ impl Perspective {
             forward: (camera.focus - camera.eye()).normalize_or(Vec3::NEG_Z),
             roll: 0.0,
             fov: cockpit.fov().to_radians(),
+            aspect: 16.0 / 9.0,
             body: Mat4::IDENTITY,
             pieces: Vec::new(),
             gun_line: None,
@@ -685,10 +704,10 @@ impl Perspective {
         if alive && !self.leaving {
             self.update_aim_rates(game);
             self.look(input, dt, now);
-            // E: take control of the unit, or let it go.
-            if input.pressed(winit::keyboard::KeyCode::KeyE) && self.may_control(game) {
+            // E (a pad's Y): take control of the unit, or let it go.
+            if (input.pressed(winit::keyboard::KeyCode::KeyE) || input.pad_struck(gilrs::Button::North)) && self.may_control(game) {
                 self.want_control = !self.want_control;
-                self.control_toggled = Some(now);
+                self.keys_again = Some(now);
             }
             self.control(game, input);
             self.place_eye(game, dt);
@@ -697,6 +716,10 @@ impl Perspective {
         }
         // The camera: between the map view and the eye while diving or climbing.
         let e = ease(self.blend);
+        self.fov = view_fov(self.cockpit, viewport);
+        if viewport.x > 0.0 && viewport.y > 0.0 {
+            self.aspect = viewport.x / viewport.y;
+        }
         let fov = self.fov / ZOOMS[self.zoom];
         if e >= 1.0 {
             aim_camera(camera, self.eye, self.view_dir(), fov, self.roll);
@@ -755,10 +778,18 @@ impl Perspective {
         let kick = self.hud.kick;
         self.mount = Mat4::from_translation(Vec3::new(self.give[0].x + (t * 37.0).sin() * jolt, self.give[1].x + (t * 29.0).cos() * jolt, self.give[2].x + kick * 0.9 + back)) * Mat4::from_rotation_x(-kick * 0.6);
         if self.reduced_motion { self.mount = Mat4::IDENTITY; }
+        // (A screen with a corner behind the eye, or far off the picture, as the cockpit comes in
+        // from behind it or goes back out, is none: a panel laid on it was thousands of pixels
+        // across, or of no size.)
+        let room = camera.viewport;
+        let sane = |q: &Vec2| q.x.is_finite() && q.y.is_finite() && q.x > -room.x && q.x < room.x * 2.0 && q.y > -room.y && q.y < room.y * 2.0;
         self.screens = model
             .screens
             .iter()
-            .map(|s| (s.name.clone(), s.corners().map(|c| ta_render::cockpit::project(camera, self.fov, self.mount, c).unwrap_or(Vec2::splat(-1e4)))))
+            .filter_map(|s| {
+                let [Some(a), Some(b), Some(c), Some(d)] = s.corners().map(|c| ta_render::cockpit::project(camera, self.fov, self.mount, c).filter(sane)) else { return None };
+                Some((s.name.clone(), [a, b, c, d]))
+            })
             .collect();
         self.sill_y = self.sill.and_then(|s| ta_render::cockpit::project(camera, self.fov, self.mount, s)).map(|q| q.y);
         self.lintel_y = self.lintel.and_then(|s| ta_render::cockpit::project(camera, self.fov, self.mount, s)).map(|q| q.y);
@@ -830,6 +861,8 @@ impl Perspective {
             time: if self.reduced_flashes { 0.25 } else { now as f32 },
             rain: rain.clamp(0.0, 1.0),
             flies: self.cockpit.flies(),
+            // (Once it is in place round the eye: coming in, the battle is seen round it.)
+            walls: ((self.seat - 0.8) / 0.2).clamp(0.0, 1.0),
         })
     }
 
@@ -843,31 +876,36 @@ impl Perspective {
         self.smooth_vel
     }
 
-    /// Reads the mouse (and a gamepad's left stick) into where the eye looks, and the view's
-    /// own keys: the sight's magnification, the view from behind and the night sight.
+    /// Reads the mouse (and a gamepad's sticks) into where the eye looks, and the view's own keys:
+    /// the sight's magnification, the view from behind and the night sight.
     fn look(&mut self, input: &Input, dt: f32, now: f64) {
         use winit::keyboard::KeyCode as K;
-        if input.pressed(K::KeyV) {
+        if input.pressed(K::KeyV) || input.pad_struck(gilrs::Button::West) {
             self.chase = !self.chase;
         }
-        if input.pressed(K::KeyN) {
+        if input.pressed(K::KeyN) || input.pad_struck(gilrs::Button::LeftTrigger) {
             self.night_vision = !self.night_vision;
             let text = if self.night_vision { ta_ui::i18n::n("NIGHT SIGHT ON") } else { ta_ui::i18n::n("NIGHT SIGHT OFF") };
             self.hud.say(ta_ui::i18n::t(text), now, false);
         }
-        let zoom_in = input.wheel > 0.0 || input.pressed(K::KeyZ) && !input.modifiers.shift_key();
-        let zoom_out = input.wheel < 0.0 || input.pressed(K::KeyZ) && input.modifiers.shift_key();
+        let steps = wheel_steps(&mut self.wheel, input.wheel);
+        let zoom_in = steps > 0 || input.pressed(K::KeyZ) && !input.modifiers.shift_key();
+        let zoom_out = steps < 0 || input.pressed(K::KeyZ) && input.modifiers.shift_key();
         if zoom_in {
             self.zoom = (self.zoom + 1).min(ZOOMS.len() - 1);
         } else if zoom_out {
             self.zoom = self.zoom.saturating_sub(1);
         }
         // The mouse: raw motion (the cursor is held in the window), else the cursor's (never
-        // both: a frame without raw motion would take the cursor's as more of it); a pad's
-        // left stick turns the view as fast as two radians a second. Slower through the sight.
-        let delta = if input.raw_seen { input.raw_delta } else { input.mouse_delta };
+        // both: a frame without raw motion would take the cursor's as more of it). A pad's right
+        // stick turns the view as fast as two and a half radians a second, gently near its
+        // middle (the hidden cursor it moves meanwhile is left out: that stops at the window's
+        // edge), its left one as fast as two unless it drives the unit. Slower through the sight.
+        let aim = input.pad_aim;
+        let delta = if input.raw_seen { input.raw_delta } else if aim != Vec2::ZERO { Vec2::ZERO } else { input.mouse_delta };
+        let sticks = aim * aim.length().powf(0.7) * 2.5 + if self.controlling { Vec2::ZERO } else { input.pad_pan * 2.0 };
         let steady = ZOOMS[self.zoom].sqrt();
-        let turn = delta * (0.0022 / steady) + input.pad_pan * (2.0 * dt / steady);
+        let turn = delta * (0.0022 / steady) + sticks * (dt / steady);
         let turn = if self.controlling { limit_aim_motion(turn, self.aim_rates, dt) } else { turn };
         if self.cockpit.flies() {
             // Aircraft: round from the nose, which the view turns with.
@@ -913,6 +951,15 @@ impl Perspective {
         })
     }
 
+    /// Whether a gamepad is what the player is using: taken up after the keys' hints first
+    /// showed, they show again, the pad's.
+    pub fn set_pad(&mut self, pad: bool, now: f64) {
+        if pad && !self.pad && now - self.hud.entered >= KEYS_FROM as f64 {
+            self.keys_again = Some(now);
+        }
+        self.pad = pad;
+    }
+
     /// Lets the unit go, if the player was driving it: it takes up its orders.
     fn release_control(&mut self, game: &mut Game) {
         if self.controlling {
@@ -932,7 +979,7 @@ impl Perspective {
             self.release_control(game);
             return;
         }
-        self.fire_pending |= input.buttons_pressed.contains(&crate::input::MouseButtonId::Left);
+        self.fire_pending |= input.buttons_pressed.contains(&crate::input::MouseButtonId::Left) || input.pad_struck(gilrs::Button::RightTrigger);
         let tick = game.sim.tick;
         if self.sent.is_some_and(|(_, at)| at == tick) {
             return;
@@ -940,12 +987,15 @@ impl Perspective {
         use winit::keyboard::KeyCode as K;
         let angle = |radians: f32| ((radians * 65536.0 / std::f32::consts::TAU).round() as i64 + 32768).rem_euclid(65536) as i32 - 32768;
         let capture = capture_control();
+        // (A pad's left stick pushed past halfway: ahead or astern, left or right.)
+        let stick = |v: f32| if v > 0.5 { 1 } else if v < -0.5 { -1 } else { 0 };
+        let (ahead, right) = (-stick(input.pad_pan.y), stick(input.pad_pan.x));
         let command = ta_sim::DirectInput {
-            throttle: if capture.drive { 1 } else { input.held(K::KeyW) as i8 - input.held(K::KeyS) as i8 },
-            turn: input.held(K::KeyD) as i8 - input.held(K::KeyA) as i8,
+            throttle: if capture.drive { 1 } else { (input.held(K::KeyW) as i8 - input.held(K::KeyS) as i8 + ahead).clamp(-1, 1) },
+            turn: (input.held(K::KeyD) as i8 - input.held(K::KeyA) as i8 + right).clamp(-1, 1),
             heading: angle(self.look_yaw),
             pitch: angle(self.look_pitch).clamp(-16384, 16384),
-            fire: capture.fire || self.fire_pending || input.buttons_held.contains(&crate::input::MouseButtonId::Left),
+            fire: capture.fire || self.fire_pending || input.buttons_held.contains(&crate::input::MouseButtonId::Left) || input.pad_right_bumper(),
         };
         if !send_input(self.sent, command, tick) {
             return;
@@ -1086,7 +1136,6 @@ impl Perspective {
             self.eye = eye;
             self.forward = look;
         }
-        self.fov = self.cockpit.fov().to_radians();
     }
 
     /// Hits taken, kills scored, shots fired, and the instruments' needles.
@@ -1335,6 +1384,20 @@ fn gun_line(model: &ModelDef, turret: usize, bounds: &[Option<PieceBounds>]) -> 
     Some(ahead.iter().sum::<f32>() / ahead.len() as f32)
 }
 
+/// The vertical field of view (radians) a cockpit's kind is seen with in a picture `viewport`
+/// pixels: its own ([`Cockpit::fov`]) at 16:9 and wider; a narrower picture (4:3, 5:4, the Steam
+/// Deck's 16:10) sees as far across as at 16:9, and further up and down, so that the instruments
+/// at the cockpit's sides stay in view (as far as 100 degrees up and down).
+fn view_fov(cockpit: Cockpit, viewport: Vec2) -> f32 {
+    const WIDE: f32 = 16.0 / 9.0;
+    let fov = cockpit.fov().to_radians();
+    let aspect = viewport.x / viewport.y;
+    if !(aspect.is_finite() && aspect > 0.0) || aspect >= WIDE {
+        return fov;
+    }
+    (2.0 * ((fov * 0.5).tan() * WIDE / aspect).atan()).min(100f32.to_radians())
+}
+
 /// Sets `cam` to look from `eye` along `forward` with a vertical field of view and a roll.
 pub fn aim_camera(cam: &mut Camera, eye: Vec3, forward: Vec3, fov: f32, roll: f32) {
     /// The focus sits this close in front of the eye (its distance sets the near plane).
@@ -1413,6 +1476,19 @@ fn capture_control() -> CaptureControl {
     })
 }
 
+/// The whole lines the wheel has turned this frame (positive in), `turned` of them since the
+/// last (a mouse's notch is one; a touchpad's and a pad's triggers' come in fractions), the rest
+/// kept in `kept` for the next: one way and then the other, what was kept goes.
+fn wheel_steps(kept: &mut f32, turned: f32) -> i32 {
+    if turned != 0.0 && turned.signum() != kept.signum() {
+        *kept = 0.0;
+    }
+    *kept += turned;
+    let steps = kept.trunc();
+    *kept -= steps;
+    steps as i32
+}
+
 /// The sight's turn this frame, `motion` (radians across and up), held to `rates` (radians a
 /// second) over `dt`.
 fn limit_aim_motion(motion: Vec2, rates: Vec2, dt: f32) -> Vec2 {
@@ -1453,6 +1529,38 @@ mod tests {
         ] {
             assert!(send_input(sent, changed, 11), "{changed:?} goes at once");
         }
+    }
+
+    #[test]
+    fn a_narrower_picture_sees_as_far_across_as_a_wide_one() {
+        let across = |fov: f32, aspect: f32| 2.0 * ((fov * 0.5).tan() * aspect).atan();
+        let wide = view_fov(Cockpit::Vehicle, Vec2::new(1920.0, 1080.0));
+        assert_eq!(wide, Cockpit::Vehicle.fov().to_radians());
+        // Wider still: the kind's own, seeing further across.
+        assert_eq!(view_fov(Cockpit::Vehicle, Vec2::new(2560.0, 1080.0)), wide);
+        // 4:3 and 16:10: as far across as 16:9, further up and down.
+        for (w, h) in [(1024.0, 768.0), (1280.0, 800.0)] {
+            let fov = view_fov(Cockpit::Vehicle, Vec2::new(w, h));
+            assert!(fov > wide && (across(fov, w / h) - across(wide, 16.0 / 9.0)).abs() < 1e-4, "{w}x{h}");
+        }
+        // A tall window, at most 100 degrees; a window of no size, the kind's own.
+        assert_eq!(view_fov(Cockpit::Vehicle, Vec2::new(400.0, 1600.0)), 100f32.to_radians());
+        assert_eq!(view_fov(Cockpit::Vehicle, Vec2::ZERO), wide);
+    }
+
+    #[test]
+    fn the_wheel_steps_the_sight_a_whole_line_at_a_time() {
+        let mut kept = 0.0;
+        // A mouse's notch: a step at once.
+        assert_eq!(wheel_steps(&mut kept, 1.0), 1);
+        assert_eq!(wheel_steps(&mut kept, 0.0), 0);
+        // A touchpad's fractions add up to steps, not a step each (they went all the way in at
+        // once).
+        let steps: i32 = (0..10).map(|_| wheel_steps(&mut kept, 0.25)).sum();
+        assert_eq!(steps, 2);
+        // Turned back, what was kept goes.
+        assert_eq!(wheel_steps(&mut kept, -0.5), 0);
+        assert_eq!(wheel_steps(&mut kept, -0.5), -1);
     }
 
     #[test]

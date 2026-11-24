@@ -40,6 +40,10 @@ pub struct Input {
     pad_modifiers: winit::keyboard::ModifiersState,
     /// Gamepad: camera pan (-1..1 each way on screen), and the actions it struck this frame.
     pub pad_pan: Vec2,
+    /// Gamepad: its right stick the same way (it moves the cursor), and the buttons it struck this
+    /// frame as they are (Perspective's own uses of them, [`Self::pad_struck`]).
+    pub pad_aim: Vec2,
+    pad_buttons: Vec<gilrs::Button>,
     /// The cursor is over the window, as its last enter, leave or move said (edge scrolling stops
     /// when it leaves).
     pub cursor_inside: bool,
@@ -171,6 +175,7 @@ impl Input {
                 self.kb_modifiers = winit::keyboard::ModifiersState::empty();
                 self.pad_modifiers = winit::keyboard::ModifiersState::empty();
                 self.pad_pan = Vec2::ZERO;
+                self.pad_aim = Vec2::ZERO;
             }
             _ => {}
         }
@@ -264,6 +269,8 @@ impl Input {
         self.pad_modifiers = pad;
         self.modifiers = self.kb_modifiers | pad;
         self.pad_pan = f.pan;
+        self.pad_aim = f.aim;
+        self.pad_buttons.extend(f.struck.iter().copied());
         if !ui_wants_pointer { self.wheel += f.zoom; }
         if let Some(p) = f.cursor {
             self.mouse_delta += p - self.mouse;
@@ -298,6 +305,16 @@ impl Input {
         self.pad_actions.contains(action)
     }
 
+    /// A gamepad struck this button this frame.
+    pub fn pad_struck(&self, button: gilrs::Button) -> bool {
+        self.pad_buttons.contains(&button)
+    }
+
+    /// A gamepad's right bumper is held (Ctrl in a battle; Perspective's trigger).
+    pub fn pad_right_bumper(&self) -> bool {
+        self.pad_modifiers.control_key()
+    }
+
     /// Which way the cursor scrolls the view `size` (window pixels) from its edges: -1, 0 or 1
     /// each way, within a few pixels of a side. Only from inside the view: a drag carried out
     /// of the window goes on reporting where the cursor is out there (Windows and macOS do),
@@ -322,6 +339,7 @@ impl Input {
         self.held.clear();
         self.buttons_held.clear();
         self.pad_pan = Vec2::ZERO;
+        self.pad_aim = Vec2::ZERO;
         self.cursor_inside = false;
     }
 
@@ -338,6 +356,7 @@ impl Input {
         }
         self.claimed.clear();
         self.pad_actions.clear();
+        self.pad_buttons.clear();
         self.pressed.clear();
         self.key_modifiers.clear();
         self.buttons_pressed.clear();

@@ -4632,6 +4632,8 @@ impl State {
         }
         p.reduced_motion = self.settings.gameplay.reduced_motion;
         p.reduced_flashes = self.settings.gameplay.reduced_flashes;
+        // (A pad in use: its buttons are the ones hinted.)
+        p.set_pad(self.gamepad.active, now);
         // (The clock's hour is the one the world is lit by.)
         p.hours = self.renderer.lighting.time_of_day;
         // (The unit's eye looks out of the middle of the window, cockpit and sights with it.)
@@ -4647,7 +4649,9 @@ impl State {
         p.update(&mut self.game, input, &mut self.camera, dt, now);
         self.renderer.set_cockpit_frame(p.cockpit_frame(&self.game, now));
         // A modelled cockpit's instruments, painted onto its glass before the frame is drawn.
-        if !p.minimalist && p.model.is_some()
+        // (Not while nobody sees them: the cockpit is not drawn from behind the unit, through the
+        // magnified sight, or the signal lost.)
+        if !p.minimalist && p.model.is_some() && p.seat > 0.0
             && let Some(atlas) = self.renderer.cockpit_instruments()
         {
             let gpu = &self.renderer.gpu;
@@ -4688,18 +4692,22 @@ impl State {
     /// Out of the unit at once, the cockpit and the picture's settings as they were (a new
     /// battle: nothing of the last one's ride stays in it).
     fn drop_perspective(&mut self) {
-        if self.perspective.take().is_none() {
-            return;
-        }
+        let Some(mut p) = self.perspective.take() else { return };
+        // (A unit driven is let go: dropped at once, by a new battle or the window closing in a
+        // battle over the network, it went on with its last input in everyone's game until the
+        // battle let it go.)
+        p.leave(&mut self.game);
         self.game.scene.hide_near = None;
+        // (Blasts felt in the unit do not shake the map's camera once out of it.)
+        self.game.effects.shake = 0.0;
         self.renderer.set_cockpit(None);
         if let Some(post) = self.perspective_post.take() {
             self.renderer.post.settings = post;
         }
         use winit::window::CursorGrabMode;
         let _ = self.window.set_cursor_grab(CursorGrabMode::None);
-        // (A benchmark keeps the pointer hidden throughout.)
-        self.window.set_cursor_visible(self.benchmark.is_none());
+        // (The pointer is shown again, or not, as the interface asks from the next frame: TA's
+        // own drawn, the system's stays hidden. Shown here, both were.)
     }
 
     /// How the 3D trees and rocks are seen: only by the perspective camera, from a unit's eyes or
@@ -5926,7 +5934,9 @@ impl State {
         if (self.egui.ctx.global_style().interaction.tooltip_delay - hint_delay).abs() > 0.001 {
             self.egui.ctx.all_styles_mut(|style| style.interaction.tooltip_delay = hint_delay);
         }
-        let on_glass = self.renderer.cockpit_instruments().is_some();
+        // (Not while the card refuses the instruments their painter: the unit's state is on the
+        // panels along the picture's foot then, rather than nowhere.)
+        let on_glass = self.renderer.cockpit_instruments().is_some() && self.instruments.is_some();
         if self.dev.visible {
             self.dev.particles = self.renderer.particle_stats();
             self.dev.gpu_times = self.renderer.gpu_timings().iter().map(|p| (p.pass, p.ms)).collect();
@@ -6428,7 +6438,10 @@ impl State {
         // (Nor while the menu's film plays on its own, once the menu has stepped aside: a move
         // brings both back.)
         let film_alone = self.screen == Screen::Menu && self.menu_film.as_ref().is_some_and(|f| f.watching && f.watched() > crate::backdrop::HIDE_POINTER_AFTER);
-        if self.benchmark.is_some() || (self.screen == Screen::Playing && self.hud.ta_cursor_drawn()) || film_alone {
+        // (Nor in a unit's eyes: the mouse looks round there. Shown again, a grabbed pointer was
+        // pushed to the window's edge as the view turned, and edge scrolling took the map away
+        // from the unit once it was left.)
+        if self.benchmark.is_some() || (self.screen == Screen::Playing && (self.hud.ta_cursor_drawn() || self.perspective.is_some())) || film_alone {
             platform.cursor_icon = egui::CursorIcon::None;
         }
         self.egui.state.handle_platform_output(&self.window, platform);

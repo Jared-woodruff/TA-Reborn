@@ -29,7 +29,8 @@ struct Uniform {
     glow: vec4<f32>,
     // Seconds, alarm (0..1), a hit's flash (0..1), lamps on (0..1).
     params: vec4<f32>,
-    // How hard it rains (0..1), and whether it flies (1: drops are blown back over a canopy).
+    // How hard it rains (0..1), whether it flies (1: drops are blown back over a canopy), and how
+    // far what the model leaves uncovered is the cab's walls (0..1, `vs_walls`).
     weather: vec4<f32>,
     // The side's paint (linear); w: how many screen lights there are.
     paint: vec4<f32>,
@@ -618,4 +619,23 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
         return vec4<f32>(col, alpha);
     }
     return vec4<f32>(color, s.alpha);
+}
+
+// The cab's walls beyond the model: a picture wider than it is modelled for (an ultrawide
+// screen) would show the battle round its edges. A triangle over the whole picture at the far
+// plane, drawn after the model, lands only where none of it (frame, wall or glass) came nearer:
+// there the cab goes on, its paint in the shadow of its far corners, under the alarm's wash.
+@vertex
+fn vs_walls(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+    let x = f32((i << 1u) & 2u) * 2.0 - 1.0;
+    let y = f32(i & 2u) * 2.0 - 1.0;
+    return vec4<f32>(x, y, 1.0, 1.0);
+}
+
+@fragment
+fn fs_walls() -> @location(0) vec4<f32> {
+    let pulse = 0.5 + 0.5 * sin(u.params.x * 7.0);
+    let red = vec3<f32>(1.0, 0.08, 0.04) * (u.params.y * pulse * 0.5 + u.params.z * 1.4);
+    let light = mix(u.ground.rgb, u.sky.rgb, 0.5) * 0.12 + u.cabin.rgb * 0.08 + red * 0.5;
+    return vec4<f32>(u.paint.rgb * light, u.weather.z);
 }

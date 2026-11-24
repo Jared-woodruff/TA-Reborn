@@ -334,6 +334,10 @@ pub struct CockpitFrame {
     /// canopy rather than running down).
     pub rain: f32,
     pub flies: bool,
+    /// How far what the model leaves uncovered is the cab's walls, in their shadow (0..1): a
+    /// picture wider than the cab is modelled for (ultrawide screens) shows the battle round its
+    /// edges otherwise. None while it comes in round the eye (the battle is seen round it then).
+    pub walls: f32,
 }
 
 #[repr(C)]
@@ -546,6 +550,8 @@ fn texture_from_png(device: &wgpu::Device, queue: &wgpu::Queue, label: &str, png
 /// The GPU side of a cockpit.
 pub struct CockpitRenderer {
     pipeline: wgpu::RenderPipeline,
+    /// The cab's walls where the model leaves the picture uncovered ([`CockpitFrame::walls`]).
+    walls: wgpu::RenderPipeline,
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
     count: u32,
@@ -624,6 +630,30 @@ impl CockpitRenderer {
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: DEPTH_FORMAT,
                 depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::LessEqual),
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: wgpu::MultisampleState { count: samples, ..Default::default() },
+            multiview_mask: None,
+            cache: None,
+        });
+        // The walls beyond the model: a triangle over the whole picture at the far plane, drawn
+        // after it where nothing of it (frame, wall or glass) came nearer.
+        let walls = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("cockpit walls"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState { module: &module, entry_point: Some("vs_walls"), compilation_options: Default::default(), buffers: &[] },
+            fragment: Some(wgpu::FragmentState {
+                module: &module,
+                entry_point: Some("fs_walls"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState { format: HDR_FORMAT, blend: Some(wgpu::BlendState::ALPHA_BLENDING), write_mask: wgpu::ColorWrites::ALL })],
+            }),
+            primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: Some(false),
                 depth_compare: Some(wgpu::CompareFunction::LessEqual),
                 stencil: Default::default(),
                 bias: Default::default(),
@@ -711,6 +741,7 @@ impl CockpitRenderer {
         });
         CockpitRenderer {
             pipeline,
+            walls,
             vertices,
             indices,
             count: model.indices.len() as u32,
@@ -770,7 +801,7 @@ impl CockpitRenderer {
             cabin: [frame.cabin.x, frame.cabin.y, frame.cabin.z, 0.0],
             glow: [frame.glow.x, frame.glow.y, frame.glow.z, 0.0],
             params: [frame.time, frame.alarm, frame.flash, frame.lamps],
-            weather: [frame.rain, if frame.flies { 1.0 } else { 0.0 }, 0.0, 0.0],
+            weather: [frame.rain, if frame.flies { 1.0 } else { 0.0 }, frame.walls.clamp(0.0, 1.0), 0.0],
             paint: [frame.paint.x, frame.paint.y, frame.paint.z, self.lights.len().min(MAX_LIGHTS) as f32],
             lights,
         };
@@ -801,6 +832,10 @@ impl CockpitRenderer {
         pass.set_vertex_buffer(0, self.vertices.slice(..));
         pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
         pass.draw_indexed(0..self.count, 0, 0..1);
+        if frame.walls > 0.0 {
+            pass.set_pipeline(&self.walls);
+            pass.draw(0..3, 0..1);
+        }
     }
 }
 

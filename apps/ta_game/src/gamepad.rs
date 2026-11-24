@@ -17,6 +17,10 @@ use winit::keyboard::KeyCode;
 pub struct PadFrame {
     /// Camera pan, -1..1 each way on screen (x right, y down).
     pub pan: Vec2,
+    /// The right stick the same way (it moves the cursor; Perspective looks round with it).
+    pub aim: Vec2,
+    /// The buttons struck this frame, as they are (Perspective's own uses of them).
+    pub struck: Vec<Button>,
     /// Mouse-wheel lines this frame (positive zooms in).
     pub zoom: f32,
     /// Where the cursor went (window pixels), when it moved.
@@ -167,6 +171,7 @@ impl Gamepad {
             && pad.state().buttons().all(|(_, data)| !data.is_pressed());
         if !self.focus.accepts(focused, neutral) { return self.release_pointer(); }
         f.pan = pan;
+        f.aim = aim;
         f.zoom = (analog(Button::RightTrigger2) - analog(Button::LeftTrigger2)) * 5.0 * dt;
         f.shift = held(Button::LeftTrigger);
         f.ctrl = held(Button::RightTrigger);
@@ -191,6 +196,7 @@ impl Gamepad {
         let pressed = |button| struck.iter().any(|(id, b)| Some(*id) == self.current && *b == button);
         (f.left, f.right) = self.pointer.update([held(Button::South), held(Button::East)], [pressed(Button::South), pressed(Button::East)]);
         for (_, b) in struck.iter().filter(|(id, _)| Some(*id) == self.current) {
+            f.struck.push(*b);
             match b {
                 Button::West => f.actions.push("fight"),
                 Button::North => f.actions.push("stop"),

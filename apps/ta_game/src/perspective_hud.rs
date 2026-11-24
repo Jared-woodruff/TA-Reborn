@@ -92,9 +92,10 @@ fn draw_minimalist(ctx: &egui::Context, health: f32, p: &Perspective, game: &Gam
     health_pen.bar(bar, 10, health.clamp(0.0, 1.0), color, PHOSPHOR_DIM.gamma_multiply(0.45));
     let view = View { rect, vp: camera.view_proj(), ppp: ctx.pixels_per_point(), viewport: camera.viewport };
     let pen = Pen::new(&painter, rect.height() / 1080.0, true, 1.0);
+    let mut sight = Vec::new();
     if let Some(readouts) = Readouts::of(p, game) {
         health_pen.text(bar.center_bottom() + vec2(0.0, 4.0), Align2::CENTER_TOP, format!("{} / {}", readouts.hp, readouts.hp_max), 11.0, PHOSPHOR);
-        armour::sight(&pen, &view, &Window { rect, round: false }, p, game, &readouts, now);
+        sight = armour::sight(&pen, &view, &Window { rect, round: false }, p, game, &readouts, now);
     }
     if p.controlling {
         control_tag(&painter, bar.center_bottom() + vec2(0.0, 22.0), 1.0, 1.0);
@@ -102,8 +103,9 @@ fn draw_minimalist(ctx: &egui::Context, health: f32, p: &Perspective, game: &Gam
     let radar = minimalist_radar_rect(rect);
     painter.circle_filled(radar.center(), radar.width() * 0.5, Color32::from_black_alpha(150));
     glass_radar(&painter, radar, p, game, now);
-    // (Over the radar, clear of the sight and the unit's picture beside it.)
-    hints(&painter, rect, p, (now - p.hud.entered) as f32, game, now, Some(radar.top() - 12.0));
+    // (Over the radar, clear of the sight and the unit's picture beside it; else under the hull's
+    // bar and the tag that says the unit is driven.)
+    hints(&painter, rect, p, (now - p.hud.entered) as f32, game, now, KeysRoom { above: Some(radar.top() - 12.0), high: bar.bottom() + 60.0, avoid: &sight, across: rect });
 }
 
 /// The tag that says the player is driving the unit (E): on a plate like the keys', its top
@@ -160,9 +162,14 @@ fn on_screen(c: Color32) -> Color32 {
 #[allow(clippy::too_many_arguments)]
 pub fn draw(p: &Perspective, ctx: &egui::Context, game: &Game, camera: &Camera, pics: &mut rustc_hash::FxHashMap<usize, Option<egui::TextureHandle>>, vfs: &ta_vfs::Vfs, now: f64, on_glass: bool, portrait: &mut dyn FnMut(f32) -> Option<egui::TextureId>) {
     if p.minimalist {
-        if let Some(unit) = game.sim.unit(p.unit).filter(|_| p.lost.is_none() && !p.leaving) {
-            let maximum = game.sim.types.get(unit.type_id).max_health.max(Fx::ONE);
-            draw_minimalist(ctx, (unit.health / maximum).to_f32(), p, game, camera, now);
+        // (Lost, the picture's signal goes as it does in the cockpit.)
+        if let Some(lost) = p.lost {
+            let top = ctx.layer_painter(LayerId::new(Order::Foreground, Id::new("minimalist_first_person")));
+            lost_signal(&top, ctx.content_rect(), (now - lost) as f32, if p.reduced_flashes || p.reduced_motion { 0.0 } else { now });
+        } else if let Some(unit) = game.sim.unit(p.unit).filter(|_| !p.leaving) {
+            // (The unit's own hull: an enhancement raises it.)
+            let maximum = unit.max_health(game.sim.unit_type(unit)).max(Fx::ONE);
+            draw_minimalist(ctx, (unit.health / maximum).to_f32().clamp(0.0, 1.0), p, game, camera, now);
         }
         return;
     }
@@ -260,7 +267,14 @@ pub fn draw(p: &Perspective, ctx: &egui::Context, game: &Game, camera: &Camera, 
     let chevrons = sight::threats(&edge, &view, &window, p, game, now);
     sparks(&top.with_clip_rect(window.rect), &window, p, now);
     boot(&top, rect, p, since, &side, game);
-    let keys = hints(&top, rect, p, since, game, now, None);
+    // (The keys keep off the sight; else they stand under the top of the window and the heading
+    // written along it.)
+    let high = match tape_end {
+        Some(end) => end + 14.0,
+        None if !heading_screen && p.cockpit != Cockpit::Periscope => compass_top(&view, p) + 61.0,
+        None => window.rect.top() + 14.0,
+    };
+    let keys = hints(&top, rect, p, since, game, now, KeysRoom { above: None, high: high.max(window.rect.top() + 14.0), avoid: &room, across: window.rect });
     if p.controlling {
         control_tag(&top, window.rect.center_top() + vec2(0.0, pen.s(12.0)), pen.s(1.0), on);
     }
@@ -1648,70 +1662,116 @@ fn boot(painter: &Painter, rect: Rect, p: &Perspective, since: f32, side: &str, 
     painter.text(at, Align2::CENTER_CENTER, shown, font, fade(PHOSPHOR, a));
 }
 
+/// Where the view's keys may stand ([`hints`]): low, ending over `above` (the minimalist view's
+/// radar) or on the glass's lower part, and else from `high` down (under the window's top and
+/// what is written along it), clear of `avoid` (the sight's marks) and inside `across` (the
+/// window), all in points.
+struct KeysRoom<'a> {
+    above: Option<f32>,
+    high: f32,
+    avoid: &'a [Rect],
+    across: Rect,
+}
+
 /// The view's keys, shown for a few seconds once the link's message has gone (it stands where they
 /// do), and again for a while when the player takes control of the unit or lets it go: riding in
 /// one of their own that they may drive, E among them; driving, the keys that drive it.
 /// `TA_PERSPECTIVE_HINTS=0` leaves them out, for captures; a benchmark's ride has none: nothing
-/// there takes them. Low on the glass, or ending over `above` (the minimalist view's radar).
+/// there takes them. Low on the glass where they leave the sight's marks clear, else in one row
+/// there, else high in the window (a gun house's slit, a ship's bridge, a Krogoth's cab and an
+/// aircraft's symbology leave no room under the sight): where they first stood while they show.
 /// Returns the room they take while they show.
-fn hints(painter: &Painter, rect: Rect, p: &Perspective, since: f32, game: &Game, now: f64, above: Option<f32>) -> Option<Rect> {
-    const FROM: f32 = 3.2;
-    const TO: f32 = 11.0;
-    // (After E: at once, for a little less long.)
+fn hints(painter: &Painter, rect: Rect, p: &Perspective, since: f32, game: &Game, now: f64, place: KeysRoom) -> Option<Rect> {
+    use crate::perspective::{KEYS_FROM as FROM, KEYS_TO as TO};
+    // (After E, or a pad taken up: at once, for a little less long.)
     const TOGGLED_FOR: f32 = 7.5;
     if p.leaving || crate::benchmark::running() || std::env::var("TA_PERSPECTIVE_HINTS").is_ok_and(|v| v == "0") {
         return None;
     }
-    let toggled = p.control_toggled.map(|at| (now - at) as f32).filter(|t| (0.0..TOGGLED_FOR).contains(t));
+    let toggled = p.keys_again.filter(|&at| (0.0..TOGGLED_FOR).contains(&((now - at) as f32)));
     let a = match toggled {
-        Some(t) => (t / 0.3).clamp(0.0, 1.0) * (1.0 - ((t - (TOGGLED_FOR - 1.5)) / 1.5).clamp(0.0, 1.0)),
+        Some(at) => {
+            let t = (now - at) as f32;
+            (t / 0.3).clamp(0.0, 1.0) * (1.0 - ((t - (TOGGLED_FOR - 1.5)) / 1.5).clamp(0.0, 1.0))
+        }
         None if (FROM..TO).contains(&since) => ((since - FROM) / 0.5).clamp(0.0, 1.0) * (1.0 - ((since - (TO - 1.5)) / 1.5).clamp(0.0, 1.0)),
         None => return None,
     };
-    let text = if p.controlling {
-        t("W S DRIVES · A D TURNS · CLICK FIRES · E LETS GO · ESC LEAVES")
-    } else if p.may_control(game) {
-        t("MOUSE LOOKS ROUND · WHEEL ZOOM · V VIEW · N NIGHT · E TAKES CONTROL · ESC LEAVES")
-    } else {
-        t("MOUSE LOOKS ROUND · WHEEL ZOOM · V VIEW · N NIGHT · ESC LEAVES")
+    // (A pad's buttons while it is what the player is using.)
+    let text = match (p.pad, p.controlling, p.may_control(game)) {
+        (false, true, _) => t("W S DRIVES · A D TURNS · CLICK FIRES · E LETS GO · ESC LEAVES"),
+        (false, false, true) => t("MOUSE LOOKS ROUND · WHEEL ZOOM · V VIEW · N NIGHT · E TAKES CONTROL · ESC LEAVES"),
+        (false, false, false) => t("MOUSE LOOKS ROUND · WHEEL ZOOM · V VIEW · N NIGHT · ESC LEAVES"),
+        (true, true, _) => t("LEFT STICK DRIVES · RIGHT STICK AIMS · RB FIRES · Y LETS GO · START LEAVES"),
+        (true, false, true) => t("RIGHT STICK LOOKS ROUND · LT RT ZOOM · X VIEW · LB NIGHT · Y TAKES CONTROL · START LEAVES"),
+        (true, false, false) => t("RIGHT STICK LOOKS ROUND · LT RT ZOOM · X VIEW · LB NIGHT · START LEAVES"),
     };
-    // Each key on a plate of its own ("V VIEW"), in rows centred low on the glass, no wider than
-    // the middle of the picture (in proportion to its height); they come up one after another.
+    // Each key on a plate of its own ("V VIEW"), in rows centred across the picture; they come up
+    // one after another.
     let chips: Vec<_> = text.split(" · ").map(|s| painter.layout_no_wrap(s.trim().to_string(), mono(14.0), AMBER)).collect();
     let (pad, gap, row_gap) = (vec2(11.0, 5.0), 8.0, 7.0);
-    let room = (rect.height() * 0.53).max(440.0).min(rect.width() * 0.82);
-    // As many rows as it takes, as evenly filled as they can be (no word left on its own).
-    let total: f32 = chips.iter().map(|g| g.size().x + 2.0 * pad.x + gap).sum::<f32>() - gap;
-    let target = (total / (total / room).ceil().max(1.0)).min(room);
-    let mut rows: Vec<Vec<usize>> = vec![Vec::new()];
-    let mut used = 0.0;
-    for (i, g) in chips.iter().enumerate() {
-        let w = g.size().x + 2.0 * pad.x;
-        if used > 0.0 && (used + gap + w > room || used + gap + w / 2.0 > target) {
-            rows.push(Vec::new());
-            used = 0.0;
-        }
-        used += if used > 0.0 { gap } else { 0.0 } + w;
-        if let Some(r) = rows.last_mut() {
-            r.push(i);
-        }
-    }
+    let wide = |i: usize| chips[i].size().x + 2.0 * pad.x;
     let h = chips.first().map_or(16.0, |g| g.size().y) + 2.0 * pad.y;
-    let tall = rows.len() as f32 * (h + row_gap) - row_gap;
-    let mut y = above.map_or(rect.top() + rect.height() * 0.66 - tall / 2.0, |bottom| bottom - tall);
-    // In a modelled cockpit, on its window, over the sill: where the dashboard stands higher (a
-    // ship's bridge's), they lay over its lamps.
-    if let Some(sill) = p.sill_y.filter(|_| p.model.is_some() && !p.minimalist && p.seat > 0.02 && !p.chase && p.zoom == 0) {
-        y = y.min(sill / painter.ctx().pixels_per_point() - 12.0 - tall).max(rect.top() + rect.height() * 0.4);
-    }
+    // In rows no wider than `room`, as many as it takes, as evenly filled as they can be (no word
+    // left on its own).
+    let lay = |room: f32| {
+        let total: f32 = (0..chips.len()).map(|i| wide(i) + gap).sum::<f32>() - gap;
+        let target = (total / (total / room).ceil().max(1.0)).min(room);
+        let mut rows: Vec<Vec<usize>> = vec![Vec::new()];
+        let mut used = 0.0;
+        for i in 0..chips.len() {
+            let w = wide(i);
+            if used > 0.0 && (used + gap + w > room || used + gap + w / 2.0 > target) {
+                rows.push(Vec::new());
+                used = 0.0;
+            }
+            used += if used > 0.0 { gap } else { 0.0 } + w;
+            if let Some(r) = rows.last_mut() {
+                r.push(i);
+            }
+        }
+        rows
+    };
+    let row_width = |row: &[usize]| row.iter().map(|&i| wide(i)).sum::<f32>() + gap * row.len().saturating_sub(1) as f32;
+    let tall = |rows: &[Vec<usize>]| rows.len() as f32 * (h + row_gap) - row_gap;
+    // Low: ending over `above`, else round two thirds of the way down; in a modelled cockpit over
+    // its sill (where the dashboard stands higher, a ship's bridge's, they lay over its lamps).
+    let sill = p.sill_y.filter(|_| p.model.is_some() && !p.minimalist && p.seat > 0.02 && !p.chase && p.zoom == 0).map(|y| y / painter.ctx().pixels_per_point());
+    let low = |tall: f32| {
+        let y = place.above.map_or(rect.top() + rect.height() * 0.66 - tall / 2.0, |bottom| bottom - tall);
+        match sill {
+            Some(sill) => y.min(sill - 12.0 - tall).max(rect.top() + rect.height() * 0.4),
+            None => y,
+        }
+    };
+    // (In rows no wider than the middle of the picture, in proportion to its height; else in one
+    // row across the window.)
+    let compact = lay((rect.height() * 0.53).max(440.0).min(rect.width() * 0.82));
+    let one_row = lay((place.across.width() - 32.0).max(1.0));
+    let block = |rows: &[Vec<usize>], y: f32| {
+        let width = rows.iter().map(|r| row_width(r)).fold(0.0, f32::max);
+        Rect::from_min_size(pos2(rect.center().x - width / 2.0, y), vec2(width, tall(rows)))
+    };
+    let candidates = [(compact.clone(), low(tall(&compact))), (one_row.clone(), low(tall(&one_row))), (compact.clone(), place.high)];
+    let clear = |r: Rect| !place.avoid.iter().any(|a| a.intersects(r));
+    // (Where they stood since they came up, so that they do not jump about as the marks move.)
+    let shown_since = toggled.unwrap_or(p.hud.entered + FROM as f64);
+    let choice = match p.hud.keys_at.get() {
+        Some((at, choice)) if at == shown_since => choice,
+        _ => {
+            let choice = candidates.iter().position(|(rows, y)| clear(block(rows, *y))).unwrap_or(0);
+            p.hud.keys_at.set(Some((shown_since, choice)));
+            choice
+        }
+    };
+    let (rows, mut y) = (&candidates[choice].0, candidates[choice].1);
     let mut room = Rect::NOTHING;
-    for row in &rows {
-        let width: f32 = row.iter().map(|&i| chips[i].size().x + 2.0 * pad.x).sum::<f32>() + gap * row.len().saturating_sub(1) as f32;
-        let mut x = rect.center().x - width / 2.0;
+    for row in rows {
+        let mut x = rect.center().x - row_width(row) / 2.0;
         for &i in row {
             let g = &chips[i];
             let k = (a * 4.0 - i as f32 * 0.25).clamp(0.0, 1.0).min(a);
-            let chip = Rect::from_min_size(pos2(x, y), vec2(g.size().x + 2.0 * pad.x, h));
+            let chip = Rect::from_min_size(pos2(x, y), vec2(wide(i), h));
             painter.rect_filled(chip, 3.0, Color32::from_black_alpha((175.0 * k) as u8));
             painter.rect_stroke(chip, 3.0, egui::Stroke::new(1.0, fade(AMBER, 0.45 * k)), egui::StrokeKind::Inside);
             painter.galley(chip.min + pad, g.clone(), fade(AMBER, k));
