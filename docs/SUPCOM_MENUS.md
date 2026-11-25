@@ -39,9 +39,16 @@ their widgets' shapes: only how they are coloured, framed, backed and heard chan
       heard while they cover the window;
     - a list over a panel fades at its ends into the panel art's middle colour (`PanelArt::middle`),
       not into TA Reborn's plate.
-    The battle keeps its own look (its HUD, its pause menu and dialogs), and so do the loading
-    screens between the menus and a battle; a unit on show in the units' viewer, and the credits'
-    film, show over the battlefield as they do.
+    The battle takes the look too, with the modern HUD (`menu_theme::battle_in_look`): its HUD,
+    its battle menu, Options, pages and dialogs and its result page are drawn in the theme's
+    colours (the grade, over the whole frame's interface) and their panels framed in its art, its
+    interface sounds playing for their clicks. A
+    mod's own interface theme gives way meanwhile (its colours would be graded from TA Reborn's).
+    The classic interface stays TA's own, as it is meant to. The loading screens take the look
+    too (`menu_theme::loading_look`, `LoadingHost::set_look`): the theme's colours, and behind the
+    bay, darkened, the picture the menus showed (at the game's start, one of its pictures; not a
+    benchmark's), carried on by the curtain as it lifts. A unit on show in the units' viewer, and
+    the credits' film, show over the battlefield as they do.
 - **Developers:** `cargo build --release -p ta_tools`, then `target/release/ta-tools supcom-menus
   <out> [--game <folder>]` makes the mod into `<out>` (mount it as a mod) and prints the palette
   it made of the game's colours. The launcher's dialog for captures: `--page mods --show

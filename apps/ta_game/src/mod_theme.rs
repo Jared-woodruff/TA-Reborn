@@ -6,7 +6,9 @@
 //! tutorial's windows, the loading screen and the cockpit keep TA Reborn's own look. The theme is
 //! the last mod's in the load order that has one; the side it is drawn for is that of the player
 //! whose interface is shown (a spectator's, as they follow another, theirs). Off the battlefield,
-//! or with the player's MODS' INTERFACE THEMES off, TA Reborn's own.
+//! or with the player's MODS' INTERFACE THEMES off, TA Reborn's own; under the menus' theme's
+//! look (MENU THEME, `menu_theme::battle_in_look`), which a battle with the modern HUD takes,
+//! TA Reborn's own too, graded into that look.
 
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};

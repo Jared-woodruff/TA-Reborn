@@ -2,7 +2,8 @@
 //! so the window can paint it before opening the game's archives or creating its renderer.
 //! The caller supplies time; capture runs can hold a frame or advance it deterministically.
 //!
-//! The screen is a bay of the launcher's dark plates inside its pipe frame. The emblem is
+//! The screen is a bay of the launcher's dark plates inside its pipe frame (or, in a menu theme's
+//! look, its picture behind the frame, darkened: [`LoadingScreen::set_picture`]). The emblem is
 //! being built: two nano-lathes on either side of it play their green beams on a build front
 //! rising through it (the part still to come dimmed, outlined in green), it stands finished a
 //! moment, and the next pass begins; a gauge ring turns slowly round it. Under it the stage
@@ -55,11 +56,19 @@ pub struct LoadingScreen {
     kind: LoadingKind,
     hint_offset: usize,
     seasonal: Option<(ta_config::Launcher, bool)>,
+    /// A menu theme's picture shown behind the bay's frame in place of its plates.
+    picture: Option<egui::TextureHandle>,
 }
 
 impl LoadingScreen {
     pub const fn new(kind: LoadingKind) -> Self {
-        Self { kind, hint_offset: 0, seasonal: None }
+        Self { kind, hint_offset: 0, seasonal: None, picture: None }
+    }
+
+    /// Shows `picture` (a menu theme's, in the screen's own context) behind the bay's frame,
+    /// darkened, in place of its plates; none, the plates again.
+    pub fn set_picture(&mut self, picture: Option<egui::TextureHandle>) {
+        self.picture = picture;
     }
 
     /// Starts later transitions on a different tip, without depending on wall-clock time.
@@ -121,8 +130,9 @@ impl LoadingScreen {
         let x = screen.center().x;
         let compact = screen.height() < 360.0;
 
-        // The bay: the launcher's dark plates lit from above, and its pipe frame round them.
-        bay.add(metal::backdrop(ctx, screen, BG_DEEP));
+        // The bay: the launcher's dark plates lit from above (or a menu theme's picture), and its
+        // pipe frame round them.
+        backdrop(&bay, ctx, screen, self.picture.as_ref());
         bay.add(metal::pipe_frame(frame, pipe));
         // Everything on it, fading as the screen goes.
         let mut painter = bay.clone();
@@ -338,10 +348,11 @@ fn said(ctx: &Context, now: (&str, &str), elapsed: f64) -> (Option<(String, Stri
     })
 }
 
-/// The loading screen's bay (its plates and pipe frame, as [`LoadingScreen`] draws them under
-/// everything else) over the whole window at `alpha`: what a screen that has finished loading
-/// leaves, lifting off what was loaded. Drawn over everything else.
-pub fn curtain(ctx: &Context, alpha: f32) {
+/// The loading screen's bay (its plates, or a menu theme's `picture`, and pipe frame, as
+/// [`LoadingScreen`] draws them under everything else) over the whole window at `alpha`: what a
+/// screen that has finished loading leaves, lifting off what was loaded. Drawn over everything
+/// else.
+pub fn curtain(ctx: &Context, alpha: f32, picture: Option<&egui::TextureHandle>) {
     let screen = ctx.viewport_rect();
     if alpha <= 0.0 || !screen.is_finite() || !screen.is_positive() {
         return;
@@ -349,9 +360,28 @@ pub fn curtain(ctx: &Context, alpha: f32) {
     let mut painter = ctx.layer_painter(LayerId::new(Order::Debug, Id::new("ta_ui::loading::curtain"))).with_clip_rect(screen);
     painter.set_opacity(alpha.min(1.0));
     let (_, pipe, frame, _) = bay_measures(screen);
-    painter.add(metal::backdrop(ctx, screen, BG_DEEP));
+    backdrop(&painter, ctx, screen, picture);
     painter.add(metal::pipe_frame(frame, pipe));
 }
+
+/// What the bay stands on: the launcher's dark plates, or a menu theme's `picture` over the whole
+/// screen (cut to fill it), darkened so that the words read over it.
+fn backdrop(painter: &Painter, ctx: &Context, screen: Rect, picture: Option<&egui::TextureHandle>) {
+    let Some(picture) = picture else {
+        painter.add(metal::backdrop(ctx, screen, BG_DEEP));
+        return;
+    };
+    let size = picture.size_vec2();
+    let (want, have) = (screen.width() / screen.height().max(1.0), size.x / size.y.max(1.0));
+    let (u, v) = if have > want { (want / have, 1.0) } else { (1.0, have / want) };
+    let uv = Rect::from_min_max(pos2((1.0 - u) / 2.0, (1.0 - v) / 2.0), pos2((1.0 + u) / 2.0, (1.0 + v) / 2.0));
+    painter.rect_filled(screen, 0.0, Color32::BLACK);
+    painter.image(picture.id(), screen, uv, Color32::WHITE);
+    painter.rect_filled(screen, 0.0, Color32::from_black_alpha(PICTURE_SHADE));
+}
+
+/// How dark a menu theme's picture is laid behind the bay (of 255).
+const PICTURE_SHADE: u8 = 150;
 
 fn centered(painter: &Painter, text: &str, font: egui::FontId, color: Color32, width: f32) -> Arc<Galley> {
     let mut job = egui::text::LayoutJob::simple(text.to_owned(), font, color, width);
@@ -676,12 +706,30 @@ mod tests {
         let ctx = Context::default();
         crate::theme::install(&ctx);
         let count = |alpha: f32| {
-            let mut out = ctx.run_ui(egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1280.0, 720.0))), ..Default::default() }, |ui| curtain(ui.ctx(), alpha));
+            let mut out = ctx.run_ui(egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1280.0, 720.0))), ..Default::default() }, |ui| curtain(ui.ctx(), alpha, None));
             out.textures_delta.clear();
             out.shapes.len()
         };
         assert!(count(1.0) > 0 && count(0.4) > 0);
         assert_eq!(count(0.0), 0);
+    }
+
+    /// A menu theme's picture stands behind the bay in place of its plates, on the screen and on
+    /// its curtain; taken away, the plates again.
+    #[test]
+    fn a_theme_picture_stands_behind_the_bay() {
+        let ctx = Context::default();
+        crate::theme::install(&ctx);
+        let picture = ctx.load_texture("theme picture", egui::ColorImage::filled([8, 6], Color32::from_rgb(200, 40, 20)), egui::TextureOptions::LINEAR);
+        let drawn = |shapes: &[egui::epaint::ClippedShape]| shapes.iter().any(|c| matches!(&c.shape, Shape::Mesh(mesh) if mesh.texture_id == picture.id()));
+        let mut screen = LoadingScreen::new(LoadingKind::Game);
+        screen.set_picture(Some(picture.clone()));
+        assert!(drawn(&shapes(&ctx, vec2(1280.0, 720.0), 1.0, &screen)), "behind the bay");
+        let mut out = ctx.run_ui(egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1280.0, 720.0))), ..Default::default() }, |ui| curtain(ui.ctx(), 1.0, Some(&picture)));
+        out.textures_delta.clear();
+        assert!(drawn(&out.shapes), "on the curtain");
+        screen.set_picture(None);
+        assert!(!drawn(&shapes(&ctx, vec2(1280.0, 720.0), 1.0, &screen)), "the plates again");
     }
 
     #[test]

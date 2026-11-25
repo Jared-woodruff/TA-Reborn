@@ -276,6 +276,8 @@ struct State {
     /// After a loading screen, its bay lifting off what was loaded: `Some(None)` until the first
     /// frame draws it, then when it began (the interface's clock).
     curtain: Option<Option<f64>>,
+    /// The loading screen's picture (a menu theme's) on the curtain as it lifts.
+    curtain_picture: Option<egui::TextureHandle>,
     /// `--demo siege`: the middle of the defence line (the nuke's target, and where a ride is
     /// taken).
     siege_middle: Option<Vec3>,
@@ -974,6 +976,9 @@ struct ActiveLoad {
     input: Input,
     keys: crate::keys::Bindings,
     next_frame: Instant,
+    /// The menus' theme's picture the loading screen shows (MENU THEME), for the curtain it
+    /// leaves.
+    picture: Option<egui::ColorImage>,
 }
 
 impl App {
@@ -1004,6 +1009,21 @@ impl App {
         host.set_reduced_motion(settings.gameplay.reduced_motion);
         host.set_seasonal(&settings.launcher, settings.gameplay.reduced_flashes);
         if let Some(Transition::Benchmark(n)) = &transition { host.set_hint_offset(*n); }
+        // (In the menus' theme's look, MENU THEME, as the menus and the battle are: its colours,
+        // the picture the menus showed behind it, carried on by the curtain it leaves. Not a
+        // benchmark's, every run the same.)
+        let mut picture = None;
+        if !benchmark && settings.gameplay.menu_theme == ta_config::MenuTheme::ForgedAlliance {
+            let (look, vfs) = match self.state.as_ref() {
+                Some(state) => (state.menu_look.as_ref(), state.assets.vfs.clone()),
+                None => (None, self.vfs.clone()),
+            };
+            let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+            if let Some(look) = crate::menu_theme::loading_look(look, &vfs, seed) {
+                picture = look.picture.clone();
+                host.set_look(look);
+            }
+        }
         let stage = if transition.as_ref().is_some_and(Transition::prepares_menu_backdrop) { ta_ui::i18n::n("Preparing command centre") }
             else if self.state.is_some() { ta_ui::i18n::n("Preparing battlefield") }
             else { ta_ui::i18n::n("Starting TA Reborn") };
@@ -1025,7 +1045,7 @@ impl App {
             let _ = tx.send(short_of_graphics_memory(loaded, refused));
         })?;
         log::info!("loading screen started");
-        self.active_load = Some(ActiveLoad { host, window, shown, result, progress, ready: None, transition, input: Input::default(), keys: crate::keys::Bindings::from_config(&settings.keys), next_frame: Instant::now() });
+        self.active_load = Some(ActiveLoad { host, window, shown, result, progress, ready: None, transition, input: Input::default(), keys: crate::keys::Bindings::from_config(&settings.keys), next_frame: Instant::now(), picture });
         Ok(())
     }
 
@@ -1146,6 +1166,7 @@ impl App {
             state.frame_ms = 0.0;
             state.window.set_cursor_visible(state.benchmark.is_none());
             state.curtain = (curtain && !state.settings.gameplay.reduced_motion).then_some(None);
+            state.curtain_picture = load.picture.take().filter(|_| state.curtain.is_some()).map(|p| state.egui.ctx.load_texture("loading picture", p, egui::TextureOptions::LINEAR));
         }
         log::info!("loading screen complete; battlefield ready");
         Ok(())
@@ -2410,6 +2431,7 @@ impl State {
             pending_pass: None,
             loading: None,
             curtain: None,
+            curtain_picture: None,
             siege_middle: None,
             war_queue: Vec::new(),
             stage: None,
@@ -5358,7 +5380,10 @@ impl State {
         if self.theme_of.as_ref().is_none_or(|(at, _)| *at != key) {
             self.theme_of = Some((key, crate::mod_theme::of(mods)));
         }
-        let allowed = self.settings.gameplay.mod_themes && crate::mod_theme::allowed_here();
+        // (Not under the menus' theme's look, MENU THEME, which the battle takes with the modern
+        // HUD: the theme's colours are graded from TA Reborn's own.)
+        let in_look = crate::menu_theme::battle_in_look(self.menu_look.is_some(), self.screen == Screen::Playing, self.hud.classic);
+        let allowed = self.settings.gameplay.mod_themes && crate::mod_theme::allowed_here() && !in_look;
         let side = (allowed && self.screen == Screen::Playing)
             .then(|| self.game.sim.players.get(self.game.hud_player() as usize).map(|p| p.side.as_str())).flatten();
         let theme = self.theme_of.as_ref().and_then(|(_, theme)| theme.as_ref());
@@ -6060,6 +6085,7 @@ impl State {
         let fa_menus = self.menu_theme_installed;
         let loading = self.loading.clone();
         let curtain = &mut self.curtain;
+        let curtain_picture = self.curtain_picture.clone();
         let tutorial = &mut self.tutorial;
         let coach = &mut self.coach;
         let photo = &mut self.photo;
@@ -6081,14 +6107,18 @@ impl State {
         // while a unit is on show, nor the credits' film), its panels' art while they are drawn,
         // its sounds while they are shown.
         let themed_menus = screen == Screen::Menu && self.showroom.is_none() && self.credits_show.is_none();
+        // (And the battle, its HUD and its pages and dialogs, with the modern HUD.)
+        let themed_battle = crate::menu_theme::battle_in_look(self.menu_look.is_some(), screen == Screen::Playing, hud.classic);
+        let panel_art = self.menu_look.as_ref().filter(|_| themed_menus || themed_battle).and_then(|look| look.art.clone());
         // (Out of the menus, their pictures let go of: decoded again on the way back.)
         if !themed_menus && let Some(look) = self.menu_look.as_mut() {
             look.pictures.let_go();
         }
         let mut menu_look = self.menu_look.as_mut().filter(|_| themed_menus);
         let pictures_cover = menu_look.as_ref().is_some_and(|look| look.covers());
-        ta_ui::panel::set_art(menu_look.as_ref().and_then(|look| look.art.clone()));
-        audio.set_in_menus(screen == Screen::Menu);
+        ta_ui::panel::set_art(panel_art);
+        // (Its clicks with its look: in the menus, and in a battle drawn in it.)
+        audio.set_in_menus(screen == Screen::Menu || themed_battle);
         let reduced_motion = settings.gameplay.reduced_motion;
         let mut menu_pictures_shown = false;
         menu.film = self.menu_film.as_ref().filter(|_| self.showroom.is_none() && !pictures_cover).map(|f| f.showing(game));
@@ -6383,7 +6413,7 @@ impl State {
                 let now = ui.input(|i| i.time);
                 let p = ta_ui::motion::progress(now, *since.get_or_insert(now), LIFT);
                 if p < 1.0 {
-                    ta_ui::loading::curtain(ui.ctx(), 1.0 - ta_ui::motion::smooth(p));
+                    ta_ui::loading::curtain(ui.ctx(), 1.0 - ta_ui::motion::smooth(p), curtain_picture.as_ref());
                     ui.ctx().request_repaint();
                 } else {
                     *curtain = None;
@@ -6556,9 +6586,13 @@ impl State {
         crate::macos::refresh_cursor_now_and_then(&self.window);
         let ppp = output.pixels_per_point;
         let mut prims = self.egui.ctx.tessellate(output.shapes, ppp);
-        // (The menus in their theme's colours.)
-        if themed_menus && let Some(look) = self.menu_look.as_mut() {
+        // (The menus in their theme's colours, and the battle.)
+        if (themed_menus || themed_battle) && let Some(look) = self.menu_look.as_mut() {
             look.grade.apply(&mut prims);
+        }
+        // (The loading screen's picture let go of once its curtain has lifted.)
+        if self.curtain.is_none() {
+            self.curtain_picture = None;
         }
         let mut textures_delta = output.textures_delta;
         for (id, deltas) in textures_delta.set.drain() {
