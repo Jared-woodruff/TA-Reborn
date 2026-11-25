@@ -256,7 +256,9 @@ impl Sim {
                     let Some(u) = self.units.get(slot as usize).and_then(|u| u.as_ref()) else { continue };
                     if !self.projectile_hits_unit(p, w, u) { continue; }
                     let (centre, radius) = hit_sphere(u, self);
-                    if segment_distance(p.prev_pos, stop, centre) <= radius + area {
+                    // (Nor what stands under an enemy's dome it came at from outside: its sweep,
+                    // stopped at the dome, reaches no further in.)
+                    if segment_distance(p.prev_pos, stop, centre) <= radius + area && !self.shielded_from(centre, p.prev_pos, Some(p.owner_player)) {
                         p.hits.push(u.id);
                         if !self.ceasefire_spares_side(p.owner_player, u.owner) {
                             self.damage_unit(u.id, w.damage_to(u.type_id), p.owner, p.vel);
@@ -265,8 +267,13 @@ impl Sim {
                 }
                 self.sweep_features(p.prev_pos, stop, w);
             }
-            let impact = if intercepting && (w.def.interceptor || w.def.targetable) { impacts[index] }
-                else { self.projectile_impact(p, w, &mut near) };
+            let planned = intercepting && (w.def.interceptor || w.def.targetable);
+            let mut impact = if planned { impacts[index] } else { self.projectile_impact(p, w, &mut near) };
+            // (Its flight planned with the others' as the tick began: a dome it was to burst on,
+            // collapsed since by another shot, is no longer there, and it flies on.)
+            if planned && impact.is_some_and(|i| i.shield.is_some_and(|s| !self.bubble_up(s))) {
+                impact = self.projectile_impact(p, w, &mut near);
+            }
             if let Some(impact) = impact {
                 if !(p.age >= p.ttl && w.no_explode) || impact.direct.is_some() || impact.shield.is_some() {
                     let flame = w.def.render_type == RenderType::Flame;

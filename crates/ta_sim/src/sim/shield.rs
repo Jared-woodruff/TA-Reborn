@@ -9,7 +9,7 @@
 //!   (and as far down: an ellipsoid round its foot), that stops its enemies' shots coming into it
 //!   from outside (`Sim::bubble_entry`, in the projectiles' sweep): a shot fired from inside goes
 //!   out, its own side's and its allies' pass, as do strategic missiles (Forged Alliance's nukes go
-//!   through shields) and what runs under the water (torpedoes, depth charges). An aircraft in
+//!   through shields) and what runs under the water (torpedoes, depth charges, their blasts too). An aircraft in
 //!   flight counts as over every dome (TA's flying heights are low, under a big dome's top): its shot
 //!   fired under an enemy's dome bursts on it at once. The shot bursts on
 //!   the dome, which takes its whole damage; any blast going off outside a dome takes what of it
@@ -108,14 +108,24 @@ impl Bubble {
         self.round(p).within(self.centre, self.radius)
     }
 
-    /// How far `p`, outside the dome, lies from it along the line from its middle (none within).
+    /// How far `p`, outside the dome, lies from it (none within). A dome not a ball (its height not
+    /// its radius) is an ellipsoid, the nearest place on it no closed sum: this is its first-order
+    /// estimate (how far out it is in the dome's round space, over how fast that grows here), exact
+    /// straight out from the middle, over its top and along the ground, and nowhere more than the
+    /// true distance, so a blast reaching the dome never passes it by.
     fn distance_out(&self, p: FxVec3) -> Fx {
         let along = self.round(p).distance(self.centre);
         if along <= self.radius {
             return Fx::ZERO;
         }
-        let d = p.distance(self.centre);
-        d - d * self.radius / along
+        let k = self.radius / self.height;
+        let rel = p - self.centre;
+        // (The round space's distance grows by |(x, k²y, z)| / along a pixel out.)
+        let growth = FxVec3::new(rel.x, rel.y * k * k, rel.z).length();
+        if growth.is_zero() {
+            return along - self.radius;
+        }
+        (along - self.radius) * along / growth
     }
 
     /// Where on the dome the line from its middle to `p` meets it.
@@ -135,6 +145,34 @@ impl Bubble {
             return None;
         }
         segment_entry(a, b, self.centre, self.radius)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The distance to a dome flatter than a ball is estimated never more than the true one (a blast
+    /// reaching the dome meets it), close to it, and exactly straight out, over the top and along the
+    /// ground.
+    #[test]
+    fn the_distance_to_a_flat_dome_is_never_overestimated() {
+        let bubble = Bubble { unit: UnitId { slot: 1, generation: 0 }, owner: 0, centre: FxVec3::ZERO, radius: Fx::from_int(400), height: Fx::from_int(80) };
+        // (The true distance: the nearest of the ellipse's points, sampled finely: a test may use
+        // floats.)
+        let truth = |x: f64, y: f64| (0..=20000).map(|i| {
+            let a = std::f64::consts::PI * i as f64 / 20000.0;
+            ((x - 400.0 * a.cos()).powi(2) + (y - 80.0 * a.sin()).powi(2)).sqrt()
+        }).fold(f64::MAX, f64::min);
+        for (x, y) in [(400, 80), (300, 100), (500, 0), (0, 130), (450, 40), (380, 60), (100, 200)] {
+            let estimate = bubble.distance_out(FxVec3::from_ints(x, y, 0)).to_f64();
+            let true_distance = truth(x as f64, y as f64);
+            assert!(estimate <= true_distance + 0.5, "({x}, {y}): {estimate} past the true {true_distance}");
+            assert!(estimate >= true_distance * 0.6, "({x}, {y}): {estimate} far under the true {true_distance}");
+        }
+        assert_eq!(bubble.distance_out(FxVec3::from_ints(500, 0, 0)), Fx::from_int(100), "straight out along the ground");
+        assert_eq!(bubble.distance_out(FxVec3::from_ints(0, 130, 0)), Fx::from_int(50), "over the top");
+        assert_eq!(bubble.distance_out(FxVec3::from_ints(100, 10, 0)), Fx::ZERO, "within");
     }
 }
 
@@ -189,7 +227,7 @@ impl Sim {
     }
 
     /// Whether `id`'s shield is up now (a dome listed this tick may have collapsed since).
-    fn bubble_up(&self, id: UnitId) -> bool {
+    pub(crate) fn bubble_up(&self, id: UnitId) -> bool {
         self.unit(id).is_some_and(|u| !u.dead && u.shield.is_some_and(|s| s.up))
     }
 
@@ -285,7 +323,9 @@ impl Sim {
     /// the share it could not take. A stun (TA's paralyzers) is stopped whole and takes nothing off
     /// a dome. None where no dome stands.
     pub(crate) fn blast_on_bubbles(&mut self, w: &WeaponType, pos: FxVec3, r: Fx, source: UnitId, player: Option<u8>, struck: Option<UnitId>) -> Option<Cover> {
-        if self.bubbles.is_empty() {
+        // (What runs under the water passes under the domes, as its shots do, `bubble_entry`: its
+        // blast takes nothing off them and is held off nothing under them.)
+        if self.bubbles.is_empty() || w.water {
             return None;
         }
         let mut met: Vec<(Bubble, Fx)> = Vec::new();
