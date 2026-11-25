@@ -19,8 +19,9 @@ pub const MOD_NAME: &str = "Supreme Commander menus";
 pub const DESCRIPTION: &str = "Supreme Commander: Forged Alliance's look for TA Reborn's menus: its colours, pictures, panel art, interface sounds and menu music, made from your own copy of the game.";
 pub const TAGS: [&str; 3] = ["interface", "theme", "supreme commander"];
 /// The converter's version, the mod's own (its manifest's `version`): a mod made by an older one
-/// is offered to be made again. Raised whenever what is made changes.
-pub const VERSION: u32 = 1;
+/// is offered to be made again. Raised whenever what is made changes. (2: the launcher's install of
+/// version 1 left its `menus/` folder out, its theme with it: made again, it is whole.)
+pub const VERSION: u32 = 2;
 /// What the mod's files are for, as the game reads it.
 pub const THEME: &str = "menus/supcom/theme.toml";
 /// The menu music's file in the mod.

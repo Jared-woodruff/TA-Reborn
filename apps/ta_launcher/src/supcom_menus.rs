@@ -249,6 +249,12 @@ fn installed_version(dir: &Path) -> u32 {
     ta_vfs::mods::read_mod(dir).ok().flatten().and_then(|m| m.manifest.version.trim().parse().ok()).unwrap_or(0)
 }
 
+/// How the mod installed in `dir` stands: made by this converter and whole (its theme there), or to
+/// be made again (an older converter's, or one installed without its theme).
+fn installed_state(dir: &Path) -> State {
+    if installed_version(dir) >= VERSION && dir.join(menus::THEME).is_file() { State::Imported } else { State::Outdated }
+}
+
 /// A picture made small for the tab: [`PICTURE_WIDTH`] wide at twice the detail.
 fn small(image: &ta_formats::dds::Image) -> egui::ColorImage {
     let width = (PICTURE_WIDTH * 2.0) as usize;
@@ -270,11 +276,7 @@ fn small(image: &ta_formats::dds::Image) -> egui::ColorImage {
 fn find(copies: Vec<Install>, picked: Option<&Path>, held: Option<&Path>) -> (Found, Pictures) {
     let picked_gone = picked.filter(|p| !install::validate(p)).map(Path::to_path_buf);
     let install = crate::supcom::in_use(&copies, picked.filter(|_| picked_gone.is_none()));
-    let state = match held.map(installed_version) {
-        None => State::New,
-        Some(v) if v >= VERSION => State::Imported,
-        Some(_) => State::Outdated,
-    };
+    let state = held.map_or(State::New, installed_state);
     let mut found = Found { install: install.clone(), copies, picked_gone, state, ..Default::default() };
     let mut pictures = Pictures::new();
     let Some(game) = install else { return (found, pictures) };
@@ -366,6 +368,23 @@ mod tests {
         assert!(partly.summary().contains("1 of its parts could not be made"), "{}", partly.summary());
         assert!(broken.notice().unwrap().ends_with("disk full"));
         assert!(stopped.notice().is_none());
+    }
+
+    /// A copy is imported only whole and made by this converter: one without its theme (as the
+    /// launcher's install of version 1 left it) or an older converter's is made again.
+    #[test]
+    fn a_copy_without_its_theme_is_made_again() {
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("ta-menus-state-{}-{nanos}", std::process::id()));
+        std::fs::create_dir_all(dir.join("sounds")).unwrap();
+        std::fs::write(dir.join("mod.toml"), menus::manifest("1.0.9")).unwrap();
+        assert_eq!(installed_state(&dir), State::Outdated, "no theme");
+        std::fs::create_dir_all(dir.join("menus/supcom")).unwrap();
+        std::fs::write(dir.join(menus::THEME), "pictures = []\n").unwrap();
+        assert_eq!(installed_state(&dir), State::Imported);
+        std::fs::write(dir.join("mod.toml"), menus::manifest("1.0.9").replace(&format!("version = \"{VERSION}\""), "version = \"1\"")).unwrap();
+        assert_eq!(installed_state(&dir), State::Outdated, "an older converter's");
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     /// A picture made small for the tab: its proportions kept, opaque.

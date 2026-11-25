@@ -126,17 +126,18 @@ What the installer does with a package or a folder:
   have one, as does macOS). When it says no program was found, or that only part of a file could
   be unpacked, install 7-Zip from 7-zip.org and try again: some RAR files need it, and on Linux it
   (or `bsdtar`) is needed for any package.
-- It finds the content: the folder of a `mod.toml` that stands beside TA's folders or archives;
-  else the folder holding the largest TA archive (recognised by its contents, whatever its
-  extension); else the shallowest folder holding TA's folders; else the folder of a `mod.toml`
-  with an interface theme, pictures or archives it replaces of its own (a mod that brings only
-  those).
+- It finds the content: the folder of a `mod.toml` that stands beside TA's folders (or TA
+  Reborn's own, `menus/`) or archives; else the folder holding the largest TA archive (recognised
+  by its contents, whatever its extension); else the shallowest folder holding TA's folders; else
+  the folder of a `mod.toml` with an interface theme, pictures or archives it replaces of its own
+  (a mod that brings only those).
 - It keeps the TA archives there (one with an extension of its own, such as Total Battletech's
-  `rev31.mwp`, is installed as a `.gp3`), TA's folders, folders the mod's own engine read in place
-  of TA's ([renamed folders](#renamed-folders)) and documents (`.txt`, `.md`, `.rtf`, `.pdf`,
-  `.doc`, `.docx`, `.htm`, `.html`, `.nfo`), which go in the mod's `docs/` folder: those beside the
-  content, and those at the top of a folder of documents of its own (`Docs/`, `Documentation/`,
-  `Manual/`...).
+  `rev31.mwp`, is installed as a `.gp3`), TA's folders, TA Reborn's own (`menus/`: a menu theme's
+  pictures, panel art and list, as the Supreme Commander import makes them), folders the mod's own
+  engine read in place of TA's ([renamed folders](#renamed-folders)) and documents (`.txt`, `.md`,
+  `.rtf`, `.pdf`, `.doc`, `.docx`, `.htm`, `.html`, `.nfo`), which go in the mod's `docs/` folder:
+  those beside the content, and those at the top of a folder of documents of its own (`Docs/`,
+  `Documentation/`, `Manual/`...).
 - It leaves out the rest: patched `TotalA.exe` copies, DLLs, settings, archives that do not read,
   and optional extras in other folders. Empty placeholder archives, which a few mods ship to blank
   out one of the original game's, are not copied: the manifest records them instead
@@ -380,11 +381,11 @@ versions, and in the game, which compares their files too.
 
 A saved game is its battle played over from the start to where it was saved, and a replay its
 orders played over: with other mods they can lead elsewhere. The digest covers the files the game
-reads: a folder's archives, and its files in TA's folders or in folders it renames to them. Editing
-or adding a read-me file, a picture or a program changes nothing; editing a unit makes earlier
-records say the mod's files have changed. (Records made by a version whose digest covered every
-file of the folder still know the same copy.) Records made before they kept their mods are judged
-by their game data alone.
+reads: a folder's archives, and its files in TA's folders (or TA Reborn's own, `menus/`) or in
+folders it renames to them. Editing or adding a read-me file, a picture or a program changes
+nothing; editing a unit makes earlier records say the mod's files have changed. (Records made by
+a version whose digest covered every file of the folder still know the same copy.) Records made
+before they kept their mods are judged by their game data alone.
 
 In multiplayer everyone must have the same game data: in practice the same mods, in the same
 versions and order. A join that cannot go ahead says which mods differ and what to do (turn one on
