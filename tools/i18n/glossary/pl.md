@@ -751,3 +751,20 @@ mod check); its description „obserwacja z daleka”. Mod keys (`[TOGGLE]`, `Re
 | a side's alerts (its announcer) | ostrzeżenia (as UNIT REPLIES' help) |
 | stream information (FLAC) | informacje o strumieniu |
 | the units' sounds (after "Tworzenie: {unit}") | dźwięki jednostek (nominative) |
+
+## Efekty modów (`validation.rs`: efekty cząsteczkowe w `effects/*.tdf`, wygląd broni, kolor wiązki sąsiedztwa)
+
+Mod keys and values (`rgbcolor`, `thickness`, `kind=spark…`, `direction`, `AdjacencyBeamColor`, `emit-sfx`)
+stay as written; a key with its value is „klucz {key}={value} broni {name}”, as the sound sets'. Spring (the
+engine) is a name, not declined: „tak jak Spring”.
+
+| English | Polski |
+|---|---|
+| effect (a particle effect: a section of `effects/*.tdf`) | efekt: „efekt {name} (effects/*.tdf)”, „efekt {name} dla emit-sfx {sfx}” |
+| burst (a section within an effect, of one kind: spark, ember, glow…) | seria (as seria z karabinu): „Seria {burst} efektu {effect}”; counts count-safe: „Serie w efekcie {effect}: {n}”, „Liczba cząsteczek w serii {burst} efektu {effect}: {count}” |
+| particle | cząsteczka |
+| muzzle flash / trail (a weapon's GAF animations) | błysk wylotowy {name} / smuga {name} |
+| fire / trail / hit / water hit effect | efekt strzału / smugi / trafienia / trafienia w wodę {name} (as „dźwięk strzału {name}”) |
+| its kind's own (colours, width, value: its kind's defaults) | właściwy dla jej rodzaju („w kolorach właściwych dla jej rodzaju”; not „swojego rodzaju”, which reads as „a sort of”) |
+| beam (Supreme Commander's adjacency beam) | wiązka |
+| an effect costs every frame it plays | efekt obciąża każdą klatkę, w której jest odtwarzany |

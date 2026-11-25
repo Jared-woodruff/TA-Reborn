@@ -684,3 +684,20 @@ stay as written; the mod check's reference to a toggle's weapon is "{name} [TOGG
 | a category's base (its `base` key) | base de {category} |
 | a side's alerts (its announcer) | alertas (as UNIT REPLIES' help) |
 | stream information (FLAC) | informações do fluxo |
+
+## Efeitos dos mods (`validation.rs`: efeitos de partículas em `effects/*.tdf`, a aparência de uma arma, a cor do feixe de adjacência)
+
+Mod keys and values (`rgbcolor`, `thickness`, `kind=spark…`, `direction`, `AdjacencyBeamColor`, `emit-sfx`)
+stay as written; a key with its value is "a chave {key}={value} de {name}", as the sound sets'. Spring (the
+engine) is a name: "como no Spring".
+
+| English | pt-BR |
+|---|---|
+| effect (a particle effect: a section of `effects/*.tdf`) | efeito: "efeito {name} (effects/*.tdf)", "efeito de {name} para emit-sfx {sfx}" |
+| burst (a section within an effect, of one kind: spark, ember, glow…) | rajada: "A rajada {burst} de {effect}", "Defina kind=…" |
+| particle | partícula |
+| muzzle flash / trail (a weapon's GAF animations) | clarão de disparo de {name} / rastro de {name} |
+| fire / trail / hit / water hit effect | efeito de disparo / de rastro / de impacto / de impacto na água de {name} (as "som de disparo de {name}") |
+| its kind's own (colours, width, value: its kind's defaults) | próprio do seu tipo: "nas cores próprias do seu tipo", "é usado o valor próprio do seu tipo" |
+| beam (Supreme Commander's adjacency beam) | feixe |
+| an effect costs every frame it plays | um efeito custa desempenho em cada quadro em que é reproduzido |

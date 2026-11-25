@@ -683,3 +683,20 @@ to a toggle's weapon is "{name} [TOGGLE] {key}" (as "{name} {key}").
 | a category's base (its `base` key) | {category} temel kategorisi |
 | a side's alerts (its announcer) | uyarılar (as UNIT REPLIES' help) |
 | stream information (FLAC) | akış bilgisi |
+
+## Modların efektleri (`validation.rs`: `effects/*.tdf` içindeki parçacık efektleri, bir silahın görünümü, bitişiklik ışınının rengi)
+
+Mod keys and values (`rgbcolor`, `thickness`, `kind=spark…`, `direction`, `AdjacencyBeamColor`, `emit-sfx`)
+stay as written; a key with its value is "{name} silahındaki {key}={value}" (the suffix on silah, as
+"{unit} birimindeki"). Spring (the engine) is a name: "Spring'deki gibi".
+
+| English | Türkçe |
+|---|---|
+| effect (a particle effect: a section of `effects/*.tdf`) | efekt: "efekt {name} (effects/*.tdf)", "{effect} efektindeki", "emit-sfx {sfx} için {name} efekti" |
+| burst (a section within an effect, of one kind: spark, ember, glow…) | püskürtme: "{effect} efektindeki {burst} püskürtmesi", "{n} püskürtme" |
+| particle | parçacık |
+| muzzle flash / trail (a weapon's GAF animations) | {name} namlu alevi / {name} izi |
+| fire / trail / hit / water hit effect | {name} atış efekti / iz efekti / isabet efekti / su isabet efekti (as "{name} atış sesi") |
+| its kind's own (colours, width, value: its kind's defaults) | türünün kendi …: "türünün kendi renkleriyle", "türünün kendi değeri kullanılır" |
+| beam (Supreme Commander's adjacency beam) | ışın |
+| an effect costs every frame it plays | bir efekt, oynatıldığı her karede işlem yükü getirir |

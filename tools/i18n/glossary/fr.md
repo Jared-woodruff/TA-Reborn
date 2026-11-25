@@ -760,3 +760,20 @@ check's curly ’; all put a no-break space before : ; and %.
 | a side's alerts (its announcer) | alertes (as UNIT REPLIES' help) |
 | stream information (FLAC) | informations de flux |
 | the units' sounds (after "Création de {unit}") | l'ensemble des sons des unités (an article after "de" would read "de les") |
+
+## Les effets des mods (`validation.rs` : effets de particules dans `effects/*.tdf`, l’aspect d’une arme, la couleur du faisceau d’adjacence)
+
+Mod keys and values (`rgbcolor`, `thickness`, `kind=spark…`, `direction`, `AdjacencyBeamColor`, `emit-sfx`)
+stay as written; a key with its value is "l’entrée {key}={value} de {name}", as the sound sets'. Spring
+(the engine) is a name: "comme le fait Spring". An effect "s’affiche" (it plays nothing: il n’affiche rien).
+
+| English | Français |
+|---|---|
+| effect (a particle effect: a section of `effects/*.tdf`) | effet : "l’effet {name} (effects/*.tdf)", "effet de {name} pour emit-sfx {sfx}" |
+| burst (a section within an effect, of one kind: spark, ember, glow…) | gerbe (f., as une gerbe d’étincelles) : "La gerbe {burst} de {effect}", "Donnez-lui kind=…" |
+| particle | particule |
+| muzzle flash / trail (a weapon's GAF animations) | flamme de bouche de {name} / traînée de {name} |
+| fire / trail / hit / water hit effect | effet de tir / de traînée / d’impact / d’impact sur l’eau de {name} (as "son de tir de {name}") |
+| its kind's own (colours, width, value: its kind's defaults) | propre à son type : "dans les couleurs propres à son type", "la valeur propre à son type est utilisée" |
+| beam (Supreme Commander's adjacency beam) | faisceau |
+| an effect costs every frame it plays | un effet coûte du temps à chaque image tant qu’il s’affiche |

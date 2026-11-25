@@ -621,3 +621,23 @@ low, normal, high); what a key takes is 填 (radius= 填一個大於 0 的數). 
 | {name} alerts (a side's announcer) | {name} 警報語音 (as alerts 警報 in the UNIT REPLIES help) |
 | FLAC stream information | 串流資訊 |
 | the units' sounds (a step of the factions import, in 正在製作 {unit}) | 單位音效 |
+
+## A mod's own effects: particle effects, muzzle flashes, trails, a weapon's colours (`validation.rs`, `effect.rs`)
+
+Keys and values stay as written (kind=spark … ring, size=, color=, direction= with forward, back, up,
+down, out; rgbcolor=, rgbcolor2=, thickness=, AdjacencyBeamColor=, emit-sfx); a list of values takes
+、 and 或, as the Affects= list. Spring (the engine) stays a name: 依 Spring 的寫法. An example ending
+in ; takes no 。 after it. Labels follow {name} 射擊特效 (no 的).
+
+| English | 繁體中文 |
+|---|---|
+| burst (a section of an effect: particles of one kind) | 粒子簇 (not 爆發, which reads as an outbreak) |
+| particle / (particle) effect | 粒子 / 特效 |
+| effect {name} (effects/*.tdf) | 特效 {name}（effects/*.tdf） |
+| {name} muzzle flash / {name} trail (GAF animations) | {name} 砲口焰 / {name} 尾跡 |
+| {name} fire / trail / hit / water hit effect | {name} 射擊特效 / 尾跡特效 / 命中特效 / 水中命中特效 (as its sounds) |
+| {name} effect for emit-sfx {sfx} | {name} emit-sfx {sfx} 特效 |
+| its kind's own (a weapon's colours, thickness / a burst's value) | 同類武器的預設顏色、預設粗細 / 該類型的預設值 |
+| three numbers from 0 to 1 | 0 到 1 之間的三個數 |
+| beam (an adjacency beam between buildings) | 光束 |
+| an effect costs every frame it plays | 播放期間的每個影格都會消耗效能 (as 效能消耗) |

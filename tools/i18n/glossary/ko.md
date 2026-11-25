@@ -753,3 +753,23 @@ A sound in the mod check is 효과음, as 효과음 범주.
 | {name} alerts (a side's announcer) | {name} 경고 음성 (as alerts 경고 in the UNIT REPLIES help) |
 | FLAC stream information | 스트림 정보 |
 | the units' sounds (a step of the factions import, in {unit} 만드는 중) | 유닛 효과음 |
+
+## A mod's own effects: particle effects, muzzle flashes, trails, a weapon's colours (`validation.rs`, `effect.rs`)
+
+Keys and values stay as written (kind=spark … ring, size=, color=, direction= with forward, back, up,
+down, out; rgbcolor=, rgbcolor2=, thickness=, AdjacencyBeamColor=, emit-sfx); a list of values ends
+in 중 하나, as the Affects= list. Spring (the engine) stays a name: Spring처럼. A burst's name takes the
+noun before its particle ({burst} 버스트는); a value is {value} 값은. An example ending in ; takes no full stop.
+
+| English | 한국어 |
+|---|---|
+| burst (a section of an effect: particles of one kind) | 버스트 (as Unity's Bursts) |
+| particle / (particle) effect | 파티클 / 효과 (as the benchmark's; a sound stays 효과음) |
+| effect {name} (effects/*.tdf) | 효과 {name} (effects/*.tdf) |
+| {name} muzzle flash / {name} trail (GAF animations) | {name} 총구 화염 / {name} 궤적 |
+| {name} fire / trail / hit / water hit effect | {name} 발사 효과 / 궤적 효과 / 명중 효과 / 수중 명중 효과 (as 수중 명중음) |
+| {name} effect for emit-sfx {sfx} | {name} emit-sfx {sfx}용 효과 |
+| its kind's own (a weapon's colours, thickness / a burst's value) | 같은 종류 무기의 기본 색, 기본 굵기 / 그 종류의 기본값 |
+| three numbers from 0 to 1 | 0~1 사이의 수 세 개 |
+| beam (an adjacency beam between buildings) | 빔 |
+| an effect costs every frame it plays | 재생되는 동안 매 프레임 부하를 줍니다 (as 부하) |
