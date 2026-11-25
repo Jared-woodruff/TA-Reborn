@@ -386,15 +386,17 @@ impl SurfaceTextures {
                 }
             }
             // (Waiting: for every material asked for and not made yet.)
-            while waits {
-                let made = self.ready.iter().filter(|m| m.generation == generation).count();
-                let on_the_way = self.entries.iter().filter(|e| e.asked && e.words.is_none() && !e.failed).count();
-                if made >= on_the_way {
-                    break;
-                }
-                match workers.made.recv_timeout(WAIT_AT_MOST) {
-                    Ok(m) => self.ready.push_back(m),
-                    Err(_) => break,
+            if waits {
+                loop {
+                    let made = self.ready.iter().filter(|m| m.generation == generation).count();
+                    let on_the_way = self.entries.iter().filter(|e| e.asked && e.words.is_none() && !e.failed).count();
+                    if made >= on_the_way {
+                        break;
+                    }
+                    match workers.made.recv_timeout(WAIT_AT_MOST) {
+                        Ok(m) => self.ready.push_back(m),
+                        Err(_) => break,
+                    }
                 }
             }
         }
