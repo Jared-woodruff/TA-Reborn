@@ -54,6 +54,10 @@
   menu theme's loudest moments as a row of bars over one of the game's paintings, and the game's
   logo and a panel of its menus over their space. Mods imported before get theirs when the
   launcher starts, without being made again ([SUPCOM_MAPS.md](docs/SUPCOM_MAPS.md), "Banners").
+- The Supreme Commander factions show their own emblems in the classic interface, at the top left
+  and in the unit bar, in each player's colour as Arm's and Core's are, in place of TA's plain
+  square (UPDATE… on the Mods page makes the factions again). A mod's own side can name its emblem
+  in its side data the same way ([MODDING.md](docs/MODDING.md), "Sides of a mod's own").
 - The Supreme Commander import, from a review of it all:
   - With the menus' Forged Alliance look, the menus' film no longer plays on, heard, behind its
     pictures; its menu music comes first in the menus' music rather than one track over and over,

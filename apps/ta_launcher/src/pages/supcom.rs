@@ -138,8 +138,9 @@ impl LauncherApp {
         }
     }
 
-    /// Why the chosen factions cannot be imported now, if they cannot. (They need nothing of TA's:
-    /// the game is found to play them.)
+    /// Why the chosen factions cannot be imported now, if they cannot. (They need nothing of TA's
+    /// but its palette, for their sides' emblems in the classic interface, made without them where
+    /// TA is not found: the game is found to play them.)
     pub(crate) fn factions_blocked(&self) -> Option<&'static str> {
         if self.game_running() {
             Some(t("Close the game first: the factions cannot be imported while it runs."))

@@ -12,6 +12,7 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result, bail};
+use ta_formats::image::Palette;
 use ta_supcom::factions::{faction, make, pictures, units as made_units};
 use ta_supcom::files::Files;
 use ta_supcom::install::{self, Install};
@@ -231,8 +232,9 @@ impl Factions {
     }
 
     /// Starts making the factions chosen into the mod, the launcher's settings in `store_dir`, the
-    /// mod where `place` says.
-    pub fn start(&mut self, store_dir: PathBuf, place: Place) {
+    /// mod where `place` says; the sides' emblems in the palette of the original game at `ta_root`
+    /// (none without it).
+    pub fn start(&mut self, ta_root: Option<PathBuf>, store_dir: PathBuf, place: Place) {
         let Some(found) = self.look.found.clone() else { return };
         let Some(game) = found.install.clone() else { return };
         if self.importing() {
@@ -248,7 +250,7 @@ impl Factions {
         let progress = self.progress.clone();
         self.outcome = None;
         let job = Job::spawn("supcom factions import", self.progress.clone(), move |ending| {
-            import(&game, &sides, &store_dir, &place, needed, &progress, ending).unwrap_or_else(|e| Outcome { error: Some(error_text(&e)), ..Default::default() })
+            import(&game, &sides, ta_root.as_deref(), &store_dir, &place, needed, &progress, ending).unwrap_or_else(|e| Outcome { error: Some(error_text(&e)), ..Default::default() })
         });
         match job {
             Ok(job) => self.job = Some(job),
@@ -446,12 +448,26 @@ fn called(u: &UnitBlueprint) -> String {
     format!("{} {}", made_units::side(&u.faction), unit::strip_loc(name))
 }
 
-/// Makes the factions of `sides` of the copy `game` into the mod and installs it where `place`
-/// says, in place of the one there: when there is room on the disk for `needed` bytes. Nothing is
-/// installed when stopped before every unit is made.
-fn import(game: &Install, sides: &BTreeSet<String>, store_dir: &Path, place: &Place, needed: u64, progress: &Arc<Mutex<Progress>>, ending: &Ending) -> Result<Outcome> {
+/// TA's own palette, from the original game at `ta_root` (the sides' emblems are made in it, as
+/// TA's own are): none where it does not read.
+fn ta_palette(ta_root: &Path) -> Option<Palette> {
+    let mut vfs = ta_vfs::Vfs::new();
+    let read = vfs.mount_game_dir(ta_root, "base").ok().and_then(|_| Palette::parse(&vfs.read_opt("palettes/palette.pal")?).ok());
+    if read.is_none() {
+        log::warn!("{}: no palette read, the factions' emblems are left out", ta_root.display());
+    }
+    read
+}
+
+/// Makes the factions of `sides` of the copy `game` into the mod (their emblems in the palette of
+/// TA at `ta_root`, where it is found) and installs it where `place` says, in place of the one
+/// there: when there is room on the disk for `needed` bytes. Nothing is installed when stopped
+/// before every unit is made.
+#[allow(clippy::too_many_arguments)]
+fn import(game: &Install, sides: &BTreeSet<String>, ta_root: Option<&Path>, store_dir: &Path, place: &Place, needed: u64, progress: &Arc<Mutex<Progress>>, ending: &Ending) -> Result<Outcome> {
     let work_root = store_dir.join("cache").join("faction-imports");
     crate::supcom::enough_room(&[&work_root, &place.into], needed)?;
+    let palette = ta_root.and_then(ta_palette);
     let files = Files::own(game).context(t("Supreme Commander: Forged Alliance's units could not be read."))?;
     let units: Vec<UnitBlueprint> = unit::catalogue(&files)?.into_iter().filter(|u| u.playable() && sides.contains(made_units::side(&u.faction))).collect();
     if units.is_empty() {
@@ -462,7 +478,7 @@ fn import(game: &Install, sides: &BTreeSet<String>, store_dir: &Path, place: &Pl
     let payload = work.0.join("payload");
     let factions: Vec<String> = Faction::PLAYABLE.iter().map(made_units::side).filter(|s| sides.contains(*s)).map(str::to_string).collect();
     let into = place.into.clone();
-    build(&payload, &names, factions, progress, ending, |write, watch| Ok(make::make(&files, &units, env!("CARGO_PKG_VERSION"), write, watch)?), || install_made(&payload, &into).map(|_| ()))
+    build(&payload, &names, factions, progress, ending, |write, watch| Ok(make::make(&files, &units, palette.as_ref(), env!("CARGO_PKG_VERSION"), write, watch)?), || install_made(&payload, &into).map(|_| ()))
 }
 
 /// The mod made into `payload` by `make` (given where each file goes, and told before each unit

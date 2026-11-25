@@ -2,9 +2,10 @@
 //! archive, a test), from the player's copy of Forged Alliance. What `ta-tools supcom-units` and
 //! the launcher make.
 
+use ta_formats::image::Palette;
 use ta_formats::surface::Material;
 
-use super::{anims, enhance, faction, model, pictures, script, textures, units, work, UNIT_SCALE};
+use super::{anims, emblem, enhance, faction, model, pictures, script, textures, units, work, UNIT_SCALE};
 use crate::files::Files;
 use crate::scm::{self, Mesh};
 use crate::sca;
@@ -35,8 +36,10 @@ pub const TAGS: [&str; 3] = ["units", "factions", "supreme commander"];
 /// 13: units of a faction's different tiers sharing a name shown with their tiers, "T2 Engineer"
 /// (`units::shown_name`), and every wreck by its unit's name, never its id; 14: a name's article
 /// giving way to its tier, "T2 Kennel", the mod's words those of whatever factions it holds, and
-/// its banner in the launcher's library).
-pub const VERSION: u32 = 14;
+/// its banner in the launcher's library; 15: each side's emblem in the classic interface, ten
+/// frames in TA's palette as Arm's and Core's, `anims/supcomlogos.gaf`, named by the side
+/// add-on's `logogaf` and `logo`: `emblem`).
+pub const VERSION: u32 = 15;
 
 /// What was made.
 #[derive(Clone, Debug, Default)]
@@ -63,10 +66,11 @@ pub fn manifest(reborn: &str) -> String {
 /// Makes the mod of `units` (the playable ones of the player's copy), for TA Reborn `reborn` and
 /// newer, writing each file through `write` (a path in the mod, its bytes), in a fixed order: the
 /// same bytes on every computer. (Its banner too, the launcher's picture of it, where the copy
-/// has the pictures it is made of: [`crate::banner::factions`].) `watch` is told before each unit
-/// how many are made and the unit's id: false from it stops the making there
-/// ([`Made::stopped`]).
-pub fn make(files: &Files, units: &[UnitBlueprint], reborn: &str, write: &mut dyn FnMut(&str, &[u8]) -> Result<()>, watch: &mut dyn FnMut(usize, &str) -> bool) -> Result<Made> {
+/// has the pictures it is made of: [`crate::banner::factions`]; and the sides' emblems in the
+/// classic interface in `palette`, TA's own, read from the player's copy of TA: none without it,
+/// the sides keeping TA's plain square.) `watch` is told before each unit how many are made and
+/// the unit's id: false from it stops the making there ([`Made::stopped`]).
+pub fn make(files: &Files, units: &[UnitBlueprint], palette: Option<&Palette>, reborn: &str, write: &mut dyn FnMut(&str, &[u8]) -> Result<()>, watch: &mut dyn FnMut(usize, &str) -> bool) -> Result<Made> {
     let mut made = Made::default();
     let mut put = |path: &str, bytes: &[u8], made: &mut Made| -> Result<()> {
         made.files += 1;
@@ -143,6 +147,13 @@ pub fn make(files: &Files, units: &[UnitBlueprint], reborn: &str, write: &mut dy
         (f, theirs)
     }).filter(|(_, u): &(Faction, Vec<&UnitBlueprint>)| !u.is_empty()).collect();
     put("gamedata/sidedata_supcom.tdf", faction::side_add_on(&factions).as_bytes(), &mut made)?;
+    // (The sides' emblems, where TA's palette was given and the copy has them.)
+    if let Some(palette) = palette {
+        let sides: Vec<&str> = faction::sides(&factions).map(|(f, _)| units::side(f)).collect();
+        if let Some(gaf) = emblem::gaf(files, &sides, palette)? {
+            put(&emblem::path(), &gaf, &mut made)?;
+        }
+    }
     for (f, theirs) in &factions {
         let name = units::side(f).to_ascii_lowercase();
         put(&format!("download/supcom_{name}.tdf"), faction::menus(theirs).as_bytes(), &mut made)?;
@@ -512,6 +523,8 @@ mod tests {
         let mut icon = ta_formats::dds::header(8, 8, 1, None);
         icon.extend(std::iter::repeat_n([40u8, 80, 160, 255], 64).flatten());
         files.push(("textures/ui/common/game/uef-enhancements/aes_btn_up.dds".into(), icon));
+        // The faction's emblem (a square with a hole in it).
+        files.push((crate::banner::emblem_path("UEF").unwrap().into(), emblem::tests::icon(48, 12)));
         files.push(("projectiles/Shell/Shell_proj.bp".into(), projectile("'DIRECTFIRE'", "Physics = { InitialSpeed = 30 }").into_bytes()));
         files.push(("projectiles/Frag/Frag_proj.bp".into(), projectile("'INDIRECTFIRE'", "Physics = { InitialSpeed = 30 }").into_bytes()));
         files.push(("projectiles/Frag/Frag_script.lua".into(), b"Frag = Class(Base) { OnImpact = function(self, t, e) local ChildProjectileBP = '/projectiles/Shell/Shell_proj.bp' \
@@ -534,10 +547,11 @@ mod tests {
         let files = Files::of(Vec::new(), vec![crate::scd::Scd::open(&dir.0.join("units.scd")).unwrap()]);
         let units: Vec<UnitBlueprint> = crate::unit::catalogue(&files).unwrap().into_iter().filter(|u| u.playable()).collect();
         assert_eq!(units.len(), 16, "the station's next tier, made by upgrading alone, among them; not its drone");
+        let palette = emblem::tests::palette();
         let run = || {
             let mut hash = Sha256::new();
             let mut paths: Vec<String> = Vec::new();
-            let made = make(&files, &units, "test", &mut |path, bytes| {
+            let made = make(&files, &units, Some(&palette), "test", &mut |path, bytes| {
                 hash.update(path.as_bytes());
                 hash.update((bytes.len() as u64).to_le_bytes());
                 hash.update(bytes);
@@ -551,12 +565,23 @@ mod tests {
         assert_eq!((made.units, made.skipped.len()), (16, 0), "{:?}", made.skipped);
         // The tech 1 factory upgrades into the tech 2 one, which no builder builds.
         let mut texts: std::collections::BTreeMap<String, String> = Default::default();
-        make(&files, &units, "test", &mut |path, bytes| {
+        let mut emblems: Option<Vec<u8>> = None;
+        make(&files, &units, Some(&palette), "test", &mut |path, bytes| {
             if path.ends_with(".fbi") || path.ends_with(".tdf") {
                 texts.insert(path.to_string(), String::from_utf8_lossy(bytes).into_owned());
+            } else if path == emblem::path() {
+                emblems = Some(bytes.to_vec());
             }
             Ok(())
         }, &mut |_, _| true).unwrap();
+        // The side's emblem in the classic interface: ten frames of TA's size in the mod's GAF,
+        // which the side add-on names.
+        let side = ta_formats::tdf::parse(&texts["gamedata/sidedata_supcom.tdf"]);
+        let uef = side.section("SIDE0").unwrap();
+        assert_eq!((uef.get("name"), uef.get("logogaf"), uef.get("logo")), (Some("UEF"), Some(emblem::GAF), Some("UEF32Lt")));
+        let emblems = ta_formats::gaf::Gaf::parse(&emblems.expect("the emblems made")).unwrap();
+        assert_eq!(emblems.entries.iter().map(|e| (e.name.as_str(), e.frames.len())).collect::<Vec<_>>(), [("UEF32Lt", 10)]);
+        assert!(emblems.entries[0].frames.iter().all(|f| (f.image.width, f.image.height) == (emblem::SIDE, emblem::SIDE)));
         assert!(texts["units/ueb0101.fbi"].contains("	UpgradesTo=UEB0201;"), "{}", texts["units/ueb0101.fbi"]);
         assert!(!texts["units/ueb0201.fbi"].contains("UpgradesTo"));
         assert!(!texts["download/supcom_uef.tdf"].contains("UNITNAME=UEB0201;"), "on no menu");
@@ -622,10 +647,12 @@ mod tests {
         let files = Files::of(Vec::new(), vec![crate::scd::Scd::open(&dir.0.join("units.scd")).unwrap()]);
         let units: Vec<UnitBlueprint> = crate::unit::catalogue(&files).unwrap().into_iter().filter(|u| u.playable()).collect();
         let mut written: std::collections::BTreeMap<String, Vec<u8>> = Default::default();
-        make(&files, &units, "test", &mut |path, bytes| {
+        make(&files, &units, None, "test", &mut |path, bytes| {
             written.insert(path.to_string(), bytes.to_vec());
             Ok(())
         }, &mut |_, _| true).unwrap();
+        // (Made without TA's palette: no emblems; the side add-on names the side's all the same.)
+        assert!(!written.contains_key(&emblem::path()) && String::from_utf8_lossy(&written["gamedata/sidedata_supcom.tdf"]).contains("logo=UEF32Lt;"));
         let clips = ta_formats::anims::Anims::parse(&written["objects3d/ueb1103.anims"]).unwrap();
         let names: Vec<&str> = clips.clips.iter().map(|c| c.name.as_str()).collect();
         assert_eq!(names, ["active", "upgrade"]);
@@ -674,7 +701,7 @@ mod tests {
         let files = Files::of(Vec::new(), vec![crate::scd::Scd::open(&dir.0.join("units.scd")).unwrap()]);
         let units: Vec<UnitBlueprint> = crate::unit::catalogue(&files).unwrap().into_iter().filter(|u| u.playable()).collect();
         let mut written: std::collections::BTreeMap<String, Vec<u8>> = Default::default();
-        make(&files, &units, "test", &mut |path, bytes| {
+        make(&files, &units, None, "test", &mut |path, bytes| {
             if path.starts_with("textures/") {
                 written.insert(path.to_string(), bytes.to_vec());
             }
@@ -710,7 +737,7 @@ mod tests {
     }
 
     /// The hash of the test faction's mod (see the test above).
-    const EXPECTED: &str = "d6300b903f800eba06ee1d2188633c3cce61d424f53285d103be0c0389597a86";
+    const EXPECTED: &str = "bd2e2c3e57fd911bcf6885d328f052e2441458a540ce214fd33de1b8972a572a";
 
     /// A unit whose mesh does not read is left out, with its reason; the rest are made.
     #[test]
@@ -728,7 +755,7 @@ mod tests {
         let files = Files::of(Vec::new(), vec![crate::scd::Scd::open(&dir.0.join("units.scd")).unwrap()]);
         let units: Vec<UnitBlueprint> = crate::unit::catalogue(&files).unwrap();
         let mut written: Vec<String> = Vec::new();
-        let made = make(&files, &units, "test", &mut |path, _| {
+        let made = make(&files, &units, None, "test", &mut |path, _| {
             written.push(path.to_string());
             Ok(())
         }, &mut |_, _| true).unwrap();

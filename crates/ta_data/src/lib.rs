@@ -78,6 +78,23 @@ pub struct SideDef {
     pub interface_gaf: String,
     pub energy_color: u8,
     pub metal_color: u8,
+    /// Its emblem, where its side data names it (TA Reborn's keys: TA's sides have theirs in
+    /// `anims/logos.gaf` by their names): the GAF in `anims/` (`logogaf`) and its entry there
+    /// (`logo`), each empty where not given. See [`SideDef::emblem`].
+    pub logo_gaf: String,
+    pub logo: String,
+}
+
+impl SideDef {
+    /// Where its emblem is, as TA keeps Arm's and Core's (`anims/logos.gaf`, `Arm32Lt` and
+    /// `Core32Lt`: ten frames of 32 by 32, one for each player's colour): the GAF in `anims/` (its
+    /// `logogaf`, else TA's `logos`) and its entry there (its `logo`, else `<name>32Lt`). A mod's
+    /// side gives its own so (the Supreme Commander factions': `supcomlogos`, `UEF32Lt`).
+    pub fn emblem(&self) -> (String, String) {
+        let gaf = Some(self.logo_gaf.trim()).filter(|g| !g.is_empty()).unwrap_or("logos");
+        let entry = Some(self.logo.trim()).filter(|e| !e.is_empty()).map_or_else(|| format!("{}32Lt", self.name.trim()), str::to_string);
+        (gaf.to_string(), entry)
+    }
 }
 
 #[derive(Clone)]
@@ -277,6 +294,8 @@ impl GameData {
                     interface_gaf: s.get_str("intgaf", ""),
                     energy_color: s.get_i32_or("energycolor", 208).clamp(0, 255) as u8,
                     metal_color: s.get_i32_or("metalcolor", 224).clamp(0, 255) as u8,
+                    logo_gaf: s.get_str("logogaf", "").trim().to_string(),
+                    logo: s.get_str("logo", "").trim().to_string(),
                 });
             }
         }
@@ -493,6 +512,34 @@ mod compatibility_tests {
         let lists = doc.section("CANBUILD").unwrap();
         assert_eq!(lists.sections.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), ["ARMCOM", "UEL0001"]);
         assert_eq!(doc.sections.iter().filter(|s| s.name.starts_with("SIDE")).map(|s| s.name.as_str()).collect::<Vec<_>>(), ["SIDE0", "SIDE1", "SIDE2", "SIDE3"]);
+    }
+
+    /// A side's emblem: where its side data names it (a mod's side add-on: `logogaf`, `logo`), else
+    /// where TA keeps Arm's and Core's, by its name; an entry not named is `<name>32Lt` of the GAF
+    /// named, a GAF not named TA's.
+    #[test]
+    fn a_sides_emblem_is_where_its_side_data_says() {
+        let root = std::env::temp_dir().join(format!("ta_data_side_emblems_{}", std::process::id()));
+        let files = [
+            ("gamedata/sidedata.tdf", "[SIDE0]{name=ARM;commander=ARMCOM;} [SIDE1]{name=CORE;commander=CORCOM;}"),
+            ("gamedata/sidedata_supcom.tdf", "[SIDE0]{name=UEF;commander=UEL0001;logogaf=supcomlogos;logo=UEF32Lt;} [SIDE1]{name=GOK;commander=GOKCOM;logogaf= goklogos ;} [SIDE2]{name=TALON;commander=TLLCOM;logo=Core32Dk;}"),
+        ];
+        for (path, text) in files {
+            let p = root.join(path);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, text).unwrap();
+        }
+        let mut vfs = Vfs::new();
+        vfs.mount_mod_dir(&root, "test").unwrap();
+        let data = GameData::load(&vfs);
+        std::fs::remove_dir_all(&root).ok();
+        let emblem = |name: &str| data.sides.iter().find(|s| s.name == name).map(SideDef::emblem).unwrap();
+        let at = |gaf: &str, entry: &str| (gaf.to_string(), entry.to_string());
+        assert_eq!(emblem("ARM"), at("logos", "ARM32Lt"), "TA's, by its name");
+        assert_eq!(emblem("CORE"), at("logos", "CORE32Lt"));
+        assert_eq!(emblem("UEF"), at("supcomlogos", "UEF32Lt"), "its own");
+        assert_eq!(emblem("GOK"), at("goklogos", "GOK32Lt"), "its GAF named, its entry by its name");
+        assert_eq!(emblem("TALON"), at("logos", "Core32Dk"), "an entry of TA's named");
     }
 
     #[test]

@@ -98,23 +98,29 @@ fn sort(out: &mut [&UnitBlueprint]) {
     out.sort_by(|a, b| (a.motion != Motion::None, tech(a), kind(a), &a.id).cmp(&(b.motion != Motion::None, tech(b), kind(b), &b.id)));
 }
 
-/// The side add-on: a side for each faction that has a commander, and what each builder builds
-/// for the computer players (`[CANBUILD]`).
+/// The sides the side add-on adds: those of the factions that have a commander.
+pub fn sides<'a>(factions: &'a [(Faction, Vec<&UnitBlueprint>)]) -> impl Iterator<Item = (&'a Faction, &'a UnitBlueprint)> + 'a {
+    factions.iter().filter_map(|(faction, units)| Some((faction, commander(units)?)))
+}
+
+/// The side add-on: a side for each faction that has a commander ([`sides`]), with its emblem in
+/// the classic interface (`logogaf` and `logo`: [`super::emblem`]'s, its interface keeping TA's
+/// plain square where the mod has none), and what each builder builds for the computer players
+/// (`[CANBUILD]`).
 pub fn side_add_on(factions: &[(Faction, Vec<&UnitBlueprint>)]) -> String {
     let mut s = String::new();
-    let mut n = 0;
-    for (faction, units) in factions {
-        let Some(commander) = commander(units) else { continue };
+    for (n, (faction, commander)) in sides(factions).enumerate() {
         let core = matches!(faction, Faction::Cybran | Faction::Seraphim);
+        let side = units::side(faction);
         let _ = writeln!(
             s,
-            "[SIDE{n}]\n\t{{\n\tname={};\n\tnameprefix={};\n\tcommander={};\n\tintgaf={};\n\tenergycolor=208;\n\tmetalcolor=224;\n\t}}",
-            units::side(faction),
+            "[SIDE{n}]\n\t{{\n\tname={side};\n\tnameprefix={};\n\tcommander={};\n\tintgaf={};\n\tlogogaf={};\n\tlogo={};\n\tenergycolor=208;\n\tmetalcolor=224;\n\t}}",
             units::tdf_text(&commander.id.chars().take(2).collect::<String>()),
             commander.id.to_ascii_uppercase(),
-            if core { "CORINT" } else { "ARMINT" }
+            if core { "CORINT" } else { "ARMINT" },
+            super::emblem::GAF,
+            super::emblem::entry(side)
         );
-        n += 1;
     }
     s.push_str("[CANBUILD]\n\t{\n");
     for (_, units) in factions {
@@ -236,7 +242,9 @@ mod tests {
         assert_eq!(builds(&factory, &all).iter().map(|u| u.id.as_str()).collect::<Vec<_>>(), ["UEL0201"]);
         let side = side_add_on(&[(Faction::Uef, all.clone())]);
         let doc = ta_formats::tdf::parse(&side);
-        assert_eq!(doc.section("SIDE0").and_then(|s| s.get("commander")), Some("UEL0001"));
+        let uef = doc.section("SIDE0").unwrap();
+        assert_eq!(uef.get("commander"), Some("UEL0001"));
+        assert_eq!((uef.get("logogaf"), uef.get("logo")), (Some("supcomlogos"), Some("UEF32Lt")), "its emblem, in the mod's GAF");
         assert_eq!(doc.section("CANBUILD").and_then(|c| c.sections.iter().find(|b| b.name == "UEB0101")).and_then(|b| b.get("canbuild1")), Some("UEL0201"));
         let menus = ta_formats::tdf::parse(&menus(&all));
         let first = &menus.sections[0];

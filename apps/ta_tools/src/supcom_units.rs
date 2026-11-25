@@ -1,7 +1,8 @@
 //! `ta-tools supcom-units`: Supreme Commander: Forged Alliance's units made into TA units, into a
 //! folder to mount as a mod (docs/SUPCOM_UNITS.md), as `ta_supcom::factions::make` makes them:
 //! their models, paint, build pictures, unit files, scripts and weapons, their factions' sides,
-//! menus and wrecks; `--preview` sheets of the pictures, a faction a sheet.
+//! menus and wrecks, and the sides' emblems (in TA's palette, from the copy of TA found);
+//! `--preview` sheets of the pictures, a faction a sheet.
 
 use std::path::Path;
 
@@ -27,8 +28,13 @@ pub fn run(out: &Path, only: Option<&str>, faction: Option<&str>, game: Option<&
         .into_iter()
         .filter(|u| u.playable() && wanted.as_ref().is_none_or(|w| w.contains(&u.id.to_ascii_uppercase())) && faction.as_ref().is_none_or(|f| u.faction == *f))
         .collect();
+    // TA's own palette, for the sides' emblems: the original game alone, as every player has it.
+    let palette = ta_palette();
+    if palette.is_none() {
+        eprintln!("no copy of TA found: the sides' emblems are left out");
+    }
     let started = std::time::Instant::now();
-    let made = make::make(&files, &units, env!("CARGO_PKG_VERSION"), &mut |path, bytes| {
+    let made = make::make(&files, &units, palette.as_ref(), env!("CARGO_PKG_VERSION"), &mut |path, bytes| {
         let at = out.join(path);
         if let Some(dir) = at.parent() {
             std::fs::create_dir_all(dir).map_err(|e| ta_supcom::Error::Format(format!("{}: {e}", dir.display())))?;
@@ -43,6 +49,14 @@ pub fn run(out: &Path, only: Option<&str>, faction: Option<&str>, game: Option<&
         sheets(out, &units, dir)?;
     }
     Ok(())
+}
+
+/// TA's palette, from the copy of TA found: none without one.
+fn ta_palette() -> Option<ta_formats::image::Palette> {
+    let ta = ta_vfs::install::discover(None).ok()?;
+    let mut vfs = ta_vfs::Vfs::new();
+    vfs.mount_game_dir(&ta.root, "base").ok()?;
+    ta_formats::image::Palette::parse(&vfs.read_opt("palettes/palette.pal")?).ok()
 }
 
 /// A sheet of the units' build pictures a faction, in order of their ids, eight across.

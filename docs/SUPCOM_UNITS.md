@@ -26,7 +26,7 @@ as they work. Their sounds come later.
   FACTIONS tab). The dialog finds the game (as for its maps: GOG's or Steam's copy, or a folder
   chosen, kept for the next start), counts each faction's units by kind, with its commander's
   build picture, and makes the factions chosen into the mod **Supreme Commander factions**
-  (`supcom-factions`), turned on, a side each in skirmish. All four take about 700 MB (3,810
+  (`supcom-factions`), turned on, a side each in skirmish. All four take about 700 MB (3,812
   files) and, on a fast computer, about half a minute, most of it writing and installing their
   files; the room on the disk is checked first. A stop installs nothing (not once the mod is being
   installed: STOP is greyed then), and the mod is made whole each time, of the factions chosen
@@ -47,9 +47,10 @@ as they work. Their sounds come later.
   (`TA_SUPCOM_DIR=<folder>` another copy). `ta-tools supcom-units <mod folder> [--only UEL0201,..]
   [--faction uef] [--game <folder>] [--preview <dir>]` makes the units' models, surfaces, paint
   and build pictures, with first unit files, into a folder to mount as a mod (`--demo gallery
-  TA_GALLERY_UNITS=UEL0201` shows them). The launcher's dialog for captures: `--page mods --show
-  supcom-factions` (`supcom-factions:uef,cybran`, or `:all`, imports those once the units are
-  listed; `TA_SUPCOM_SHOT_IMPORTING=1` takes the picture while they are made).
+  TA_GALLERY_UNITS=UEL0201` shows them; `ta-tools --mod <mod folder> gaf anims/supcomlogos.gaf
+  <dir>` writes the sides' emblems' frames as pictures). The launcher's dialog for captures:
+  `--page mods --show supcom-factions` (`supcom-factions:uef,cybran`, or `:all`, imports those once
+  the units are listed; `TA_SUPCOM_SHOT_IMPORTING=1` takes the picture while they are made).
 
 ## What the game holds
 
@@ -568,6 +569,23 @@ Each unit becomes a TA unit (`units/<id>.fbi`, `scripts/<id>.cob`; `ta_supcom::f
   own: the classic interface lays their build menus out as the pages of the side whose panels they
   wear (its Commander's first build page, six pictures to a page, the page arrows under them), and
   takes its orders and main pages from that side too.
+- **Emblems** (`anims/supcomlogos.gaf`, made by `factions::emblem`): each side's emblem in the
+  classic interface, where it shows Arm's and Core's (at the top left, and in the unit bar for the
+  unit selected), kept as TA keeps its own (`logos.gaf`'s `Arm32Lt`): an entry a side (`UEF32Lt`,
+  `CYBRAN32Lt`, `AEON32Lt`, `SERAPHIM32Lt`) of ten frames of 32 × 32, one for each player's colour.
+  Each is the game's emblem of the faction (`textures/ui/common/faction_icon-lg/<faction>_ico.dds`,
+  60 × 60, its shape in its alpha), its bounds made 28 pixels across or down in the middle of the
+  frame: a pixel its shape covers half of or more is the player's colour (TA's own entry of its
+  palette for it, as TA fills its emblems), those beside them across and down are the outline
+  (dark; mid-grey round the black and navy players' colours), the rest a ground of polished metal
+  (light at its top, darkening to its middle, where a brighter band darkens again to its foot),
+  these two in the nearest colours of TA's palette (`ta_mapart`'s OKLab with its portable
+  arithmetic: the same bytes on every computer), a pixel each with no colour between, as TA draws
+  its own. The palette is TA's own, read from the player's copy of TA as the import runs (the
+  launcher's and `ta-tools supcom-units`'): without it the emblems are not made, and the sides keep
+  TA's plain square of the player's colour. The side add-on names each side's (`logogaf=supcomlogos;
+  logo=UEF32Lt;`: docs/MODDING.md, "Sides of a mod's own"). The modern interface shows no side's
+  emblem: its top bar names the side (UEF), and a player's picture is their Commander's.
 - **Wrecks** (`features/corpses/supcom_<faction>.tdf`): the unit's own model where it fell,
   worth its `Wreckage` share of its mass (`MassMult`), in metal alone (`energy=0`), as TA's wrecks
   are: TA Reborn pays a wreck's metal alone whatever its file says (docs/FORMATS.md), and none of
