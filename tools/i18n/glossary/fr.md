@@ -777,3 +777,20 @@ stay as written; a key with its value is "l’entrée {key}={value} de {name}", 
 | its kind's own (colours, width, value: its kind's defaults) | propre à son type : "dans les couleurs propres à son type", "la valeur propre à son type est utilisée" |
 | beam (Supreme Commander's adjacency beam) | faisceau |
 | an effect costs every frame it plays | un effet coûte du temps à chaque image tant qu’il s’affiche |
+
+## Les boucliers (`hud/shield.rs`, `hud/deck.rs`, `hud/abilities.rs`, `validation/abilities.rs`)
+
+A shield is a bouclier (as "chaque bouclier" in the archives); a shield bubble a bulle de bouclier, bulle
+for short (f.: la leur, celle d’une amélioration); a shield whose hit points run out s'effondre (son
+effondrement) and revient. Its hit points are santé, as a unit's ("{health} de santé"). The HUD's strings
+keep straight apostrophes, the mod check's curly ’; all put a no-break space before : and ;. A shield's
+mod keys are entrées: "des entrées de bouclier".
+
+| English | Français |
+|---|---|
+| shield / Shield {now} / {most} (the card's gauge) | bouclier / Bouclier {now} / {most} (as "Santé {now} / {max}") |
+| shield bubble / bubble | bulle de bouclier / bulle |
+| personal shield | bouclier personnel |
+| collapse / collapsed / after collapsing | s'effondrer / effondré / après son effondrement |
+| Shield off / Shield down: short of energy / coming up in {secs} s / back in {secs} s | Bouclier désactivé / Bouclier inactif : trop peu d'énergie / Bouclier actif dans {secs} s / de retour dans {secs} s |
+| shield keys (a mod's) | entrées de bouclier |

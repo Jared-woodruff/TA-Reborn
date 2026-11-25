@@ -744,3 +744,19 @@ engine) is a name: "come in Spring". Straight apostrophes.
 | its kind's own (colours, width, value: its kind's defaults) | proprio del suo tipo: "con i colori propri del suo tipo", "si usa il valore proprio del suo tipo" |
 | beam (Supreme Commander's adjacency beam) | fascio |
 | an effect costs every frame it plays | un effetto ha un costo in ogni fotogramma in cui viene riprodotto |
+
+## Gli scudi (`hud/shield.rs`, `hud/deck.rs`, `hud/abilities.rs`, `validation/abilities.rs`)
+
+A shield is uno scudo (as "ogni scudo" in the archives); a shield bubble a bolla di scudo, bolla for
+short (f.: propria); a shield whose hit points run out collassa (il collasso) and torna. Its hit points are
+"di salute", as a unit's. A shield's mod keys are voci (voci di scudo); the overview's second line says
+"Si giocano come li descrive" (gli scudi). Straight apostrophes.
+
+| English | Italiano |
+|---|---|
+| shield / Shield {now} / {most} (the card's gauge) | scudo / Scudo {now} / {most} (as "Salute {now} / {max}") |
+| shield bubble / bubble | bolla di scudo / bolla |
+| personal shield | scudo personale |
+| collapse / collapsed / after collapsing | collassare / collassato / dopo il collasso |
+| Shield off / Shield down: short of energy / coming up in {secs} s / back in {secs} s | Scudo disattivato / Scudo inattivo: energia insufficiente / Scudo attivo tra {secs} s / torna tra {secs} s |
+| shield keys (a mod's) | voci di scudo |

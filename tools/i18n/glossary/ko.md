@@ -773,3 +773,18 @@ noun before its particle ({burst} 버스트는); a value is {value} 값은. An e
 | three numbers from 0 to 1 | 0~1 사이의 수 세 개 |
 | beam (an adjacency beam between buildings) | 빔 |
 | an effect costs every frame it plays | 재생되는 동안 매 프레임 부하를 줍니다 (as 부하) |
+
+## Shields (`hud/shield.rs`, `hud/deck.rs`, `hud/abilities.rs`, `validation/abilities.rs`)
+
+One word each everywhere (the card's gauge, the information page, the enhancements, the mod check):
+방어막 (as the lore's and the launcher's), a bubble 돔형 방어막, a collapse 붕괴. A shield's hit points
+are 체력, as a unit's.
+
+| English | 한국어 |
+|---|---|
+| shield / Shield {now} / {most} (the card's gauge, as 체력 {now} / {max}) | 방어막 / 방어막 {now} / {most} |
+| shield bubble, bubble (a dome round its unit that stops shots from outside) / for a bubble | 돔형 방어막 / 돔형 방어막이면 |
+| personal shield (takes the damage before the unit's health) | 개인 방어막 |
+| collapse, collapsed / back (after a collapse) / coming up | 붕괴 / 복구 / 전개 |
+| Shield off (switched off) / Shield down: short of energy | 방어막 꺼짐 / 방어막 정지: 에너지 부족 |
+| shield keys (a unit's ShieldHealth...) | 방어막 키 |

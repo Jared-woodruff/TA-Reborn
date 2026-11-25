@@ -768,3 +768,19 @@ engine) is a name, not declined: „tak jak Spring”.
 | its kind's own (colours, width, value: its kind's defaults) | właściwy dla jej rodzaju („w kolorach właściwych dla jej rodzaju”; not „swojego rodzaju”, which reads as „a sort of”) |
 | beam (Supreme Commander's adjacency beam) | wiązka |
 | an effect costs every frame it plays | efekt obciąża każdą klatkę, w której jest odtwarzany |
+
+## Tarcze (`hud/shield.rs`, `hud/deck.rs`, `hud/abilities.rs`, `validation/abilities.rs`)
+
+A shield is a tarcza (as „każda tarcza” in the archives); a shield bubble a kopuła tarczy, kopuła for
+short; a shield whose hit points run out is rozbita (po rozbiciu) and wraca: not załamana, which said of a
+feminine noun reads as „depressed”. Its hit points are pkt. zdrowia, as a unit's. A shield's mod keys are
+klucze tarczy.
+
+| English | Polski |
+|---|---|
+| shield / Shield {now} / {most} (the card's gauge) | tarcza / Tarcza {now} / {most} (as „Zdrowie {now} / {max}”) |
+| shield bubble / bubble | kopuła tarczy / kopuła |
+| personal shield | tarcza osobista |
+| collapse / collapsed / after collapsing | rozbić się / rozbita / po rozbiciu |
+| Shield off / Shield down: short of energy / coming up in {secs} s / back in {secs} s | Tarcza wyłączona / Tarcza nieaktywna: za mało energii / Tarcza aktywna za {secs} s / wróci za {secs} s |
+| shield keys (a mod's) | klucze tarczy |

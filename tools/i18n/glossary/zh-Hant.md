@@ -641,3 +641,18 @@ in ; takes no 。 after it. Labels follow {name} 射擊特效 (no 的).
 | three numbers from 0 to 1 | 0 到 1 之間的三個數 |
 | beam (an adjacency beam between buildings) | 光束 |
 | an effect costs every frame it plays | 播放期間的每個影格都會消耗效能 (as 效能消耗) |
+
+## Shields (`hud/shield.rs`, `hud/deck.rs`, `hud/abilities.rs`, `validation/abilities.rs`)
+
+One word each everywhere (the card's gauge, the information page, the enhancements, the mod check):
+護盾 (as above), a bubble 護盾罩, a collapse 破碎 (as zh-Hans; not 崩潰). A shield's hit points are
+生命值, as a unit's.
+
+| English | 繁體中文 |
+|---|---|
+| shield / Shield {now} / {most} (the card's gauge, as 生命值 {now} / {max}) | 護盾 / 護盾 {now} / {most} |
+| shield bubble, bubble (a dome round its unit that stops shots from outside) | 護盾罩 |
+| personal shield (takes the damage before the unit's health) | 個人護盾 |
+| collapse, collapsed / back (after a collapse) / coming up | 破碎 / 恢復 / 啟動 |
+| Shield off (switched off) / Shield down: short of energy | 護盾關閉 / 護盾失效：能量不足 |
+| shield keys (a unit's ShieldHealth...) | 護盾相關的鍵 |

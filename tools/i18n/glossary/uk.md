@@ -728,3 +728,18 @@ engine) is a name: "як у Spring". A TDF section is секція, as "секц
 | its kind's own (colours, width, value: its kind's defaults) | прийнятий для її (його) типу: "кольорами, прийнятими для її типу", "береться значення, прийняте для його типу" |
 | beam (Supreme Commander's adjacency beam) | промінь |
 | an effect costs every frame it plays | ефект забирає час у кожному кадрі, поки відтворюється |
+
+## Щити (`hud/shield.rs`, `hud/deck.rs`, `hud/abilities.rs`, `validation/abilities.rs`)
+
+A shield is щит (as "кожен щит" in the archives); a shield bubble is купол щита, купол for short; a
+shield whose hit points run out is зруйновано (після руйнування) and відновлюється. Its hit points are
+здоров'я, as a unit's ("запас здоров'я щита" in the mod check's hint). A shield's mod keys are ключі щита.
+
+| English | Українська |
+|---|---|
+| shield / Shield {now} / {most} (the card's gauge) | щит / Щит {now} / {most} (as "Здоров'я {now} / {max}") |
+| shield bubble / bubble | купол щита / купол |
+| personal shield | особистий щит |
+| collapse / collapsed / after collapsing / back in {secs} s | зруйнуватися / зруйновано / після руйнування / відновиться через {secs} с |
+| Shield off / Shield down: short of energy / coming up in {secs} s | Щит вимкнено / Щит неактивний: бракує енергії / Щит підніметься через {secs} с |
+| shield keys (a mod's) | ключі щита |

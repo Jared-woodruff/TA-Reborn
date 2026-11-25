@@ -701,3 +701,18 @@ engine) is a name: "como no Spring".
 | its kind's own (colours, width, value: its kind's defaults) | próprio do seu tipo: "nas cores próprias do seu tipo", "é usado o valor próprio do seu tipo" |
 | beam (Supreme Commander's adjacency beam) | feixe |
 | an effect costs every frame it plays | um efeito custa desempenho em cada quadro em que é reproduzido |
+
+## Escudos (`hud/shield.rs`, `hud/deck.rs`, `hud/abilities.rs`, `validation/abilities.rs`)
+
+A shield is an escudo (as "todo escudo" in the archives); a shield bubble a bolha de escudo, bolha for
+short (f.: própria); a shield whose hit points run out colapsa (o colapso) and volta. Its hit points are
+"de vida", as a unit's. A shield's mod keys are chaves de escudo, which a unit's file "define".
+
+| English | pt-BR |
+|---|---|
+| shield / Shield {now} / {most} (the card's gauge) | escudo / Escudo {now} / {most} (as "Vida {now} / {max}") |
+| shield bubble / bubble | bolha de escudo / bolha |
+| personal shield | escudo pessoal |
+| collapse / collapsed / after collapsing | colapsar / colapsado / após o colapso |
+| Shield off / Shield down: short of energy / coming up in {secs} s / back in {secs} s | Escudo desligado / Escudo inativo: energia insuficiente / Escudo ativo em {secs} s / volta em {secs} s |
+| shield keys (a mod's) | chaves de escudo |

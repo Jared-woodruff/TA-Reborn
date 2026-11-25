@@ -768,3 +768,18 @@ los conjuntos de sonidos. Spring (el motor) es un nombre: "como lo hace Spring".
 | its kind's own (colours, width, value: its kind's defaults) | propio de su tipo: "con los colores propios de su tipo", "se usa el valor propio de su tipo" |
 | beam (Supreme Commander's adjacency beam) | haz |
 | an effect costs every frame it plays | un efecto consume tiempo en cada fotograma mientras se reproduce |
+
+## Escudos (`hud/shield.rs`, `hud/deck.rs`, `hud/abilities.rs`, `validation/abilities.rs`)
+
+A shield is an escudo (as "cada escudo" in the archives); a shield bubble a burbuja de escudo, burbuja for
+short (f.: propia); a shield whose hit points run out colapsa and vuelve. Its hit points are "de vida", as
+a unit's. A shield's mod keys are entradas (as "estas entradas"): "{unit} indica entradas de escudo".
+
+| English | Español |
+|---|---|
+| shield / Shield {now} / {most} (the card's gauge) | escudo / Escudo {now} / {most} (as "Vida {now} / {max}") |
+| shield bubble / bubble | burbuja de escudo / burbuja |
+| personal shield | escudo personal |
+| collapse / collapsed / after collapsing | colapsar / colapsado / después de colapsar |
+| Shield off / Shield down: short of energy / coming up in {secs} s / back in {secs} s | Escudo desactivado / Escudo caído: falta energía / Escudo activo en {secs} s / vuelve en {secs} s |
+| shield keys (a mod's) | entradas de escudo |
