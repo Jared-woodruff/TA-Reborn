@@ -481,7 +481,7 @@ Paths are read in any case.
 | `gamedata/` | `sidedata.tdf` (sides, `[CANBUILD]`), `sidedata_<name>.tdf` ([side add-ons](#sides-of-a-mods-own)), `moveinfo.tdf` (movement classes), `sound.tdf` (sound categories) | |
 | `guis/` | `*.gui` pages: builders' menus (`<builder><n>.gui`), the side panel's | Top level only |
 | `download/` | `*.tdf` entries putting units on builders' menus | Top level only |
-| `anims/` | `*.gaf`: effects, explosions, build buttons' art | |
+| `anims/` | `*.gaf`: effects, explosions, build buttons' art, sides' emblems ([`logogaf`](#sides-of-a-mods-own)) | |
 | `textures/` | `*.gaf` textures the models paint with; the `*.dds` textures surfaces name (anywhere) | |
 | `maps/` | `<map>.ota` with its `<map>.tnt` | Top level only; a map without its `.tnt` is left out |
 | `camps/` | Campaigns and their missions | |
@@ -903,6 +903,17 @@ interface (the places of its resource bars and numbers, its logo, its lettering)
 box from a side before it drawn in the same panels (its `intgaf`), else from the first side: a side
 may name its art and nothing more. The Supreme Commander factions add theirs so
 (`gamedata/sidedata_supcom.tdf`).
+
+A side's emblem in the classic interface (at the top left, and in the unit bar for the unit
+selected) is where its side section names it, with two keys of TA Reborn's: `logogaf`, a GAF in
+`anims/` (TA's `logos` where not given), and `logo`, its entry there (`<side name>32Lt` where not
+given). Its frames are the players' colours in their order, as TA keeps Arm's and Core's
+(`logos.gaf`'s `Arm32Lt` and `Core32Lt`: ten frames of 32 × 32, drawn into the side's `LOGO` and
+`LOGO2` boxes); with fewer, the last serves the colours after it. TA's own sides name none: theirs
+are found by their names. Where the entry named is not there, a side has TA's by its name (Arm's
+for a name beginning ARM, Core's for one beginning COR), else TA's plain square of the player's
+colour (`32xlogos`). The Supreme Commander factions name theirs in their mod's own GAF
+(`logogaf=supcomlogos; logo=UEF32Lt;`).
 
 #### Campaigns and missions
 

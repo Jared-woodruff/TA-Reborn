@@ -1117,6 +1117,16 @@ take up to all 32 bits of a texel.
   must end at `METALMAX`, starting there it would run over the art's "+") and
   the unit bar (`UNITNAME`/`DAMAGEBAR` selected, `UNITNAME2`/`DAMAGEBAR2` hovered,
   `NAME`/`DESCRIPTION` for a hovered button). Some second corners are junk.
+* A side's emblem (`LOGO` at the top left, `LOGO2` in the unit bar, 21×21 boxes) is drawn from
+  `anims/logos.gaf` (3.1's): `Arm32Lt` and `Core32Lt` (`…Dk` darker ones beside them), ten
+  frames of 32×32 (the third 32×33), every pixel opaque: the emblem filled with the player's
+  colour, one entry of the palette a frame, in the players' order 227, 212, 255, 235, 108, 219,
+  208, 0, 130, 67 (blue, red, white, green, navy, purple, yellow, black, sky blue, khaki; the
+  medium swatches of the same GAF's `colorsmd`, but white's and black's, 80 and 93 there),
+  outlined in grey (92, or 89 round the lightest and darkest colours) with lighter lines inside,
+  on a metal ground of the greys 80 to 87. `32xlogos` is a plain square of the player's colour.
+  Side data names no emblem: TA Reborn's `logogaf`/`logo` keys add one (docs/MODDING.md, "Sides
+  of a mod's own").
 * Fonts (`fonts/*.fnt`): `u16` height, `u16`, 256 `u16` glyph offsets (0 = none); a glyph
   is a width byte and `width × height` bits, most significant first, rows not padded.
   Widths include the spacing to the next letter.

@@ -40,6 +40,14 @@ const EMBLEMS: [(&str, &str, [u8; 3]); 4] = [
     ("CYBRAN", "textures/ui/common/faction_icon-lg/cybran_ico.dds", [255, 71, 56]),
     ("SERAPHIM", "textures/ui/common/faction_icon-lg/seraphim_ico.dds", [255, 204, 77]),
 ];
+
+/// Where the game keeps the emblem of the faction of side `side` (as the mod names it: `UEF`,
+/// `AEON`, `CYBRAN`, `SERAPHIM`): 60 by 60, its shape in its alpha. (The classic interface's
+/// emblems are made of it too: `factions::emblem`.)
+pub fn emblem_path(side: &str) -> Option<&'static str> {
+    EMBLEMS.iter().find(|(s, _, _)| s.eq_ignore_ascii_case(side.trim())).map(|(_, path, _)| *path)
+}
+
 /// The rays the game shows as it loads: behind the maps.
 const RAYS: &str = "textures/ui/common/load/background-portal_bmp.dds";
 /// The painting behind the music: a fleet over a red sky.
@@ -247,7 +255,7 @@ impl Layer {
 /// Along one side, `from` texels made `to`: each new texel's first old one, and the weights of
 /// those it takes (summing to 65536): the mean of those it covers when fewer, the two nearest its
 /// middle when more.
-fn kernel(from: u32, to: u32) -> Vec<(usize, Vec<u32>)> {
+pub(crate) fn kernel(from: u32, to: u32) -> Vec<(usize, Vec<u32>)> {
     let (from, to) = (from.max(1) as u64, to.max(1) as u64);
     (0..to)
         .map(|i| {

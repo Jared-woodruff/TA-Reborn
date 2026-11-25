@@ -426,7 +426,8 @@ fn health_color(frac: f32) -> u8 {
     }
 }
 
-/// logos.gaf entry of a side's emblem (ten frames, one per player colour).
+/// logos.gaf entry of a side's emblem by its name (ten frames, one per player colour): Arm's,
+/// Core's, else TA's plain square of the player's colour.
 fn logo_entry(side: &str) -> &'static str {
     let side = side.to_ascii_uppercase();
     if side.starts_with("ARM") {
@@ -436,6 +437,22 @@ fn logo_entry(side: &str) -> &'static str {
     } else {
         "32xlogos"
     }
+}
+
+/// Where the emblem of the side named `name` (`side`, its side data, where there is one) may be,
+/// in the order looked for, each a GAF in `anims/` and its entry: its own (`SideDef::emblem`: a
+/// mod's side names its GAF and entry, `logogaf` and `logo`, as the Supreme Commander factions name
+/// theirs), else TA's by its name ([`logo_entry`]).
+fn emblem_places(name: &str, side: Option<&ta_data::SideDef>) -> [(String, String); 2] {
+    let own = side.map_or_else(|| ("logos".to_string(), format!("{}32Lt", name.trim())), ta_data::SideDef::emblem);
+    [own, ("logos".to_string(), logo_entry(name).to_string())]
+}
+
+/// The frames of the emblem of the side named `name` (of `sides`), from the first of its
+/// [`emblem_places`] there is in `vfs`.
+fn emblem_frames(art: &mut Art, vfs: &Vfs, palette: &ta_formats::image::Palette, sides: &[ta_data::SideDef], name: &str) -> Option<Frames> {
+    let side = sides.iter().find(|s| s.name.eq_ignore_ascii_case(name.trim()));
+    emblem_places(name, side).into_iter().find_map(|(gaf, entry)| art.frames(vfs, palette, &gaf, &entry))
 }
 
 /// "12.5", "250": rates keep a decimal while small.
@@ -475,6 +492,11 @@ fn flows(sim: &ta_sim::Sim, u: &ta_sim::Unit) -> [f32; 4] {
 impl ClassicHud {
     fn art(&mut self, env: &Env, gaf: &str, entry: &str) -> Option<Frames> {
         self.art.frames(env.vfs, &env.data.palette, gaf, entry)
+    }
+
+    /// The frames of the emblem of the side named `side` (as players hold it): [`emblem_frames`].
+    fn emblem(&mut self, env: &Env, side: &str) -> Option<Frames> {
+        emblem_frames(&mut self.art, env.vfs, &env.data.palette, &env.data.sides, side)
     }
 
     fn style(&mut self, ctx: &egui::Context, vfs: &Vfs, game: &Game) -> Style {
@@ -1247,7 +1269,7 @@ impl ClassicHud {
         }
         let (Some(l), Some(font)) = (env.st.layout.clone(), env.st.font.clone()) else { return };
         let Some(p) = game.sim.players.get(game.hud_player() as usize) else { return };
-        if let (Some(b), Some(f)) = (l.get("LOGO"), self.art.frames(env.vfs, &env.data.palette, "logos", logo_entry(&p.side))) {
+        if let (Some(b), Some(f)) = (l.get("LOGO"), self.emblem(env, &p.side)) {
             fill(&painter, &f[(p.color as usize).min(f.len() - 1)], ta, inclusive(b), Color32::WHITE);
         }
         let e = &p.economy;
@@ -1388,7 +1410,7 @@ impl ClassicHud {
         let Some(u) = game.selection.first().and_then(|&id| game.sim.unit(id)) else { return };
         let t = game.sim.unit_type(u);
         let owner = game.sim.players.get(u.owner as usize);
-        if let (Some(b), Some(p)) = (l.get("LOGO2"), owner) && let Some(f) = self.art.frames(env.vfs, &env.data.palette, "logos", logo_entry(&p.side)) {
+        if let (Some(b), Some(p)) = (l.get("LOGO2"), owner) && let Some(f) = self.emblem(env, &p.side) {
             fill(painter, &f[(p.color as usize).min(f.len() - 1)], tb, inclusive(b), Color32::WHITE);
         }
         let n = game.selection.len();
@@ -1573,5 +1595,38 @@ mod tests {
         assert_eq!(pages_of(3), ("corcom1".to_string(), "cor".to_string()), "the Cybran in Core's");
         assert_eq!(pages_of(4), ("mdcom1".to_string(), "md".to_string()), "a mod's side with pages of its own");
         assert_eq!(pages_of(5), ("armcom1".to_string(), "arm".to_string()), "in panels nobody else's: the first side's");
+    }
+
+    /// A side's emblem: the GAF and entry its side data names (a mod's side add-on: the Supreme
+    /// Commander factions'), else TA's by its name (Arm's, Core's); TA's plain square for a side
+    /// naming an entry its GAF lacks, a GAF that is not there, or for no side at all.
+    #[test]
+    fn a_sides_emblem_is_its_own_else_tas() {
+        use ta_formats::gaf::{Gaf, GafEntry, GafFrame};
+        use ta_formats::image::{IndexedImage, Palette};
+        let root = std::env::temp_dir().join(format!("ta_hud_emblems_{}", std::process::id()));
+        // (Each entry's frames of a size of their own, to tell them by.)
+        let entry = |name: &str, px: u32| GafEntry {
+            name: name.into(),
+            frames: (0..10).map(|_| GafFrame { image: IndexedImage { width: px, height: px, pixels: vec![1; (px * px) as usize], opaque: vec![true; (px * px) as usize] }, origin_x: 0, origin_y: 0, transparency_index: 9, duration: 0 }).collect(),
+        };
+        let gafs = [("logos", vec![entry("Arm32Lt", 3), entry("Core32Lt", 4), entry("32xlogos", 5)]), ("supcomlogos", vec![entry("UEF32Lt", 6)])];
+        std::fs::create_dir_all(root.join("anims")).unwrap();
+        for (name, entries) in gafs {
+            std::fs::write(root.join(format!("anims/{name}.gaf")), Gaf { entries }.write().unwrap()).unwrap();
+        }
+        let mut vfs = Vfs::new();
+        vfs.mount_mod_dir(&root, "test").unwrap();
+        let own = |name: &str, gaf: &str, logo: &str| ta_data::SideDef { logo_gaf: gaf.into(), logo: logo.into(), ..side(name, "", "", "") };
+        let sides = [side("ARM", "ARM", "ARMCOM", "ARMINT"), side("CORE", "COR", "CORCOM", "CORINT"), own("UEF", "supcomlogos", "UEF32Lt"), own("CYBRAN", "supcomlogos", "CYBRAN32Lt"), own("GOK", "goklogos", "")];
+        let mut art = Art::default();
+        let mut size = |name: &str| emblem_frames(&mut art, &vfs, &Palette::default(), &sides, name).map(|f| (f.len(), f[0].size.x));
+        assert_eq!(size("ARM"), Some((10, 3.0)), "TA's");
+        assert_eq!(size("core"), Some((10, 4.0)), "TA's, whatever its case");
+        assert_eq!(size("UEF"), Some((10, 6.0)), "its own, from its mod's GAF");
+        assert_eq!(size("CYBRAN"), Some((10, 5.0)), "an entry its GAF lacks: TA's square");
+        assert_eq!(size("GOK"), Some((10, 5.0)), "a GAF not there: TA's square");
+        assert_eq!(size("NOBODY"), Some((10, 5.0)), "no side of the name: TA's square");
+        std::fs::remove_dir_all(&root).ok();
     }
 }

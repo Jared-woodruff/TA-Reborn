@@ -8,6 +8,7 @@
 //! - [`units`]: its unit file and its weapons';
 //! - [`enhance`]: a commander's enhancements;
 //! - [`faction`]: its faction's side, build menus, wrecks and weapons;
+//! - [`emblem`]: its faction's emblem in the classic interface;
 //! - [`anims`], [`work`]: its walk and deaths, and what it does as it works;
 //! - [`make`]: the mod made whole.
 //!
@@ -16,6 +17,7 @@
 //! order.
 
 pub mod anims;
+pub mod emblem;
 pub mod enhance;
 pub mod faction;
 pub mod make;

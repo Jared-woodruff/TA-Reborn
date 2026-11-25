@@ -1481,7 +1481,7 @@ impl LauncherApp {
                     self.supcom.start(ta, self.store.dir(), place);
                 }
             }
-            Tab::Factions => self.supcom.factions.start(self.store.dir(), place),
+            Tab::Factions => self.supcom.factions.start(self.detection.install().map(|i| i.root.clone()), self.store.dir(), place),
             Tab::Music => self.supcom.music.start(self.store.dir(), place),
             Tab::Menus => self.supcom.menus.start(self.store.dir(), place),
         }

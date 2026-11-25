@@ -1,7 +1,8 @@
 //! The player's own copy of Forged Alliance, its units read whole: every blueprint, and for every
 //! unit a player can make, its meshes, textures and animations, and the bones its weapons and
-//! build beams name; the conventions the conversion rests on; and every unit made a TA model the
-//! same, byte for byte, twice. Ignored (it needs the game installed, and takes a while):
+//! build beams name; the conventions the conversion rests on; every unit made a TA model the
+//! same, byte for byte, twice; and the sides' emblems (in TA's palette: TA's copy found too).
+//! Ignored (it needs the game installed, and takes a while):
 //! `cargo test --release -p ta_supcom --test installed_units -- --ignored --nocapture`
 //! (`TA_SUPCOM_DIR=<folder>` a copy of the game elsewhere).
 
@@ -20,6 +21,15 @@ fn the_game() -> Option<Install> {
         return Some(Install { root: PathBuf::from(dir), store: Store::Folder });
     }
     install::discover().into_iter().next()
+}
+
+/// TA's own palette, from the copy of TA found (the sides' emblems are made in it): none without
+/// one.
+fn ta_palette() -> Option<ta_formats::image::Palette> {
+    let ta = ta_vfs::install::discover(None).ok()?;
+    let mut vfs = ta_vfs::Vfs::new();
+    vfs.mount_game_dir(&ta.root, "base").ok()?;
+    ta_formats::image::Palette::parse(&vfs.read_opt("palettes/palette.pal")?).ok()
 }
 
 /// Every unit blueprint reads, and the four factions have what a player may make of them.
@@ -282,7 +292,8 @@ fn every_unit_is_made_a_model_the_same_twice() {
 /// The whole mod, as `ta-tools supcom-units` and the launcher make it, made twice from the
 /// player's copy: every unit made, every file the same both times (each file's path, size and
 /// hash compared in the order they come), each unit with its model, surface, paint, picture,
-/// unit file and script, and its factions' side, menus, wrecks and weapons.
+/// unit file and script, and its factions' side, menus, wrecks and weapons; their sides' emblems
+/// too, where a copy of TA is found (they are made in its palette).
 #[test]
 #[ignore]
 fn the_mod_is_made_the_same_twice() {
@@ -293,9 +304,10 @@ fn the_mod_is_made_the_same_twice() {
     };
     let files = Files::own(&game).unwrap();
     let units: Vec<_> = unit::catalogue(&files).unwrap().into_iter().filter(|u| u.playable()).collect();
+    let palette = ta_palette();
     let run = || {
         let mut out: Vec<(String, usize, u64)> = Vec::new();
-        let made = make::make(&files, &units, "test", &mut |path, bytes| {
+        let made = make::make(&files, &units, palette.as_ref(), "test", &mut |path, bytes| {
             let mut h = std::collections::hash_map::DefaultHasher::new();
             bytes.hash(&mut h);
             out.push((path.to_string(), bytes.len(), h.finish()));
@@ -309,7 +321,7 @@ fn the_mod_is_made_the_same_twice() {
     let (_, second) = run();
     assert!(first == second, "made again, the same files");
     // Stopped by its watch before the third unit: two made, and said so.
-    let stopped = make::make(&files, &units, "test", &mut |_, _| Ok(()), &mut |i, _| i < 2).unwrap();
+    let stopped = make::make(&files, &units, None, "test", &mut |_, _| Ok(()), &mut |i, _| i < 2).unwrap();
     assert!(stopped.stopped && stopped.units == 2, "{stopped:?}");
     for u in &units {
         let id = u.id.to_ascii_lowercase();
@@ -320,7 +332,39 @@ fn the_mod_is_made_the_same_twice() {
     for path in ["gamedata/sidedata_supcom.tdf", "download/supcom_uef.tdf", "features/corpses/supcom_cybran.tdf", "weapons/supcom_seraphim.tdf", "mod.toml"] {
         assert!(first.iter().any(|(p, ..)| p == path), "{path}");
     }
+    // (The four sides' emblems in the classic interface, made in TA's palette where TA is found.)
+    if palette.is_some() {
+        assert!(first.iter().any(|(p, ..)| *p == ta_supcom::factions::emblem::path()), "the emblems");
+    } else {
+        eprintln!("no copy of TA found: the emblems not made");
+    }
     eprintln!("{} files, {} MB, the same twice", first.len(), first.iter().map(|f| f.1).sum::<usize>() >> 20);
+}
+
+/// The four sides' emblems in the classic interface, made of the game's own in TA's palette: an
+/// entry a side in the game's order, ten frames of 32 × 32 each, the shape the same in every
+/// player's colour (no other pixel of that colour) and across a good part of the frame.
+#[test]
+#[ignore]
+fn the_sides_emblems_are_made_of_the_games_own() {
+    use ta_supcom::factions::emblem;
+    let (Some(game), Some(palette)) = (the_game(), ta_palette()) else {
+        eprintln!("no copy of Forged Alliance, or of TA, found: nothing to make");
+        return;
+    };
+    let files = Files::own(&game).unwrap();
+    let sides = ["UEF", "CYBRAN", "AEON", "SERAPHIM"];
+    let gaf = ta_formats::gaf::Gaf::parse(&emblem::gaf(&files, &sides, &palette).unwrap().expect("made")).unwrap();
+    assert_eq!(gaf.entries.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(), sides.map(emblem::entry));
+    for e in &gaf.entries {
+        assert_eq!(e.frames.len(), 10, "{}", e.name);
+        let shapes: Vec<Vec<bool>> = e.frames.iter().enumerate().map(|(p, f)| f.image.pixels.iter().map(|&i| i == emblem::PLAYERS[p]).collect()).collect();
+        let filled = shapes[0].iter().filter(|&&s| s).count();
+        eprintln!("{}: {filled} pixels of the player's colour", e.name);
+        assert!(e.frames.iter().all(|f| (f.image.width, f.image.height) == (emblem::SIDE, emblem::SIDE)), "{}", e.name);
+        assert!(shapes.iter().all(|s| *s == shapes[0]), "{}: the same shape in every colour", e.name);
+        assert!(filled * 7 > 32 * 32, "{}: {filled} pixels", e.name);
+    }
 }
 
 /// Every unit a player can make is reached from its faction's commander: what each builder
@@ -700,7 +744,7 @@ fn factories_roll_off_weapons_unpack_and_anti_air_shoots_aircraft_alone() {
     let units: Vec<_> = unit::catalogue(&files).unwrap().into_iter().filter(|u| u.playable()).collect();
     let mut texts: BTreeMap<String, String> = BTreeMap::new();
     let mut scripts: BTreeMap<String, ta_formats::cob::CobScript> = BTreeMap::new();
-    make::make(&files, &units, "test", &mut |path, bytes| {
+    make::make(&files, &units, None, "test", &mut |path, bytes| {
         if let Some(id) = path.strip_prefix("units/").and_then(|p| p.strip_suffix(".fbi")) {
             texts.insert(id.to_ascii_uppercase(), String::from_utf8_lossy(bytes).into_owned());
         } else if let Some(id) = path.strip_prefix("scripts/").and_then(|p| p.strip_suffix(".cob")) {
@@ -836,7 +880,7 @@ fn stations_upgrades_and_adjacency_are_made() {
     let files = Files::own(&game).unwrap();
     let units: Vec<_> = unit::catalogue(&files).unwrap().into_iter().filter(|u| u.playable()).collect();
     let mut texts: BTreeMap<String, String> = BTreeMap::new();
-    make::make(&files, &units, "test", &mut |path, bytes| {
+    make::make(&files, &units, None, "test", &mut |path, bytes| {
         if path.starts_with("units/") || path.starts_with("download/") {
             texts.insert(path.to_string(), String::from_utf8_lossy(bytes).into_owned());
         }
