@@ -12,6 +12,7 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result, bail};
+use ta_config::Soundtrack;
 use ta_supcom::install::{self, Install};
 use ta_supcom::soundtrack::{self, Part, Track};
 use ta_ui::i18n::{n, t, tf};
@@ -79,6 +80,31 @@ pub struct Outcome {
     pub stopped: bool,
     /// Why nothing was installed, when it failed.
     pub error: Option<String>,
+    /// SOUNDTRACK was set to Forged Alliance's music once the mod was on ([`switch_on`]).
+    pub switched: bool,
+}
+
+/// SOUNDTRACK as the music's mod is turned on or off (an import turns it on): Total Annihilation's
+/// music alone (the default) becomes Forged Alliance's once on, so that it is heard without a
+/// visit to the game's Options, and Forged Alliance's alone TA's again once off. A choice of the
+/// player's own (both, by side) stays: without the mod, TA's plays all the same. Whether it
+/// changed.
+pub fn follow(soundtrack: &mut Soundtrack, on: bool) -> bool {
+    let (from, to) = if on {
+        (Soundtrack::TotalAnnihilation, Soundtrack::ForgedAlliance)
+    } else {
+        (Soundtrack::ForgedAlliance, Soundtrack::TotalAnnihilation)
+    };
+    let changed = *soundtrack == from;
+    if changed {
+        *soundtrack = to;
+    }
+    changed
+}
+
+/// SOUNDTRACK once an import's mod is on ([`follow`]).
+pub fn switch_on(soundtrack: &mut Soundtrack) -> bool {
+    follow(soundtrack, true)
 }
 
 impl Outcome {
@@ -99,7 +125,9 @@ impl Outcome {
         match (&self.error, self.went()) {
             (Some(why), _) => tf("The music could not be imported: {why}", &[("why", why)]),
             (None, Went::Nothing) => t("Stopped: nothing was installed, and the music is as it was.").to_string(),
+            (None, Went::Well) if self.switched => tf("Imported the soundtrack: {n} tracks. Its mod is on, and SOUNDTRACK is now FORGED ALLIANCE: change that in the game's Options, Sound.", &[("n", &self.tracks)]),
             (None, Went::Well) => tf("Imported the soundtrack: {n} tracks. Its mod is on: choose SOUNDTRACK in the game's Options, Sound.", &[("n", &self.tracks)]),
+            (None, _) if self.switched => tf("Imported {n} tracks of the soundtrack, but {failed} could not be made. Its mod is on, and SOUNDTRACK is now FORGED ALLIANCE: change that in the game's Options, Sound.", &[("n", &self.tracks), ("failed", &self.skipped.len())]),
             (None, _) => tf("Imported {n} tracks of the soundtrack, but {failed} could not be made. Its mod is on: choose SOUNDTRACK in the game's Options, Sound.", &[("n", &self.tracks), ("failed", &self.skipped.len())]),
         }
     }
@@ -109,6 +137,7 @@ impl Outcome {
         Some(match (&self.error, self.went()) {
             (Some(why), _) => tf("Supreme Commander's music could not be imported: {why}", &[("why", why)]),
             (None, Went::Nothing) => return None,
+            (None, Went::Well) if self.switched => t("Imported Supreme Commander's soundtrack: SOUNDTRACK is now FORGED ALLIANCE (the game's Options, Sound).").to_string(),
             (None, Went::Well) => t("Imported Supreme Commander's soundtrack: choose SOUNDTRACK in the game's Options, Sound.").to_string(),
             (None, _) => tf("Imported Supreme Commander's soundtrack, but {failed} of its tracks could not be made: SUPREME COMMANDER… on the Mods page lists them.", &[("failed", &self.skipped.len())]),
         })
@@ -252,6 +281,16 @@ impl Music {
         None
     }
 
+    /// Once the import's mod is on: SOUNDTRACK set to play it ([`switch_on`]), and the outcome the
+    /// dialog tells says so. Whether it was changed.
+    pub fn switch_on(&mut self, soundtrack: &mut Soundtrack) -> bool {
+        let switched = switch_on(soundtrack);
+        if let Some(outcome) = self.outcome.as_mut() {
+            outcome.switched = switched;
+        }
+        switched
+    }
+
     /// Stops an import under way at shutdown and waits for it: its outcome.
     pub fn finish_on_exit(&mut self) -> Option<Outcome> {
         self.stop();
@@ -270,6 +309,12 @@ impl Music {
             Outcome { stopped: true, ..Default::default() }
         });
         self.job = Some(job.unwrap());
+    }
+
+    /// An import that comes to `outcome` at once: for tests.
+    #[cfg(test)]
+    pub fn pretend_imported(&mut self, outcome: Outcome) {
+        self.job = Some(Job::spawn("pretend music import", self.progress.clone(), move |_| outcome).unwrap());
     }
 
     /// A look that found `found`, taken in at the next poll: for tests.
@@ -383,6 +428,35 @@ mod tests {
         assert!(partly.notice().unwrap().contains("1 of its tracks could not be made"), "{:?}", partly.notice());
         assert!(broken.notice().unwrap().ends_with("disk full"));
         assert!(stopped.notice().is_none());
+        // (SOUNDTRACK set for it, the words say so; left as the player chose it, where to choose.)
+        let switched = Outcome { switched: true, ..well.clone() };
+        assert!(switched.summary().contains("SOUNDTRACK is now FORGED ALLIANCE"), "{}", switched.summary());
+        assert!(switched.notice().unwrap().contains("SOUNDTRACK is now FORGED ALLIANCE"));
+        assert!(Outcome { switched: true, ..partly.clone() }.summary().contains("SOUNDTRACK is now FORGED ALLIANCE"));
+        assert!(well.summary().contains("choose SOUNDTRACK") && well.notice().unwrap().contains("choose SOUNDTRACK"));
+    }
+
+    /// SOUNDTRACK goes from Total Annihilation's music alone to Forged Alliance's once the mod is
+    /// on (an import's too), and back once it is off; a choice of the player's own (both, by side)
+    /// stays either way.
+    #[test]
+    fn the_music_follows_the_mod() {
+        let mut soundtrack = Soundtrack::TotalAnnihilation;
+        assert!(switch_on(&mut soundtrack));
+        assert_eq!(soundtrack, Soundtrack::ForgedAlliance);
+        assert!(follow(&mut soundtrack, false));
+        assert_eq!(soundtrack, Soundtrack::TotalAnnihilation);
+        assert!(!follow(&mut soundtrack, false));
+        for chosen in [Soundtrack::Both, Soundtrack::BySide] {
+            for on in [true, false] {
+                let mut soundtrack = chosen;
+                assert!(!follow(&mut soundtrack, on));
+                assert_eq!(soundtrack, chosen);
+            }
+        }
+        let mut soundtrack = Soundtrack::ForgedAlliance;
+        assert!(!switch_on(&mut soundtrack));
+        assert_eq!(soundtrack, Soundtrack::ForgedAlliance);
     }
 
     /// The tracks' names by their parts, as the jukebox names them.

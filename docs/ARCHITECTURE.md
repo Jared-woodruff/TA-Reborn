@@ -3003,10 +3003,13 @@ where the units go (`hud/domain.rs`, below).
   stay; TA's alone without the mod. A change goes to the music player at once
   (`apply_soundtrack`), a track playing that its mood's new playlist lacks skipped; the player's
   own music (`UserMusic`) is laid over whichever playlists these are. `ta_audio` lists
-  `music/supcom/` and `music/supcom-menus/` beside `music/` (`engine::music_files`).
+  `music/supcom/` and `music/supcom-menus/` beside `music/` (`engine::music_files`). The launcher
+  moves the setting as the mod is turned on or off: TA to FORGED ALLIANCE and back, BOTH and BY
+  SIDE left as chosen (`supcom::Followed`).
 * **Menu theme** (`menu_theme.rs`, Options, INTERFACE: MENU THEME, `ta_config::MenuTheme`; the mod
   `supcom-menus`, docs/SUPCOM_MENUS.md): its list (`menus/supcom/theme.toml`) read at the start and
-  when the setting changes (`App::apply_menu_theme`). While the menus are shown (not a unit on show,
+  when the setting changes (`App::apply_menu_theme`); the launcher sets the setting as the mod is
+  turned on or off (FORGED ALLIANCE, TA REBORN; `supcom::Followed`). While the menus are shown (not a unit on show,
   nor the credits' film): its pictures are painted on egui's background layer
   (`menu_theme::Pictures`: one decoded on a worker ahead of its turn, two held at most) and the
   frame draws the interface alone (`Renderer::render_ui`), the film's captions and its watching

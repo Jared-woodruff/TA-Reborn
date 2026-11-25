@@ -12,6 +12,7 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result, bail};
+use ta_config::MenuTheme;
 use ta_supcom::files::Files;
 use ta_supcom::install::{self, Install};
 use ta_supcom::menus;
@@ -68,6 +69,21 @@ pub struct Outcome {
     pub error: Option<String>,
 }
 
+/// MENU THEME as the menus' mod is turned on or off (an import turns it on): Forged Alliance's
+/// look once on, so that it is seen without a visit to the game's Options; TA Reborn's own once
+/// off. Whether it changed.
+pub fn follow(theme: &mut MenuTheme, on: bool) -> bool {
+    let wanted = if on { MenuTheme::ForgedAlliance } else { MenuTheme::Reborn };
+    let changed = *theme != wanted;
+    *theme = wanted;
+    changed
+}
+
+/// MENU THEME once an import's mod is on ([`follow`]).
+pub fn switch_on(theme: &mut MenuTheme) -> bool {
+    follow(theme, true)
+}
+
 impl Outcome {
     pub fn went(&self) -> Went {
         if self.error.is_some() {
@@ -85,8 +101,8 @@ impl Outcome {
         match (&self.error, self.went()) {
             (Some(why), _) => tf("The menus' look could not be imported: {why}", &[("why", why)]),
             (None, Went::Nothing) => t("Stopped: nothing was installed, and the menus' look is as it was.").to_string(),
-            (None, Went::Well) => t("Imported Forged Alliance's look for the menus. Its mod is on: choose MENU THEME in the game's Options, Interface.").to_string(),
-            (None, _) => tf("Imported Forged Alliance's look for the menus, but {failed} of its parts could not be made. Its mod is on: choose MENU THEME in the game's Options, Interface.", &[("failed", &self.skipped.len())]),
+            (None, Went::Well) => t("Imported Forged Alliance's look for the menus. Its mod is on, and MENU THEME is now FORGED ALLIANCE: change that in the game's Options, Interface.").to_string(),
+            (None, _) => tf("Imported Forged Alliance's look for the menus, but {failed} of its parts could not be made. Its mod is on, and MENU THEME is now FORGED ALLIANCE: change that in the game's Options, Interface.", &[("failed", &self.skipped.len())]),
         }
     }
 
@@ -94,7 +110,7 @@ impl Outcome {
         Some(match (&self.error, self.went()) {
             (Some(why), _) => tf("Supreme Commander's look for the menus could not be imported: {why}", &[("why", why)]),
             (None, Went::Nothing) => return None,
-            (None, _) => t("Imported Supreme Commander's look for the menus: choose MENU THEME in the game's Options, Interface.").to_string(),
+            (None, _) => t("Imported Supreme Commander's look for the menus: MENU THEME is now FORGED ALLIANCE (the game's Options, Interface).").to_string(),
         })
     }
 }
@@ -237,6 +253,12 @@ impl Menus {
         self.job = Some(job.unwrap());
     }
 
+    /// An import that comes to `outcome` at once: for tests.
+    #[cfg(test)]
+    pub fn pretend_imported(&mut self, outcome: Outcome) {
+        self.job = Some(Job::spawn("pretend menus import", self.progress.clone(), move |_| outcome).unwrap());
+    }
+
     /// A look that found `found`, taken in at the next poll: for tests.
     #[cfg(test)]
     pub fn pretend_found(&mut self, found: Found, pictures: Pictures) {
@@ -364,10 +386,25 @@ mod tests {
         let broken = Outcome { error: Some("disk full".into()), ..Default::default() };
         let stopped = Outcome { stopped: true, ..Default::default() };
         assert_eq!([&well, &partly, &broken, &stopped].map(Outcome::went), [Went::Well, Went::Partly, Went::Badly, Went::Nothing]);
-        assert!(well.summary().contains("choose MENU THEME"), "{}", well.summary());
+        assert!(well.summary().contains("MENU THEME is now FORGED ALLIANCE"), "{}", well.summary());
+        assert!(well.notice().unwrap().contains("MENU THEME is now FORGED ALLIANCE"));
         assert!(partly.summary().contains("1 of its parts could not be made"), "{}", partly.summary());
         assert!(broken.notice().unwrap().ends_with("disk full"));
         assert!(stopped.notice().is_none());
+    }
+
+    /// MENU THEME goes to Forged Alliance's look once the mod is on (an import's too), whatever it
+    /// was, and back to TA Reborn's own once it is off.
+    #[test]
+    fn the_look_follows_the_mod() {
+        let mut theme = MenuTheme::Reborn;
+        assert!(switch_on(&mut theme));
+        assert_eq!(theme, MenuTheme::ForgedAlliance);
+        assert!(!follow(&mut theme, true), "already Forged Alliance's");
+        assert_eq!(theme, MenuTheme::ForgedAlliance);
+        assert!(follow(&mut theme, false));
+        assert_eq!(theme, MenuTheme::Reborn);
+        assert!(!follow(&mut theme, false));
     }
 
     /// A copy is imported only whole and made by this converter: one without its theme (as the
