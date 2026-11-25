@@ -1184,16 +1184,17 @@ pub fn content_digests(m: &ModInfo) -> std::io::Result<([u8; 16], [u8; 16])> {
 }
 
 /// Whether the game reads a file of a mod's folder (its path there, normalised: `units/tank.fbi`):
-/// an archive at its top, or a file in one of TA's folders (or TA Reborn's own,
-/// [`crate::package::REBORN_FOLDERS`]) or in one its manifest renames to one of them; never what
-/// the system leaves beside them (see [`content_digest`]).
+/// an archive at its top, or a file in one of TA's folders or in one its manifest renames to
+/// one of them; never what the system leaves beside them (see [`content_digest`]). TA Reborn's own
+/// folders ([`crate::package::REBORN_FOLDERS`]: a menu theme's `menus/`) are left out: they play
+/// no part in a battle, and the records made before a mod had them keep its digest.
 fn read_by_game(relative: &str, renames: &BTreeMap<String, String>) -> bool {
     let name = relative.rsplit('/').next().unwrap_or(relative);
     if ["thumbs.db", "desktop.ini", ".ds_store"].contains(&name) { return false; }
     match relative.split_once('/') {
         None => relative.rsplit_once('.').is_some_and(|(_, extension)| ARCHIVE_EXTENSIONS.contains(&extension)),
         // (A renamed folder may be one in another, `Roster/Army/`: its whole path, to a folder's end.)
-        Some((top, _)) => crate::package::game_folder(top) || renames.keys().any(|from| {
+        Some((top, _)) => crate::package::TA_FOLDERS.contains(&top) || renames.keys().any(|from| {
             let from = crate::normalize(from);
             let from = from.trim_end_matches('/');
             !from.is_empty() && relative.starts_with(&format!("{from}/"))
@@ -1500,6 +1501,11 @@ mod tests {
         let (unchanged, after) = content_digests(&a).unwrap();
         assert_eq!(digest, unchanged, "documents and the system's files are no other copy");
         assert_ne!(before, after, "by the rule records were made with before, they were");
+        // (A menu theme's list and pictures, TA Reborn's own `menus/`: no part of a battle.)
+        std::fs::create_dir_all(a.path.join("menus/supcom/pictures")).unwrap();
+        std::fs::write(a.path.join("menus/supcom/theme.toml"), b"pictures = []").unwrap();
+        std::fs::write(a.path.join("menus/supcom/pictures/space_1.dds"), b"DDS picture").unwrap();
+        assert_eq!(digest, content_digest(&a).unwrap(), "a menu theme is no other copy");
         std::fs::write(a.path.join("units/tank2.fbi"), b"[UNITINFO]{}").unwrap();
         let more = content_digest(&a).unwrap();
         assert_ne!(digest, more, "a file more the game reads");

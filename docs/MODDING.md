@@ -381,11 +381,11 @@ versions, and in the game, which compares their files too.
 
 A saved game is its battle played over from the start to where it was saved, and a replay its
 orders played over: with other mods they can lead elsewhere. The digest covers the files the game
-reads: a folder's archives, and its files in TA's folders (or TA Reborn's own, `menus/`) or in
-folders it renames to them. Editing or adding a read-me file, a picture or a program changes
-nothing; editing a unit makes earlier records say the mod's files have changed. (Records made by
-a version whose digest covered every file of the folder still know the same copy.) Records made
-before they kept their mods are judged by their game data alone.
+reads: a folder's archives, and its files in TA's folders or in folders it renames to them (not a
+menu theme's `menus/`, which plays no part in a battle). Editing or adding a read-me file, a
+picture or a program changes nothing; editing a unit makes earlier records say the mod's files
+have changed. (Records made by a version whose digest covered every file of the folder still know
+the same copy.) Records made before they kept their mods are judged by their game data alone.
 
 In multiplayer everyone must have the same game data: in practice the same mods, in the same
 versions and order. A join that cannot go ahead says which mods differ and what to do (turn one on
