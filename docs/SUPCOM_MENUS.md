@@ -111,7 +111,8 @@ too. The mod gives battles no data: online, the other players need not have it.
   on a copy written in the tests.
 - **`ta_game`:** `menu_theme::tests`: a theme's list read; the grade (TA Reborn's colours onto the
   theme's exactly, the players' colours kept, a colour between two moved between theirs, a far
-  colour kept, alpha kept); a picture that does not read passed over, not decoded again.
+  colour kept, alpha kept); a picture that does not read passed over, not decoded again; a theme
+  none of whose pictures reads showing none (the battlefield behind the menus again).
 - **`ta_launcher`:** `supcom_menus::tests` (the words, the outcome told, a picture made small) and
   `pages::supcom::tests::the_menus_tab_shows_the_look_and_imports_it_whole`; the dialog's tests over
   all four tabs.

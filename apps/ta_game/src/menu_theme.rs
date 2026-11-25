@@ -96,9 +96,10 @@ impl Look {
         Look { grade: Grade::new(&theme.palette), pictures: Pictures::new(theme.pictures.clone(), vfs.clone(), seed), art, theme }
     }
 
-    /// Whether its pictures stand behind the menus (in place of the film).
+    /// Whether its pictures stand behind the menus (in place of the film): not where none of them
+    /// reads.
     pub fn covers(&self) -> bool {
-        !self.pictures.files.is_empty()
+        self.pictures.readable()
     }
 }
 
@@ -337,11 +338,14 @@ impl Pictures {
     /// Paints the pictures over `screen` with `painter` (the background's), at time `now`:
     /// whether one was painted (else what is behind shows).
     pub fn paint(&mut self, ctx: &egui::Context, painter: &egui::Painter, screen: Rect, now: f64, reduced_motion: bool) -> bool {
-        if self.files.is_empty() || self.broken.len() >= self.files.len() {
+        if self.files.is_empty() {
             return false;
         }
         self.poll(ctx);
-        // (A picture that would not read passed over for the next.)
+        // (A picture that would not read passed over for the next; none that reads, none shown.)
+        if !self.readable() {
+            return false;
+        }
         while self.broken.contains(&self.shown) {
             self.shown = (self.shown + 1) % self.files.len();
             self.since = f64::NAN;
@@ -374,6 +378,11 @@ impl Pictures {
         }
         ctx.request_repaint_after(std::time::Duration::from_millis(if reduced_motion { 250 } else { 33 }));
         true
+    }
+
+    /// Whether any of the pictures may yet read (none listed, or all broken: none).
+    fn readable(&self) -> bool {
+        self.broken.len() < self.files.len()
     }
 
     /// Lets the pictures held go (the menus left).
@@ -512,6 +521,40 @@ PREVIOUS = "sounds/supcom-menus/ui_back_mousedown.wav"
         assert!(shown.decoding.is_none(), "nothing decoding again");
         shown.let_go();
         assert!(shown.textures.is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A theme whose only picture does not read: none shown, and the menus not frozen looking
+    /// for one (the battlefield behind them again).
+    #[test]
+    fn a_theme_whose_pictures_all_fail_shows_none() {
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("ta-menu-broken-{}-{nanos}", std::process::id()));
+        std::fs::create_dir_all(dir.join("menus/supcom/pictures")).unwrap();
+        std::fs::write(dir.join("menus/supcom/pictures/broken.dds"), b"not a picture").unwrap();
+        let mut vfs = ta_vfs::Vfs::new();
+        vfs.mount_mod_dir(&dir, "theme").unwrap();
+        let mut shown = Pictures::new(vec!["menus/supcom/pictures/broken.dds".to_string()], Arc::new(vfs), 0);
+        assert!(shown.readable(), "not known broken before it is tried");
+        let ctx = egui::Context::default();
+        for frame in 0..400 {
+            let mut painted = true;
+            ctx.run_ui(Default::default(), |ui| {
+                let painter = ui.ctx().layer_painter(egui::LayerId::background());
+                painted = shown.paint(ui.ctx(), &painter, ui.ctx().content_rect(), frame as f64 / 30.0, true);
+            }).drop_without_applying_deltas();
+            assert!(!painted);
+            if !shown.readable() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(!shown.readable(), "known broken");
+        // (And again, now that it is known: nothing to show, at once.)
+        ctx.run_ui(Default::default(), |ui| {
+            let painter = ui.ctx().layer_painter(egui::LayerId::background());
+            assert!(!shown.paint(ui.ctx(), &painter, ui.ctx().content_rect(), 20.0, true));
+        }).drop_without_applying_deltas();
         let _ = std::fs::remove_dir_all(dir);
     }
 
