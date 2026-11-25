@@ -1123,9 +1123,9 @@ fn supcom_footer(ui: &mut Ui, footer: &Footer, asked: &mut Asked) {
 }
 
 /// What an import of the tab `tab` could not make (each thing's name, and why), folded under a
-/// line that counts them, scrolling beyond a few (none: nothing drawn). `salt` keeps one list's
+/// line that counts them, scrolling beyond a few (none: nothing drawn). `list_id` keeps one list's
 /// fold and scroll apart from another's of the same tab.
-pub(super) fn failed_list(ui: &mut Ui, tab: Tab, failed: &[(String, String)], salt: &str) {
+pub(super) fn failed_list(ui: &mut Ui, tab: Tab, failed: &[(String, String)], list_id: &str) {
     if failed.is_empty() {
         return;
     }
@@ -1136,8 +1136,8 @@ pub(super) fn failed_list(ui: &mut Ui, tab: Tab, failed: &[(String, String)], sa
         (Tab::Music, n) => tf("Tracks that could not be made: {n}", &[("n", &n)]),
         (Tab::Menus, n) => tf("Parts that could not be made: {n}", &[("n", &n)]),
     };
-    egui::CollapsingHeader::new(header).id_salt((salt, tab.label())).show(ui, |ui| {
-        egui::ScrollArea::vertical().id_salt((salt, tab.label(), "list")).max_height(FAILED_HEIGHT).auto_shrink([false, true]).show(ui, |ui| {
+    egui::CollapsingHeader::new(header).id_salt((list_id, tab.label())).show(ui, |ui| {
+        egui::ScrollArea::vertical().id_salt((list_id, tab.label(), "list")).max_height(FAILED_HEIGHT).auto_shrink([false, true]).show(ui, |ui| {
             for (name, why) in failed {
                 ui.label(RichText::new(name).font(strong(12.5)).color(TEXT));
                 ui.add(egui::Label::new(RichText::new(why).color(AMBER)).wrap());
