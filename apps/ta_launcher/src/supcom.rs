@@ -577,6 +577,38 @@ fn installed_folder(folders: &[ModFolder], id: &str) -> Option<PathBuf> {
     copy_in_use(folders, id).filter(|(info, _)| info.kind == ModKind::Directory).map(|(info, _)| info.path)
 }
 
+/// Whether the menus' and the music's mods were on when last seen: MENU THEME and SOUNDTRACK follow
+/// them as they are turned on or off, however that is done (the Mods page, an import, a removal,
+/// the game's own changes taken in): on, Forged Alliance's look shown and its music played where
+/// TA's alone played; off, TA Reborn's own look and TA's music again
+/// ([`crate::supcom_menus::follow`], [`crate::supcom_music::follow`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Followed {
+    menus: bool,
+    music: bool,
+}
+
+impl Followed {
+    /// As `config` has them now: when the launcher starts, or another commander's settings are
+    /// taken up (theirs are as they left them).
+    pub fn of(config: &ta_config::Config) -> Self {
+        let on = |id: &str| config.mods.enabled.iter().any(|e| e == id);
+        Followed { menus: on(crate::supcom_menus::MOD_ID), music: on(crate::supcom_music::MOD_ID) }
+    }
+
+    /// MENU THEME and SOUNDTRACK set for each of the two mods turned on or off since last seen.
+    pub fn follow(&mut self, config: &mut ta_config::Config) {
+        let now = Self::of(config);
+        if now.menus != self.menus {
+            crate::supcom_menus::follow(&mut config.gameplay.menu_theme, now.menus);
+        }
+        if now.music != self.music {
+            crate::supcom_music::follow(&mut config.audio.soundtrack, now.music);
+        }
+        *self = now;
+    }
+}
+
 /// The tab whose import makes the mod `id` (the map pack, the factions' mod) again, when the copy
 /// the launcher uses was made by an older converter than this TA Reborn's: UPDATE on the Mods
 /// page. Not another mod of the same id, nor a copy an import cannot replace.

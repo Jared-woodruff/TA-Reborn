@@ -610,6 +610,8 @@ impl LauncherApp {
             self.profiles.toasts = Default::default();
             self.store = store;
             self.config = config;
+            // (Their mods are as they left them: nothing turned on or off.)
+            self.followed_mods = crate::supcom::Followed::of(&self.config);
             self.profiles.active = Some(profile);
             // A record is a snapshot of one pinned identity, never shared on handover.
             self.profiles.details = None;

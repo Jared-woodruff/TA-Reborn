@@ -13,7 +13,8 @@ repository.
     tracks by their parts, each with how long it plays.
     - IMPORT MUSIC makes the whole soundtrack: on GOG's Gold Edition, 21 tracks, 44 minutes,
       226 MB. That took 3.4 s on the computer it was measured on.
-    - The result is the mod **Supreme Commander music** (`supcom-music`), turned on once made.
+    - The result is the mod **Supreme Commander music** (`supcom-music`), turned on once made, and
+      played: SOUNDTRACK goes from TA to FORGED ALLIANCE (below).
     - STOP ends the import at the next track and installs nothing.
     - As with the factions, the mod is made whole each time and replaces the one installed only
       once it is made. It is made again where the launcher finds it, and in place of another mod
@@ -32,6 +33,12 @@ repository.
     playing that the new playlist doesn't have is skipped. Without the mod installed and on,
     SOUNDTRACK is greyed, with a note on where the music comes from, and TA's plays whatever it
     says.
+
+    SOUNDTRACK follows the mod: turned on (on the launcher's Mods page, or by an import), TA
+    becomes FORGED ALLIANCE; turned off (or removed), FORGED ALLIANCE becomes TA. BOTH and BY SIDE,
+    the player's own choices, stay either way, and in between the player's choice stands
+    (`supcom::Followed`, `supcom_music::follow`; another commander's settings are taken up as they
+    were left).
   - **The jukebox** lists the soundtrack in a section of its own, SUPREME COMMANDER, every track
     by its part (Menu theme, Building theme 1-5, Battle theme 1-4, Briefing 1-6, and the films'
     Intro, Outro, Epilogue, Timeline and Credits).
@@ -187,7 +194,10 @@ The mod gives a battle nothing that the multiplayer check compares: only the `ai
   - `audio::tests::the_installed_soundtrack_is_read_from_its_list`.
   - The jukebox's names: `jukebox::tests`.
 - **`ta_launcher`:**
-  - `supcom_music::tests` (the words, the outcome told, the tracks' names).
+  - `supcom_music::tests` (the words, the outcome told, the tracks' names, SOUNDTRACK following
+    the mod).
+  - `app::tests::an_import_is_turned_on_and_played_or_shown` (an import, the Mods page's switches,
+    the player's own choice kept) and `app::tests::another_commanders_look_and_music_stay_theirs`.
   - `pages::supcom::tests::the_music_tab_lists_the_soundtrack_by_its_parts_and_imports_it_whole`.
   - The dialog's tab tests over all three tabs, `supcom::tests` (the UPDATE mark, the tab an
     import under way opens at), and `app::tests::an_update_waits_for_a_supreme_commander_import`.

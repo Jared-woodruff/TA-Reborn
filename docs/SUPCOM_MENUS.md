@@ -13,13 +13,17 @@ their widgets' shapes: only how they are coloured, framed, backed and heard chan
     page) has a MENUS tab. It finds the game as the other tabs do and shows what the copy has of
     the look: its colours, its pictures, its panel art, how many interface sounds, and its menu
     music. IMPORT MENUS makes the mod **Supreme Commander menus** (`supcom-menus`), turned on once
-    made (on GOG's Gold Edition, 12 pictures, the panel art, 11 sounds and the 81-second menu
-    theme: about 19 MB, in a fraction of a second). STOP installs nothing. As with the other
-    imports, the mod is made whole each time, replaces the one installed only once made, and is
-    marked UPDATE on the Mods page when an older converter made it.
+    made, with MENU THEME set to show it (on GOG's Gold Edition, 12 pictures, the panel art, 11
+    sounds and the 81-second menu theme: about 19 MB, in a fraction of a second). STOP installs
+    nothing. As with the other imports, the mod is made whole each time, replaces the one
+    installed only once made, and is marked UPDATE on the Mods page when an older converter made
+    it.
   - **Choosing it.** In the game, Options, INTERFACE: MENU THEME, TA REBORN (the default) or FORGED
-    ALLIANCE. Without the mod installed and on, the row is greyed, with a note on where the look
-    comes from. With FORGED ALLIANCE:
+    ALLIANCE. It follows the mod: turned on (on the launcher's Mods page, or by an import), MENU
+    THEME goes to FORGED ALLIANCE; turned off (or removed), back to TA REBORN. In between, the
+    player's choice stands (`supcom::Followed`, `supcom_menus::follow`; another commander's
+    settings are taken up as they were left). Without the mod installed and on, the row is greyed,
+    with a note on where the look comes from. With FORGED ALLIANCE:
     - the menus' colours are Forged Alliance's: its pale cyan lettering, its teal labels, its
       slate panels (see Colours below);
     - its pictures show behind the menus one after another, each for about 24 seconds, growing
@@ -113,6 +117,8 @@ too. The mod gives battles no data: online, the other players need not have it.
   theme's exactly, the players' colours kept, a colour between two moved between theirs, a far
   colour kept, alpha kept); a picture that does not read passed over, not decoded again; a theme
   none of whose pictures reads showing none (the battlefield behind the menus again).
-- **`ta_launcher`:** `supcom_menus::tests` (the words, the outcome told, a picture made small) and
+- **`ta_launcher`:** `supcom_menus::tests` (the words, the outcome told, a picture made small, MENU
+  THEME following the mod, a copy without its theme made again) and
   `pages::supcom::tests::the_menus_tab_shows_the_look_and_imports_it_whole`; the dialog's tests over
-  all four tabs.
+  all four tabs; `app::tests::an_import_is_turned_on_and_played_or_shown` (an import, the Mods
+  page's switches) and `app::tests::another_commanders_look_and_music_stay_theirs`.

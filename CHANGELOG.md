@@ -29,16 +29,19 @@
   Supreme Commander dialog (SUPREME COMMANDER… on the launcher's Maps and Mods pages) has a MUSIC
   tab, whose IMPORT MUSIC makes the game's menu theme, building and battle themes, the campaign's
   briefings and the films' music into lossless tracks of TA Reborn's own (on GOG's Gold Edition 21
-  tracks, 44 minutes, 226 MB, made in seconds), in a mod turned on once made. Options, SOUND:
-  SOUNDTRACK then chooses whose music plays: Total Annihilation's, Forged Alliance's (its building
-  themes while a battle is at peace, its battle themes in battle, its menu theme and briefings in
-  the menus), both together, or by side (Forged Alliance's while you command one of its factions);
-  TA's victory and defeat stay. The jukebox lists the tracks under SUPREME COMMANDER. Nothing of it
-  is shipped, and online the other players need not have it ([SUPCOM_MUSIC.md](docs/SUPCOM_MUSIC.md)).
+  tracks, 44 minutes, 226 MB, made in seconds), in a mod turned on once made, and played: Options,
+  SOUND: SOUNDTRACK goes from TA to FORGED ALLIANCE as the mod is turned on, and back as it is
+  turned off. SOUNDTRACK chooses whose music plays: Total Annihilation's, Forged Alliance's (its
+  building themes while a battle is at peace, its battle themes in battle, its menu theme and
+  briefings in the menus), both together, or by side (Forged Alliance's while you command one of
+  its factions); TA's victory and defeat stay. The jukebox lists the tracks under SUPREME
+  COMMANDER. Nothing of it is shipped, and online the other players need not have it
+  ([SUPCOM_MUSIC.md](docs/SUPCOM_MUSIC.md)).
 - The game's menus in Supreme Commander: Forged Alliance's look: the Supreme Commander dialog's
   MENUS tab makes, from your own copy of the game, its interface's colours, its menus' pictures,
   its panels' border art, its interface sounds and its menu music into a mod, turned on once made.
-  Options, INTERFACE: MENU THEME then dresses the menus in it: Forged Alliance's pale cyan
+  Options, INTERFACE: MENU THEME goes to FORGED ALLIANCE as the mod is turned on (an import's too),
+  and back to TA REBORN as it is turned off. It dresses the menus in Forged Alliance's pale cyan
   lettering and slate panels, its pictures behind the menus one after another in place of the
   film, its frames round the panels, its clicks, and its menu theme as the menus' music. The menus
   keep their layout, and the battle its own look ([SUPCOM_MENUS.md](docs/SUPCOM_MENUS.md)).

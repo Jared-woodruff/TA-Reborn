@@ -543,6 +543,7 @@ https://github.com/user-attachments/assets/0c29747c-1139-4f19-877a-3661836a55c5
   place, beside it or by side, and the jukebox lists ([SUPCOM_MUSIC.md](docs/SUPCOM_MUSIC.md)); its
   MENUS tab makes the game's look for the menus, its colours, pictures, panel art, clicks and menu
   music, which MENU THEME dresses TA Reborn's menus in ([SUPCOM_MENUS.md](docs/SUPCOM_MENUS.md)).
+  Turning either mod on sets its setting to play or show it, and turning it off sets it back.
 - **`ta-tools`** inspects, converts and validates TA's data files (`validate`, `map`, `gaf`, `model`,
   `cob`, `cat`, `find`…), grows TA Reborn's maps (`mapgen`; [MAPS.md](docs/MAPS.md)), and makes
   Supreme Commander's maps, units, music and menus' look into TA's (`supcom`, `supcom-units`,

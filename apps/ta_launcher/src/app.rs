@@ -291,6 +291,9 @@ pub struct LauncherApp {
     pub(crate) maps: crate::maps::Library,
     /// Supreme Commander: Forged Alliance's maps, imported.
     pub(crate) supcom: crate::supcom::Import,
+    /// Whether the Supreme Commander menus' and music's mods were on: MENU THEME and SOUNDTRACK
+    /// follow them as they are turned on or off.
+    pub(crate) followed_mods: crate::supcom::Followed,
     pub(crate) skins: crate::skins::Library,
     pub(crate) game: GameState,
     /// The last folder picked with "Browse…" that is not a valid install, and what it lacks.
@@ -575,6 +578,9 @@ impl LauncherApp {
         if first_run.is_some() && window.is_some_and(|(_, maximized)| maximized) {
             cc.egui_ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
         }
+        // (The Supreme Commander menus' and music's mods as the settings have them: only a change
+        // from here on moves MENU THEME and SOUNDTRACK.)
+        let followed_mods = crate::supcom::Followed::of(&config);
         LauncherApp {
             skins: crate::skins::Library::new(store.dir().join("skins"), [config.graphics.unit_skin.clone(), config.graphics.enemy_skin().to_string()]),
             confirm_uninstall: None,
@@ -643,6 +649,7 @@ impl LauncherApp {
             mod_validation,
             maps: Default::default(),
             supcom: crate::supcom::Import::new(supcom_choice),
+            followed_mods,
             game: GameState::Idle,
             browse_error: None,
             actions: match (args.autoplay, args.autobenchmark) {
@@ -2926,9 +2933,12 @@ impl eframe::App for LauncherApp {
                 }
             }
         }
+        // (A look or music imported is turned on, and shown or played: MENU THEME and SOUNDTRACK
+        // set for it, so that the player sees and hears it without a visit to the game's Options.)
         if let Some(outcome) = self.supcom.menus.poll(ctx, self.supcom.open) {
             if outcome.made {
                 modlist::set_enabled(&mut self.config.mods.enabled, crate::supcom_menus::MOD_ID, true);
+                crate::supcom_menus::switch_on(&mut self.config.gameplay.menu_theme);
                 self.refresh_mods();
             }
             if self.supcom.open {
@@ -2941,9 +2951,10 @@ impl eframe::App for LauncherApp {
                 }
             }
         }
-        if let Some(outcome) = self.supcom.music.poll(ctx, self.supcom.open) {
+        if let Some(mut outcome) = self.supcom.music.poll(ctx, self.supcom.open) {
             if outcome.tracks > 0 {
                 modlist::set_enabled(&mut self.config.mods.enabled, crate::supcom_music::MOD_ID, true);
+                outcome.switched = self.supcom.music.switch_on(&mut self.config.audio.soundtrack);
                 self.refresh_mods();
             }
             if self.supcom.open {
@@ -2956,6 +2967,7 @@ impl eframe::App for LauncherApp {
                 }
             }
         }
+        self.followed_mods.follow(&mut self.config);
         // (The game's folder as the player chose it, kept for the next start.)
         if let Some(choice) = self.supcom.take_choice()
             && let Err(e) = crate::supcom::save_choice(&self.store.dir(), choice.as_deref())
@@ -3111,6 +3123,9 @@ impl eframe::App for LauncherApp {
         let preview_launch = self.film.is_some() && actions.iter().any(|action| matches!(action, Action::Play | Action::PlayWith(_) | Action::Benchmark | Action::QuickBenchmark));
         for action in actions {
             self.apply(action, frame);
+            // (MENU THEME and SOUNDTRACK follow the Supreme Commander menus' and music's mods as an
+            // action turns them on or off: before the next one, a start of the game among them.)
+            self.followed_mods.follow(&mut self.config);
         }
         self.sounds.update(&ctx, &self.config.audio);
         if preview_launch || (!was_running && self.game.is_running()) {
@@ -3175,10 +3190,13 @@ impl eframe::App for LauncherApp {
         // (The music's likewise, at the track in hand.)
         if self.supcom.music.finish_on_exit().is_some_and(|outcome| outcome.tracks > 0) {
             modlist::set_enabled(&mut self.config.mods.enabled, crate::supcom_music::MOD_ID, true);
+            crate::supcom_music::switch_on(&mut self.config.audio.soundtrack);
         }
         if self.supcom.menus.finish_on_exit().is_some_and(|outcome| outcome.made) {
             modlist::set_enabled(&mut self.config.mods.enabled, crate::supcom_menus::MOD_ID, true);
+            crate::supcom_menus::switch_on(&mut self.config.gameplay.menu_theme);
         }
+        self.followed_mods.follow(&mut self.config);
         self.installer.shutdown();
         // A publication may finish after the final UI frame or while shutdown waits.
         // Apply its on/off decision before flushing the profile, just as in logic().
@@ -4686,6 +4704,104 @@ name = \"{}\"
         app.download = None;
         drop(app);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The music or the menus' look imported is turned on and played or shown: SOUNDTRACK goes
+    /// from TA's music alone to Forged Alliance's (another choice of the player's stays), MENU
+    /// THEME to Forged Alliance's look, and the dialog says so. An import that made nothing
+    /// changes neither.
+    #[test]
+    fn an_import_is_turned_on_and_played_or_shown() {
+        let dir = temp_dir("supcom_switch_on");
+        let (ctx, mut app) = launcher(&dir.join("config.toml"), &["--pretend-missing"]);
+        app.skins.shutdown();
+        let until_done = |app: &mut LauncherApp, ctx: &egui::Context| {
+            let until = Instant::now() + Duration::from_secs(10);
+            while app.supcom.any_importing() && Instant::now() < until {
+                frame(ctx, app, RawInput::default());
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            assert!(!app.supcom.any_importing());
+        };
+        assert_eq!(app.config.audio.soundtrack, ta_config::Soundtrack::TotalAnnihilation);
+        assert_eq!(app.config.gameplay.menu_theme, ta_config::MenuTheme::Reborn);
+
+        // Stopped, nothing installed: nothing changes.
+        app.supcom.music.pretend_imported(crate::supcom_music::Outcome { stopped: true, ..Default::default() });
+        app.supcom.menus.pretend_imported(crate::supcom_menus::Outcome { stopped: true, ..Default::default() });
+        until_done(&mut app, &ctx);
+        assert_eq!(app.config.audio.soundtrack, ta_config::Soundtrack::TotalAnnihilation);
+        assert_eq!(app.config.gameplay.menu_theme, ta_config::MenuTheme::Reborn);
+
+        app.supcom.music.pretend_imported(crate::supcom_music::Outcome { tracks: 21, ..Default::default() });
+        app.supcom.menus.pretend_imported(crate::supcom_menus::Outcome { made: true, ..Default::default() });
+        until_done(&mut app, &ctx);
+        assert_eq!(app.config.audio.soundtrack, ta_config::Soundtrack::ForgedAlliance);
+        assert_eq!(app.config.gameplay.menu_theme, ta_config::MenuTheme::ForgedAlliance);
+        for id in [crate::supcom_music::MOD_ID, crate::supcom_menus::MOD_ID] {
+            assert!(app.config.mods.enabled.iter().any(|on| on == id), "{id} on: {:?}", app.config.mods.enabled);
+        }
+        assert!(app.supcom.music.outcome.as_ref().is_some_and(|o| o.switched && o.summary().contains("SOUNDTRACK is now FORGED ALLIANCE")));
+
+        // The player's own choice stays, and the dialog says where to choose.
+        app.config.audio.soundtrack = ta_config::Soundtrack::Both;
+        app.supcom.music.pretend_imported(crate::supcom_music::Outcome { tracks: 21, ..Default::default() });
+        until_done(&mut app, &ctx);
+        assert_eq!(app.config.audio.soundtrack, ta_config::Soundtrack::Both);
+        assert!(app.supcom.music.outcome.as_ref().is_some_and(|o| !o.switched && o.summary().contains("choose SOUNDTRACK")));
+
+        // Turned off on the Mods page: TA Reborn's own look, and TA's music where Forged
+        // Alliance's alone played (a mix stays the player's); turned on again, theirs again.
+        app.config.audio.soundtrack = ta_config::Soundtrack::ForgedAlliance;
+        for id in [crate::supcom_menus::MOD_ID, crate::supcom_music::MOD_ID] {
+            app.actions.push(Action::DisableMod(id.into()));
+        }
+        frame(&ctx, &mut app, RawInput::default());
+        assert_eq!(app.config.gameplay.menu_theme, ta_config::MenuTheme::Reborn);
+        assert_eq!(app.config.audio.soundtrack, ta_config::Soundtrack::TotalAnnihilation);
+        for id in [crate::supcom_menus::MOD_ID, crate::supcom_music::MOD_ID] {
+            app.actions.push(Action::EnableMod(id.into()));
+        }
+        frame(&ctx, &mut app, RawInput::default());
+        assert_eq!(app.config.gameplay.menu_theme, ta_config::MenuTheme::ForgedAlliance);
+        assert_eq!(app.config.audio.soundtrack, ta_config::Soundtrack::ForgedAlliance);
+        app.config.audio.soundtrack = ta_config::Soundtrack::BySide;
+        app.actions.push(Action::DisableMod(crate::supcom_music::MOD_ID.into()));
+        frame(&ctx, &mut app, RawInput::default());
+        assert_eq!(app.config.audio.soundtrack, ta_config::Soundtrack::BySide);
+        // (Nothing turned on or off: a choice made with the mod on stays.)
+        app.config.gameplay.menu_theme = ta_config::MenuTheme::Reborn;
+        frame(&ctx, &mut app, RawInput::default());
+        assert_eq!(app.config.gameplay.menu_theme, ta_config::MenuTheme::Reborn);
+        drop(app);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Another commander's settings are taken up as they were left: their mods are not "turned on"
+    /// by the switch, so their MENU THEME and SOUNDTRACK stay theirs.
+    #[test]
+    fn another_commanders_look_and_music_stay_theirs() {
+        use ta_config::profiles::{Allegiance, ProfileStore};
+        let root = temp_dir("profile_switch_follow");
+        let profiles = ProfileStore::open(&root).unwrap();
+        let first = profiles.create("First", Allegiance::Arm, None, &Config::default()).unwrap();
+        let mut seed = Config::default();
+        seed.mods.enabled = vec![crate::supcom_menus::MOD_ID.into(), crate::supcom_music::MOD_ID.into()];
+        let second = profiles.create("Second", Allegiance::Core, None, &seed).unwrap();
+        profiles.select(&first.id).unwrap();
+        let (ctx, mut app) = launcher(&root.join("config.toml"), &["--pretend-missing"]);
+        app.skins.shutdown();
+        assert!(app.switch_profile(&second.id));
+        frame(&ctx, &mut app, RawInput::default());
+        assert_eq!(app.config.gameplay.menu_theme, ta_config::MenuTheme::Reborn);
+        assert_eq!(app.config.audio.soundtrack, ta_config::Soundtrack::TotalAnnihilation);
+        app.skins.shutdown();
+        assert!(app.switch_profile(&first.id));
+        frame(&ctx, &mut app, RawInput::default());
+        assert_eq!(app.config.gameplay.menu_theme, ta_config::MenuTheme::Reborn);
+        app.skins.shutdown();
+        drop((ctx, app));
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     /// An import over another mod of its id (not one an import made) asks first, as installing a

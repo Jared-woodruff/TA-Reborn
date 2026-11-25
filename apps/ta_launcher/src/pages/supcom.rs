@@ -537,7 +537,7 @@ impl LauncherApp {
         }
         ui.add_space(space::S);
         // (Made, the mod is on, and the game's SOUNDTRACK chooses whose music plays.)
-        ui.add(egui::Label::new(RichText::new(t("Once made, the music's mod is on: choose SOUNDTRACK in the game's Options, Sound, for Total Annihilation's music, Forged Alliance's, both, or by side (Forged Alliance's while you command one of its factions). The jukebox lists its tracks. Online, the other players need not have it.")).color(STEEL)).wrap());
+        ui.add(egui::Label::new(RichText::new(t("Once made, the music's mod is on, and SOUNDTRACK goes from TA to FORGED ALLIANCE (back to TA once the mod is turned off): in the game's Options, Sound, it plays Total Annihilation's music, Forged Alliance's, both, or by side (Forged Alliance's while you command one of its factions). The jukebox lists its tracks. Online, the other players need not have it.")).color(STEEL)).wrap());
     }
 
     /// The menus' tab: what it does, where the game is, and what the copy has of the look: its
@@ -612,7 +612,7 @@ impl LauncherApp {
         ui.add(egui::Label::new(RichText::new(tf("Panel art: {panel} · Interface sounds: {sounds} · Menu music: {music}", &[("panel", &if contents.panel { t("yes") } else { t("none") }), ("sounds", &contents.sounds.len()), ("music", &music)])).color(STEEL)).wrap());
         ui.add_space(space::S);
         // (Made, the mod is on, and the game's MENU THEME chooses it.)
-        ui.add(egui::Label::new(RichText::new(t("Once made, the mod is on: choose MENU THEME in the game's Options, Interface. The battle keeps its own look. Online, the other players need not have it.")).color(STEEL)).wrap());
+        ui.add(egui::Label::new(RichText::new(t("Once made, the mod is on, and MENU THEME goes to FORGED ALLIANCE (back to TA REBORN once the mod is turned off): change that in the game's Options, Interface. The battle keeps its own look. Online, the other players need not have it.")).color(STEEL)).wrap());
     }
 
     /// Where the game is (or that it was not found, or could not be looked for) as the tab shown
@@ -1464,7 +1464,7 @@ mod tests {
             assert!(texts.iter().any(|(text, _, _)| text == words), "{words}: {:?}", texts_of(&texts));
         }
         assert!(texts.iter().any(|(text, _, _)| text == "7 tracks, 17 minutes: about 0.1 GB on the disk"), "{:?}", texts_of(&texts));
-        assert!(texts.iter().any(|(text, _, _)| text.contains("choose SOUNDTRACK in the game's Options, Sound")), "{:?}", texts_of(&texts));
+        assert!(texts.iter().any(|(text, _, _)| text.contains("SOUNDTRACK goes from TA to FORGED ALLIANCE")), "{:?}", texts_of(&texts));
         assert!(texts.iter().any(|(text, _, _)| text.contains("Online, the other players need not have it")), "{:?}", texts_of(&texts));
         assert!(!texts.iter().any(|(text, _, _)| text == "IMPORTED"), "not in yet: {:?}", texts_of(&texts));
         // Made by this version: MAKE AGAIN, and up to date.
@@ -1503,7 +1503,7 @@ mod tests {
         }
         assert!(texts.iter().any(|(text, _, _)| text.starts_with("3 pictures, 2 interface sounds, the menu music")), "{:?}", texts_of(&texts));
         assert!(texts.iter().any(|(text, _, _)| text == "Panel art: yes · Interface sounds: 2 · Menu music: 1:21"), "{:?}", texts_of(&texts));
-        assert!(texts.iter().any(|(text, _, _)| text.contains("choose MENU THEME in the game's Options, Interface")), "{:?}", texts_of(&texts));
+        assert!(texts.iter().any(|(text, _, _)| text.contains("MENU THEME goes to FORGED ALLIANCE")), "{:?}", texts_of(&texts));
         assert_eq!(app.supcom.menus.look.held().1, 3, "the three pictures shown, as textures");
         let (found, pictures) = menus_found(State::Imported);
         app.supcom.menus.pretend_found(found, pictures);
