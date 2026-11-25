@@ -33,17 +33,36 @@ const ORDER_WAIT: u64 = 90;
 const ARRIVED_WITHIN: i64 = 96;
 
 /// Which of the keys followed here a unit type's sound category gives.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(super) struct Kinds {
     moves: bool,
     takeoff: bool,
     work: bool,
     active: bool,
+    /// Which loops it has (a unit with only the transitions, `startmove` and no `moveloop`,
+    /// takes no loop's place).
+    move_loop: bool,
+    build_loop: bool,
+    reclaim_loop: bool,
+    capture_loop: bool,
+    active_loop: bool,
+    /// How much farther than an ordinary sound its farthest-reaching of these is heard (its sound
+    /// sets' `radius`, at least 1): how far round the listener its unit is listened to.
+    reach: f32,
 }
 
 impl Kinds {
     fn none(self) -> bool {
-        self == Kinds::default()
+        !(self.moves || self.takeoff || self.work || self.active)
+    }
+
+    /// Whether it has the loop of `work`.
+    fn work_loop(self, work: Work) -> bool {
+        match work {
+            Work::Build => self.build_loop,
+            Work::Reclaim => self.reclaim_loop,
+            Work::Capture => self.capture_loop,
+        }
     }
 }
 
@@ -176,11 +195,25 @@ impl GameAudio {
         let kinds = match self.categories.try_category(&sim.types.get(type_id).def.sound_category) {
             Some(c) => {
                 let any = |events: &[SoundEvent]| events.iter().any(|&e| c.get(e).is_some());
+                let has = |event: SoundEvent| c.get(event).is_some();
+                const FOLLOWED: [SoundEvent; 14] = [
+                    SoundEvent::StartMove, SoundEvent::StopMove, SoundEvent::MoveLoop, SoundEvent::TakeOff, SoundEvent::Landing, SoundEvent::BuildLoop, SoundEvent::BuildStop,
+                    SoundEvent::ReclaimLoop, SoundEvent::ReclaimStop, SoundEvent::CaptureLoop, SoundEvent::CaptureStop, SoundEvent::ActiveLoop, SoundEvent::Open, SoundEvent::Close,
+                ];
+                // (The farthest any of them carries: a sound set's `radius`, a file's 1.)
+                let sets = self.engine.sound_sets();
+                let reach = FOLLOWED.iter().flat_map(|&e| c.variants(e)).map(|name| sets.get(name).map_or(1.0, |set| set.radius)).fold(1.0f32, f32::max);
                 Kinds {
                     moves: any(&[SoundEvent::StartMove, SoundEvent::StopMove, SoundEvent::MoveLoop]),
                     takeoff: any(&[SoundEvent::TakeOff, SoundEvent::Landing]),
                     work: any(&[SoundEvent::BuildLoop, SoundEvent::BuildStop, SoundEvent::ReclaimLoop, SoundEvent::ReclaimStop, SoundEvent::CaptureLoop, SoundEvent::CaptureStop]),
                     active: any(&[SoundEvent::ActiveLoop, SoundEvent::Open, SoundEvent::Close]),
+                    move_loop: has(SoundEvent::MoveLoop),
+                    build_loop: has(SoundEvent::BuildLoop),
+                    reclaim_loop: has(SoundEvent::ReclaimLoop),
+                    capture_loop: has(SoundEvent::CaptureLoop),
+                    active_loop: has(SoundEvent::ActiveLoop),
+                    reach,
                 }
             }
             None => Kinds::default(),
@@ -249,7 +282,8 @@ impl GameAudio {
             let pos = u.pos.to_f32();
             let l = listener.position;
             let distance = ((pos[0] - l[0]).powi(2) + (pos[1] - l[1]).powi(2) + (pos[2] - l[2]).powi(2)).sqrt();
-            let heard = !u.dead && u.carried_by.is_none() && distance < reach && seen(u.pos);
+            // (Within earshot of its farthest-reaching sound: a sound set's `radius` carries it.)
+            let heard = !u.dead && u.carried_by.is_none() && distance < reach * kinds.reach && seen(u.pos);
             let was = self.units.was[slot].filter(|w| w.id == u.id);
             self.units.was[slot] = Some(Was { id: u.id, moving, airborne, work, active });
             // What changed since the last look (nothing the first time it is looked at).
@@ -278,15 +312,15 @@ impl GameAudio {
             if !heard {
                 continue;
             }
-            if kinds.moves && moving {
+            if kinds.move_loop && moving {
                 // (Louder and higher the faster it goes.)
                 let speed = (u.speed.to_f32() / t.max_speed.to_f32().max(0.01)).clamp(0.0, 1.0);
                 candidates[0].push(Candidate { distance, unit: u.id, type_id: u.type_id, pos, event: SoundEvent::MoveLoop, level: 0.45 + 0.55 * speed, rate: 0.88 + 0.2 * speed });
             }
-            if kinds.work && let Some(w) = work {
+            if let Some(w) = work.filter(|w| kinds.work_loop(*w)) {
                 candidates[1].push(Candidate { distance, unit: u.id, type_id: u.type_id, pos, event: w.looped(), level: 1.0, rate: 1.0 });
             }
-            if kinds.active && active {
+            if kinds.active_loop && active {
                 candidates[2].push(Candidate { distance, unit: u.id, type_id: u.type_id, pos, event: SoundEvent::ActiveLoop, level: 1.0, rate: 1.0 });
             }
         }

@@ -1354,7 +1354,8 @@ number = 1
         std::fs::create_dir_all(dir.join("gamedata")).unwrap();
         std::fs::write(dir.join("gamedata/sound_test.tdf"), "[MOVER]\n{\nstartmove=go;\nstopmove=halt;\nmoveloop=engine;\ndeath=BOOMSET;\ncrash=wreck;\nok1=yes;\narrived1=there;\n}\n\
             [WORKER]\n{\nbuildloop=drill;\nbuildstop=drilled;\n}\n[DISH]\n{\nactiveloop=hum;\nopen=unfold;\nclose=fold;\ndonebuilt=done;\n}\n\
-            [ALERTS_UEF]\n{\ncommanderattacked=help;\nnuclearlaunch=launch;\n}\n[SOUNDSETS]\n{\n[BOOMSET]\n{\nsound1=boom;\nvolume=0.5;\n}\n}\n").unwrap();
+            [ALERTS_UEF]\n{\ncommanderattacked=help;\nnuclearlaunch=launch;\n}\n[STARTER]\n{\nstartmove=go;\nstopmove=halt;\n}\n[FARMOVER]\n{\nmoveloop=FARSET;\n}\n\
+            [SOUNDSETS]\n{\n[BOOMSET]\n{\nsound1=boom;\nvolume=0.5;\n}\n[FARSET]\n{\nsound1=engine;\nradius=3;\n}\n}\n").unwrap();
         let mut vfs = Vfs::new();
         vfs.mount_mod_dir(&dir, "sounds").unwrap();
         let vfs = Arc::new(vfs);
@@ -1370,6 +1371,8 @@ number = 1
             "[UNITINFO] { UnitName=TANK; CanMove=1; MaxVelocity=3; Acceleration=1; BrakeRate=1; TurnRate=2000; FootprintX=2; FootprintZ=2; SoundCategory=MOVER; }",
             "[UNITINFO] { UnitName=RADAR; FootprintX=2; FootprintZ=2; SoundCategory=DISH; OnOffable=1; }",
             "[UNITINFO] { UnitName=BOSS; Commander=1; CanMove=1; MaxVelocity=1; FootprintX=2; FootprintZ=2; SoundCategory=MOVER; }",
+            "[UNITINFO] { UnitName=STARTER; CanMove=1; MaxVelocity=3; Acceleration=1; BrakeRate=1; TurnRate=2000; FootprintX=2; FootprintZ=2; SoundCategory=STARTER; }",
+            "[UNITINFO] { UnitName=FARTANK; CanMove=1; MaxVelocity=3; Acceleration=1; BrakeRate=1; TurnRate=2000; FootprintX=2; FootprintZ=2; SoundCategory=FARMOVER; }",
         ] {
             data.units.push(ta_data::UnitDef::from_tdf(&ta_formats::tdf::parse(text).sections[0]).unwrap());
         }
@@ -1521,6 +1524,38 @@ number = 1
         assert_eq!(audio.units.playing(), [0; 4]);
         audio.update_units(&sim, None, 0, false);
         assert_eq!(audio.units.playing()[0], 8);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Units that only set off and stop (`startmove`, no `moveloop`) take no loop's place: ten
+    /// of them nearer leave a farther tank's loop on.
+    #[test]
+    fn a_unit_without_a_loop_takes_no_loops_place() {
+        use ta_sim::{FxVec3, Order};
+        let (dir, mut audio, mut sim) = sounding();
+        let mut movers: Vec<_> = (0..10).map(|i| sim.spawn_unit(3, 0, FxVec3::from_ints(100 + 20 * i, 0, 100), 0, true).unwrap()).collect();
+        movers.push(sim.spawn_unit(0, 0, FxVec3::from_ints(400, 0, 300), 0, true).unwrap());
+        step(&mut sim, &mut audio, 2, &[]);
+        let go = ta_sim::sim::Command::Order { player: 0, units: movers, order: Order::Move(FxVec3::from_ints(600, 0, 700)), queue: false };
+        step(&mut sim, &mut audio, 10, &[go]);
+        assert_eq!(audio.units.playing()[0], 1, "the tank's loop on, the ten without one taking no place");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A unit whose sound reaches farther (a sound set's `radius`) is listened to farther than an
+    /// ordinary sound: its loop heard where a plain tank's is not.
+    #[test]
+    fn a_far_reaching_sound_is_listened_to_farther() {
+        use ta_sim::{FxVec3, Order};
+        let (dir, mut audio, mut sim) = sounding();
+        // (A narrow view: an ordinary sound heard to 440 px round the listener.)
+        audio.engine.set_listener([0.0; 3], [0.0, 0.0, -1.0], [1.0, 0.0, 0.0], 400.0);
+        let far = sim.spawn_unit(4, 0, FxVec3::from_ints(600, 0, 300), 0, true).unwrap();
+        let plain = sim.spawn_unit(0, 0, FxVec3::from_ints(600, 0, 340), 0, true).unwrap();
+        step(&mut sim, &mut audio, 2, &[]);
+        let go = ta_sim::sim::Command::Order { player: 0, units: vec![far, plain], order: Order::Move(FxVec3::from_ints(700, 0, 400)), queue: false };
+        step(&mut sim, &mut audio, 10, &[go]);
+        assert_eq!(audio.units.playing()[0], 1, "the far-reaching one alone");
         let _ = std::fs::remove_dir_all(dir);
     }
 

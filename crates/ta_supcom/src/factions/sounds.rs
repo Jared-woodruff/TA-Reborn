@@ -554,7 +554,10 @@ impl Plan {
                 }
             }
             let range = |(lo, hi): (u32, u32)| if lo == hi { thousandths(lo) } else { format!("{} {}", thousandths(lo), thousandths(hi)) };
-            let _ = writeln!(s, "\t\tvolume={};", range(set.volume));
+            // (A gain that rounds to nothing written as the least there is, a thousandth, -60 dB:
+            // a set reads no volume of 0, and would play a muted cue at full volume.)
+            let audible = |(lo, hi): (u32, u32)| (lo.max(1), hi.max(1));
+            let _ = writeln!(s, "\t\tvolume={};", range(audible(set.volume)));
             if set.pitch != (1000, 1000) {
                 let _ = writeln!(s, "\t\tpitch={};", range(set.pitch));
             }
@@ -721,6 +724,21 @@ pub(crate) mod tests {
             cue("Missing", 2, curves[0], 2, vec![Event { kind: 1, waves: vec![(0, 9)], clip_volume: 0xB4, ..Default::default() }]),
         ])).unwrap();
         std::fs::write(dir.join("Voice/US/XGG.xsb"), cue_bank("XGG", &["XGG"], &[cue("Alarm", 1, curves[0], 1, vec![Event { kind: 1, waves: vec![(0, 0)], clip_volume: 0xB4, ..Default::default() }])])).unwrap();
+    }
+
+    /// A muted cue, or a range of gains reaching silence, is written as the game's sets read it:
+    /// near silent, never at full volume (a set reads no volume of 0).
+    #[test]
+    fn silent_gains_stay_near_silent() {
+        let mut plan = Plan::default();
+        let set = |volume: (u32, u32)| Set { variants: vec![("sounds/x".to_string(), 1)], volume, pitch: (1000, 1000), radius: "1", max_playing: 0, no_repeat: false, looped: false };
+        plan.sets.insert("MUTED".to_string(), set((0, 0)));
+        plan.sets.insert("FADING".to_string(), set((0, 800)));
+        let doc = ta_formats::tdf::parse(&plan.table(&[]));
+        let sets = doc.section("SOUNDSETS").unwrap();
+        let read = |name: &str| ta_audio::categories::SoundSet::from_section(sets.sections.iter().find(|s| s.name == name).unwrap()).volume;
+        assert_eq!(read("MUTED"), (0.001, 0.001), "near silent, not full volume");
+        assert_eq!(read("FADING"), (0.001, 0.8), "its range kept, to near silence");
     }
 
     /// The banks read by their own names (the announcer's under `Voice/US`, its wave bank by its
