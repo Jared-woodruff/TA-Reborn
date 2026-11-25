@@ -681,3 +681,21 @@ Forged Alliance's two features, in the terms the launcher's "Ще в плана�
 | What each part came to / Not made: … (a part's line under its name) | Підсумок для кожної частини / Не створено: … (impersonal: no gender to agree with КАРТИ, МУЗИКА…) |
 | Waiting for … to be found / for your answer | Очікування, доки буде знайдено … (impersonal, as Supreme Commander's gender varies in the file) / Очікування вашої відповіді |
 | a card's estimate ("About {size} on the disk, {time} to make") | "Близько {size} на диску, {time} на створення", as the maps tab's "{time} на створення" |
+
+## TA Reborn's abilities (`game/abilities.rs`, `hud/abilities.rs`, `hud/deck.rs`, `hud_classic.rs`, `validation/abilities.rs`)
+
+| English | Українська |
+|---|---|
+| weapon toggle / switch its weapons over / its own (weapons) again | зміна зброї ("Зміна зброї: {name}", "Юніти зі зміною зброї") / змінити зброю / повернути основну |
+| TOGGLE (the classic panel's fallback after the toggle's name) | ЗМІНА (a noun, as ПОВТОР; ПЕРЕМКНУТИ would not fit) |
+| view from afar (the order, a noun as Атака) / remote viewing | Огляд здалеку ("Оглядає здалеку", "для огляду здалеку") / дистанційне спостереження (only in the key binding's parenthesis) |
+| REMOTE VIEW / VIEW (classic buttons, long and short) | ОГЛЯД ЗДАЛЕКУ / ОГЛЯД |
+| a place far off / round it | далека точка / околиці, навколо точки ("бачити згори околиці далекої точки") |
+| for as long as its energy is paid | поки на це вистачає енергії |
+| stealth field / sonar stealth field | поле невидимості (as the Supreme Commander page) / поле невидимості для сонарів ("ховає від радарів юніти своєї сторони навколо себе") |
+| regeneration aura / mends its side's units | аура регенерації / ремонтує юніти своєї сторони; hit points: здоров'я ("{rate} здоров'я за секунду", as "Відновлює {n} здоров'я за секунду") |
+| minimum range / fires no nearer than | мінімальна дальність / "Стріляє не ближче ніж на {range}" |
+| stun (a weapon's) | параліч, паралізувати, as Паралізований ("Паралізує на {secs} с", "з паралізувальною дією") |
+| one of TA's paralyzers (paralyzer=1) | паралізатор, як у TA |
+| a weapon's {name} in the mod check | anchored as "Зброя {name}" (feminine: її, вона) |
+| (px) after a mod key | (у пікселях) |

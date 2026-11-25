@@ -622,3 +622,19 @@ Pages and tabs in sentences: 「MOD」ページ, 「マップ」ページ, the d
 | the maps / the factions / the music / the menus' look (in {parts}) | マップ / 陣営 / 音楽 / メニューの見た目 |
 | About {size} on the disk, {time} to make (a card's line) | ディスク使用量：約{size}、作成時間：{time} |
 | Waiting for your answer / Not made (a part's line) | 回答待ち / 未作成 |
+
+## TA Reborn's own abilities (`game/abilities.rs`, `hud/abilities.rs`, `hud/deck.rs`, `validation/abilities.rs`)
+
+One word for remote viewing everywhere (the order, its buttons, the card, the mod check): 遠隔偵察. A unit's
+own side round it, on any unit's information page, is 味方ユニット (自軍 would read as the player's).
+
+| English | 日本語 |
+|---|---|
+| weapon toggle / TOGGLE (classic button) / its other weapons, its own | 武装切り替え (as WEAPONS 武装) / 切替 / 別の武装、元の武装 |
+| View from afar, remote viewing / REMOTE VIEW, VIEW (classic) / Viewing from afar | 遠隔偵察 / 遠隔偵察、偵察 / 遠隔偵察中 |
+| for as long as its energy is paid | エネルギーが続く限り |
+| stealth field / sonar stealth field | ステルスフィールド / ソナーステルスフィールド (as Stealthy ステルス：レーダーに映らない) |
+| regeneration aura / mends (the aura's units) | 回復オーラ / 回復 (as Mends {n} hit points a second 毎秒HPを{n}回復) |
+| {rate} hit points a second / {share}% of their health a second, {rate} at most | 毎秒{rate}HP / 毎秒最大HPの{share}%（上限{rate}） |
+| minimum range / Fires no nearer than {range} | 最小射程 / 最小射程 {range} |
+| stun, stunned / Stuns for {secs} s / TA's paralyzers (paralyzer=1) | 麻痺 (as Paralyzed 麻痺) / {secs}秒間麻痺させる / TAの麻痺武器 |

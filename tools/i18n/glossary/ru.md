@@ -645,3 +645,21 @@ Commander installs enhancements on itself, one a slot. Widths measured in Bahnsc
 | What each part came to / Not made: … (a part's line under its name) | Итог по каждой части / Не создано: … (neuter: no gender to agree with КАРТЫ, МУЗЫКА…) |
 | Waiting for … to be found / for your answer | Ожидание, пока будет найдена … / Ожидание вашего ответа |
 | a card's estimate ("About {size} on the disk, {time} to make") | "Около {size} на диске, {time} на создание", as the maps tab's "{time} на создание" |
+
+## TA Reborn's abilities (`game/abilities.rs`, `hud/abilities.rs`, `hud/deck.rs`, `hud_classic.rs`, `validation/abilities.rs`)
+
+| English | Русский |
+|---|---|
+| weapon toggle / switch its weapons over / its own (weapons) again | смена оружия ("Смена оружия: {name}", "Юнитов со сменой оружия") / сменить оружие / вернуть основное |
+| TOGGLE (the classic panel's fallback after the toggle's name) | СМЕНА (a noun, as ПОВТОР; ПЕРЕКЛЮЧИТЬ would not fit) |
+| view from afar (the order, a noun as Атака) / remote viewing | Дальний обзор ("Ведёт дальний обзор", "для дальнего обзора") / дистанционное наблюдение (only in the key binding's parenthesis) |
+| REMOTE VIEW / VIEW (classic buttons, long and short) | ДАЛЬНИЙ ОБЗОР / ОБЗОР |
+| a place far off / round it | далёкая точка / окрестности, вокруг точки ("видеть с высоты окрестности далёкой точки") |
+| for as long as its energy is paid | пока на это хватает энергии |
+| stealth field / sonar stealth field | поле скрытности / поле скрытности от сонаров ("скрывает от радаров юниты своей стороны вокруг себя") |
+| regeneration aura / mends its side's units | аура регенерации / ремонтирует юниты своей стороны; hit points: ед. здоровья; "{share}% их здоровья в секунду, но не более {rate}" |
+| minimum range / fires no nearer than | минимальная дальность / "Стреляет не ближе чем на {range}" |
+| stun (a weapon's) | паралич, парализовать, as Парализован ("Парализует на {secs} с", "с парализующим действием") |
+| one of TA's paralyzers (paralyzer=1) | парализатор, как в TA |
+| a weapon's {name} in the mod check | anchored as "Оружие {name}" (neuter: его, оно) |
+| (px) after a mod key | (в пикселях) |

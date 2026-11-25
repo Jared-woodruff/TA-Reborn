@@ -588,3 +588,20 @@ words: no space before it (製作需{time}). 一次性 reads as "disposable" in 
 | the maps / the factions / the music / the menus' look (in {parts}) | 地圖 / 陣營 / 音樂 / 選單外觀 |
 | the dialog's tabs / the MAPS tab | 對話方塊的各個分頁 / 「地圖」分頁 |
 | Waiting for your answer / Not made (a part's line) | 等待你的回覆 / 未製作 |
+
+## TA Reborn's own abilities (`game/abilities.rs`, `hud/abilities.rs`, `hud/deck.rs`, `validation/abilities.rs`)
+
+One word for remote viewing everywhere (the order, its buttons, the card, the mod check): 遠距偵察 (遠程 is
+long-range in Taiwan, as 遠程電漿砲). A unit's own side round it, on any unit's information page, is 友軍單位
+(己方 / 我方 are the player's).
+
+| English | 繁體中文 |
+|---|---|
+| weapon toggle / TOGGLE (classic button) / its other weapons, its own | 武器切換 / 切換 / 另一組武器、原本的武器 |
+| View from afar, remote viewing / REMOTE VIEW, VIEW (classic) / Viewing from afar | 遠距偵察 / 遠距偵察、偵察 / 遠距偵察中 |
+| for as long as its energy is paid | 只要能量充足 |
+| stealth field / sonar stealth field | 匿蹤力場 / 聲納匿蹤力場 (hidden from radar: 不會出現在雷達上, as Stealthy) |
+| regeneration aura / mends (the aura's units) | 再生光環 / 修復 (as Mends {n} hit points a second 每秒修復 {n} 點生命值) |
+| {rate} hit points a second / {share}% of their health a second, {rate} at most | 每秒 {rate} 點生命值 / 每秒最大生命值的 {share}%，最多 {rate} 點 |
+| minimum range / Fires no nearer than {range} | 最小射程 / 最小射程 {range} |
+| stun, stunned / Stuns for {secs} s / TA's paralyzers (paralyzer=1) | 癱瘓 (as Paralyzed 已癱瘓) / 造成 {secs} 秒癱瘓 / TA 的癱瘓武器 |

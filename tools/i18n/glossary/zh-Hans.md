@@ -611,3 +611,19 @@ words: no space before it (制作需{time}).
 | the maps / the factions / the music / the menus' look (in {parts}) | 地图 / 阵营 / 音乐 / 菜单外观 |
 | the dialog's tabs / the MAPS tab | 对话框的各个标签页 / “地图”标签页 |
 | Waiting for your answer / Not made (a part's line) | 等待你的答复 / 未制作 |
+
+## TA Reborn's own abilities (`game/abilities.rs`, `hud/abilities.rs`, `hud/deck.rs`, `validation/abilities.rs`)
+
+One word for remote viewing everywhere (the order, its buttons, the card, the mod check): 远程侦察. A unit's
+own side round it, on any unit's information page, is 友军单位 (己方 is the player's).
+
+| English | 简体中文 |
+|---|---|
+| weapon toggle / TOGGLE (classic button) / its other weapons, its own | 武器切换 / 切换 / 另一组武器、原来的武器 |
+| View from afar, remote viewing / REMOTE VIEW, VIEW (classic) / Viewing from afar | 远程侦察 / 远程侦察、侦察 / 远程侦察中 |
+| for as long as its energy is paid | 只要能量充足 |
+| stealth field / sonar stealth field | 隐身力场 / 声呐隐身力场 (hidden from radar: 不显示在雷达上, as Stealthy) |
+| regeneration aura / mends (the aura's units) | 再生光环 / 修复 |
+| {rate} hit points a second / {share}% of their health a second, {rate} at most | 每秒 {rate} 点生命值 / 每秒最大生命值的 {share}%，最多 {rate} 点 |
+| minimum range / Fires no nearer than {range} | 最小射程 / 最小射程 {range} |
+| stun, stunned / Stuns for {secs} s / TA's paralyzers (paralyzer=1) | 麻痹 (as Paralyzed 已麻痹) / 造成 {secs} 秒麻痹 / TA 的麻痹武器 |

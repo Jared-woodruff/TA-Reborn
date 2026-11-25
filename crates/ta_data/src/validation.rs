@@ -44,8 +44,10 @@ mod abilities;
 /// working round it by itself with no build power (`unit.assist_patrol`); 21: a building whose
 /// build power only upgrades it in place (`UpgradesTo`, no `Builder`) asks its script for no
 /// nano-lathe (`script.builder`); 22: a side's art in the classic interface where its side data
-/// names it, its panels' GAF (`intgaf`) and its emblem (`logogaf`, `logo`)).
-pub const SCHEMA_VERSION: u32 = 22;
+/// names it, its panels' GAF (`intgaf`) and its emblem (`logogaf`, `logo`); 23: abilities, a
+/// weapon's minimum range (`weapon.min_range`) and stun (`weapon.paralyze`), a unit's mending aura
+/// (`unit.regen_aura`) and remote viewing (`unit.remote_view`), a toggle's weapons).
+pub const SCHEMA_VERSION: u32 = 23;
 
 /// The keys of `gamedata/sound.tdf`'s categories the game plays (`ta_audio`'s sound events), each
 /// with or without a variant number (`select1`, `select2`…), with `count0` to `count9`; the

@@ -694,3 +694,24 @@ Straight apostrophes.
 | the dialog's tabs / the MAPS tab | le schede della finestra / la scheda MAPPE |
 | {time} to make (a card) / and {time} to make (the total) | {time} per la creazione / e {time} per creare tutto |
 | on the Mods and Maps pages | nelle pagine Mod e MAPPE (as "nella pagina Mod", "nella pagina MAPPE") |
+
+## Le abilità di TA Reborn (`game/abilities.rs`, `hud/abilities.rs`, `hud/deck.rs`, `hud_classic.rs`, `validation/abilities.rs`)
+
+Remote viewing has a noun, visione remota (the information page, the classic button and tooltip, the
+key binding's parenthesis, the mod check's overview), and a verb, osservare da lontano (the order's
+label Osserva da lontano, the card's status, the pointer hint, the findings). Stuns are paralizzare,
+as TA's paralysis (Paralizzata, "Non può essere paralizzata"). The mod keys in the findings are
+masculine, as "un WorkerTime": un minrange, nessun paralyzetime, il suo paralyzetime. Straight
+apostrophes.
+
+| English | Italiano |
+|---|---|
+| weapon toggle / TOGGLE (the classic button when the toggle's own name does not fit) | cambio armi / CAMBIA |
+| its other weapons / its own (the toggle's tooltip) | le sue altre armi / le proprie |
+| view from afar / remote viewing / REMOTE VIEW, VIEW | osservare da lontano / visione remota / VISIONE REMOTA, OSSERVA (VISTA is sight, as "Vista +{n}") |
+| for as long as its energy is paid | finché l'energia lo consente |
+| stealth field / sonar stealth field | campo di furtività / campo di furtività sonar |
+| its side's units (fields, auras) | le unità della sua fazione |
+| regeneration aura / mends (other units) / {rate} hit points a second | aura di rigenerazione / rigenera / {rate} di salute al secondo |
+| minimum range / Fires no nearer than {range} | gittata minima / Gittata minima {range} (as "Gittata {range}") |
+| stun / Stuns for {secs} s / TA's paralyzers (paralyzer=1) | paralisi / Paralizza per {secs} s / arma paralizzante alla maniera di TA |

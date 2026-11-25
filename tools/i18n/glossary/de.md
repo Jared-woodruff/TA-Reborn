@@ -762,3 +762,24 @@ for any number ("Gefechtskarten des Spiels: {n}", "Bilder ({pictures})").
 | the dialog's tabs / the MAPS tab | die Reiter des Dialogs / der Reiter KARTEN |
 | Not made: … (a part's line) / {time} to make | Nicht erstellt: … / {time} zum Erstellen |
 | on the Mods and Maps pages | auf den Seiten MODS und KARTEN |
+
+## TA Reborn's abilities (`game/abilities.rs`, `hud/abilities.rs`, `hud/deck.rs`, `hud_classic.rs`, `validation/abilities.rs`)
+
+Remote viewing has a noun, Fernsicht (the order's label and its tooltip's title, the classic button
+FERNSICHT, short SICHT, the information page, the mod check's overview), and a verb, aus der Ferne
+beobachten (the key binding, the card's status, the pointer hint, the findings). A field's or an aura's
+"its side's units" are Einheiten derselben Seite ("eigene" would read as the player's on an enemy unit's
+page). Stuns are lähmen, as TA's paralysis (Gelähmt, "Lähmt, statt Schaden anzurichten"). A weapon's
+finding names it "die Waffe" after the colon and its hint says "Gib ihr" (a unit's: "Es", "Gib ihm").
+
+| English | Deutsch |
+|---|---|
+| weapon toggle / TOGGLE (the classic button when the toggle's own name does not fit) | Waffenwechsel / WECHSEL |
+| its other weapons / its own (the toggle's tooltip) | die anderen Waffen / die eigenen |
+| view from afar / remote viewing / REMOTE VIEW, VIEW | aus der Ferne beobachten / Fernsicht / FERNSICHT, SICHT |
+| for as long as its energy is paid | solange die Energie dafür reicht |
+| stealth field / sonar stealth field | Tarnkappenfeld / Sonar-Tarnkappenfeld |
+| regeneration aura / mends (other units) / {rate} hit points a second | Regenerationsaura / regeneriert / {rate} Lebenspunkte pro Sekunde |
+| minimum range / Fires no nearer than {range} | Mindestreichweite / Mindestreichweite {range} (as "Reichweite {range}") |
+| stun / Stuns for {secs} s / TA's paralyzers (paralyzer=1) | Lähmung / Lähmt für {secs} s / lähmende Waffe nach Art von TA |
+| the mod keys in findings | bare, or feminine where an article is needed: eine minrange, eine paralyzetime |
