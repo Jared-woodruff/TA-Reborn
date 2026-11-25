@@ -27,10 +27,12 @@ pub enum CursorKind {
     Revive,
     Load,
     Unload,
+    /// Remote viewing's: TA's teleport swirl.
+    View,
 }
 
 impl CursorKind {
-    const ALL: [CursorKind; 13] = [
+    const ALL: [CursorKind; 14] = [
         CursorKind::Normal,
         CursorKind::Select,
         CursorKind::Move,
@@ -44,6 +46,7 @@ impl CursorKind {
         CursorKind::Revive,
         CursorKind::Load,
         CursorKind::Unload,
+        CursorKind::View,
     ];
 
     fn gaf_name(self) -> &'static str {
@@ -61,6 +64,7 @@ impl CursorKind {
             CursorKind::Revive => "cursorrevive",
             CursorKind::Load => "cursorload",
             CursorKind::Unload => "cursorunload",
+            CursorKind::View => "cursorteleport",
         }
     }
 }

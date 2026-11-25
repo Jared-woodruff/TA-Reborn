@@ -109,7 +109,8 @@
 //!                            #   upgrade (into the next step of its type's `UpgradesTo`, or
 //!                            #   `type`; a label follows the unit it becomes), enhance (installs
 //!                            #   the enhancement `type`, by its id or name, what it needs first
-//!                            #   before it)
+//!                            #   before it), toggle, untoggle (its weapon toggle on and off:
+//!                            #   `[TOGGLE]`), remote_view (views the place `at` from afar)
 //! at = [1900, 1200]          # where: world px, or rel = [dx, dz] from the middle of the map,
 //!                            #   or by = [dx, dz] from where each unit stands (move, fight,
 //!                            #   patrol, build, attack and dgun on the ground)
@@ -578,6 +579,15 @@ pub enum Action {
     Upgrade,
     /// The enhancement `type` installed (`Order::Enhance`; its prerequisite first where missing).
     Enhance,
+    /// Its weapon toggle switched on (`Command::SetToggle`: its `[TOGGLE]`'s weapons).
+    #[serde(alias = "toggle_on")]
+    Toggle,
+    /// Its weapon toggle switched off (its own weapons again).
+    #[serde(alias = "toggle_off")]
+    Untoggle,
+    /// A place viewed from afar (`Order::RemoteView`: remote viewing).
+    #[serde(alias = "view")]
+    RemoteView,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1077,6 +1087,8 @@ impl Stage {
                 Action::Produce => o.kind.is_some() && !placed && o.target.is_none(),
                 Action::Upgrade => !placed && o.target.is_none(),
                 Action::Enhance => o.kind.is_some() && !placed && o.target.is_none(),
+                Action::Toggle | Action::Untoggle => !placed && o.target.is_none(),
+                Action::RemoteView => placed && o.target.is_none(),
             };
             if !ok {
                 bail!(
@@ -1091,6 +1103,8 @@ impl Stage {
                         Action::Produce => "needs a `type` (no place or target)",
                         Action::Upgrade => "takes no place or target (a `type` at most)",
                         Action::Enhance => "needs a `type`, the enhancement (no place or target)",
+                        Action::Toggle | Action::Untoggle => "takes no place or target",
+                        Action::RemoteView => "needs a place (`at`, `rel` or `by`), no target",
                     }
                 );
             }
@@ -2148,6 +2162,13 @@ impl StageRun {
                 }
                 Vec::new()
             }
+            Action::Toggle | Action::Untoggle => {
+                for (owner, ids) in by_owner(sim, &units) {
+                    self.send(tick, Command::SetToggle { player: owner, units: ids, on: o.action == Action::Toggle }, sim);
+                }
+                Vec::new()
+            }
+            Action::RemoteView => each(&|k| Order::RemoteView(fx_point(goals[k]))),
             Action::Upgrade => {
                 let to = o.kind.as_deref().and_then(|k| sim.types.id(k));
                 units.iter().filter_map(|&id| Some((id, Order::Upgrade(to.or_else(|| sim.unit(id).and_then(|u| sim.next_upgrade(u)))?)))).collect()

@@ -14,6 +14,7 @@ pub mod feature;
 pub mod font;
 pub mod map;
 pub mod mission;
+pub mod toggle;
 pub mod unit;
 pub mod weapon;
 pub mod validation;
@@ -32,6 +33,7 @@ pub use adjacency::{AdjacencyAffect, AdjacencyDef};
 pub use enhancement::EnhancementDef;
 pub use feature::FeatureDef;
 pub use map::MapInfo;
+pub use toggle::ToggleDef;
 pub use unit::{ExitDef, UnitDef};
 pub use weapon::{RenderType, STRATEGIC_CLASS, WeaponDef};
 

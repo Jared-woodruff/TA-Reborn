@@ -118,6 +118,10 @@ pub enum Order {
     /// upgrade is built, in its slot in place of the one there; removed, at once, for nothing
     /// (see `sim/enhance.rs`).
     Enhance { index: u16, remove: bool },
+    /// See round a place from afar (a unit with remote viewing, `RemoteViewRadius`: the Aeon's Eye
+    /// of Rhianne), as long as the order stands and it pays its `RemoteViewEnergy` (see
+    /// `sim/remote_view.rs`). (After `Enhance`: records keep the earlier variants' numbers.)
+    RemoteView(FxVec3),
 }
 
 /// What a unit builds on itself: the type it is becoming ([`Order::Upgrade`]), or an enhancement
@@ -149,6 +153,14 @@ pub struct Boost {
     /// Its cloak, as `UnitType`'s def gives one (energy a second, on the move, seen within).
     pub cloak: Option<(Fx, Fx, Fx)>,
     pub stealth: bool,
+    /// Its jamming, stealth fields, remote viewing and aura: its type's, and the widest and
+    /// strongest its enhancements give (`crate::defs::Abilities`, no toggle).
+    pub abilities: crate::defs::Abilities,
+    /// What it makes a tick (its type's and its enhancements'), and its enhancements' upkeep a
+    /// tick, paid while they are installed.
+    pub metal_make: Fx,
+    pub energy_make: Fx,
+    pub upkeep: Fx,
 }
 
 /// What the buildings of its player beside a building give it (Supreme Commander's adjacency:
@@ -535,6 +547,11 @@ pub struct Unit {
     /// The way to turn to once it stands (its formation's, on arriving; for units that turn
     /// standing).
     pub face: Option<i32>,
+    /// Its weapon toggle is on (`[TOGGLE]`, `Command::SetToggle`): its slots are the toggle's
+    /// (`sim/toggle.rs`).
+    pub toggled: bool,
+    /// The place it views from afar this tick (`Order::RemoteView`, paid for: `sim/remote_view.rs`).
+    pub remote_view: Option<FxVec3>,
 }
 
 /// A unit's own random numbers: from the game's `seed` and its id.
@@ -669,6 +686,8 @@ impl Unit {
             rng: unit_rng(0, id),
             formations: Vec::new(),
             face: None,
+            toggled: false,
+            remote_view: None,
         }
     }
 }
@@ -767,6 +786,31 @@ impl Unit {
     #[inline]
     pub fn stealthy(&self, t: &UnitType) -> bool {
         self.boost.as_ref().map_or(t.def.stealth, |b| b.stealth)
+    }
+
+    /// Its abilities beyond TA's (jamming, stealth fields, remote viewing, its aura): its type's,
+    /// with its enhancements'.
+    #[inline]
+    pub fn abilities<'a>(&'a self, t: &'a UnitType) -> &'a crate::defs::Abilities {
+        self.boost.as_ref().map_or(&t.abilities, |b| &b.abilities)
+    }
+
+    /// What it makes a tick, its type's with its enhancements' (Supreme Commander's resource
+    /// allocation).
+    #[inline]
+    pub fn metal_make(&self, t: &UnitType) -> Fx {
+        self.boost.as_ref().map_or(t.metal_make, |b| b.metal_make)
+    }
+
+    #[inline]
+    pub fn energy_make(&self, t: &UnitType) -> Fx {
+        self.boost.as_ref().map_or(t.energy_make, |b| b.energy_make)
+    }
+
+    /// What its enhancements take a tick while they are installed (none without).
+    #[inline]
+    pub fn enhancement_upkeep(&self) -> Fx {
+        self.boost.as_ref().map_or(Fx::ZERO, |b| b.upkeep)
     }
 
     /// What one of its figures is multiplied by for the buildings beside it ([`Adjacency::factor`]);

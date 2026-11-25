@@ -69,4 +69,6 @@ pub enum SimEvent {
     UnitUpgraded { from: UnitId, to: UnitId, type_id: usize },
     /// A unit installed (`on`) or took out its type's enhancement `index`.
     UnitEnhanced { id: UnitId, index: u16, on: bool },
+    /// A unit's weapon toggle switched on (its `[TOGGLE]`'s weapons) or off (its own).
+    UnitToggled { id: UnitId, on: bool },
 }

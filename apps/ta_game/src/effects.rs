@@ -1343,6 +1343,11 @@ impl Effects {
                     self.nuclear_blast(p, radius, now);
                     self.nuke_particles(p, radius, ground);
                 }
+                // TA Reborn's stun where its shot goes off (`paralyzetime`): a pulse as wide as it
+                // reaches.
+                if let Some(stun) = w.stun.filter(|s| !s.on_fire) {
+                    self.emp_pulse(p, stun.radius.map_or(radius, |r| r.to_f32()).max(24.0), now);
+                }
                 self.weapon_shake(w, p);
                 let (light_radius, light_life) = ((radius * 3.0).clamp(50.0, 240.0), if big { 0.5 } else { 0.25 });
                 let heat = if *water { [1.2, 1.4, 1.6] } else if tint == [1.0, 0.62, 0.3] { [1.7, 0.72, 0.2] } else { tint.map(|c| c * 1.7) };
@@ -1400,6 +1405,10 @@ impl Effects {
             SimEvent::WeaponFired { weapon, pos, target, .. } => {
                 let w = &sim.weapon_types.types[*weapon];
                 let p = Vec3::from_array(pos.to_f32());
+                // A stun round its unit as it fires (`paralyzeonfire`: the Chrono Dampener's pulse).
+                if let Some(stun) = w.stun.filter(|s| s.on_fire) {
+                    self.emp_pulse(p, stun.radius.unwrap_or(w.aoe_radius).to_f32().max(24.0), now);
+                }
                 if matches!(w.def.render_type, RenderType::Shell | RenderType::Point | RenderType::Disintegrator) {
                     let big = matches!(w.def.render_type, RenderType::Disintegrator) || w.aoe_radius.to_f32() >= 30.0;
                     self.muzzle_particles(p, Vec3::from_array(target.to_f32()), big);

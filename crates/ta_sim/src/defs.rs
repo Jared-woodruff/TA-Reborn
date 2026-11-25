@@ -101,6 +101,8 @@ pub struct Callins {
     /// Told an enhancement installed or removed (`SetEnhancement(index, on)`: TA Reborn's own, for
     /// the parts it shows).
     pub set_enhancement: bool,
+    /// Told its weapon toggle switched on or off (`SetToggle(on)`: TA Reborn's own).
+    pub set_toggle: bool,
     /// The names its script gives its weapons' functions, by slot and [`WeaponFunction`]: TA's
     /// (`AimPrimary`) or Spring's (`AimWeapon1`), whichever it defines (TA's where neither).
     pub weapon_functions: [[&'static str; 4]; MAX_WEAPONS],
@@ -124,6 +126,7 @@ impl Callins {
             target_cleared: has("TargetCleared"),
             query_nano_piece: has("QueryNanoPiece"),
             set_enhancement: has("SetEnhancement"),
+            set_toggle: has("SetToggle"),
         }
     }
 }
@@ -308,6 +311,114 @@ pub struct UnitType {
     pub adjacency: Vec<AdjacencyBonus>,
     /// Its size class for what it takes of them (`AdjacencySize`; 0: none).
     pub adjacency_size: u32,
+    /// TA Reborn's abilities, compiled (docs/MODDING.md, "Abilities"; played by `sim/toggle.rs`,
+    /// `sim/remote_view.rs`, `sim/aura.rs` and the vision grid): its weapon toggle, jamming and
+    /// stealth fields, remote viewing and regeneration aura. None of them on TA's units but
+    /// jamming (`RadarDistanceJam`, `SonarDistanceJam`).
+    pub abilities: Abilities,
+}
+
+/// A unit type's abilities beyond TA's (`UnitDef`'s keys: docs/MODDING.md), compiled.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Abilities {
+    /// Its weapon toggle (`[TOGGLE]`): each slot while it is on.
+    pub toggle: Option<Toggle>,
+    /// TA's jamming and TA Reborn's stealth fields, whole pixels as the vision grid stamps them
+    /// (`RadarDistanceJam`, `SonarDistanceJam`, `RadarStealthField`, `SonarStealthField`).
+    pub radar_jam: i64,
+    pub sonar_jam: i64,
+    pub radar_field: i64,
+    pub sonar_field: i64,
+    /// Remote viewing: its reach (px) and the energy it takes a tick while it views.
+    pub remote_view: Option<RemoteView>,
+    /// Its regeneration aura.
+    pub aura: Option<Aura>,
+}
+
+/// A weapon toggle (`ta_data::ToggleDef`), compiled: each slot while it is on (none: the unit's
+/// own; `Some(None)`: empty; else that weapon), and whether one of those builds missiles.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Toggle {
+    pub weapons: [Option<Option<usize>>; MAX_WEAPONS],
+    pub stockpile: bool,
+}
+
+impl Toggle {
+    /// The slots of a unit whose own (or enhanced) slots are `slots`, with this toggle on.
+    pub fn apply(&self, slots: &mut [Option<usize>; MAX_WEAPONS]) {
+        for (slot, w) in slots.iter_mut().zip(&self.weapons) {
+            if let Some(w) = w {
+                *slot = *w;
+            }
+        }
+    }
+}
+
+/// Remote viewing (`RemoteViewRadius`, `RemoteViewEnergy`), compiled.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RemoteView {
+    pub radius: Fx,
+    /// Energy a tick while it views.
+    pub energy: Fx,
+}
+
+/// A regeneration aura (`RegenAuraRadius`, `RegenAuraRate`, `RegenAuraShare`), compiled: it mends
+/// its side's other finished units within `radius` by `rate` hit points a second, or by `share` of
+/// their most health a second (no more than `rate` where both are given).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Aura {
+    pub radius: Fx,
+    pub rate: Fx,
+    pub share: Fx,
+}
+
+impl Aura {
+    fn of(radius: f64, rate: f64, share: f64) -> Option<Aura> {
+        (radius > 0.0 && (rate > 0.0 || share > 0.0)).then(|| Aura { radius: Fx::from_f64(radius), rate: Fx::from_f64(rate), share: Fx::from_f64(share) })
+    }
+
+    /// What it mends a second on a unit of `most` health: its rate, or its share of `most` (up to
+    /// the rate, where both are given).
+    pub fn mends(&self, most: Fx) -> Fx {
+        match (self.share > Fx::ZERO, self.rate > Fx::ZERO) {
+            (true, true) => (most * self.share).min(self.rate),
+            (true, false) => most * self.share,
+            _ => self.rate,
+        }
+    }
+
+    /// The stronger of two (the one mending more on a unit of `most`), the wider of equals.
+    pub fn stronger(a: Option<Aura>, b: Option<Aura>, most: Fx) -> Option<Aura> {
+        match (a, b) {
+            (Some(a), Some(b)) => Some(if (b.mends(most), b.radius) > (a.mends(most), a.radius) { b } else { a }),
+            (a, b) => a.or(b),
+        }
+    }
+}
+
+impl Abilities {
+    fn of(u: &UnitDef, data: &GameData) -> Abilities {
+        let toggle = u.toggle.as_ref().map(|t| {
+            let weapons: [Option<Option<usize>>; MAX_WEAPONS] = std::array::from_fn(|k| match t.weapons[k].as_deref() {
+                None => None,
+                Some("") => Some(None),
+                // (A name no weapon has changes nothing: the mod check tells it.)
+                Some(name) => data.weapon_id(name).map(Some),
+            });
+            let stockpile = weapons.iter().flatten().flatten().any(|&w| data.weapons[w].stockpile);
+            Toggle { weapons, stockpile }
+        });
+        Abilities {
+            toggle: toggle.filter(|t| t.weapons.iter().any(Option::is_some)),
+            // (Whole pixels, as TA's jamming always was: `as i64` of its file's number.)
+            radar_jam: u.radar_jam as i64,
+            sonar_jam: u.sonar_jam as i64,
+            radar_field: u.radar_stealth_field as i64,
+            sonar_field: u.sonar_stealth_field as i64,
+            remote_view: (u.remote_view_radius > 0.0).then(|| RemoteView { radius: Fx::from_f64(u.remote_view_radius), energy: per_tick(u.remote_view_energy) }),
+            aura: Aura::of(u.regen_aura_radius, u.regen_aura_rate, u.regen_aura_share),
+        }
+    }
 }
 
 /// One of a factory's ways out (`ta_data::ExitDef`), compiled: where it leads (pixels from the
@@ -377,6 +488,13 @@ pub struct Enhancement {
     /// near an enemy sees through it.
     pub cloak: Option<(Fx, Fx, Fx)>,
     pub stealth: bool,
+    /// What TA Reborn's abilities it gives (its jamming, fields, remote viewing and aura: the
+    /// widest and strongest of the unit's and its enhancements' count; no toggle).
+    pub abilities: Abilities,
+    /// What it makes and takes a tick while installed (its upkeep paid whatever the unit's switch).
+    pub metal_make: Fx,
+    pub energy_make: Fx,
+    pub upkeep: Fx,
 }
 
 /// A type's enhancements compiled (with the names of the slots they take).
@@ -413,6 +531,18 @@ fn compile_enhancements(u: &UnitDef, data: &GameData) -> (Vec<Enhancement>, Vec<
                 stockpile: weapons.iter().flatten().any(|&w| data.weapons[w].stockpile),
                 cloak: e.cloaks().then(|| (Fx::from_f64(e.cloak_cost), Fx::from_f64(e.cloak_cost_moving.max(e.cloak_cost)), Fx::from_f64(e.min_cloak_distance.max(8.0)))),
                 stealth: e.stealth,
+                abilities: Abilities {
+                    toggle: None,
+                    radar_jam: e.radar_jam as i64,
+                    sonar_jam: e.sonar_jam as i64,
+                    radar_field: e.radar_stealth_field as i64,
+                    sonar_field: e.sonar_stealth_field as i64,
+                    remote_view: (e.remote_view_radius > 0.0).then(|| RemoteView { radius: Fx::from_f64(e.remote_view_radius), energy: per_tick(e.remote_view_energy) }),
+                    aura: Aura::of(e.regen_aura_radius, e.regen_aura_rate, e.regen_aura_share),
+                },
+                metal_make: per_tick(e.metal_make),
+                energy_make: per_tick(e.energy_make),
+                upkeep: per_tick(e.energy_use),
             }
         })
         .collect();
@@ -508,6 +638,9 @@ pub struct UnitTypes {
     /// Whether any type gives the buildings beside it a bonus ([`UnitType::adjacency`]): without,
     /// nothing of adjacency runs (TA's own games).
     pub(crate) adjacency: bool,
+    /// Whether any type (or enhancement) has a regeneration aura ([`Abilities::aura`]): without,
+    /// none is looked for (TA's own games).
+    pub(crate) auras: bool,
     by_name: FxHashMap<String, usize>,
     /// Upper-case `Category` token → its number in a [`CategorySet`].
     categories: FxHashMap<String, usize>,
@@ -517,13 +650,7 @@ impl UnitTypes {
     /// Compiles every unit type. `load` reads a VFS path (models and scripts).
     pub fn compile(data: &GameData, load: &dyn Fn(&str) -> Option<Vec<u8>>) -> UnitTypes {
         // Category tokens get numbers in the order they first appear.
-        let mut categories: FxHashMap<String, usize> = FxHashMap::default();
-        for u in &data.units {
-            for tok in u.category.split_whitespace() {
-                let next = categories.len();
-                categories.entry(tok.to_ascii_uppercase()).or_insert(next);
-            }
-        }
+        let categories = category_numbers(data);
         if categories.len() > CategorySet::CAPACITY {
             log::warn!(
                 "the units name {} category tokens; only the first {} count for targeting (BadTargetCategory)",
@@ -671,6 +798,7 @@ impl UnitTypes {
                     })
                     .collect(),
                 adjacency_size: u.adjacency_size,
+                abilities: Abilities::of(u, data),
                 def: u.clone(),
             });
         }
@@ -682,7 +810,9 @@ impl UnitTypes {
         // (A unit mends itself by its type's `HealTime`, or by an enhancement's `HealRate`.)
         let heals = types.iter().any(|t| t.heal_ticks > 0 || t.enhancements.iter().any(|e| e.heal_rate > Fx::ZERO));
         let adjacency = types.iter().any(|t| !t.adjacency.is_empty());
-        UnitTypes { types, by_name, categories, airbase_reach, collision_reach, target_reach, heals, adjacency }
+        // (A regeneration aura, a unit's or an enhancement's: without, none is looked for.)
+        let auras = types.iter().any(|t| t.abilities.aura.is_some() || t.enhancements.iter().any(|e| e.abilities.aura.is_some()));
+        UnitTypes { types, by_name, categories, airbase_reach, collision_reach, target_reach, heals, adjacency, auras }
     }
 
     pub fn get(&self, id: usize) -> &UnitType {
@@ -725,6 +855,19 @@ impl UnitTypes {
     pub fn id(&self, name: &str) -> Option<usize> {
         self.by_name.get(&name.to_ascii_uppercase()).copied()
     }
+}
+
+/// Every `Category` token of the game data's units (upper case), numbered as it first appears:
+/// its bit in a [`CategorySet`]. (Unit and weapon types alike number them so.)
+fn category_numbers(data: &GameData) -> FxHashMap<String, usize> {
+    let mut categories: FxHashMap<String, usize> = FxHashMap::default();
+    for u in &data.units {
+        for tok in u.category.split_whitespace() {
+            let next = categories.len();
+            categories.entry(tok.to_ascii_uppercase()).or_insert(next);
+        }
+    }
+    categories
 }
 
 /// The set of the `Category`-style tokens in `list` (unknown tokens, and those past the
@@ -824,7 +967,23 @@ pub struct WeaponType {
     pub vlaunch: bool,
     pub paralyzer: bool,
     pub line_of_sight: bool,
+    /// The nearest it fires (`minrange`, px across the ground from its unit to the target): 0, as
+    /// near as it likes (TA's own).
+    pub min_range: Fx,
+    /// Its stun (`paralyzetime`), compiled: none for TA's weapons.
+    pub stun: Option<Stun>,
     pub def: ta_data::WeaponDef,
+}
+
+/// A weapon's stun (`paralyzetime`, `paralyzeradius`, `paralyzeonfire`, `paralyzeexempt`),
+/// compiled: how long, how far round where it goes off (none: its blast's), whether it goes off
+/// round its unit as it fires, and the categories it spares.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Stun {
+    pub ticks: u64,
+    pub radius: Option<Fx>,
+    pub on_fire: bool,
+    pub exempt: CategorySet,
 }
 
 impl WeaponType {
@@ -976,6 +1135,8 @@ fn lift_bad_targets_of_everything(types: &mut [UnitType], data: &GameData) {
 impl WeaponTypes {
     pub fn compile(data: &GameData) -> WeaponTypes {
         let tps = TICKS_PER_SECOND as f64;
+        // (The units' categories, numbered as the unit types number them: whom a stun spares.)
+        let categories = category_numbers(data);
         let types = data
             .weapons
             .iter()
@@ -1034,6 +1195,13 @@ impl WeaponTypes {
                     vlaunch: w.vlaunch,
                     paralyzer: w.paralyzer,
                     line_of_sight: w.line_of_sight,
+                    min_range: Fx::from_f64(w.min_range.min(1.0e9)),
+                    stun: w.stuns().then(|| Stun {
+                        ticks: ((w.paralyze_time.min(3600.0) * tps).round() as u64).max(1),
+                        radius: (w.paralyze_radius > 0.0).then(|| Fx::from_f64(w.paralyze_radius.min(1.0e6))),
+                        on_fire: w.paralyze_on_fire,
+                        exempt: token_set(&categories, &w.paralyze_exempt),
+                    }),
                     def: w.clone(),
                 }
             })

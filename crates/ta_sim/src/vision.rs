@@ -22,6 +22,11 @@ pub const RADAR_JAM: u8 = 8;
 pub const SONAR_JAM: u8 = 16;
 /// Ever been in line of sight (sticky).
 pub const EXPLORED: u8 = 32;
+/// TA Reborn's stealth fields (`RadarStealthField`, `SonarStealthField`), stamped for their
+/// owner's side as jamming is: its units under them are hidden from enemy radar (sonar) as
+/// `Stealth=1` hides one (`Sim::seen_by`). Missiles are not.
+pub const RADAR_STEALTH: u8 = 64;
+pub const SONAR_STEALTH: u8 = 128;
 
 /// How a unit appears to a player.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

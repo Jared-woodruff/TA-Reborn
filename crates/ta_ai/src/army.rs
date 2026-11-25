@@ -601,7 +601,7 @@ impl SkirmishAi {
         let towers: i64 = self
             .enemy_buildings
             .iter()
-            .filter(|(_, p, t)| self.info[*t].role == Role::Defense && p.within_xz(pos, fx(self.info[*t].range.max(200) + 96)))
+            .filter(|(_, p, t)| self.info[*t].role == Role::Defense && self.info[*t].guards(*p, pos))
             .map(|(_, _, t)| self.info[*t].cost)
             .sum();
         units + towers
@@ -613,7 +613,7 @@ impl SkirmishAi {
         let towers: i64 = self
             .enemy_buildings
             .iter()
-            .filter(|(_, p, t)| self.info[*t].role == Role::Defense && p.within_xz(pos, fx(self.info[*t].range.max(200) + 96)))
+            .filter(|(_, p, t)| self.info[*t].role == Role::Defense && self.info[*t].guards(*p, pos))
             .map(|(_, _, t)| self.info[*t].cost)
             .sum();
         towers + self.threat.at(pos)
@@ -1194,7 +1194,8 @@ impl SkirmishAi {
                 && sim.seen_by(u, me) == Seen::Visible)
                 .filter_map(|u| covers(u.type_id).map(|(r, unstocked)| (u.pos, r, unstocked))))
             .collect();
-        let candidates: Vec<FxVec3> = self.enemy_buildings.iter().map(|b| b.1).filter(|p| p.within_xz(from, range)).collect();
+        // (Past its minimum range, where it has one: Forged Alliance's missile submarines'.)
+        let candidates: Vec<FxVec3> = self.enemy_buildings.iter().map(|b| b.1).filter(|p| p.within_xz(from, range) && (weapon.min_range <= Fx::ZERO || !p.within_xz(from, weapon.min_range))).collect();
         let step = (candidates.len() / 120).max(1);
         let hit = aoe * 6 / 10;
         let mut best_ok: Option<(i64, FxVec3, u32)> = None;

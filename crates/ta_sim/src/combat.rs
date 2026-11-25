@@ -20,6 +20,7 @@ use crate::unit::{Order, Target, Unit, UnitId, piece_world_position, player_bit}
 use crate::world::{CELL, Occupant, World};
 
 mod projectiles;
+mod stun;
 
 #[cfg(test)]
 mod launch_tests;
@@ -560,9 +561,10 @@ impl Sim {
         // reload and burst timers run down (as below, for most units on most ticks).
         let looking = fire_state >= 2 && (self.tick + id.slot as u64).is_multiple_of(RETARGET_TICKS);
         if forced.is_none() && !looking && u.weapons.iter().all(|ws| ws.target.is_none()) {
-            let armed = slots;
+            // (Every slot's: an empty one's too, whose weapon a toggle or an enhancement took out
+            // with its reload running, which goes on running for its return.)
             if let Some(u) = self.unit_mut(id) {
-                for (ws, _) in u.weapons.iter_mut().zip(armed).filter(|(_, w)| w.is_some()) {
+                for ws in u.weapons.iter_mut() {
                     ws.reload = ws.reload.saturating_sub(1);
                     ws.burst_timer = ws.burst_timer.saturating_sub(1);
                 }
@@ -592,9 +594,11 @@ impl Sim {
         #[allow(clippy::needless_range_loop)]
         for slot in 0..MAX_WEAPONS {
             let Some(wid) = slots[slot] else {
-                // No weapon here: nothing may hold a target in this slot.
+                // No weapon here: nothing may hold a target in this slot. (Its reload runs on, for
+                // the weapon a toggle or an enhancement put back.)
                 if let Some(u) = self.unit_mut(id) {
                     u.retarget(slot, None);
+                    u.weapons[slot].reload = u.weapons[slot].reload.saturating_sub(1);
                 }
                 continue;
             };
@@ -681,6 +685,19 @@ impl Sim {
                 }
                 continue;
             };
+            // Nearer than its minimum range (`minrange`): it does not fire. An automatic target is
+            // passed over for a while, for one it can fire on; an ordered one waits for the unit to
+            // back off (`update_attack_order`).
+            if self.unit(id).is_some_and(|u| self.too_near(u, w, target)) {
+                if forced != Some(target) && let Target::Unit(tid) = target {
+                    let until = self.tick + BLOCKED_TICKS;
+                    if let Some(u) = self.unit_mut(id) {
+                        u.weapons[slot].blocked = Some((tid, until));
+                        u.retarget(slot, None);
+                    }
+                }
+                continue;
+            }
             let from = self.aim_from_point(id, slot);
             let dist = from.distance_xz(tp);
             let reach = w.range + self.target_radius(target);
@@ -800,7 +817,13 @@ impl Sim {
         let pulled = control.pull.is_some_and(|until| self.tick < until);
         let mut fired = false;
         for slot in 0..MAX_WEAPONS {
-            let Some(weapon) = slots[slot] else { continue };
+            // (An empty slot's reload runs on too, for the weapon a toggle puts back.)
+            let Some(weapon) = slots[slot] else {
+                if let Some(unit) = self.unit_mut(id) {
+                    unit.weapons[slot].reload = unit.weapons[slot].reload.saturating_sub(1);
+                }
+                continue;
+            };
             let weapon = weapons.get(weapon);
             if let Some(unit) = self.unit_mut(id) {
                 let state = &mut unit.weapons[slot];
@@ -820,6 +843,8 @@ impl Sim {
                     (Target::Ground(point), point, pitch, self.takes_order(ty, slot, weapon, Target::Ground(point), owner))
                 }
             };
+            // (Not at what is nearer than its minimum range.)
+            let takes = takes && (weapon.min_range <= Fx::ZERO || from.distance_xz(point) >= weapon.min_range);
             let heading = if assisted.is_some() { wrap_angle(heading_of(point - from) - body_heading) } else { heading };
             if control.aim_piece.is_none() && slots.iter().position(Option::is_some) == Some(slot) {
                 let query = weapon_function(ty, WeaponFunction::Query, slot);
@@ -869,7 +894,7 @@ impl Sim {
             let Some(point) = self.weapon_target_point(weapon, target) else { continue };
             let to = point - from;
             let radius = hit_sphere(unit, self).1;
-            if to.length_xz() > weapon.range + radius { continue; }
+            if to.length_xz() > weapon.range + radius || to.length_xz() < weapon.min_range { continue; }
             let along = to.dot(direction);
             if along <= Fx::ZERO || best.is_some_and(|(nearest, id, ..)| (along, unit.id) >= (nearest, id)) { continue; }
             let tolerance = radius + Fx::from_int(12) + along / 128;
@@ -1155,7 +1180,23 @@ impl Sim {
     fn within_reach(&self, id: UnitId, w: &WeaponType, target: Target) -> bool {
         let Target::Unit(tid) = target else { return false };
         let (Some(u), Some(tu)) = (self.unit(id), self.unit(tid)) else { return false };
-        self.can_engage(w, tu) && u.pos.within_xz(tu.pos, w.range + Fx::from_int(48))
+        self.can_engage(w, tu) && u.pos.within_xz(tu.pos, w.range + Fx::from_int(48)) && !self.too_near(u, w, target)
+    }
+
+    /// Whether `target` is nearer `u` than its weapon `w`'s minimum range (`minrange`), across the
+    /// ground from where it stands to where the target is: it fires on nothing so near (Supreme
+    /// Commander's artillery and missiles). Never for a weapon without one (TA's own).
+    #[inline]
+    pub(crate) fn too_near(&self, u: &Unit, w: &WeaponType, target: Target) -> bool {
+        if w.min_range <= Fx::ZERO {
+            return false;
+        }
+        let to = match target {
+            Target::Unit(id) => self.unit(id).map(|t| t.pos),
+            Target::Ground(p) => Some(p),
+            Target::Projectile(_) => None,
+        };
+        to.is_some_and(|to| u.pos.distance_xz(to) < w.min_range)
     }
 
     /// Whether a unit's fire at will takes on what its side has on radar or sonar as well as what
@@ -1181,7 +1222,7 @@ impl Sim {
                 if tu.dead || tu.carried_by.is_some() || !self.is_enemy(u.owner, tu.owner) || seen == crate::vision::Seen::Hidden || seen == crate::vision::Seen::Radar && !self.fires_on_radar(u) {
                     return false;
                 }
-                self.can_engage(w, tu) && u.pos.within_xz(tu.pos, w.range + Fx::from_int(48))
+                self.can_engage(w, tu) && u.pos.within_xz(tu.pos, w.range + Fx::from_int(48)) && !self.too_near(u, w, t)
             }
         }
     }
@@ -1217,6 +1258,8 @@ impl Sim {
         }
         let ai = self.mission.is_some() && self.players.get(owner as usize).is_some_and(|p| p.ai);
         let shoot_all = self.players.get(owner as usize).is_some_and(|p| p.shoot_all);
+        // (Nothing nearer than its minimum range, measured as `Sim::too_near` does: none for most.)
+        let near = w.min_range.0.max(0) as i128;
         let mut best: Option<(bool, bool, bool, i128, UnitId)> = None;
         for &slot in &candidates {
             let Some(o) = self.units.get(slot as usize).and_then(|u| u.as_ref()) else { continue };
@@ -1225,7 +1268,7 @@ impl Sim {
             let ot = self.types.get(o.type_id);
             let d = (o.pos - pos).xz().length_sq_raw();
             let r = (reach + ot.radius).0 as i128;
-            if d > r * r || o.dead || o.carried_by.is_some() || !self.is_enemy(owner, o.owner) || self.no_auto_target.contains(&o.type_id) || skip == Some(o.id) || ai && self.ai_ignores(o.id) {
+            if d > r * r || d < near * near || o.dead || o.carried_by.is_some() || !self.is_enemy(owner, o.owner) || self.no_auto_target.contains(&o.type_id) || skip == Some(o.id) || ai && self.ai_ignores(o.id) {
                 continue;
             }
             let bad = !shoot_all && ot.category_mask.intersects(&bad_mask);
@@ -1603,6 +1646,12 @@ impl Sim {
             dead: false,
         });
         self.events.push(SimEvent::WeaponFired { unit: id, weapon: w.id, pos: muzzle, target: tp });
+        // A stun that goes off round its unit as it fires (`paralyzeonfire`: the Chrono Dampener).
+        if w.stun.is_some_and(|s| s.on_fire)
+            && let Some(at) = self.unit(id).map(|u| u.pos)
+        {
+            self.stun_round(w, at, id, Some(owner), None);
+        }
         // Firing gives a cloaked unit away for a moment.
         let tick = self.tick;
         if let Some(u) = self.unit_mut(id) && u.cloak_on {
@@ -1682,6 +1731,10 @@ impl Sim {
         }
         // Scorch/knock over trees and other destructible features.
         self.damage_features(pos, r, w.default_damage, w.def.fire_starter);
+        // TA Reborn's stun where the shot goes off (`paralyzetime`: none of TA's weapons).
+        if w.stun.is_some_and(|s| !s.on_fire) {
+            self.stun_round(w, pos, source, source_player, direct);
+        }
     }
 
     /// Paralyzer (EMP) hits stun instead of damaging. TA's damage figure is the stun time
@@ -2261,6 +2314,9 @@ impl Sim {
         let available = reaches.clone().filter(|&(_, w)| self.weapon_can_fire_from(u, w));
         let submerged_guns = reaches.clone().next().is_some() && available.clone().next().is_none();
         let firing = available.clone().filter(|&(s, w)| fires(s, w)).map(|(_, w)| self.weapon_reach(w, dy)).max().filter(|r| !r.is_zero());
+        // (Nearer than the minimum ranges of every weapon the order fires, `minrange`, it backs
+        // off: none for most, any one of them firing as near as it likes.)
+        let near = available.clone().filter(|&(s, w)| fires(s, w)).map(|(_, w)| w.min_range).min().unwrap_or(Fx::ZERO);
         let range = firing.or_else(|| available.map(|(_, w)| w.range).max()).unwrap_or(Fx::ZERO);
         if range.is_zero() && (t.def.kamikaze || submerged_guns) && t.locomotion != Locomotion::Static {
             // Crawling bombs approach for their proximity check. A submerged tank keeps
@@ -2281,6 +2337,10 @@ impl Sim {
             return;
         }
         let dist = u.pos.distance_xz(tp);
+        if near > Fx::ZERO && self.keep_off(id, tp, dist, near, range) {
+            return;
+        }
+        let Some(u) = self.unit(id) else { return };
         if dist > range * 9 / 10 {
             if u.path_goal.is_none() || u.stuck_ticks > 30 || self.tick % 30 == id.slot as u64 % 30 {
                 self.move_to_point(id, tp);
@@ -2288,5 +2348,31 @@ impl Sim {
         } else if u.path_goal.is_some() {
             self.halt(id);
         }
+    }
+
+    /// An attack order's unit `dist` from its target at `tp`, nearer than `near` (the minimum
+    /// range of the weapons the order fires) or backing off from it: it makes for the middle of its
+    /// band, halfway out to its `range` (looked at again every second, or once stuck), and stops
+    /// there. Whether it is backing off (else it closes, or stands, as with no minimum range).
+    fn keep_off(&mut self, id: UnitId, tp: FxVec3, dist: Fx, near: Fx, range: Fx) -> bool {
+        let Some(u) = self.unit(id) else { return false };
+        let middle = (near + range.max(near + Fx::from_int(32))) / 2;
+        let backing = u.path_goal.is_some_and(|g| g.distance_xz(tp) > dist + Fx::from_int(16));
+        if dist >= middle || dist >= near && !backing {
+            if backing {
+                self.halt(id);
+            }
+            return false;
+        }
+        if dist < near && (!backing || u.stuck_ticks > 30 || self.tick % 30 == id.slot as u64 % 30) {
+            // Straight away from the target (a unit standing on it, any way), within the map.
+            let away = (u.pos - tp).xz();
+            let length = away.length_xz();
+            let off = if length > Fx::ZERO { FxVec3::new(away.x * middle / length, Fx::ZERO, away.z * middle / length) } else { heading_vector(u.heading + 32768).scale(middle) };
+            let (w, h) = self.world.size_px();
+            let goal = tp + off;
+            self.move_to_point(id, FxVec3::new(goal.x.clamp(Fx::ZERO, w), goal.y, goal.z.clamp(Fx::ZERO, h)));
+        }
+        true
     }
 }

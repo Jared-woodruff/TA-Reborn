@@ -653,3 +653,23 @@ phrase: "{time} para criar"; the size takes "aproximadamente", so "cerca de" is 
 | the Supreme Commander imports / Not made: (a part's line) | as importações do Supreme Commander / Nada foi criado: (no gender to agree with) |
 | another mod of its id | outro mod com o mesmo identificador |
 | the dialog / a skirmish's setup | a janela / a preparação de uma escaramuça |
+
+## TA Reborn's own abilities (`game/abilities.rs`, `hud/abilities.rs`, `hud/deck.rs`, `hud_classic.rs`, `validation/abilities.rs`)
+
+Weapon toggle, remote viewing, stealth fields, regeneration auras, minimum ranges and stuns
+(Supreme Commander's and the mods'). Mod keys (`[TOGGLE]`, `RemoteViewRadius`, `paralyzetime`...)
+stay as written; the mod check's reference to a toggle's weapon is "{name} [TOGGLE] {key}" (as
+"{name} {key}").
+
+| English | pt-BR |
+|---|---|
+| weapon toggle / TOGGLE (classic short) | troca de armas ("Troca de armas: {name}") / TROCAR |
+| View from afar (order) / remote viewing / REMOTE VIEW, VIEW (classic) | Ver à distância / visão remota / VISÃO REMOTA, VER |
+| Viewing from afar (card) / Too short of energy to view from afar | Observando à distância / Energia insuficiente para ver à distância |
+| stealth field / sonar stealth field | campo de furtividade / campo de furtividade de sonar (as "Furtivo: não aparece no radar") |
+| its side's units (round it) | as unidades do mesmo lado (ao seu redor) |
+| regeneration aura / mends (its side's units) | aura de regeneração / repara |
+| hit points a second / {share}% of their health | de vida por segundo (as "Recupera {n} de vida por segundo") / {share}% da vida delas |
+| minimum range / Fires no nearer than {range} | alcance mínimo / Não dispara a menos de {range} |
+| stun / Stuns for {secs} s | paralisia, paralisar (as "Paralisado {secs} s") / Paralisa por {secs} s |
+| (a unit's file) gives (a key) / (a key) is not played | define / não tem efeito |

@@ -416,6 +416,10 @@ pub(crate) fn facts(ui: &mut egui::Ui, game: &Game, ty: &UnitType, unit: Option<
     if unit.map_or(d.stealth, |u| u.stealthy(ty)) {
         can.push(t("Stealthy: not on radar").to_string());
     }
+    // TA Reborn's abilities: stealth fields, remote viewing, an aura, a weapon toggle (`abilities`;
+    // a unit's with its enhancements', its jamming told above from its file).
+    can.extend(super::abilities::lines(unit.map_or(&ty.abilities, |u| u.abilities(ty)), false));
+    can.extend(super::abilities::toggle_line(ty));
     if d.on_offable {
         can.push(t("Switches on and off").to_string());
     }
@@ -586,6 +590,8 @@ impl WeaponBlock {
             let text = if w.def.stockpile { n("{n} metal per missile") } else { n("{n} metal a shot") };
             special.push(tf(text, &[("n", &format!("{:.0}", w.metal_per_shot.to_f32()))]));
         }
+        // (TA Reborn's: its minimum range, its stun.)
+        special.extend(super::abilities::weapon_lines(w));
         WeaponBlock { name, figures, per_second, special }
     }
 

@@ -720,3 +720,20 @@ A part of the import (the maps, the factions, the music, the menus' look) is 항
 | the maps / the factions / the music / the menus' look (in {parts}) | 맵 / 진영 / 음악 / 메뉴 스타일 |
 | In all: about {size} on the disk, and {time} to make | 모두 합쳐 디스크를 약 {size} 차지하며, 만드는 데 {time} 걸립니다 |
 | Waiting for your answer / Not made (a part's line) | 응답을 기다리는 중 / 만들지 않음 |
+
+## TA Reborn's own abilities (`game/abilities.rs`, `hud/abilities.rs`, `hud/deck.rs`, `validation/abilities.rs`)
+
+One word for remote viewing everywhere (the order, its buttons, the card, the mod check): 원격 정찰. A unit's
+own side round it, on its information page, is 아군 유닛, as unit descriptions say it. A weapon's name
+takes a noun before its particle ({name} 무기는, {name} 무기에).
+
+| English | 한국어 |
+|---|---|
+| weapon toggle / TOGGLE (classic button) / its other weapons, its own | 무기 전환 (as WEAPONS 무기) / 전환 / 다른 무기, 원래 무기 |
+| View from afar, remote viewing / REMOTE VIEW, VIEW (classic) / Viewing from afar | 원격 정찰 / 원격 정찰, 정찰 / 원격 정찰 중 |
+| for as long as its energy is paid | 에너지가 허락하는 한 |
+| stealth field / sonar stealth field | 스텔스 필드 / 소나 스텔스 필드 (as Stealthy 스텔스: 레이더에 잡히지 않음) |
+| regeneration aura / mends (the aura's units) | 회복 오라 / 회복 (as Mends {n} hit points a second 초당 체력 {n} 회복) |
+| {rate} hit points a second / {share}% of their health a second, {rate} at most | 초당 체력 {rate} / 초당 최대 체력의 {share}% ({rate}까지) |
+| minimum range / Fires no nearer than {range} | 최소 사거리 / 최소 사거리 {range} |
+| stun, stunned / Stuns for {secs} s / TA's paralyzers (paralyzer=1) | 마비 (as Paralyzed 마비됨) / {secs}초간 마비 / TA의 마비 무기 |

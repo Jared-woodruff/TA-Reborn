@@ -81,6 +81,9 @@ pub(crate) fn effects(game: &Game, ty: &UnitType, index: u16) -> Vec<String> {
     if e.stealth {
         out.push(t("Stealthy: not on radar").to_string());
     }
+    // TA Reborn's abilities: jamming, fields, remote viewing, an aura, what it makes and takes.
+    out.extend(super::abilities::lines(&e.abilities, true));
+    out.extend(super::abilities::production_lines(e));
     out
 }
 

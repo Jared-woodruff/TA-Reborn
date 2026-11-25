@@ -319,9 +319,10 @@ Each unit becomes a TA unit (`units/<id>.fbi`, `scripts/<id>.cob`; `ta_supcom::f
   make metal from energy while on; radar and sonar stations (and sonar platforms) switch on when
   built and pay their upkeep while on, as TA's do. A hydrocarbon plant stands on a vent (the
   converted maps put one at each hydrocarbon point), every cell of its yard map a `G`, as TA's
-  geothermal plants. Upkeep for what TA Reborn does not play yet (shields, the Fatboy's among
-  them, stealth fields, a unit's own stealth and cloak, jamming, remote viewing) is left out
-  with it: a stealthy unit is hidden from radar for nothing, as TA's are.
+  geothermal plants. A jammer's and a stealth field generator's upkeep is paid while it is on
+  (switchable, on once built), and remote viewing's while it views (Abilities, below). Upkeep for
+  what TA Reborn does not play yet (shields, the Fatboy's among them, a unit's own stealth and
+  cloak) is left out with it: a stealthy unit is hidden from radar for nothing, as TA's are.
 - **Weapons** (`weapons/supcom_<faction>.tdf`): up to eight slots, the most TA Reborn gives a
   unit (TA's three and five more: `Weapon4` to `Weapon8`). A commander's main gun goes first and
   its Overcharge second, as TA's D-gun (`commandfire`); otherwise the most damaging go first, an
@@ -331,7 +332,7 @@ Each unit becomes a TA unit (`units/<id>.fbi`, `scripts/<id>.cob`; `ta_supcom::f
   are left out; a death weapon is what the unit explodes as. Ranges × 32, muzzle velocities ×
   32 (a missile's its projectile's top speed), splash diameters twice the damage radius × 32
   (FA's blasts deal their damage evenly to their edge: flak's edge 0.9), a nuke's inner damage
-  over its outer radius. FA's minimum ranges are not TA's: a weapon fires as close as it likes.
+  over its outer radius. FA's minimum ranges are TA Reborn's (`minrange`, Abilities, below).
   Each looks and sounds as TA's weapons of its kind (lasers, shells, artillery, missiles,
   torpedoes, bombs, anti-air, the D-gun, nukes, anti-missiles), TA's own art.
 - **Firing** as FA's rules fire it (its `lua/sim/defaultweapons.lua`: `units::cycle`): each time
@@ -519,13 +520,17 @@ Each unit becomes a TA unit (`units/<id>.fbi`, `scripts/<id>.cob`; `ta_supcom::f
   its radius: a weapon of its own in the gun's slot, the Overcharge reaching as far), sight, an
   omni sensor's radius as radar and sonar, sonar, stealth and cloak the script switches on. The
   script shows the bones an enhancement's `ShowBones` names, and all under them, once it is
-  installed (`SetEnhancement`). 42 enhancements are played, on the four commanders (the UEF's 6, the
-  Cybran's 7, the Aeon's 5, the Seraphim's 7) and their support commanders (3, 6, 3 and 5). Left out, with what TA Reborn does not play
-  yet: shields (the personal ones and the bubbles), teleporting, drones and pods, resource
-  allocation, regeneration fields, the Sacrificial System, the EMP burst, the radar jammer, and the
-  Chrono Dampener (a weapon of a point a shot): one none of whose effects is played is not offered,
-  nor one needing such another. FA's "Remove" enhancements are TA Reborn's own removal (at once,
-  for nothing).
+  installed (`SetEnhancement`). And what TA Reborn's abilities make playable (Abilities, below):
+  the radar jammer (`NewJammerRadius`, at its upkeep), the resource allocation systems (what they
+  make, their own figures: the advanced system's are the whole, not added to the first's), the
+  regeneration auras, the EMP Burst (the gun its script gives its stun, a weapon of its own in the
+  gun's slot: installed beside the Disintegrator Amplifier, whichever of the two was installed last
+  fires) and the Chrono Dampener. 56 enhancements are played, on the four commanders (the UEF's 7,
+  the Cybran's 8, the Aeon's 8, the Seraphim's 11) and their support commanders (5, 8, 4 and 5).
+  Left out, with what TA Reborn does not play yet: shields (the personal ones and the bubbles),
+  teleporting, drones and pods and the Sacrificial System: one none of whose effects is played is
+  not offered, nor one needing such another. FA's "Remove" enhancements are TA Reborn's own removal
+  (at once, for nothing).
 - **Adjacency** (`crate::adjacency`; the unit file's `[ADJACENCY]` and `AdjacencySize`,
   docs/MODDING.md): what a structure gives the structures of its player beside it, as Forged
   Alliance's do, read when the factions are made from the player's own copy
@@ -563,6 +568,47 @@ Each unit becomes a TA unit (`units/<id>.fbi`, `scripts/<id>.cob`; `ta_supcom::f
   to artillery of size 4 alone (the tech 2 artillery and the Salvation), the tables naming no other
   size of it. Not played: the adjacency's effect beams (TA Reborn draws its own link across the
   seam, and the bonus in the hover card, the selection's details and on the information page).
+- **Abilities** (`factions::abilities`; TA Reborn's own, docs/MODDING.md, "Abilities"), from the
+  blueprints and the scripts (`crate::abilities`, read as data):
+  - **Minimum ranges**: a weapon's `MinRadius` ×32 (`minrange`), 64 weapons: the artillery (the tech
+    3 artillery's 150 ogrids, 4,800 px: on TA's smaller maps it reaches far but not near), the
+    tactical and strategic missiles (the subs' nukes, 4,096 px), the commanders' guns (an ogrid).
+    Not a missile defence's (TA Reborn's interceptors take what comes into their coverage), nor an
+    aircraft's (its bombs and passes come as near as its runs take it).
+  - **Weapon toggles** (`[TOGGLE]`): the weapons a unit's `OnScriptBitSet` switches on for its
+    weapon toggle's bit, in slots of their own after its own and its enhancements', those it
+    switches off emptied, each slot with its own targets: the Seraphim sniper bot's Sniper Gun
+    (XSL0305), the Cybran Sky Slammer's and Siren's Ground Gun (URL0104, URS0202), named after
+    the weapon's label. FA's sniper walks slower in sniper mode; here it walks on as fast.
+  - **Stealth fields and jamming**: `RadarStealthFieldRadius` and `SonarStealthFieldRadius` ×32
+    (`RadarStealthField`, `SonarStealthField`: the four stealth field generators, the Deceiver, the
+    Mermaid, the Cybran sonar platform), `JamRadius` (its table's `Max`) ×32 as TA's
+    `RadarDistanceJam` (the Thunderhead, the Sparky, the Wailer; the UEF support commander's by its
+    enhancement), where the script does not switch them off at birth, their upkeep paid while on.
+    Forged Alliance's jammers scatter false blips over the enemy's radar and hide nothing; TA
+    Reborn's, as TA's, hide what is near them (a frigate's 70 ogrids, 2,240 px).
+  - **Remote viewing**: `Intel.RemoteViewingRadius` ×32 (`RemoteViewRadius`) at its upkeep
+    (`RemoteViewEnergy`): the Eye of Rhianne (XAB3301) sees 800 px round any place for 5,000 energy
+    a second. Not the Seraphim commander's, whose script switches it off
+    (`DisableRemoteViewingButtons`). Its opening drain (`InitialRemoteViewingEnergyDrain`) is not
+    played.
+  - **Stuns**: a weapon's stun buff (`Buffs`, `BuffType = 'STUN'`) as `paralyzetime` (its
+    `Duration`), `paralyzeradius` (its `Radius` ×32; none, the unit hit alone), `paralyzeonfire`
+    (`OnFire`) and `paralyzeexempt` (what its `TargetAllow` and `TargetDisallow` leave out, in the
+    categories the factions' files carry: `STRUCTURE` for `MOBILE` alone, `LEVEL3` for `TECH3`,
+    `EXPERIMENTAL`, `COMMANDER` for `COMMAND`; the factions' structures and experimentals carry
+    `STRUCTURE` and `EXPERIMENTAL` for it): the Medusa's shells (3 s), the Shimmer's bombs (1.5 s),
+    the Dragon Fly's EMP cannon (2 s), the Cybran nukes (15 s, 3 s the sub's), the EMP Burst (6 s, a
+    gun its script switches its stun off at birth and the enhancement back on: `DisableBuff`,
+    `ReEnableBuff`), the Chrono Dampener (3.5 s round the commander every 5 s, at 200 energy a
+    pulse; a weapon of a point a shot, now played for its stun).
+  - **Regeneration auras**: an enhancement's `Radius` ×32 with `RegenPerSecond` (a share of each
+    unit's most health a second) and `RegenCeiling` (the most a second): the Seraphim commander's
+    Restoration Field (480 px, 0.56%, 75) and Rapid Restoration Field (800 px, 1.1%, 200). Forged
+    Alliance's mend the commander's own mobile units; TA Reborn's every unit of its side but itself.
+  - **Resource allocation**: an enhancement's `ProductionPerSecondMass` and
+    `ProductionPerSecondEnergy` as its `MetalMake` and `EnergyMake`: the commanders' systems (the
+    Aeon's 18 and 2,700, advanced 36 and 5,400).
 - **Sides:** `gamedata/sidedata_supcom.tdf` adds UEF, CYBRAN, AEON and SERAPHIM to the game's
   sides (a side add-on: docs/MODDING.md), each with its commander, drawn in Arm's panels (the UEF
   and the Aeon) or Core's (the Cybran and the Seraphim). They have no interface pages of their
@@ -671,10 +717,10 @@ engineering stations.
 
 Not yet in TA Reborn: Forged Alliance's own sounds and weapon effects (TA's of their kinds play),
 the Kennel's drone (the station works with its own beams), the adjacency's effect beams,
-shields, stealth fields and teleporting, and the enhancements that need them (and drones,
-resource allocation, regeneration fields); and, besides, jamming, remote viewing, a weapon's toggles (the sniper's second
-gun), FA's minimum ranges, factories that move and build within themselves, and air transports
-carrying more than one unit at a time.
+shields and teleporting, and the enhancements that need them (and drones, the Sacrificial
+System); its jammers' false blips (TA Reborn's jammers hide what is near them), the sniper bot's
+slower walk in sniper mode, the remote viewing's opening drain, factories that move and build
+within themselves, and air transports carrying more than one unit at a time.
 
 ## Animations (`.sca`, version 5)
 

@@ -1,6 +1,8 @@
 //! Enhancements (`Order::Enhance`: Supreme Commander's commanders'): the computer players'
 //! commanders take the engineering suites as their side climbs the tiers (their menus grow with
-//! what the suites bring), a weapon upgrade once the economy allows, and more health when rich.
+//! what the suites bring), a weapon upgrade once the economy allows, a resource allocation system
+//! (what it makes of its own) a little later, and more health (or an aura mending their army) when
+//! rich.
 //! One at a time, out of danger, into a slot that is empty or holds the one it builds on (never
 //! taking out another). TA's own commanders have none: nothing here happens in its games.
 
@@ -16,7 +18,9 @@ enum Want {
     /// It swaps a weapon for one that reaches farther, hits harder or fires faster, or arms an
     /// empty slot with one of its own (not a missile to build).
     Gun,
-    /// It adds health or mending, and nothing else wanted.
+    /// It makes metal or energy of its own (Supreme Commander's resource allocation).
+    Economy,
+    /// It adds health or mending, or an aura mending the units round it, and nothing else wanted.
     Armour,
 }
 
@@ -41,7 +45,10 @@ impl SkirmishAi {
         if better {
             return Some(Want::Gun);
         }
-        (e.max_health > Fx::ZERO || e.heal_rate > Fx::ZERO).then_some(Want::Armour)
+        if e.metal_make > Fx::ZERO || e.energy_make > Fx::ZERO {
+            return Some(Want::Economy);
+        }
+        (e.max_health > Fx::ZERO || e.heal_rate > Fx::ZERO || e.abilities.aura.is_some()).then_some(Want::Armour)
     }
 
     /// This think's enhancement for our commander, if one is due: standing at home, nothing else
@@ -76,6 +83,7 @@ impl SkirmishAi {
             let due = match want {
                 Want::Engineering => tech_economy && (!deeper || s.factory_tier >= 2 || rich || early),
                 Want::Gun => tech_economy && s.minutes >= self.p.tech_minute + if early { 0 } else { 2 },
+                Want::Economy => tech_economy && s.minutes >= self.p.tech_minute + 4,
                 Want::Armour => rich && s.minutes >= self.p.tech_minute + 6,
             };
             // Something to pay with: a part of its price banked, or an income for it (its energy
@@ -87,7 +95,8 @@ impl SkirmishAi {
             let rank = match want {
                 Want::Engineering => 0,
                 Want::Gun => 1,
-                Want::Armour => 2,
+                Want::Economy => 2,
+                Want::Armour => 3,
             };
             if best.is_none_or(|(r, i)| (rank, index) < (r, i)) {
                 best = Some((rank, index));

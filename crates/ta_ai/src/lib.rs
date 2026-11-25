@@ -36,6 +36,7 @@ mod info;
 mod map;
 mod navy;
 mod projects;
+mod toggle;
 mod transport;
 mod upgrade;
 
@@ -1310,6 +1311,7 @@ impl SkirmishAi {
         self.run_builders(sim, &s, &mut out);
         self.run_upgrades_in_place(sim, &s, &mut out);
         self.run_enhancements(sim, &s, &mut out);
+        self.run_toggles(sim, &s, &mut out);
         self.run_factories(sim, &s, &mut out);
         self.run_scouting(sim, &s, &mut out);
         self.run_army(sim, &s, &mut out);

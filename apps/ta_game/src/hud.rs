@@ -14,6 +14,7 @@ use crate::game::Game;
 use crate::hud_skin;
 use ta_ui::i18n::n;
 
+pub(crate) mod abilities;
 pub(crate) mod adjacency;
 pub(crate) mod anchors;
 mod cast;

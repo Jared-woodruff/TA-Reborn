@@ -726,3 +726,25 @@ with its name: "Rien n'a été créé : …". Straight apostrophes and no-break 
 | the dialog's tabs / the MAPS tab | les onglets de la fenêtre / l'onglet CARTES |
 | {time} to make (a card) / and {time} to make (the total) | {time} de création / et {time} pour tout créer |
 | on the Mods and Maps pages | sur les pages MODS et CARTES |
+
+## Les capacités de TA Reborn (`game/abilities.rs`, `hud/abilities.rs`, `hud/deck.rs`, `hud_classic.rs`, `validation/abilities.rs`)
+
+Remote viewing has a noun, vision à distance (the information page, the classic tooltip, the key
+binding's parenthesis, the mod check's overview), and a verb, observer à distance (the order's label,
+the card's status, the pointer hint, the findings). The classic buttons are VUE À DISTANCE and, short,
+VISION (VUE alone is sight, as "Vue +{n}"). Stuns are paralyser, as TA's paralysis (Paralysé,
+"Insensible à la paralysie"). The mod keys in the findings are masculine, as "un WorkerTime": un
+minrange, aucun paralyzetime, son paralyzetime. The HUD's strings keep straight apostrophes, the mod
+check's curly ’; all put a no-break space before : ; and %.
+
+| English | Français |
+|---|---|
+| weapon toggle / TOGGLE (the classic button when the toggle's own name does not fit) | changement d'armes / CHANGER |
+| its other weapons / its own (the toggle's tooltip) | ses autres armes / ses propres armes |
+| view from afar / remote viewing / REMOTE VIEW, VIEW | observer à distance / vision à distance / VUE À DISTANCE, VISION |
+| for as long as its energy is paid | tant que l'énergie le permet |
+| stealth field / sonar stealth field | champ de furtivité / champ de furtivité sonar |
+| its side's units (fields, auras) | les unités de son camp |
+| regeneration aura / mends (other units) / {rate} hit points a second | aura de régénération / régénère / {rate} de santé par seconde |
+| minimum range / Fires no nearer than {range} | portée minimale / Portée minimale {range} (as "Portée {range}") |
+| stun / Stuns for {secs} s / TA's paralyzers (paralyzer=1) | paralysie / Paralyse pendant {secs} s / arme paralysante au sens de TA |

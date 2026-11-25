@@ -17,6 +17,8 @@ use ta_vfs::Vfs;
 
 use crate::words::{en, enf, Fill, Words};
 
+mod abilities;
+
 /// Bumped whenever the checks change what they report, so cached reports are made again (5:
 /// WAV music not misplaced, a replaced definition's findings not the replacing mod's, a folder of
 /// unreadable archives an error; 6: the model textures' room counts only those the models paint
@@ -42,8 +44,10 @@ use crate::words::{en, enf, Fill, Words};
 /// working round it by itself with no build power (`unit.assist_patrol`); 21: a building whose
 /// build power only upgrades it in place (`UpgradesTo`, no `Builder`) asks its script for no
 /// nano-lathe (`script.builder`); 22: a side's art in the classic interface where its side data
-/// names it, its panels' GAF (`intgaf`) and its emblem (`logogaf`, `logo`)).
-pub const SCHEMA_VERSION: u32 = 22;
+/// names it, its panels' GAF (`intgaf`) and its emblem (`logogaf`, `logo`); 23: abilities, a
+/// weapon's minimum range (`weapon.min_range`) and stun (`weapon.paralyze`), a unit's mending aura
+/// (`unit.regen_aura`) and remote viewing (`unit.remote_view`), a toggle's weapons).
+pub const SCHEMA_VERSION: u32 = 23;
 
 /// The keys of `gamedata/sound.tdf`'s categories the game plays (`ta_audio`'s sound events), each
 /// with or without a variant number (`select1`, `select2`…), with `count0` to `count9`; the
@@ -1029,6 +1033,8 @@ struct EngineFacts {
     weapon_ids: Vec<(String, i64, bool)>,
     /// Sides of its own (not TA's ARM and CORE).
     sides: Vec<String>,
+    /// TA Reborn's own abilities its units and weapons use (`validation/abilities.rs`).
+    abilities: abilities::AbilityUses,
 }
 
 /// A program or a library of one (a patched `TotalA.exe`, a DLL).
@@ -1439,6 +1445,9 @@ impl<'a> Scan<'a> {
             let script = unit.script_path(|p| vfs.exists(p));
             let mut refs = vec![Reference::new("file", &asset("objects3d", &unit.object, "3do"), part(en("{name} model"), &unit.name), Severity::Error), Reference::new("file", &script, part(en("{name} script"), &unit.name), Severity::Error)];
             for (slot, w) in unit.weapons.iter().enumerate() { if let Some(w) = w { refs.push(Reference::new("weapon", w, enf("{name} {key}", [("name", Fill::name(&unit.name)), ("key", Fill::name(format!("Weapon{}", slot + 1)))]), Severity::Error)); } }
+            // (TA Reborn's abilities: its toggle's weapons, and a part without what makes it work.)
+            self.unit_abilities(path, &unit, &mut refs);
+            if self.halted { return; }
             for (name, what) in [(&unit.explode_as, en("{name} death explosion")), (&unit.self_destruct_as, en("{name} self-destruct explosion"))] { optional(&mut refs, "weapon", name, part(what, &unit.name), Severity::Warning); }
             optional(&mut refs, "feature", &unit.corpse, part(en("{name} wreckage"), &unit.name), Severity::Warning);
             // (A note: the game never acts on a unit's side, which only files it in the
@@ -1466,6 +1475,7 @@ impl<'a> Scan<'a> {
                 for (gaf, entry, label) in [(&weapon.explosion_gaf, &weapon.explosion_art, en("{name} explosion")), (&weapon.water_explosion_gaf, &weapon.water_explosion_art, en("{name} water explosion")), (&weapon.lava_explosion_gaf, &weapon.lava_explosion_art, en("{name} lava explosion"))] { animation_ref(&mut refs, gaf, entry, part(label, &weapon.name)); }
                 for (sound, label) in [(&weapon.sound_start, en("{name} firing sound")), (&weapon.sound_hit, en("{name} impact sound")), (&weapon.sound_water, en("{name} water impact sound"))] { optional(&mut refs, "sound", sound, part(label, &weapon.name), Severity::Warning); }
                 if let crate::RenderType::Other(n) = weapon.render_type { self.issue(Severity::Warning, "weapon.render_type", path, enf("{name} uses unsupported RenderType={n}; Reborn will use its fallback projectile appearance.", [("name", Fill::name(&weapon.name)), ("n", Fill::number(n))]), en("Use TA RenderType 0..7, or report the required extension to Reborn's maintainers.")); }
+                self.weapon_abilities(path, &weapon);
                 self.attribute(first, &key("weapon", &weapon.name));
                 self.record(key("weapon", &weapon.name), Record { path: path.into(), refs, ..Default::default() });
                 if self.halted { break; }
@@ -1875,6 +1885,9 @@ impl<'a> Scan<'a> {
                 enf("Weapons sharing an ID with another weapon: {names}.", [("names", named(&shared))]),
                 BY_NAME);
         }
+        if let Some((words, how)) = Self::ability_uses(&facts.abilities) {
+            add("engine.abilities", Support::Played, words, how);
+        }
         if !facts.sides.is_empty() {
             add("engine.sides", Support::Played,
                 enf("Sides of its own: {names}.", [("names", named(&facts.sides))]),
@@ -2122,7 +2135,7 @@ mod tests {
     /// A finding's words: their English is its message, and every text in them, and what to do,
     /// is one the languages' files collect (marked `en`, or `enf`'s first argument, here).
     fn assert_words(report: &Report) {
-        let sources = [include_str!("validation.rs"), include_str!("words.rs")].concat();
+        let sources = [include_str!("validation.rs"), include_str!("validation/abilities.rs"), include_str!("words.rs")].concat();
         let marked = |text: &str| sources.contains(&format!("en(\"{text}\")")) || sources.contains(&format!("enf(\"{text}\""));
         for issue in &report.issues {
             assert_eq!(issue.words.english(), issue.message, "{}", issue.code);
@@ -2368,6 +2381,33 @@ mod tests {
         assert!(told.iter().any(|m| m.contains("Shield") && m.contains("Shields")) && told.iter().any(|m| m.contains("Nothing") && m.contains("adds nothing")), "{told:?}");
         let idle: Vec<&str> = report.issues.iter().filter(|i| i.code == "unit.assist_patrol").map(|i| i.path.as_str()).collect();
         assert_eq!(idle, ["units/station.fbi"], "{}", report.to_text());
+        assert_words(&report);
+    }
+
+    /// TA Reborn's abilities: a toggle naming a weapon nobody defines is a missing reference; half
+    /// an aura, a view's energy without its reach, a minimum range past the range and a stun's
+    /// parts without its time are told; what the mod uses of them is told with how it plays.
+    #[test]
+    fn abilities_that_do_nothing_are_told() {
+        let f = Fixture::new(); f.valid("base");
+        f.put("mod", "units/sniper.fbi", b"[UNITINFO]{UnitName=SNIPER;ObjectName=example;Side=ARM;Weapon1=GUN;[TOGGLE]{Name=Long Gun;Weapon1=;Weapon2=NOSUCHGUN;}}");
+        f.put("mod", "units/healer.fbi", b"[UNITINFO]{UnitName=HEALER;ObjectName=example;Side=ARM;RegenAuraRadius=300;RemoteViewEnergy=50;RadarStealthField=400;}");
+        f.put("mod", "units/eye.fbi", b"[UNITINFO]{UnitName=EYE;ObjectName=example;Side=ARM;RemoteViewRadius=800;RemoteViewEnergy=50;RegenAuraRadius=300;RegenAuraRate=10;}");
+        // (Its aura and its field an enhancement's: counted as its own.)
+        f.put("mod", "units/acu.fbi", b"[UNITINFO]{UnitName=ACU;ObjectName=example;Side=ARM;[ENHANCEMENTS]{[Field]{Name=Field;Slot=Back;RegenAuraRadius=480;RegenAuraShare=0.005;RadarStealthField=300;}}}");
+        f.put("mod", "weapons/mod.tdf", b"[GUN]{range=300;minrange=300;[DAMAGE]{default=1;}} [EMP]{range=300;paralyzeradius=80;[DAMAGE]{default=1;}} [STUN]{range=300;paralyzetime=3;paralyzer=1;[DAMAGE]{default=1;}} [GOOD]{range=600;minrange=100;paralyzetime=2;[DAMAGE]{default=1;}}");
+        let options = Options { target_layer: Some("mod".into()), ..Default::default() };
+        let report = validate(&f.vfs(&["base", "mod"]), &options, |_| true);
+        let text = report.to_text();
+        assert!(report.issues.iter().any(|i| i.code == "reference.missing" && i.message.contains("NOSUCHGUN") && i.message.contains("toggle Weapon2")), "{text}");
+        let codes = |code: &str| report.issues.iter().filter(|i| i.code == code).map(|i| i.message.as_str()).collect::<Vec<_>>();
+        assert_eq!(codes("unit.regen_aura").len(), 1, "the healer's half aura alone: {text}");
+        assert_eq!(codes("unit.remote_view").len(), 1, "the healer's energy without a reach alone: {text}");
+        assert!(codes("weapon.min_range").iter().any(|m| m.starts_with("GUN")) && codes("weapon.min_range").len() == 1, "{text}");
+        let stuns = codes("weapon.paralyze");
+        assert!(stuns.iter().any(|m| m.starts_with("EMP")) && stuns.iter().any(|m| m.starts_with("STUN")) && stuns.len() == 2, "{stuns:?}");
+        let uses = report.engine.iter().find(|u| u.code == "engine.abilities").expect("told how it plays");
+        assert!(uses.message.contains("minimum range: 2; with a stun: 1") && uses.message.contains("toggle: 1; a stealth field: 2; remote viewing: 1; a regeneration aura: 3"), "{}", uses.message);
         assert_words(&report);
     }
 

@@ -113,9 +113,14 @@ pub struct Intel {
     pub radar_stealth: bool,
     pub sonar_stealth: bool,
     pub cloak: bool,
-    /// The radius of a stealth field it gives the units round it, and of its radar jamming.
-    pub stealth_field: f64,
+    /// The radii of the radar and sonar stealth fields it gives the units round it
+    /// (`RadarStealthFieldRadius`, `SonarStealthFieldRadius`), and of its jamming (`JamRadius`, a
+    /// number or its table's `Max`: where its false blips go out to).
+    pub radar_field: f64,
+    pub sonar_field: f64,
     pub jam: f64,
+    /// How far round the place it views it sees (`RemoteViewingRadius`: the Eye of Rhianne's).
+    pub remote_view: f64,
 }
 
 /// A rack of barrels (`RackBones`): the bone that recoils and the muzzles shots leave from.
@@ -383,6 +388,9 @@ pub struct UnitBlueprint {
     pub enhancement_scripts: Vec<crate::behaviour::EnhancementScript>,
     /// What its script spins, slides and plays as it works.
     pub motions: crate::motions::Motions,
+    /// What its script says of the abilities TA Reborn plays (its weapon toggle, its stuns, its
+    /// remote viewing: [`crate::abilities`]).
+    pub abilities: crate::abilities::Scripted,
     pub table: Table,
 }
 
@@ -497,8 +505,11 @@ pub fn parse(id: &str, text: &str) -> Result<UnitBlueprint> {
             radar_stealth: b("RadarStealth"),
             sonar_stealth: b("SonarStealth"),
             cloak: b("Cloak"),
-            stealth_field: n("RadarStealthFieldRadius").max(n("SonarStealthFieldRadius")),
-            jam: n("JamRadius"),
+            radar_field: n("RadarStealthFieldRadius"),
+            sonar_field: n("SonarStealthFieldRadius"),
+            // (A table of how near and how far its blips go: `{ Max = 26, Min = 26 }`.)
+            jam: t.get_ci("JamRadius").and_then(|j| j.num().or_else(|| j.table().and_then(|j| j.get_ci("Max")).and_then(Value::num))).unwrap_or(0.0),
+            remote_view: n("RemoteViewingRadius"),
         }
     });
     let weapons = table.get_ci("Weapon").and_then(Value::table).map(|t| t.array.iter().filter_map(Value::table).map(weapon).collect()).unwrap_or_default();
@@ -565,6 +576,7 @@ pub fn parse(id: &str, text: &str) -> Result<UnitBlueprint> {
         birth: crate::behaviour::Birth::default(),
         enhancement_scripts: Vec::new(),
         motions: crate::motions::Motions::default(),
+        abilities: crate::abilities::Scripted::default(),
         categories,
         table,
     })
@@ -814,6 +826,7 @@ pub fn attach(files: &crate::files::Files, units: &mut [UnitBlueprint]) -> Resul
             u.birth = crate::behaviour::birth(&text);
             u.enhancement_scripts = crate::behaviour::enhancements(&text);
             u.motions = crate::motions::motions(&text);
+            u.abilities = crate::abilities::scripted(&text);
         }
         for w in &mut u.weapons {
             let Some(path) = w.projectile.as_deref().map(crate::projectile::normalise) else { continue };

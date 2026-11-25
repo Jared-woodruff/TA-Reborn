@@ -719,3 +719,23 @@ nothing agrees with the list („Części utworzone przez…: {parts}”, „Poz
 | the Supreme Commander imports / Not made: (a part's line) | importy z Supreme Commander / Nie utworzono: |
 | another mod of its id | inny mod o tym identyfikatorze |
 | a skirmish's setup | ustawienia potyczki („w ustawieniach nowej potyczki”) |
+
+## TA Reborn's own abilities (`game/abilities.rs`, `hud/abilities.rs`, `hud/deck.rs`, `hud_classic.rs`, `validation/abilities.rs`)
+
+One term for remote viewing everywhere, zdalny podgląd (the order, the buttons, the F1 line, the
+mod check); its description „obserwacja z daleka”. Mod keys (`[TOGGLE]`, `RemoteViewRadius`,
+`paralyzetime`...) stay as written; a weapon's {name} in the mod check stands behind „broń”
+(„Broń {name} …”, „zasięg broni {name}”); the reference to a toggle's weapon is "{name} [TOGGLE]
+{key}" (as "{name} {key}").
+
+| English | Polski |
+|---|---|
+| weapon toggle / TOGGLE (classic short) | zmiana broni („Zmiana broni: {name}”), drugi zestaw broni / ZMIEŃ |
+| View from afar (order) / remote viewing / REMOTE VIEW, VIEW (classic) | Zdalny podgląd / zdalny podgląd / ZDALNY PODGLĄD, PODGLĄD |
+| Viewing from afar (card) / Too short of energy to view from afar | Obserwuje z daleka / Za mało energii na zdalny podgląd |
+| stealth field / sonar stealth field | pole niewykrywalności / pole niewykrywalności dla sonaru |
+| its side's units (round it) | (pobliskie) jednostki tej samej strony |
+| regeneration aura / mends (its side's units) | aura regeneracji / naprawia |
+| hit points a second / {share}% of their health | pkt. zdrowia na sekundę / {share}% ich zdrowia |
+| minimum range / Fires no nearer than {range} | minimalny zasięg / Nie strzela bliżej niż {range} |
+| stun / Stuns for {secs} s | paraliż, paraliżować (as „Paraliż {secs} s”) / Paraliżuje na {secs} s |

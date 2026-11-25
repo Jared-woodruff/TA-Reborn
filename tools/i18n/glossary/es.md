@@ -721,3 +721,22 @@ propio sustantivo o no concuerda ("Partes creadas por…: {parts}", "Aún sin im
 | the Supreme Commander imports / Not made: (a part's line) | las importaciones de Supreme Commander / Sin crear: |
 | another mod of its id | otro mod con el mismo identificador |
 | a skirmish's setup | la preparación de una escaramuza |
+
+## Habilidades propias de TA Reborn (`game/abilities.rs`, `hud/abilities.rs`, `hud/deck.rs`, `hud_classic.rs`, `validation/abilities.rs`)
+
+Cambio de armas, visión remota, campos de sigilo, auras de regeneración, alcance mínimo y parálisis
+(las de Supreme Commander y las de los mods). Las claves de mod (`[TOGGLE]`, `RemoteViewRadius`,
+`paralyzetime`...) se quedan como están; en la comprobación, la referencia al arma de un cambio de
+armas es "{name} [TOGGLE] {key}" (como "{name} {key}").
+
+| English | Español |
+|---|---|
+| weapon toggle / TOGGLE (botón clásico corto) | cambio de armas ("Cambio de armas: {name}") / CAMBIAR |
+| View from afar (orden) / remote viewing / REMOTE VIEW, VIEW (botones clásicos) | Ver a distancia / visión remota / VISIÓN REMOTA, VER |
+| Viewing from afar (ficha) / Too short of energy to view from afar | Observando a distancia / Falta energía para ver a distancia |
+| stealth field / sonar stealth field | campo de sigilo / campo de sigilo de sonar (como «Sigilo: no aparece en el radar») |
+| regeneration aura / mends its side's units | aura de regeneración / repara las unidades de su bando |
+| hit points a second / {share}% of their health | de vida por segundo (como "Regenera {n} de vida por segundo") / {share}% de su vida |
+| minimum range / Fires no nearer than {range} | alcance mínimo / No dispara a menos de {range} |
+| stun / Stuns for {secs} s | parálisis, paralizar (como "Parálisis {secs} s") / Paraliza durante {secs} s |
+| (a mod's key) is not played | no se aplica |

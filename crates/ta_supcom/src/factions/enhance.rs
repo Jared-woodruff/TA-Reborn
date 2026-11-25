@@ -26,12 +26,16 @@
 //!   sonar (TA Reborn has no omni); sonar the script switches on (the Cybran's torpedo tubes).
 //! - **Stealth** the script switches on (`RadarStealth`, `SonarStealth`) and **cloak** (`Cloak`,
 //!   at its upkeep while cloaked, TA's cloak).
+//! - TA Reborn's abilities (`factions::abilities`): **a radar jammer** (`NewJammerRadius`, at its
+//!   upkeep), **resource allocation** (`ProductionPerSecondMass`, `ProductionPerSecondEnergy`: what
+//!   it makes, its own figures, not added along a chain: the advanced system's are the whole), **a
+//!   regeneration aura** (`Radius`, `RegenPerSecond`, `RegenCeiling`), **a stun** the script
+//!   switches on for a gun (`ReEnableBuff('STUN')`: the EMP Burst, a weapon of its own in the gun's
+//!   slot), and **a stunning weapon** it switches on (the Chrono Dampener's pulse).
 //!
-//! Left out, with what TA Reborn does not play yet: shields, teleporting, drones and pods,
-//! resource allocation, regeneration fields, the Sacrificial System, the EMP burst, the radar
-//! jammer, and a weapon of a point a shot (the Chrono Dampener): an enhancement none of whose
-//! effects is played is not offered, nor one needing such another. The "Remove" ones are TA
-//! Reborn's own order (a slot cleared at once).
+//! Left out, with what TA Reborn does not play yet: shields, teleporting, drones and pods and the
+//! Sacrificial System: an enhancement none of whose effects is played is not offered, nor one
+//! needing such another. The "Remove" ones are TA Reborn's own order (a slot cleared at once).
 
 use std::fmt::Write as _;
 
@@ -65,6 +69,8 @@ pub struct Enhancement {
     pub weapons: Vec<(usize, String)>,
     pub cloak: Option<f64>,
     pub stealth: bool,
+    /// What it brings of TA Reborn's abilities (a jammer, resource allocation, an aura).
+    pub abilities: super::abilities::EnhancementAbilities,
 }
 
 /// The weapon sections an enhancement brings that the unit's own weapons are not: its main gun's
@@ -156,6 +162,7 @@ pub fn enhancements<'a>(u: &'a UnitBlueprint, faction: &[&'a UnitBlueprint], own
             ..Default::default()
         };
         let engineering = num(t, "NewBuildRate").is_some();
+        e.abilities = super::abilities::enhancement_abilities(t);
         e.max_damage = num(t, "NewHealth").unwrap_or(0.0).max(0.0);
         e.heal_rate = num(t, "NewRegenRate").unwrap_or(0.0).max(0.0);
         if let Some(rate) = num(t, "NewBuildRate") {
@@ -238,6 +245,13 @@ pub fn enhancements<'a>(u: &'a UnitBlueprint, faction: &[&'a UnitBlueprint], own
                 variants.sections.push((section, oc, u));
             }
         }
+        // A gun's stun its script switches on (the EMP Burst): a weapon of its own in the gun's slot.
+        if let Some((slot, section, w)) = super::abilities::stun_variant(u, own, name)
+            && !e.weapons.iter().any(|(k, _)| *k == slot)
+        {
+            e.weapons.push((slot, section.clone()));
+            variants.sections.push((section, w, u));
+        }
         e.weapons.sort();
         made.push((e, engineering));
     }
@@ -279,7 +293,7 @@ pub fn enhancements<'a>(u: &'a UnitBlueprint, faction: &[&'a UnitBlueprint], own
     }
     // Those with an effect played, whose prerequisite is played too.
     let plays = |e: &Enhancement| {
-        e.max_damage > 0.0 || e.heal_rate > 0.0 || e.worker_time > 0.0 || e.sight > 0.0 || e.radar > 0.0 || e.sonar > 0.0 || !e.build_options.is_empty() || !e.weapons.is_empty() || e.cloak.is_some() || e.stealth
+        e.max_damage > 0.0 || e.heal_rate > 0.0 || e.worker_time > 0.0 || e.sight > 0.0 || e.radar > 0.0 || e.sonar > 0.0 || !e.build_options.is_empty() || !e.weapons.is_empty() || e.cloak.is_some() || e.stealth || !e.abilities.is_empty()
     };
     let mut kept: Vec<Enhancement> = made.into_iter().map(|(e, _)| e).filter(plays).collect();
     loop {
@@ -335,6 +349,9 @@ pub fn section(u: &UnitBlueprint, list: &[Enhancement]) -> String {
         }
         if e.stealth {
             put("Stealth", "1".into());
+        }
+        for (k, v) in super::abilities::enhancement_keys(&e.abilities) {
+            put(k, v);
         }
         s.push_str("\t\t\t}\n");
     }

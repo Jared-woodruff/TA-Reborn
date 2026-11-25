@@ -7,6 +7,8 @@
 //! - [`script`]: its script;
 //! - [`units`]: its unit file and its weapons';
 //! - [`enhance`]: a commander's enhancements;
+//! - [`abilities`]: TA Reborn's abilities (minimum ranges, stuns, jamming and stealth fields,
+//!   remote viewing, weapon toggles) in its files;
 //! - [`faction`]: its faction's side, build menus, wrecks and weapons;
 //! - [`emblem`]: its faction's emblem in the classic interface;
 //! - [`anims`], [`work`]: its walk and deaths, and what it does as it works;
@@ -16,6 +18,7 @@
 //! of the data players compare before a multiplayer battle): plain arithmetic only, in a fixed
 //! order.
 
+pub mod abilities;
 pub mod anims;
 pub mod emblem;
 pub mod enhance;

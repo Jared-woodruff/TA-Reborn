@@ -5,7 +5,7 @@
 use ta_formats::image::Palette;
 use ta_formats::surface::Material;
 
-use super::{anims, emblem, enhance, faction, model, pictures, script, textures, units, work, UNIT_SCALE};
+use super::{abilities, anims, emblem, enhance, faction, model, pictures, script, textures, units, work, UNIT_SCALE};
 use crate::files::Files;
 use crate::scm::{self, Mesh};
 use crate::sca;
@@ -38,8 +38,11 @@ pub const TAGS: [&str; 3] = ["units", "factions", "supreme commander"];
 /// giving way to its tier, "T2 Kennel", the mod's words those of whatever factions it holds, and
 /// its banner in the launcher's library; 15: each side's emblem in the classic interface, ten
 /// frames in TA's palette as Arm's and Core's, `anims/supcomlogos.gaf`, named by the side
-/// add-on's `logogaf` and `logo`: `emblem`).
-pub const VERSION: u32 = 15;
+/// add-on's `logogaf` and `logo`: `emblem`; 16: TA Reborn's abilities, `factions::abilities`:
+/// weapons' minimum ranges and stuns, jamming, stealth fields and remote viewing at their upkeep,
+/// the weapon toggles, and the enhancements they made playable: the radar jammer, resource
+/// allocation, the regeneration auras, the EMP Burst and the Chrono Dampener).
+pub const VERSION: u32 = 16;
 
 /// What was made.
 #[derive(Clone, Debug, Default)]
@@ -125,6 +128,8 @@ pub fn make(files: &Files, units: &[UnitBlueprint], palette: Option<&Palette>, r
             adjacency: u.adjacency.as_deref().map_or(&[][..], |table| adjacency.of(table)),
             adjacency_categories: Some(&adjacency_categories),
             name: units::shown_name(u, &faction),
+            // (Its weapon toggle is found with its model's footprint: `unit`.)
+            toggle: None,
         };
         let shown: Vec<Vec<String>> = list.iter().map(|e| enhance::shown_bones(u, e)).collect();
         match unit(files, u, &extra, &extra_weapons, shown, &mut |path, bytes| put(path, bytes, &mut made))? {
@@ -303,15 +308,19 @@ fn unit(files: &Files, u: &UnitBlueprint, extra: &units::Extra, extra_weapons: &
     {
         put(&format!("unitpics/{name}.pcx"), &picture)?;
     }
-    // Its unit file and its script (a factory's ways out from its model: `units::exits`).
+    // Its unit file and its script (a factory's ways out from its model: `units::exits`; its weapon
+    // toggle's slots after its own and its enhancements', `abilities::toggle`).
     let weapons = units::weapons(u);
-    let extra = units::Extra { exits: units::exits(u, mesh, &floats), ..extra.clone() };
+    let toggle = abilities::toggle(u, &weapons, extra_weapons);
+    let extra = units::Extra { exits: units::exits(u, mesh, &floats), toggle: toggle.clone(), ..extra.clone() };
     put(&format!("units/{name}.fbi"), units::unit_file(u, &weapons, units::transport(mesh), &extra).as_bytes())?;
     let builds = units::builds(u);
     let pieces: Vec<String> = near.model.pieces.iter().map(|p| p.name.clone()).collect();
     let motions = work::motions(u, mesh, &pieces, u.display.uniform_scale * UNIT_SCALE);
-    // (Its own weapons, then those its enhancements switch on, in the slots after them.)
-    let slots: Vec<&crate::unit::WeaponBlueprint> = weapons.slots.iter().copied().chain(extra_weapons.iter().copied()).take(units::MAX_WEAPONS).collect();
+    // (Its own weapons, then those its enhancements switch on, in the slots after them, then its
+    // weapon toggle's.)
+    let slots: Vec<&crate::unit::WeaponBlueprint> =
+        weapons.slots.iter().copied().chain(extra_weapons.iter().copied()).chain(abilities::toggle_weapons(toggle.as_ref())).take(units::MAX_WEAPONS).collect();
     // What those that unpack before they fire play: their animations as keys of the model's
     // pieces (`script::Unpacking`), but for the parts its own clips move as it works (they would
     // be moved twice: the Aeon silo's arm, held open by its opening and in its launch sequence).
@@ -737,7 +746,7 @@ mod tests {
     }
 
     /// The hash of the test faction's mod (see the test above).
-    const EXPECTED: &str = "bd2e2c3e57fd911bcf6885d328f052e2441458a540ce214fd33de1b8972a572a";
+    const EXPECTED: &str = "61ca772c7c8fa12219bfac2e00392340f81971d961b65922dec7b4b491a22c49";
 
     /// A unit whose mesh does not read is left out, with its reason; the rest are made.
     #[test]

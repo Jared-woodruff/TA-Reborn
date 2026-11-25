@@ -1218,6 +1218,7 @@ impl Hud {
             Fire,
             Move,
             Cloak,
+            Toggle,
             Power,
             Duty,
             Destruct,
@@ -1257,6 +1258,10 @@ impl Hud {
         if let Some(tip) = cloak {
             let (glyph, label) = if cloak_on { (Glyph::Cloaked, t("CLOAKED")) } else { (Glyph::Visible, t("VISIBLE")) };
             states.push(Button { state: State::Cloak, glyph, label: label.to_string(), tip, lit: cloak_on, mixed: false, warn: false, steps: None });
+        }
+        // A weapon toggle (`game/abilities.rs`): its name, lit while its weapons are in use.
+        if let Some(toggle) = game.weapon_toggle() {
+            states.push(Button { state: State::Toggle, glyph: Glyph::DGun, label: game.weapon_toggle_label(), tip: game.weapon_toggle_tip(), lit: toggle.on, mixed: toggle.mixed, warn: false, steps: None });
         }
         if let Some(power) = power {
             let (label, tip) = crate::hud::power_words(power, game.keys.text("on_off"));
@@ -1314,6 +1319,7 @@ impl Hud {
             Some(State::Fire) => game.set_states(Some((fire + 1) % 3), None),
             Some(State::Move) => game.set_states(None, Some((movement + 1) % 3)),
             Some(State::Cloak) => game.toggle_cloak(),
+            Some(State::Toggle) => game.toggle_selection_weapons(),
             // (Some on and some off: all one way, as TA's button and its key do.)
             Some(State::Power) => {
                 if let Some(power) = power {
@@ -2198,6 +2204,9 @@ pub(crate) fn activity(game: &Game, u: &Unit) -> (String, Color32) {
         Some(Order::Upgrade(to)) => (tf("About to upgrade into {name}", &[("name", &crate::orders::upgrade_name(sim, u.type_id, *to))]), pal().accent),
         Some(Order::Enhance { index, remove: false }) => (tf("About to install {name}", &[("name", &super::enhance::name(ty, *index))]), pal().accent),
         Some(Order::Enhance { index, remove: true }) => (tf("Taking out {name}", &[("name", &super::enhance::name(ty, *index))]), pal().accent),
+        // (A view from afar: seeing there while it pays for it.)
+        Some(Order::RemoteView(_)) if u.remote_view.is_some() => (t("Viewing from afar").to_string(), pal().info),
+        Some(Order::RemoteView(_)) => (t("Too short of energy to view from afar").to_string(), pal().bad),
         None if ty.is_factory && !u.factory_queue.is_empty() => (t("Starting the next unit").to_string(), pal().good),
         None if ty.is_factory => (t("Idle: nothing queued").to_string(), pal().steel),
         None => match u.weapons.iter().find_map(|w| w.target) {

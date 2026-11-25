@@ -654,3 +654,21 @@ süresi", with no suffix.
 | the Supreme Commander imports / Not made: (a part's line) | Supreme Commander içe aktarmaları / Hazırlanmadı: |
 | another mod of its id | aynı kimliğe sahip başka bir mod |
 | a skirmish's setup | çatışma hazırlığı ("yeni bir çatışmanın hazırlığında") |
+
+## TA Reborn's own abilities (`game/abilities.rs`, `hud/abilities.rs`, `hud/deck.rs`, `hud_classic.rs`, `validation/abilities.rs`)
+
+Mod keys (`[TOGGLE]`, `RemoteViewRadius`, `paralyzetime`...) stay as written; the mod check names a
+weapon "{name} silahı" ("{name} silahının minimum menzili"), a unit "{unit} birimi"; the reference
+to a toggle's weapon is "{name} [TOGGLE] {key}" (as "{name} {key}").
+
+| English | Türkçe |
+|---|---|
+| weapon toggle / TOGGLE (classic short) | silah değiştirme ("Silah değiştirme: {name}") / DEĞİŞTİR |
+| View from afar (order) / remote viewing / REMOTE VIEW, VIEW (classic) | Uzaktan izle / uzaktan izleme / UZAKTAN İZLE, İZLE |
+| Viewing from afar (card) / Too short of energy to view from afar | Uzaktan izliyor / Uzaktan izlemeye enerji yetmiyor |
+| stealth field / sonar stealth field | gizlilik alanı / sonar gizlilik alanı (not hayalet) |
+| its side's units (round it) | (çevresinde) kendi tarafının birimleri |
+| regeneration aura / mends (its side's units) | yenilenme aurası / onarır |
+| hit points a second / {share}% of their health | saniyede {rate} can puanı / canlarının %{share} kadarı |
+| minimum range / Fires no nearer than {range} | minimum menzil / {range} mesafeden yakına ateş etmez |
+| stun / Stuns for {secs} s | felç, felç etmek (as "Felçli {secs} sn") / {secs} sn boyunca felç eder |

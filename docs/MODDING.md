@@ -1357,7 +1357,13 @@ sections is the order the menus show them in.
   much), `HealRate` (hit points a second it mends), `WorkerTime` (build power), `SightDistance`,
   `RadarDistance`, `SonarDistance`, `BuildOptions` (units added to its menu, and to what the
   computer players may build with it), `CloakCost`, `CloakCostMoving` and `MinCloakDistance` (a
-  cloak it may switch on), `Stealth=1` (radar does not show it).
+  cloak it may switch on), `Stealth=1` (radar does not show it). And TA Reborn's
+  [abilities](#abilities): `RadarDistanceJam`, `SonarDistanceJam`, `RadarStealthField`,
+  `SonarStealthField`, `RemoteViewRadius` with `RemoteViewEnergy`, `RegenAuraRadius` with
+  `RegenAuraRate` or `RegenAuraShare` (the widest and strongest of the unit's and its
+  enhancements' count), `MetalMake` and `EnergyMake` (what it makes a second: Supreme Commander's
+  resource allocation) and `EnergyUse` (energy a second, paid while it is installed whatever the
+  unit's switch: short of it, the unit's radar, sonar, jamming, fields and remote viewing stop).
 - **`Weapon1`** to **`Weapon8`**: the weapon a slot fires while it is installed, in place of the
   unit's own there; give the unit's file an empty slot (no `WeaponN`) for a weapon an
   enhancement adds. A launcher that stockpiles its missiles, swapped for another or taken out,
@@ -1375,6 +1381,91 @@ or hide its parts. The computer players install on their Commander the engineeri
 adding units to its menu) and one improving a weapon (reaching farther, hitting harder or firing
 faster, or arming an empty slot), near their base and when they can afford it; more health when
 rich.
+
+#### Abilities
+
+TA Reborn plays a few abilities of its own that TA's engine never had, as Supreme Commander's units
+use them. Each is a key a unit or weapon may give; one that gives none plays as before. TA itself
+ignores them.
+
+**A weapon's minimum range.** `minrange=` (in the weapon's section, pixels across the ground from
+its unit to the target): it fires on nothing nearer. Of its own accord it takes the nearest target
+past it (one that comes nearer is passed over for another); told to attack something nearer than
+the minimum ranges of every weapon the order fires, a mobile unit backs off to halfway between them
+and its range, and fires from there. A unit someone drives fires only past it too. The computer
+players count a tower's guns as guarding none of the ground within it, and fire their missiles and
+long-range guns past it.
+
+**A weapon toggle.** A `[TOGGLE]` section within the unit's `[UNITINFO]`, laid out as an enhancement
+is: its `Name` (the button's words) and the weapon each slot fires while it is on, in place of the
+unit's own there; an empty one (`Weapon1=;`, or `NONE`) fires nothing while it is on.
+
+```text
+[UNITINFO]
+	{
+	UnitName=MYSNIPER;
+	Weapon1=MYSNIPER_RIFLE;
+	wsec_badTargetCategory=VTOL;
+	...
+	[TOGGLE]
+		{
+		Name=Long Rifle;
+		Weapon1=;
+		Weapon2=MYSNIPER_LONGRIFLE;
+		}
+	}
+```
+
+- Its player switches it on and off: a button in both interfaces (named as `Name` says, in the
+  modern interface's stance column, lit while it is on) and a key, Alt+T. The computer players
+  switch it to whichever set does more to the enemies about.
+- Give each slot the keys of the weapon that fires there (`BadTargetCategory<n>`,
+  `OnlyTargetCategory<n>`): a slot's keys go with the slot, whatever fills it. Putting the toggle's
+  weapons in slots of their own, the unit's emptied, keeps each weapon's keys its own.
+- The toggle goes over what the unit's enhancements put in a slot. A launcher that stockpiles its
+  missiles, swapped or emptied, loses the missiles built and the one under way, as an
+  enhancement's does.
+- A script with a function `SetToggle(on)` is told (1 on, 0 off), to move its parts.
+
+**Stealth fields and jamming.** `RadarStealthField=` and `SonarStealthField=` (pixels): while the
+unit is at work (finished, switched on or not switchable, its upkeep paid, not paralysed) its side's
+units within them are hidden from enemy radar (and sonar) as `Stealth=1` hides a unit. TA's
+`RadarDistanceJam` and `SonarDistanceJam` do the same, and hide missiles from radar besides.
+Enhancements may give both. (Supreme Commander's jammers scatter false blips over the enemy's radar
+and hide nothing; the factions' jammers are TA's in TA Reborn: they hide what is near them.)
+
+**Remote viewing.** `RemoteViewRadius=` (pixels) and `RemoteViewEnergy=` (energy a second): told
+to view a place (REMOTE VIEW in both interfaces, Alt+V, with its own pointer; `Order::RemoteView`),
+the unit sees round it as far as `RemoteViewRadius`, as though from 400 pixels over the ground
+there, every tick it is at work and pays its energy. Anywhere on the map. It goes on as long as the
+order stands: Stop or another order ends it. An enhancement may give it.
+
+**A stun beside a weapon's damage.** `paralyzetime=` (seconds, in the weapon's section): the
+enemies its shot hits are stunned for that long, as TA's paralyzers stun theirs (unable to move,
+fire or build, their scripts frozen; a longer stun already on is not cut short; none past a
+minute), and take its damage too.
+
+| Key | What it does |
+| --- | --- |
+| `paralyzetime` | Seconds of stun. A TA paralyzer (`paralyzer=1`), whose damage is its stun, plays no `paralyzetime`. |
+| `paralyzeradius` | How far round where the shot goes off it stuns (pixels); the unit it hits always. None: as far as its blast (`areaofeffect` / 2). |
+| `paralyzeonfire` | `1`: it goes off round the unit firing it as it fires, not where its shot goes off (Supreme Commander's Chrono Dampener). |
+| `paralyzeexempt` | `Category` tokens: a unit with any of them is spared (`COMMANDER EXPERIMENTAL`). |
+
+Its own side and its allies are never stunned, nor aircraft, nor `ImmuneToParalyzer` units, nor
+what is wholly under the water for a weapon that does not go under it (`waterweapon`). The stunned
+show it as TA's paralysed do (a crackle over them, a bar, "Paralyzed" on their card).
+
+**A regeneration aura.** `RegenAuraRadius=` (pixels) with `RegenAuraRate=` (hit points a second)
+or `RegenAuraShare=` (a share of each unit's most health a second, held to `RegenAuraRate` where
+both are given): once a second, while the unit is at work, it mends its side's and its allies'
+other finished units whose middle is within it (and their own size), to their most. A unit within
+several takes the strongest alone. An enhancement may give one.
+
+The mod check tells a minimum range no less than its weapon's range, a stun's other keys without
+`paralyzetime` (or with a TA paralyzer), half an aura, `RemoteViewEnergy` without a radius and a
+toggle naming a weapon nobody defines, and its report lists what the mod uses of them. The
+information page (F1) shows them.
 
 #### What TA Reborn does not run
 
@@ -1516,6 +1607,7 @@ names the mod's folder (an absolute path, with its `mod.toml`):
 | A mod's interface theme: the palette, applying it in battle (the HUD alone: `hud`, `reborn`), its check | `crates/ta_vfs/src/mods.rs` (`Theme`), `crates/ta_ui/src/theme.rs` (`Palette`, `hud`), `apps/ta_game/src/mod_theme.rs`, `apps/ta_game/src/hud_skin.rs`, `crates/ta_data/src/presentation.rs` |
 | Script values | `crates/ta_sim/src/host.rs` |
 | Adjacency, buildings working round them | `crates/ta_data/src/adjacency.rs`, `crates/ta_sim/src/sim/adjacency.rs`, `crates/ta_sim/src/sim/repair_round.rs`, `apps/ta_game/src/hud/adjacency.rs` |
+| Abilities: minimum ranges, toggles, stealth fields, remote viewing, stuns, auras | `crates/ta_data/src/toggle.rs`, `crates/ta_sim/src/defs.rs` (`Abilities`), `crates/ta_sim/src/combat.rs` (`too_near`), `crates/ta_sim/src/combat/stun.rs`, `crates/ta_sim/src/sim/toggle.rs`, `remote_view.rs`, `aura.rs`, `crates/ta_data/src/validation/abilities.rs`, `apps/ta_game/src/game/abilities.rs`, `apps/ta_game/src/hud/abilities.rs` |
 | Models' surfaces and clips (walks, deaths, buildings at work) | `crates/ta_formats/src/surface.rs`, `crates/ta_formats/src/anims.rs`, `apps/ta_game/src/scene/walk.rs`, `apps/ta_game/src/scene/work.rs`, `apps/ta_game/src/effects_remains.rs` |
 | The classic build pages, 768-pixel layouts, shared places | `apps/ta_game/src/hud_classic_art.rs` |
 | The catalogue, installs, the MODS page | `apps/ta_launcher/src/catalogue.rs`, `getmods.rs`, `modlist.rs`, `mod_library.rs`, `pages/mods.rs`, `pages/mod_order.rs`, `pages/mod_report.rs` |

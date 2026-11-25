@@ -236,8 +236,14 @@ pub const RECORD_VERSION: u32 = 47;
 /// the top tier as the income grows, leave the metal to it while metal is short, and upgrades start
 /// beside those under way only while what those have left to pay is within the income's reach;
 /// artillery held to a share of the army; and an army's worth in the battle's readings leaves the
-/// Commanders out.
-pub const SIMULATION_VERSION: u32 = 114;
+/// Commanders out. 115: TA Reborn's abilities for mods (docs/MODDING.md, "Abilities"): weapons'
+/// minimum ranges (`minrange`, an attack order keeping its unit between them and its range), weapon
+/// toggles (`[TOGGLE]`, `Command::SetToggle`), stealth fields (`RadarStealthField`,
+/// `SonarStealthField`) and jamming granted by enhancements, remote viewing (`RemoteViewRadius`,
+/// `Order::RemoteView`), stuns beside a weapon's damage (`paralyzetime`), regeneration auras
+/// (`RegenAuraRadius`), an enhancement's own production and upkeep; the computer players' toggles,
+/// resource allocation, and their defences, missiles and long guns held past minimum ranges.
+pub const SIMULATION_VERSION: u32 = 115;
 /// Records shorter than one year of simulated time are supported. Shared with the
 /// launcher's metadata reader so impossible durations cannot start endless save catch-up.
 pub const MAX_RECORD_TICKS: u64 = 30 * 3600 * 24 * 365;
@@ -395,6 +401,8 @@ impl Keys {
         ("duty", "Duty: the constructors work by themselves (economy, repair, reclaim, defence, then none)", "Alt+D"),
         ("cloak", "Cloak / decloak", "K"),
         ("upgrade", "Upgrade in place (with Shift: queued after the upgrade under way)", "Alt+U"),
+        ("weapon_toggle", "Weapon toggle: switch to the other weapons and back", "Alt+T"),
+        ("remote_view", "View from afar (remote viewing)", "Alt+V"),
         ("self_destruct", "Self-destruct", "Ctrl+D"),
         ("select_all", "Select everything", "Ctrl+A"),
         ("select_commander", "Select the Commander", "Ctrl+C"),

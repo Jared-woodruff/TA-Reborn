@@ -18,6 +18,7 @@
 //! music; and its interface's look ([`menus`]: its colours, pictures, panel art, sounds and menu
 //! music), for TA Reborn's menus.
 
+pub mod abilities;
 pub mod adjacency;
 pub mod banner;
 pub mod behaviour;
