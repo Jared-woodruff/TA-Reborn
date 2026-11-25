@@ -1,14 +1,16 @@
 //! Typed game data loaded from the virtual file system.
 //!
 //! [`GameData::load`] reads every unit (`units/*.fbi`), weapon (`weapons/*.tdf`), feature
-//! (`features/**/*.tdf`), movement class (`gamedata/moveinfo.tdf`) and side
-//! (`gamedata/sidedata.tdf`), and assembles build menus. Parsing is tolerant: a broken file
+//! (`features/**/*.tdf`), movement class (`gamedata/moveinfo.tdf`), side
+//! (`gamedata/sidedata.tdf`) and particle effect (`effects/*.tdf`, TA Reborn's own:
+//! [`EffectDef`]), and assembles build menus. Parsing is tolerant: a broken file
 //! in a mod is logged and skipped rather than aborting the load.
 
 mod compatibility;
 pub use compatibility::Compatibility;
 
 pub mod adjacency;
+pub mod effect;
 pub mod enhancement;
 pub mod feature;
 pub mod font;
@@ -30,12 +32,13 @@ use ta_formats::tdf::{self, TdfDocument, TdfSection};
 use ta_vfs::Vfs;
 
 pub use adjacency::{AdjacencyAffect, AdjacencyDef};
+pub use effect::{BurstDef, BurstDirection, BurstKind, EffectDef};
 pub use enhancement::EnhancementDef;
 pub use feature::FeatureDef;
 pub use map::MapInfo;
 pub use toggle::ToggleDef;
 pub use unit::{ExitDef, UnitDef};
-pub use weapon::{RenderType, STRATEGIC_CLASS, WeaponDef};
+pub use weapon::{RenderType, STRATEGIC_CLASS, WeaponDef, WeaponLook};
 
 /// Largest supported unit, feature or movement-class side, in 16-pixel map cells.
 /// Keeps occupancy/yard arrays and per-placement work bounded for untrusted mods.
@@ -113,10 +116,14 @@ pub struct GameData {
     pub features: Vec<FeatureDef>,
     pub move_classes: Vec<MoveClass>,
     pub sides: Vec<SideDef>,
+    /// The particle effects of the mods (`effects/*.tdf`: [`EffectDef`]), which weapons and units
+    /// name: presentation only, the simulation never reads them.
+    pub effects: Vec<EffectDef>,
     unit_index: FxHashMap<String, usize>,
     weapon_index: FxHashMap<String, usize>,
     feature_index: FxHashMap<String, usize>,
     move_index: FxHashMap<String, usize>,
+    effect_index: FxHashMap<String, usize>,
     /// How many of `features` are the game's own (the rest are maps' own).
     game_features: usize,
 }
@@ -308,6 +315,7 @@ impl GameData {
             }
         }
 
+        let (effects, effect_index) = load_effects(vfs);
         let mut data = GameData {
             palette,
             units,
@@ -315,10 +323,12 @@ impl GameData {
             features,
             move_classes,
             sides,
+            effects,
             unit_index,
             weapon_index,
             feature_index,
             move_index,
+            effect_index,
             game_features,
         };
         // Maps' own features (`maps/<map>.features`: a map converted from Supreme Commander names
@@ -331,12 +341,13 @@ impl GameData {
         }
         data.build_menus(vfs, side_doc.as_ref());
         log::info!(
-            "game data: {} units, {} weapons, {} features, {} movement classes, {} sides",
+            "game data: {} units, {} weapons, {} features, {} movement classes, {} sides, {} effects",
             data.units.len(),
             data.weapons.len(),
             data.features.len(),
             data.move_classes.len(),
-            data.sides.len()
+            data.sides.len(),
+            data.effects.len()
         );
         data
     }
@@ -489,6 +500,44 @@ impl GameData {
     pub fn move_class(&self, name: &str) -> Option<&MoveClass> {
         self.move_index.get(&name.to_ascii_uppercase()).map(|&i| &self.move_classes[i])
     }
+
+    /// The particle effect of a name (any case), if a mod gives one.
+    pub fn effect(&self, name: &str) -> Option<&EffectDef> {
+        self.effect_id(name).map(|i| &self.effects[i])
+    }
+
+    pub fn effect_id(&self, name: &str) -> Option<usize> {
+        let name = name.trim();
+        if name.is_empty() {
+            return None;
+        }
+        self.effect_index.get(&name.to_ascii_uppercase()).copied()
+    }
+}
+
+/// Every particle effect (`effects/*.tdf`, top level, every top-level section an effect): one of
+/// a name a later file gives too takes its place, as weapons do. What does not read is logged
+/// (the mod check says it in full) and played as far as it reads.
+fn load_effects(vfs: &Vfs) -> (Vec<EffectDef>, FxHashMap<String, usize>) {
+    let mut effects: Vec<EffectDef> = Vec::new();
+    let mut index = FxHashMap::default();
+    for p in vfs.list("effects", Some("tdf"), false) {
+        let Some(doc) = read_tdf(vfs, &p) else { continue };
+        for s in &doc.sections {
+            let (e, problems) = EffectDef::from_tdf(s);
+            if !problems.is_empty() {
+                log::warn!("{p}: [{}]: {problems:?}", e.name);
+            }
+            match index.get(&e.name) {
+                Some(&i) => effects[i] = e,
+                None => {
+                    index.insert(e.name.clone(), effects.len());
+                    effects.push(e);
+                }
+            }
+        }
+    }
+    (effects, index)
 }
 
 #[cfg(test)]

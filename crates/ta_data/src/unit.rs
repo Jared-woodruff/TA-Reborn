@@ -222,6 +222,15 @@ pub struct UnitDef {
     /// Supreme Commander's adjacency. None of TA's.
     pub adjacency: Vec<crate::AdjacencyDef>,
     pub adjacency_size: u32,
+    /// How the link between it and a building its adjacency helps is drawn on the battlefield
+    /// (`AdjacencyBeamColor`, red, green and blue from 0 to 1, and `AdjacencyBeamThickness`,
+    /// pixels across): a beam from it to that building, as Supreme Commander draws its
+    /// structures' adjacency. None: the battlefield's own link alone. Presentation only.
+    pub adjacency_beam: Option<([f32; 3], f32)>,
+    /// Its own particle effects (`SfxEffects`: names of `effects/*.tdf`'s effects, in order), which
+    /// its script plays with `emit-sfx 1024 + n` (the nth, counted from 0: [`crate::effect`]).
+    /// Presentation only.
+    pub sfx_effects: Vec<String>,
     /// What the computer players build with it besides: the 3.1 patch's `[CANBUILD]` list for it
     /// (`gamedata/sidedata.tdf`), its entries not on its menu. TA's computer players went by
     /// these lists, its players by the menus: mods list units of their AI there that players are
@@ -416,6 +425,8 @@ impl UnitDef {
             build_heading: s.get_f64("BuildHeading").filter(|v| v.is_finite()),
             adjacency: crate::AdjacencyDef::of_unit(s),
             adjacency_size: s.get_i64_or("AdjacencySize", 0).clamp(0, u32::MAX as i64) as u32,
+            adjacency_beam: s.get("AdjacencyBeamColor").and_then(crate::weapon::rgb).map(|c| (c, s.get_f64("AdjacencyBeamThickness").filter(|t| t.is_finite() && *t > 0.0).map_or(ADJACENCY_BEAM, |t| t.min(64.0) as f32))),
+            sfx_effects: crate::effect::unit_effects(s),
             build_options: Vec::new(),
             ai_build_options: Vec::new(),
             radar_stealth_field: f("RadarStealthField", 0.0).max(0.0),
@@ -440,6 +451,9 @@ impl UnitDef {
         self.category.split_whitespace().any(|c| c.eq_ignore_ascii_case(cat))
     }
 }
+
+/// How thick an adjacency beam is drawn where its unit gives a colour and no thickness (pixels).
+pub const ADJACENCY_BEAM: f32 = 2.5;
 
 /// Most ways out a factory's file may give (the rest are left out, with a warning).
 pub const MAX_EXITS: usize = 16;

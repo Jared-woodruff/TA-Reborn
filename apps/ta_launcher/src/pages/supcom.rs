@@ -499,7 +499,7 @@ impl LauncherApp {
         ui.add_space(space::XS);
         // (A footnote: at the foot of the room where the tab leaves some, under the cards where it
         // does not.)
-        let note = RichText::new(t("Not played yet: Forged Alliance's weapon effects (TA's of their kinds play in their place), shields and teleporting.")).color(STEEL);
+        let note = RichText::new(t("Not played yet: shields and teleporting.")).color(STEEL);
         let tall = widgets::wrapped_galley(ui, note.clone(), ui.available_width()).size().y;
         let spare = ui.available_height() - tall - ui.spacing().item_spacing.y - 2.0;
         if spare > 0.0 {
@@ -1500,8 +1500,8 @@ mod tests {
         for _ in 0..4 { frame(&ctx, &mut app, size, Vec::new()); }
         let (_, texts) = frame(&ctx, &mut app, size, Vec::new());
         // (The mod holds the UEF and the Aeon: those are chosen at first.)
-        assert!(texts.iter().any(|(text, _, _)| text == "2 of 4 factions chosen, 178 units, about 376 MB on the disk"), "{:?}", texts_of(&texts));
-        assert!(texts.iter().any(|(text, _, _)| text.starts_with("Not played yet: Forged Alliance's weapon effects")), "{:?}", texts_of(&texts));
+        assert!(texts.iter().any(|(text, _, _)| text == "2 of 4 factions chosen, 178 units, about 388 MB on the disk"), "{:?}", texts_of(&texts));
+        assert!(texts.iter().any(|(text, _, _)| text.starts_with("Not played yet: shields and teleporting")), "{:?}", texts_of(&texts));
         assert!(texts.iter().any(|(text, _, _)| text.contains("Online, everyone in a battle needs it")), "online play said: {:?}", texts_of(&texts));
         // The keys stop at each faction's box once.
         let tab = egui::Event::Key { key: egui::Key::Tab, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE };

@@ -832,7 +832,8 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   front by camera depth, with stable ties independent of compaction order; the water's
   reflected camera gets its own order. Pure additive light skips sorting. Each layer is
   drawn in one indexed pass (and once more mirrored in the water's reflection). Pool 32k-262k by effects
-  quality (144 bytes per capacity slot, allocated on first use); past half full new particles thin
+  quality (176 bytes per capacity slot, allocated on first use; a particle 64 bytes: its colour and
+  the colour it turns to as it ages, `ParticleBurst::end_color`); past half full new particles thin
   out, past 70% old ones age faster; with nothing alive the passes are skipped. Each particle
   varies its burst's size by its own seed (grit most: a few big clods among many small ones);
   sparks and droplets of spray streak along their flight, grit is irregular clods cut from the
@@ -840,7 +841,8 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   billows hotter than their creases, a white-hot start cooling into soot that thins into
   wisps), so it keeps its detail at any size. A burst marked `speck` (the embers over lava) is
   never drawn wider than a few pixels however near the eye it passes, a little fainter there.
-  The recipes live in `apps/ta_game/src/effects_particles.rs`.
+  The recipes live in `apps/ta_game/src/effects_particles.rs`; a mod's own effects
+  (`effects/*.tdf`, ta_data's `effect`) are made bursts by `apps/ta_game/src/effects_mods.rs`.
 * **Frame bindings** (group 0, shared by every pipeline): frame uniform, shadow map +
   compare sampler, point lights + light grid (storage), fog-of-war texture + sampler, contact
   occlusion, cloud shadows, the ground map (heights, the relief's shadows, ore); with ray
@@ -3399,6 +3401,17 @@ where the units go (`hud/domain.rs`, below).
   side sees the way ahead dashed to the blast's ring and the time left
   (`game::nuclear::time_to_impact`), as the world's NUCLEAR IMPACT ring does (neither for a
   unit target out of sight: the missile homes on it).
+  Mods' own looks (`effects_mods.rs`; ta_data's `WeaponLook` and `EffectDef`, docs/MODDING.md):
+  a weapon's muzzle flash and trail animations (`firegaf`, `trailgaf`, loaded with the explosions),
+  its effects where its shots leave, along their flight and where they hit (each burst a
+  `ParticleBurst`, a ring a `Ripple`; a hit's forward the shot's way back, found from the
+  simulation's spent shots as the blast's event comes), its true colours and width (`rgbcolor`,
+  `rgbcolor2`, `thickness`), TA's `smokedelay` (the smoke trail's pace) and `endsmoke`; a unit's
+  own effects by `emit-sfx 1024 + n` (`SfxEffects`); the beams between buildings that help each
+  other (`AdjacencyBeamColor`). Projectiles drawn as models take their owner's colour, and their
+  paint is asked for as the battle starts (`ModelRenderer::want_paint`). Bounded: 16 bursts an
+  effect, 256 particles a burst (a trail's so many a second, emitted a frame at a time), 6,000
+  particles of mods' effects a frame at High (thinned past it).
 * **Skirmish options** (`ta_sim::GameRules`, part of `GameSetup` and the multiplayer start
   message): starting resources, fog of war / mapped / permanent sight, commander death
   ends the game, unit limit, random start positions (`setup::assign_starts`, drawn from

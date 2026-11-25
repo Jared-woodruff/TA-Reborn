@@ -166,6 +166,89 @@ pub struct WeaponDef {
     /// The categories of the units its stun spares (`paralyzeexempt`, `Category` tokens: any one
     /// of them; empty, none).
     pub paralyze_exempt: String,
+    /// How it looks beyond TA's own keys ([`WeaponLook`]): presentation only, which the
+    /// simulation never reads.
+    pub look: WeaponLook,
+}
+
+/// How a weapon looks beyond what TA's keys give: TA Reborn's own keys (and Spring's names for
+/// its beams' colours and width), for mods. Presentation only: the simulation never reads any of
+/// it, so a mod may change it without changing how a battle plays.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct WeaponLook {
+    /// A muzzle flash (`firegaf`, `fireart`): an animation in `anims/<firegaf>.gaf`, played where
+    /// a shot leaves, in place of TA Reborn's own flash, sparks and smoke for the weapon's kind.
+    pub fire_gaf: String,
+    pub fire_art: String,
+    /// A trail (`trailgaf`, `trailart`): an animation left behind along a shot's flight every
+    /// `smokedelay` seconds, each playing where it was left.
+    pub trail_gaf: String,
+    pub trail_art: String,
+    /// A shot's true colours (`rgbcolor`, `rgbcolor2`: red, green and blue, 0 to 1 each, as Spring
+    /// writes them), in place of the palette's (`color`, `color2`) and of TA Reborn's own: a
+    /// laser's or lightning bolt's glow and its core, a shell's glow and its tail.
+    pub rgb_color: Option<[f32; 3]>,
+    pub rgb_color2: Option<[f32; 3]>,
+    /// How thick a laser or lightning bolt is drawn, or how big a shell's glow is (`thickness`,
+    /// pixels across).
+    pub thickness: Option<f32>,
+    /// Particle effects of the mod's own (`effects/*.tdf`, by name: [`crate::EffectDef`]) played
+    /// where a shot leaves (`fireeffect`), along its flight every `smokedelay` seconds
+    /// (`traileffect`), where it hits (`hiteffect`) and where it hits the water
+    /// (`waterhiteffect`; the `hiteffect` where none is given). Empty: none.
+    pub fire_effect: String,
+    pub trail_effect: String,
+    pub hit_effect: String,
+    pub water_hit_effect: String,
+}
+
+impl WeaponLook {
+    fn from_tdf(s: &TdfSection) -> WeaponLook {
+        let st = |k: &str| s.get(k).unwrap_or("").trim().to_string();
+        WeaponLook {
+            fire_gaf: st("firegaf"),
+            fire_art: st("fireart"),
+            trail_gaf: st("trailgaf"),
+            trail_art: st("trailart"),
+            rgb_color: s.get("rgbcolor").and_then(rgb),
+            rgb_color2: s.get("rgbcolor2").and_then(rgb),
+            thickness: s.get_f64("thickness").filter(|t| t.is_finite() && *t > 0.0).map(|t| t.min(MAX_THICKNESS) as f32),
+            fire_effect: st("fireeffect"),
+            trail_effect: st("traileffect"),
+            hit_effect: st("hiteffect"),
+            water_hit_effect: st("waterhiteffect"),
+        }
+    }
+
+    /// The effect played where a shot hits: the water's where it hit the water and the weapon has
+    /// one, else its `hiteffect` (empty: none).
+    pub fn hit_effect(&self, water: bool) -> &str {
+        if water && !self.water_hit_effect.is_empty() { &self.water_hit_effect } else { &self.hit_effect }
+    }
+
+    /// The names of the effects it plays (those given), each once.
+    pub fn effects(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = Vec::new();
+        for e in [&self.fire_effect, &self.trail_effect, &self.hit_effect, &self.water_hit_effect] {
+            if !e.is_empty() && !out.iter().any(|o| o.eq_ignore_ascii_case(e)) {
+                out.push(e);
+            }
+        }
+        out
+    }
+}
+
+/// The widest a beam is drawn (`thickness`, pixels).
+pub const MAX_THICKNESS: f64 = 256.0;
+
+/// A colour as Spring writes one (`rgbcolor=1 0.5 0;`): three numbers from 0 to 1, by spaces or
+/// commas; none where it is not three numbers.
+pub fn rgb(value: &str) -> Option<[f32; 3]> {
+    let parts: Vec<f64> = value.split([' ', ',', '\t']).filter(|p| !p.is_empty()).map(str::parse).collect::<Result<_, _>>().ok()?;
+    match parts.as_slice() {
+        [r, g, b] if [r, g, b].iter().all(|c| c.is_finite()) => Some([*r, *g, *b].map(|c| c.clamp(0.0, 1.0) as f32)),
+        _ => None,
+    }
 }
 
 impl WeaponDef {
@@ -273,6 +356,7 @@ impl WeaponDef {
             paralyze_radius: f("paralyzeradius", 0.0).max(0.0),
             paralyze_on_fire: b("paralyzeonfire"),
             paralyze_exempt: st("paralyzeexempt").to_ascii_uppercase(),
+            look: WeaponLook::from_tdf(s),
         }
     }
 
@@ -368,6 +452,27 @@ mod tests {
         assert!(!plain.stuns() && !plain.paralyze_on_fire && plain.paralyze_exempt.is_empty());
         assert_eq!(read("minrange=-5; paralyzetime=-1;").min_range, 0.0, "no negative reach");
         assert!(!read("paralyzer=1; paralyzetime=4;").stuns(), "TA's paralyzer stuns by its damage alone");
+    }
+
+    /// TA Reborn's keys for how a weapon looks: its muzzle flash and trail animations, its true
+    /// colours and thickness (Spring's names), its effects; none of TA's own weapons give them.
+    #[test]
+    fn a_weapons_look_is_read_from_its_keys() {
+        let doc = tdf::parse(
+            "[GAUSS] { rendertype=4; firegaf=uef_fx; fireart=Muzzle; trailgaf=uef_fx; trailart=trail; rgbcolor=1 0.5 0; rgbcolor2=0.2,0.4,2; thickness=3.5; \
+             fireeffect=gauss_fire; traileffect=gauss_trail; hiteffect=gauss_hit; waterhiteffect=splash; smokedelay=0.05; endsmoke=1; }",
+        );
+        let w = WeaponDef::from_tdf(&doc.sections[0]);
+        let look = &w.look;
+        assert_eq!((look.fire_gaf.as_str(), look.fire_art.as_str(), look.trail_gaf.as_str(), look.trail_art.as_str()), ("uef_fx", "Muzzle", "uef_fx", "trail"));
+        assert_eq!((look.rgb_color, look.rgb_color2, look.thickness), (Some([1.0, 0.5, 0.0]), Some([0.2, 0.4, 1.0]), Some(3.5)), "colours held to 0..1");
+        assert_eq!((look.hit_effect(false), look.hit_effect(true)), ("gauss_hit", "splash"));
+        assert_eq!(look.effects(), ["gauss_fire", "gauss_trail", "gauss_hit", "splash"]);
+        assert_eq!((w.smoke_delay, w.end_smoke), (0.05, true));
+        // Not three numbers, no colour; no thickness of none; no water hit, the hit's.
+        let w = WeaponDef::from_tdf(&tdf::parse("[W] { rgbcolor=1 0.5; rgbcolor2=red; thickness=0; hiteffect=boom; }").sections[0]);
+        assert_eq!((w.look.rgb_color, w.look.rgb_color2, w.look.thickness, w.look.hit_effect(true)), (None, None, None, "boom"));
+        assert_eq!(WeaponDef::from_tdf(&tdf::parse("[W] { range=1; }").sections[0]).look, WeaponLook::default(), "TA's own weapons look as ever");
     }
 
     #[test]

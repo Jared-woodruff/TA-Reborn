@@ -50,8 +50,10 @@ mod abilities;
 /// add-ons, `gamedata/sound_<name>.tdf`, read as the game lays them over `gamedata/sound.tdf`, TA
 /// Reborn's own sound keys, sound sets (`sound.set`) and the names that name them, a side's
 /// `alerts`, a weapon's `soundloop`, `soundstop` and `soundstartwater`, and Ogg and FLAC sounds in
-/// `sounds/`).
-pub const SCHEMA_VERSION: u32 = 24;
+/// `sounds/`; 25: a mod's particle effects (`effects/*.tdf`: `effect.*`), the weapons' and units'
+/// keys naming them and their muzzle flash and trail animations, their colours and thickness
+/// (`weapon.look`, `unit.look`)).
+pub const SCHEMA_VERSION: u32 = 25;
 
 /// The keys of the sound tables' categories the game plays (`ta_audio`'s sound events: TA's, then
 /// TA Reborn's own), each with or without a variant number (`select1`, `select2`…), with
@@ -545,7 +547,7 @@ fn production(common: &TdfSection) -> bool {
 /// The folders the game reads its data from. A file elsewhere (a picture in `docs/`, a GAF beside
 /// a read-me) it never opens, so it is never decoded: the packaging check tells where the game
 /// would read it (`misplaced`).
-const GAME_FOLDERS: &[&str] = &["ai", "anims", "bitmaps", "camps", "download", "features", "fonts", "gamedata", "guis", "maps", "music", "objects3d", "palettes", "scripts", "sounds", "textures", "unitpics", "units", "weapons"];
+const GAME_FOLDERS: &[&str] = &["ai", "anims", "bitmaps", "camps", "download", "effects", "features", "fonts", "gamedata", "guis", "maps", "music", "objects3d", "palettes", "scripts", "sounds", "textures", "unitpics", "units", "weapons"];
 
 /// Whether the game reads a file of a kind it decodes: in one of its folders.
 fn read_by_game(p: &str) -> bool { known(p) && p.split_once('/').is_some_and(|(top, _)| GAME_FOLDERS.contains(&top)) }
@@ -590,6 +592,7 @@ fn describe(reference: &str) -> Words {
         "sound" => enf("sound {name} ({path})", [("name", upper()), ("path", Fill::name(sound_path(name)))]),
         "sounds" => enf("sound category {name} (gamedata/sound.tdf or a sound add-on)", [("name", upper())]),
         "soundset" => enf("sound set {name}", [("name", upper())]),
+        "effect" => enf("effect {name} (effects/*.tdf)", [("name", upper())]),
         "placed" => enf("unit or feature {name}", [("name", upper())]),
         "gaf" => match name.split_once('#') { Some((file, entry)) => enf("animation {entry} in {file}", [("entry", Fill::name(entry.to_ascii_uppercase())), ("file", Fill::name(file))]), None => Words::raw(name) },
         _ => Words::raw(reference),
@@ -614,7 +617,7 @@ fn misplaced(path: &str) -> Option<&'static [&'static str]> {
         "tnt" | "ota" | "features" => (top == "maps" && depth == 1, &["maps/"]),
         "gaf" => (matches!(top, "anims" | "textures" | "bitmaps") && depth == 1 || top == "camps", &["anims/", "textures/"]),
         "fnt" => (matches!(top, "fonts" | "guis"), &["fonts/"]),
-        "tdf" => (matches!(top, "weapons" | "gamedata" | "download" | "maps") && depth == 1 || matches!(top, "features" | "camps"), &["weapons/", "features/", "gamedata/", "download/", "camps/"]),
+        "tdf" => (matches!(top, "weapons" | "gamedata" | "download" | "maps" | "effects") && depth == 1 || matches!(top, "features" | "camps"), &["weapons/", "features/", "gamedata/", "download/", "camps/", "effects/"]),
         // (The music folder's tracks are WAVs too; a sound named with a folder is read from it.)
         "wav" => (top == "sounds" || top == "camps" || top == "music" && depth == 1, &["sounds/"]),
         _ => return None,
@@ -1485,6 +1488,35 @@ impl<'a> Scan<'a> {
         }
     }
 
+    /// A weapon's look of a mod's own that does not read: a colour that is none, a thickness of
+    /// none (the game then draws the weapon in its kind's own).
+    fn weapon_look(&mut self, path: &str, s: &TdfSection, weapon: &crate::WeaponDef) {
+        for key in ["rgbcolor", "rgbcolor2"] {
+            if let Some(value) = s.get(key) && crate::weapon::rgb(value).is_none() {
+                let words = enf("{name}'s {key}={value} is not three numbers from 0 to 1: it is drawn in its kind's own colours.", [("name", Fill::name(&weapon.name)), ("key", Fill::name(key)), ("value", Fill::name(value.trim()))]);
+                self.issue(Severity::Warning, "weapon.look", path, words, en("Write a colour as Spring does, red, green and blue: rgbcolor=1 0.5 0;"));
+            }
+        }
+        if let Some(value) = s.get("thickness") && weapon.look.thickness.is_none() {
+            let words = enf("{name}'s thickness={value} is no width in pixels: it is drawn as thick as its kind's own.", [("name", Fill::name(&weapon.name)), ("value", Fill::name(value.trim()))]);
+            self.issue(Severity::Warning, "weapon.look", path, words, en("Give its width in pixels, more than none: thickness=3;"));
+        }
+    }
+
+    /// What reading an effect (`effects/*.tdf`) found wrong, as a finding.
+    fn effect_problem(&mut self, path: &str, effect: &str, problem: crate::effect::EffectProblem) {
+        use crate::effect::{EffectProblem, MAX_BURSTS, MAX_COUNT};
+        let name = || Fill::name(effect);
+        let (code, words, how) = match problem {
+            EffectProblem::UnknownKind { burst, kind } => ("effect.kind", enf("{effect}'s burst {burst} is of no kind TA Reborn draws ({kind}): it is left out.", [("effect", name()), ("burst", Fill::name(burst)), ("kind", Fill::name(if kind.is_empty() { "none".to_string() } else { kind }))]), en("Give it kind=spark, ember, glow, fire, dust, smoke, dirt, spray, fireball or ring.")),
+            EffectProblem::BadValue { burst, key, value } => ("effect.value", enf("{effect}'s burst {burst}: {key}={value} does not read: its kind's own is taken.", [("effect", name()), ("burst", Fill::name(burst)), ("key", Fill::name(key)), ("value", Fill::name(value.trim()))]), en("Write the numbers the key takes, by spaces: size=40 12; color=1 0.5 0; direction is forward, back, up, down or out.")),
+            EffectProblem::TooManyBursts { bursts } => ("effect.bursts", enf("{effect} has {n} bursts: TA Reborn plays the first {most}.", [("effect", name()), ("n", Fill::number(bursts)), ("most", Fill::number(MAX_BURSTS))]), en("Join bursts of one kind, or split the effect in two.")),
+            EffectProblem::TooMany { burst, count } => ("effect.count", enf("{effect}'s burst {burst} asks for {count} particles: TA Reborn makes {most} at most.", [("effect", name()), ("burst", Fill::name(burst)), ("count", Fill::number(count.max(0) as usize)), ("most", Fill::number(MAX_COUNT as usize))]), en("Make fewer, larger particles: an effect costs every frame it plays.")),
+            EffectProblem::Empty => ("effect.empty", enf("{effect} has no bursts: it plays nothing.", [("effect", name())]), en("Give it a section for each burst, each with its kind.")),
+        };
+        self.issue(Severity::Warning, code, path, words, how);
+    }
+
     fn text(&mut self, path: &str, doc: &TdfDocument) {
         if direct(path, "units", "fbi") {
             let Some(s) = doc.section("UNITINFO") else { self.issue(Severity::Error, "unit.header", path, Words::text(en("Missing [UNITINFO]; this unit is skipped.")), en("Add a UNITINFO section with a non-empty UnitName.")); return; };
@@ -1517,6 +1549,15 @@ impl<'a> Scan<'a> {
             if self.halted { return; }
             for (name, what) in [(&unit.explode_as, en("{name} death explosion")), (&unit.self_destruct_as, en("{name} self-destruct explosion"))] { optional(&mut refs, "weapon", name, part(what, &unit.name), Severity::Warning); }
             optional(&mut refs, "feature", &unit.corpse, part(en("{name} wreckage"), &unit.name), Severity::Warning);
+            // (Its own effects, which its script plays: `emit-sfx 1024 + n`.)
+            for (n, effect) in unit.sfx_effects.iter().enumerate() {
+                optional(&mut refs, "effect", effect, enf("{name} effect for emit-sfx {sfx}", [("name", Fill::name(&unit.name)), ("sfx", Fill::number(crate::effect::SFX_EFFECT as usize + n))]), Severity::Warning);
+            }
+            if let Some(value) = s.get("AdjacencyBeamColor") && crate::weapon::rgb(value).is_none() {
+                let words = enf("{unit}'s AdjacencyBeamColor={value} is not three numbers from 0 to 1: no beam is drawn from it.", [("unit", Fill::name(&unit.name)), ("value", Fill::name(value.trim()))]);
+                self.issue(Severity::Warning, "unit.look", path, words, en("Write a colour as Spring does, red, green and blue: AdjacencyBeamColor=0.4 0.7 1;"));
+                if self.halted { return; }
+            }
             // (A note: the game never acts on a unit's side, which only files it in the
             // encyclopaedia; TA: Escalation's units both sides build are `Side=ALL`.)
             optional(&mut refs, "side", &unit.side, part(en("{name} faction"), &unit.name), Severity::Info);
@@ -1541,10 +1582,28 @@ impl<'a> Scan<'a> {
                 if !weapon.model.is_empty() && matches!(weapon.render_type, crate::RenderType::Model | crate::RenderType::Bomb) { refs.push(Reference::new("file", &asset("objects3d", &weapon.model, "3do"), part(en("{name} projectile model"), &weapon.name), Severity::Warning)); }
                 for (gaf, entry, label) in [(&weapon.explosion_gaf, &weapon.explosion_art, en("{name} explosion")), (&weapon.water_explosion_gaf, &weapon.water_explosion_art, en("{name} water explosion")), (&weapon.lava_explosion_gaf, &weapon.lava_explosion_art, en("{name} lava explosion"))] { animation_ref(&mut refs, gaf, entry, part(label, &weapon.name)); }
                 for (sound, label) in [(&weapon.sound_start, en("{name} firing sound")), (&weapon.sound_hit, en("{name} impact sound")), (&weapon.sound_water, en("{name} water impact sound")), (&weapon.sound_start_water, en("{name} firing sound under the water")), (&weapon.sound_loop, en("{name} firing loop")), (&weapon.sound_stop, en("{name} firing loop's end"))] { optional(&mut refs, "sound", sound, part(label, &weapon.name), Severity::Warning); }
+                // (How it looks of a mod's own: TA Reborn's keys.)
+                let look = &weapon.look;
+                for (gaf, entry, label) in [(&look.fire_gaf, &look.fire_art, en("{name} muzzle flash")), (&look.trail_gaf, &look.trail_art, en("{name} trail"))] { animation_ref(&mut refs, gaf, entry, part(label, &weapon.name)); }
+                for (effect, label) in [(&look.fire_effect, en("{name} fire effect")), (&look.trail_effect, en("{name} trail effect")), (&look.hit_effect, en("{name} hit effect")), (&look.water_hit_effect, en("{name} water hit effect"))] { optional(&mut refs, "effect", effect, part(label, &weapon.name), Severity::Warning); }
+                self.weapon_look(path, s, &weapon);
                 if let crate::RenderType::Other(n) = weapon.render_type { self.issue(Severity::Warning, "weapon.render_type", path, enf("{name} uses unsupported RenderType={n}; Reborn will use its fallback projectile appearance.", [("name", Fill::name(&weapon.name)), ("n", Fill::number(n))]), en("Use TA RenderType 0..7, or report the required extension to Reborn's maintainers.")); }
                 self.weapon_abilities(path, &weapon);
                 self.attribute(first, &key("weapon", &weapon.name));
                 self.record(key("weapon", &weapon.name), Record { path: path.into(), refs, ..Default::default() });
+                if self.halted { break; }
+            }
+        } else if direct(path, "effects", "tdf") {
+            // A mod's particle effects (TA Reborn's: `crate::effect`), each read as the game reads it.
+            for s in &doc.sections {
+                let first = self.report.issues.len();
+                let (effect, problems) = crate::EffectDef::from_tdf(s);
+                for problem in problems {
+                    self.effect_problem(path, &effect.name, problem);
+                    if self.halted { return; }
+                }
+                self.attribute(first, &key("effect", &effect.name));
+                self.record(key("effect", &effect.name), Record { path: path.into(), ..Default::default() });
                 if self.halted { break; }
             }
         } else if (path.starts_with("features/") && path.ends_with(".tdf")) || (path.starts_with("maps/") && path.ends_with(".features")) {
@@ -2688,6 +2747,32 @@ mod tests {
             b.extend_from_slice(&row);
         }
         b
+    }
+
+    /// A mod's effects and the keys naming them, checked as the game reads them: an effect named
+    /// that no file gives is missing, a burst of no kind TA Reborn draws or a number that does not
+    /// read is told (the rest plays), a colour that is none too; effects that read, a weapon's
+    /// muzzle flash animation and a unit's own effect are found.
+    #[test]
+    fn a_mods_effects_and_the_keys_naming_them_are_checked() {
+        let f = Fixture::new(); f.valid("mod");
+        f.put("mod", "anims/flash.gaf", big_gaf("flash", 2, 16));
+        f.put("mod", "effects/fx.tdf", b"[GOOD]{[A]{kind=glow;size=10 4;color=1 0.5 0;}}[ODD]{[B]{kind=laser;}[C]{kind=spark;speed=fast;count=9000;}}");
+        f.put("mod", "weapons/test.tdf", b"[GUN]{firegaf=flash;fireart=flash;fireeffect=good;hiteffect=NOWHERE;rgbcolor=1 0.5;thickness=-2;}");
+        f.put("mod", "units/fxunit.fbi", b"[UNITINFO]{UnitName=FXUNIT;ObjectName=example;Side=ARM;SfxEffects=good missing_too;AdjacencyBeamColor=blue;}");
+        let report = validate_all(&f.vfs(&["mod"]));
+        let text = report.to_text();
+        let has = |code: &str, words: &str| report.issues.iter().any(|i| i.code == code && i.message.contains(words));
+        assert!(has("reference.missing", "GUN hit effect: effect NOWHERE (effects/*.tdf) is missing."), "{text}");
+        assert!(has("reference.missing", "FXUNIT effect for emit-sfx 1025: effect MISSING_TOO"), "{text}");
+        assert!(!has("reference.missing", "GOOD") && !has("reference.missing", "flash"), "the effect and the animation there are found: {text}");
+        assert!(has("effect.kind", "ODD's burst B is of no kind TA Reborn draws (laser)"), "{text}");
+        assert!(has("effect.value", "speed=fast does not read") && has("effect.count", "asks for 9000 particles"), "{text}");
+        assert!(has("weapon.look", "GUN's rgbcolor=1 0.5 is not three numbers") && has("weapon.look", "GUN's thickness=-2"), "{text}");
+        assert!(has("unit.look", "FXUNIT's AdjacencyBeamColor=blue"), "{text}");
+        assert!(report.issues.iter().filter(|i| i.code.starts_with("effect.")).all(|i| i.path == "effects/fx.tdf" && i.severity == Severity::Warning), "{text}");
+        // (An effect's file is where the game reads one: no misplaced file.)
+        assert!(!report.issues.iter().any(|i| i.path == "effects/fx.tdf" && i.code.starts_with("packaging")), "{text}");
     }
 
     /// A weapon's explosion painted too big to decode at once (TA: Escalation's are up to

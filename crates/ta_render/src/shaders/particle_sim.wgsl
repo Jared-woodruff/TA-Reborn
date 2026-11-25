@@ -21,7 +21,7 @@ struct Burst {
     // rgb = colour, a = brightness (additive kinds) or opacity (alpha-blended kinds)
     color: vec4<f32>,
     // x = index of its first particle among this frame's, y = count, z = kind | flags << 8,
-    // w = unused
+    // w = the colour its particles turn to (4 x unorm8; with EMIT_END_COLOR)
     info: vec4<u32>,
     // x = seconds the births are spread over, y = seconds before the first, zw = unused
     extra: vec4<f32>,
@@ -65,6 +65,7 @@ struct Indirect {
 // Burst flags (`info.z >> 8`): bits 0, 2 and 3 are the particle's FLAG_COLLIDE, FLAG_COLD and
 // FLAG_SPECK.
 const EMIT_GROUND_COLOR: u32 = 2u;
+const EMIT_END_COLOR: u32 = 16u;
 
 @group(0) @binding(0) var<uniform> params: ParticleParams;
 // This frame's particles (emission appends to them) and the survivors' buffer.
@@ -209,6 +210,7 @@ fn cs_emit(@builtin(global_invocation_id) id: vec3<u32>) {
         pack4x8unorm(vec4<f32>(saturate(color), opacity)),
         kind | ((flags & (FLAG_COLLIDE | FLAG_COLD | FLAG_SPECK)) << 4u) | ((hash_u32(rng) & 255u) << 8u) | (pack2x16float(vec2<f32>(brightness, 0.0)) << 16u),
     );
+    p.look = vec4<u32>(b.info.w, select(0u, LOOK_END_COLOR, (flags & EMIT_END_COLOR) != 0u), 0u, 0u);
     if (additive) {
         particles_in[atomicAdd(&counters.front[list], 1u)] = p;
     } else {

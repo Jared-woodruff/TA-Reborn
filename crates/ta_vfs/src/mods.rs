@@ -1186,8 +1186,9 @@ pub fn content_digests(m: &ModInfo) -> std::io::Result<([u8; 16], [u8; 16])> {
 /// Whether the game reads a file of a mod's folder (its path there, normalised: `units/tank.fbi`):
 /// an archive at its top, or a file in one of TA's folders or in one its manifest renames to
 /// one of them; never what the system leaves beside them (see [`content_digest`]). TA Reborn's own
-/// folders ([`crate::package::REBORN_FOLDERS`]: a menu theme's `menus/`) are left out: they play
-/// no part in a battle, and the records made before a mod had them keep its digest.
+/// folders ([`crate::package::REBORN_FOLDERS`]: a menu theme's `menus/`, a mod's particle
+/// `effects/`) are left out: they play no part in a battle's outcome, and the records made before
+/// a mod had them keep its digest.
 fn read_by_game(relative: &str, renames: &BTreeMap<String, String>) -> bool {
     let name = relative.rsplit('/').next().unwrap_or(relative);
     if ["thumbs.db", "desktop.ini", ".ds_store"].contains(&name) { return false; }

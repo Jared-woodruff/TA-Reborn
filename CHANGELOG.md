@@ -19,6 +19,25 @@
   (`base`); a weapon's loop for beams and gatlings, its sound under the water; a script's sounds
   (`play-sound`); a side's announcer; FLAC sounds, and Ogg sounds kept mono so they pan. Sounds
   keep nobody out of a multiplayer battle.
+- Mods can give their weapons a look of their own: a muzzle flash and a trail from a GAF
+  (`firegaf`, `trailgaf`), a shot's true colours and width (`rgbcolor`, `rgbcolor2`, `thickness`,
+  as Spring names them), and particle effects of their own where a shot leaves, along its flight
+  and where it hits (`fireeffect`, `traileffect`, `hiteffect`, `waterhiteffect`), written in a new
+  folder of TA Reborn's, `effects/*.tdf`: each effect a few bursts of sparks, embers, glows, flames,
+  smoke, dust, grit, spray, fireballs or rings on the ground, with their counts, sizes, lives,
+  speeds, directions and colours, a colour to turn to as they age among them. A unit's script plays
+  effects of its own with `emit-sfx 1024 + n` (`SfxEffects`), and a building can draw a beam to the
+  buildings its adjacency helps (`AdjacencyBeamColor`). TA's own `smokedelay` and `endsmoke` are
+  played now, and missiles, torpedoes and bombs are drawn in their owner's colour, their paint read
+  as the battle starts. None of it changes how a battle plays: players with other effects play
+  together. The mod check reads the effects as the game does ([MODDING.md](docs/MODDING.md)).
+- The Supreme Commander factions' weapons look as they do in Forged Alliance, made from your own
+  copy of the game with the factions (converter version 18: UPDATE on the Mods page): each weapon's
+  muzzle flash, its shot's trail and impacts made from the game's own emitters, its shots and beams
+  in their own colours and widths (the UEF's shells, the Cybran's red lasers and microwave beams,
+  the Aeon's green and white, the Seraphim's yellow and violet), its missiles, torpedoes and bombs
+  drawn with their own models, and the structures' adjacency beams between them
+  ([SUPCOM_UNITS.md](docs/SUPCOM_UNITS.md#weapons-effects)).
 - Taking control of a unit: riding along in one of your own ground units, hovercraft or ships (the
   perspective key, Q), press E to drive it yourself. It goes where you look: W ahead, A and D to
   either side and S back, still facing what you look at (astern at half speed), the unit coming

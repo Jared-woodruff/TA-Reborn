@@ -204,6 +204,9 @@ pub struct WeaponBlueprint {
     /// What its projectile splits into as it lands, all its splits followed (the Salvation's
     /// shell into six, each of those into six more: 36 pieces, each with the shell's damage).
     pub split: Option<Split>,
+    /// How it looks in TA Reborn's keys (its effects, its shot's colours, its projectile's
+    /// model), where the factions' effects were made: `factions::effects`.
+    pub look: Option<crate::factions::effects::Look>,
     pub table: Table,
 }
 
@@ -659,6 +662,7 @@ fn weapon(t: &Table) -> WeaponBlueprint {
         }),
         shot: None,
         split: None,
+        look: None,
         table: t.clone(),
     }
 }

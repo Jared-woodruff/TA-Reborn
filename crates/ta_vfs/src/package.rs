@@ -372,8 +372,10 @@ pub const TA_FOLDERS: &[&str] = &[
 
 /// Folders TA Reborn reads that TA did not: `menus/`, a menu theme's pictures, panel art and list
 /// (`menus/<theme>/theme.toml`: Supreme Commander's, which the launcher makes of the player's own
-/// copy). An install keeps them whole, as it does TA's ([`TA_FOLDERS`]).
-pub const REBORN_FOLDERS: &[&str] = &["menus"];
+/// copy), and `effects/`, a mod's particle effects (`effects/*.tdf`, ta_data's `effect`). An
+/// install keeps them whole, as it does TA's ([`TA_FOLDERS`]); neither plays a part in a battle's
+/// outcome, so a mod's digest leaves them out.
+pub const REBORN_FOLDERS: &[&str] = &["menus", "effects"];
 
 /// Whether a folder of this name (in lower case) at a mod's top holds what the game reads: one of
 /// TA's, or one of TA Reborn's own.
@@ -2395,7 +2397,7 @@ banner = \"docs/banner.png\"
         let dir = install(&planned, &manifest("supcom-menus", "2"), &base.join("mods")).unwrap();
         assert!(dir.join("menus/supcom/theme.toml").is_file() && dir.join("menus/supcom/pictures/space_1.dds").is_file(), "the theme installed");
         assert!(dir.join("sounds/supcom-menus/ui_menu_mousedown.wav").is_file());
-        assert!(game_folder("menus") && game_folder("units") && !game_folder("extras"));
+        assert!(game_folder("menus") && game_folder("effects") && game_folder("units") && !game_folder("extras"));
 
         // A theme alone beside its manifest is a mod of its own.
         let theme_only = base.join("theme_only");

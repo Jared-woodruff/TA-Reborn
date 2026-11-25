@@ -1064,3 +1064,106 @@ fn the_sounds_are_clean() {
     assert!(median > 20.0, "{median}");
     assert!(jumps * 1000 < snrs.len() * 50, "{jumps} blocks");
 }
+
+/// Every weapon's effects, as Forged Alliance's scripts and emitters name them, made TA Reborn's:
+/// each weapon's muzzle, its shot's trail and impacts, its shot's or beam's colours, and its
+/// projectile's own model where TA Reborn draws it as one and the game has its mesh; each
+/// faction's effects in TA Reborn's terms (every burst of a kind it plays, its numbers within its
+/// bounds), made the same twice. `TA_SUPCOM_FX_OUT=<dir>` writes the effects files there.
+#[test]
+#[ignore]
+fn every_weapons_projectile_and_effects_are_made() {
+    use ta_supcom::factions::effects;
+    let Some(game) = the_game() else {
+        eprintln!("no copy of Forged Alliance found: nothing to read");
+        return;
+    };
+    let files = Files::own(&game).unwrap();
+    let units: Vec<_> = unit::catalogue(&files).unwrap().into_iter().filter(|u| u.playable()).collect();
+    let started = std::time::Instant::now();
+    let made = effects::make(&files, &units).unwrap();
+    eprintln!("effects made in {} ms", started.elapsed().as_millis());
+    let again = effects::make(&files, &units).unwrap();
+    assert!(made.files == again.files && made.models == again.models, "made again, the same");
+    if let Some(dir) = std::env::var_os("TA_SUPCOM_FX_OUT") {
+        let dir = PathBuf::from(dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for (path, text) in &made.files {
+            std::fs::write(dir.join(path.rsplit('/').next().unwrap()), text).unwrap();
+        }
+    }
+    // Every faction's effects read as the game reads them, each burst of a kind it draws.
+    let mut effect_names = std::collections::BTreeSet::new();
+    for (path, text) in &made.files {
+        let doc = ta_formats::tdf::parse(text);
+        let mut bursts = 0;
+        for s in &doc.sections {
+            let (e, problems) = ta_data::EffectDef::from_tdf(s);
+            assert!(problems.is_empty(), "{path} [{}]: {problems:?}", s.name);
+            assert!(!e.bursts.is_empty() && e.bursts.len() <= ta_data::effect::MAX_BURSTS, "{path} [{}]", s.name);
+            bursts += e.bursts.len();
+            effect_names.insert(e.name.clone());
+        }
+        eprintln!("{path}: {} effects, {bursts} bursts, {} KB", doc.sections.len(), text.len() >> 10);
+    }
+    assert_eq!(made.files.len(), 4, "a file a faction");
+    // Each weapon (but the death and suicide blasts) and what it was given.
+    let (mut weapons, mut fired, mut hits, mut trails, mut coloured, mut modelled, mut want_models) = (0, 0, 0, 0, 0, 0, 0);
+    let mut by_kind: BTreeMap<String, (usize, usize, usize)> = BTreeMap::new();
+    let mut unmade: Vec<String> = Vec::new();
+    for u in &units {
+        let dressed = made.dressed(u);
+        for w in &dressed.weapons {
+            if w.category.eq_ignore_ascii_case("death") || w.category.eq_ignore_ascii_case("kamikaze") || w.damage <= 0.0 && w.nuke.is_none() {
+                continue;
+            }
+            weapons += 1;
+            let look = w.look.clone().unwrap_or_default();
+            let has = |key: &str| look.keys.iter().find(|(k, _)| *k == key).map(|(_, v)| v.clone());
+            for key in ["fireeffect", "traileffect", "hiteffect", "waterhiteffect"] {
+                if let Some(name) = has(key) {
+                    assert!(effect_names.contains(&name.to_ascii_uppercase()), "{} {}: its {key} {name} is made", u.id, w.label);
+                }
+            }
+            fired += has("fireeffect").is_some() as usize;
+            hits += has("hiteffect").is_some() as usize;
+            trails += has("traileffect").is_some() as usize;
+            coloured += has("rgbcolor").is_some() as usize;
+            let kind = format!("{:?}", units::kind(w));
+            let e = by_kind.entry(kind).or_default();
+            e.0 += 1;
+            e.1 += has("fireeffect").is_some() as usize;
+            e.2 += has("hiteffect").is_some() as usize;
+            if has("fireeffect").is_none() && has("hiteffect").is_none() {
+                unmade.push(format!("{} {} ({:?})", u.id, w.label, units::kind(w)));
+            }
+            // Drawn as a model with a mesh of its own: that mesh, made.
+            if effects::drawn_as_a_model(w)
+                && let Some(path) = w.projectile.as_deref().map(ta_supcom::projectile::normalise)
+                && files.read(&format!("{}_lod0.scm", path.trim_end_matches("_proj.bp"))).unwrap().is_some()
+            {
+                want_models += 1;
+                assert_eq!(look.model.as_deref(), Some(effects::model_name(&path).as_str()), "{} {}: its projectile's own model", u.id, w.label);
+                assert!(made.models.contains(&path), "{path}");
+                modelled += 1;
+            }
+        }
+    }
+    eprintln!("{weapons} weapons: {fired} with a muzzle effect, {hits} with a hit effect, {trails} with a trail, {coloured} in their own colours, {modelled} of {want_models} drawn with their projectile's own model");
+    for (kind, (n, f, h)) in &by_kind {
+        eprintln!("  {kind}: {n} weapons, {f} muzzles, {h} hits");
+    }
+    eprintln!("weapons with neither a muzzle nor a hit effect: {unmade:?}");
+    eprintln!("{} projectile models", made.models.len());
+    assert!(fired * 10 >= weapons * 8 && hits * 10 >= weapons * 7, "most weapons have their muzzles and their hits");
+    // Every projectile model made: its model, surface and paint, reading as the game reads them.
+    for path in &made.models {
+        let shot = units.iter().flat_map(|u| &u.weapons).find_map(|w| w.shot.as_ref().filter(|s| s.path == *path)).unwrap();
+        let out = effects::projectile_model(&files, path, shot).unwrap().unwrap_or_else(|| panic!("{path}: its model"));
+        let name = effects::model_name(path);
+        let model = out.iter().find(|(p, _)| *p == format!("objects3d/{name}.3do")).map(|(_, b)| ta_formats::model3do::Model3do::parse(b).unwrap()).unwrap();
+        let surface = out.iter().find(|(p, _)| *p == format!("objects3d/{name}.surface")).map(|(_, b)| ta_formats::surface::Surface::parse(b).unwrap()).unwrap();
+        assert!(surface.fits(&model), "{path}: its surface fits");
+        assert_eq!(out.iter().filter(|(p, _)| p.starts_with("textures/supcom/")).count(), 3, "{path}: its paint");
+    }
+}

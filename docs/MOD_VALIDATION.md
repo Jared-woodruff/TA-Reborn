@@ -182,8 +182,9 @@ original game's).
   brace that closes nothing, a header without a body or a `]`, a comment never ended, each
   with its line.
 - **References:** units to their models, scripts, weapons, explosions, wrecks, factions,
-  movement classes and sound categories; weapons to their projectiles, explosion animations and
-  sounds; features to their models, the animations the game draws (the animation, the burning
+  movement classes, sound categories and own effects (`SfxEffects`); weapons to their projectiles,
+  explosion animations, muzzle flash and trail animations (`firegaf`, `trailgaf`), effects
+  (`fireeffect`, `traileffect`, `hiteffect`, `waterhiteffect`: `effects/*.tdf`) and sounds; features to their models, the animations the game draws (the animation, the burning
   one and the shadow; not TA's burn shadow, death and reclaim animations, which it never reads)
   and replacements; sound categories to their sounds, by the keys the game plays (`select1`,
   `ok2`… `count0` to `count9`, TA Reborn's `death`, `moveloop`…; a repeated key's last value; not
@@ -260,6 +261,13 @@ original game's).
   names nothing TA Reborn plays, or that adds nothing (`unit.adjacency`), and a building set to work
   round it by itself (`DefaultMissionType=AssistPatrol`) with no build power (`unit.assist_patrol`):
   warnings ([MODDING.md](MODDING.md#adjacency)).
+- **Looks and effects** ([MODDING.md](MODDING.md#how-weapons-look-and-effects-of-a-mods-own)),
+  read as the game reads them, warnings (the game plays what reads): an effect's burst of no kind
+  TA Reborn draws, left out (`effect.kind`), a key whose value does not read, its kind's own taken
+  (`effect.value`), more bursts than an effect plays (`effect.bursts`) or more particles than a burst
+  makes (`effect.count`), an effect of no bursts (`effect.empty`); a weapon's `rgbcolor` or
+  `rgbcolor2` that is not three numbers, or a `thickness` of none (`weapon.look`), and a building's
+  `AdjacencyBeamColor` that is no colour (`unit.look`).
 - **Limits:** footprints (a footprint of none is an upgrade module's, which takes no ground: kept), texture frames and layers (the textures the models in `objects3d`
   paint with, as the game loads them: an entry no model names takes no room, and the rest fit
   two arrays of the reference card's 2,048 layers), the sprite atlas's room for explosions.

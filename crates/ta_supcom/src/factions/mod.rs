@@ -20,6 +20,7 @@
 
 pub mod abilities;
 pub mod anims;
+pub mod effects;
 pub mod emblem;
 pub mod enhance;
 pub mod faction;

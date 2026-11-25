@@ -309,6 +309,8 @@ mod nano;
 mod damage;
 #[path = "effects_impacts.rs"]
 mod impacts;
+#[path = "effects_mods.rs"]
+mod mods;
 #[path = "effects_particles.rs"]
 mod particles;
 #[path = "effects_remains.rs"]
@@ -352,6 +354,8 @@ pub struct Effects {
     /// Each weapon's model in flight (missiles, rockets and torpedoes have two or three pieces:
     /// the body, its flare or propeller).
     weapon_models: Vec<Option<WeaponModel>>,
+    /// What mods give their weapons and units to play (`effects_mods.rs`).
+    mods: mods::ModFx,
     /// Each projectile's velocity a tick ago and now, and the tick of now: its model turns
     /// between them as it is drawn between those ticks (a missile turning over after its climb
     /// turned in steps of 6°, two frames each).
@@ -367,8 +371,9 @@ pub struct Effects {
     active: Vec<Anim>,
     particles: Vec<Particle>,
     /// Blasts of projectiles that met what they hit partway through a tick, each with the
-    /// moment (game seconds) the projectile drawn gets there: they go off then.
-    due_blasts: Vec<(f32, SimEvent)>,
+    /// moment (game seconds) the projectile drawn gets there: they go off then (with the way the
+    /// shot was flying, where known: a mod's hit effect plays back along it).
+    due_blasts: Vec<(f32, SimEvent, Vec3)>,
     trail_timer: HashMap<u32, f32>,
     rng: u32,
     pub additive: Vec<SpriteInstance>,
@@ -379,6 +384,8 @@ pub struct Effects {
     bolts: rustc_hash::FxHashMap<u32, BoltLook>,
     model_matrices: Vec<Vec<Mat4>>,
     model_ids: Vec<ModelId>,
+    /// Each projectile model's player colour (its owner's).
+    model_teams: Vec<u32>,
     /// Fog of war: only effects inside this player's sight are shown (None = all).
     pub viewer: Option<u8>,
     /// Ground rectangle in view (with a margin); particles outside it are not drawn.
@@ -508,6 +515,7 @@ impl Effects {
         self.posed.clear();
         self.pops.clear();
         self.due_blasts.clear();
+        self.mods.clear();
     }
 }
 
@@ -638,7 +646,8 @@ impl Effects {
 
         // Explosion animations: the weapons', and TA's own blasts for units dying without an
         // explosion weapon, their pieces and their wrecks.
-        let anims::Explosions { anims, looks: anim_looks, weapon_anims, generic: generic_blasts } = anims::load(vfs, atlas, palette, sim);
+        let anims::Explosions { anims, looks: anim_looks, weapon_anims, weapon_fire_trail, generic: generic_blasts } = anims::load(vfs, atlas, palette, sim);
+        let mods = mods::ModFx::new(sim, &weapon_fire_trail);
 
         let weapon_models = sim
             .weapon_types
@@ -652,6 +661,9 @@ impl Effects {
                 let name = w.def.model.to_ascii_lowercase();
                 let m = ta_formats::model3do::Model3do::parse(&vfs.read_opt(&format!("objects3d/{name}.3do"))?).ok()?;
                 let id = crate::scene::add_model(models, &|p| vfs.read_opt(p), &name, &m, palette);
+                // (Its paint read now, a model with a surface of its own: the battle's first shots
+                // painted, not drawn in their colour on average while it is read.)
+                models.want_paint(id);
                 // (The root at the projectile's place; the rest where they sit on it. Then the
                 // body's middle on the flight's line, see `WeaponModel`.)
                 let info = models.library.info(id);
@@ -673,6 +685,7 @@ impl Effects {
             generic_blasts,
             weapon_anims,
             weapon_models,
+            mods,
             flight_dirs: HashMap::new(),
             glow,
             flake,
@@ -689,6 +702,7 @@ impl Effects {
             bolts: Default::default(),
             model_matrices: Vec::new(),
             model_ids: Vec::new(),
+            model_teams: Vec::new(),
             viewer: None,
             debris: Vec::new(),
             view: None,
@@ -969,13 +983,16 @@ impl Effects {
                     if k <= 0.0 {
                         continue;
                     }
-                    let c = weapon_color(w, sim).map(|c| c * k);
+                    // (A beam a mod draws thinner than Reborn's own for its damage lights less, a
+                    // thicker one more: its `thickness`.)
+                    let shape = LaserShape::of(w);
+                    let shine = w.def.look.thickness.map_or(1.0, |t| (t * 0.5 / shape.width).clamp(0.25, 1.5));
+                    let c = weapon_color(w, sim).map(|c| c * k * shine);
                     // The beam lights the ground along its length, not just at its head.
                     let vel = Vec3::from_array(p.vel.to_f32());
-                    let shape = LaserShape::of(w);
                     let len = shape.length.min(travelled(p, alpha));
                     let middle = pos - vel.normalize_or(Vec3::Z) * len * 0.55;
-                    let reach = 1.0 + 0.6 * shape.heavy;
+                    let reach = (1.0 + 0.6 * shape.heavy) * shine.sqrt();
                     self.lights.push(ta_render::PointLight::new(middle.to_array(), [c[0] * 1.1, c[1] * 1.1, c[2] * 1.1], 70.0 * reach));
                     ([c[0] * 1.8, c[1] * 1.8, c[2] * 1.8], 60.0 * reach)
                 }
@@ -1297,20 +1314,27 @@ impl Effects {
         // A projectile's blast goes off as the projectile drawn gets to where it hit: the world
         // is drawn a tick behind the game (between the last tick and this one), and the
         // projectile `when` of the way through this tick's flight.
+        // (The way a shot was flying as it hit, for a mod's hit effect: known now, from the
+        // simulation's shots spent this tick.)
+        let along = match e {
+            SimEvent::Explosion { weapon, pos, .. } if self.mods.weapon(*weapon).hit.is_some() => self.hit_direction(sim, *weapon, Vec3::from_array(pos.to_f32())).unwrap_or(Vec3::ZERO),
+            _ => Vec3::ZERO,
+        };
         if let SimEvent::Explosion { when, .. } = e
             && *when > ta_sim::Fx::ZERO
         {
-            self.due_blasts.push((now + when.to_f32() / 30.0, e.clone()));
+            self.due_blasts.push((now + when.to_f32() / 30.0, e.clone(), along));
             return;
         }
         if let SimEvent::FeatureDestroyed { index, .. } = e {
             self.forget_posed_wreck(*index);
         }
-        self.happened(e, sim, now);
+        self.happened(e, sim, now, along);
     }
 
-    /// An event's effects, `now` its moment.
-    fn happened(&mut self, e: &SimEvent, sim: &Sim, now: f32) {
+    /// An event's effects, `now` its moment; `along`, for a shot's blast, the way it was flying
+    /// (zero where not known).
+    fn happened(&mut self, e: &SimEvent, sim: &Sim, now: f32, along: Vec3) {
         if let (Some(player), Some(pos)) = (self.viewer, event_position(e, sim)) && !sim.in_sight(player, pos) && !ours(e, sim, player) {
             return;
         }
@@ -1330,6 +1354,10 @@ impl Effects {
                 if let Some(a) = anim.filter(|_| !(self.modern && *water)) {
                     self.blast_anim(a, p, 22.0, 1.0, 1.0, now);
                 }
+                // (A mod's own effect for the hit, in place of Reborn's sparks, flames, grit, smoke
+                // and flash for the weapon's kind: the light, the scorch, a big blast's shockwave
+                // and the shake stay.)
+                let own_hit = self.mod_hit(sim, *weapon, p, *water, along, now);
                 // Light flash, sparks and lingering smoke scale with the blast.
                 // (A battle sets off a dozen at once, over pale sand as often as not: kept small,
                 // brief and below white, the flashes and the light they cast mark each blast
@@ -1338,7 +1366,9 @@ impl Effects {
                 let size = (radius * if self.modern { 0.9 } else { 1.2 }).clamp(16.0, 220.0);
                 // (In the weapon's colour: a green laser's hit is green, an EMP's blue.)
                 let tint = impacts::impact_tint(w, sim);
-                self.flash(p + Vec3::Y * 4.0, now, if big { 0.22 } else { 0.1 }, size, tint, if big { 1.6 } else { 1.25 });
+                if !own_hit {
+                    self.flash(p + Vec3::Y * 4.0, now, if big { 0.22 } else { 0.1 }, size, tint, if big { 1.6 } else { 1.25 });
+                }
                 let beam = matches!(w.def.render_type, RenderType::Laser | RenderType::Lightning);
                 let on_ground = !water && p.y - ground < 12.0;
                 // (An EMP burns nothing: no scorch, no smoke, no shimmering air.)
@@ -1388,8 +1418,10 @@ impl Effects {
                     RenderType::Flame => Blast::Flame,
                     _ => Blast::Shell,
                 };
-                self.blast_particles(p, radius, ground, *water, blast);
-                if !water && !emp {
+                if !own_hit {
+                    self.blast_particles(p, radius, ground, *water, blast);
+                }
+                if !water && !emp && !own_hit {
                     let n = if big { 8 } else { 2 };
                     for _ in 0..n {
                         let off = self.rand_dir() * radius * 0.4;
@@ -1433,11 +1465,16 @@ impl Effects {
                 if let Some(stun) = w.stun.filter(|s| s.on_fire) {
                     self.emp_pulse(p, stun.radius.unwrap_or(w.aoe_radius).to_f32().max(24.0), now);
                 }
-                if matches!(w.def.render_type, RenderType::Shell | RenderType::Point | RenderType::Disintegrator) {
+                // (A mod's own flash and effect at the muzzle, in place of Reborn's flash, sparks
+                // and smoke for the weapon's kind: its light stays.)
+                let own_fire = self.mods.weapon(*weapon).own_fire();
+                if own_fire {
+                    self.mod_fire(sim, *weapon, p, Vec3::from_array(target.to_f32()), now);
+                } else if matches!(w.def.render_type, RenderType::Shell | RenderType::Point | RenderType::Disintegrator) {
                     let big = matches!(w.def.render_type, RenderType::Disintegrator) || w.aoe_radius.to_f32() >= 30.0;
                     self.muzzle_particles(p, Vec3::from_array(target.to_f32()), big);
                 }
-                if matches!(w.def.render_type, RenderType::Shell | RenderType::Point) {
+                if !own_fire && matches!(w.def.render_type, RenderType::Shell | RenderType::Point) {
                     let dir = (Vec3::from_array(target.to_f32()) - p).normalize_or(Vec3::Z);
                     self.muzzle_blast(p, dir, shell_size(w), now);
                 }
@@ -1457,8 +1494,10 @@ impl Effects {
                     self.light(p + Vec3::Y * 20.0, now, 1.2, 260.0, [7.0, 4.5, 2.0]);
                 }
                 if size > 0.0 {
-                    self.flash(p, now, 0.07, size, tint, 2.5);
-                    let c = if matches!(w.def.render_type, RenderType::Laser | RenderType::Lightning) { tint } else { [1.0, 0.7, 0.3] };
+                    if !own_fire {
+                        self.flash(p, now, 0.07, size, tint, 2.5);
+                    }
+                    let c = if matches!(w.def.render_type, RenderType::Laser | RenderType::Lightning) || w.def.look.rgb_color.is_some() { tint } else { [1.0, 0.7, 0.3] };
                     self.light(p, now, 0.09, light_radius, [c[0] * 5.0, c[1] * 5.0, c[2] * 5.0]);
                 }
                 if w.def.start_smoke {
@@ -1466,6 +1505,10 @@ impl Effects {
                 }
             }
             SimEvent::Intercepted { pos, .. } => self.interception(Vec3::from_array(pos.to_f32()), now),
+            // A unit's own effect (`emit-sfx 1024 + n`: its `SfxEffects`' nth).
+            SimEvent::Sfx { kind, .. } if ta_data::effect::sfx_effect(*kind).is_some() => {
+                self.unit_effect(sim, e, now);
+            }
             SimEvent::Sfx { pos, kind, .. }
                 // A submarine's or an underwater plant's bubbles (256|3, TA's SFXTYPE_SUBBUBBLES).
                 if *kind == (256 | 3) => {
@@ -1500,11 +1543,11 @@ impl Effects {
 
     /// Builds this frame's effect sprites, beams and projectile models.
     pub fn update(&mut self, sim: &Sim, now: f32, dt: f32, alpha: f32) {
-        if self.due_blasts.iter().any(|(at, _)| *at <= now) {
-            let (due, later): (Vec<_>, Vec<_>) = std::mem::take(&mut self.due_blasts).into_iter().partition(|(at, _)| *at <= now);
+        if self.due_blasts.iter().any(|(at, _, _)| *at <= now) {
+            let (due, later): (Vec<_>, Vec<_>) = std::mem::take(&mut self.due_blasts).into_iter().partition(|(at, _, _)| *at <= now);
             self.due_blasts = later;
-            for (at, e) in due {
-                self.happened(&e, sim, at);
+            for (at, e, along) in due {
+                self.happened(&e, sim, at, along);
             }
         }
         self.additive.clear();
@@ -1512,6 +1555,7 @@ impl Effects {
         self.beams.clear();
         self.model_matrices.clear();
         self.model_ids.clear();
+        self.model_teams.clear();
 
         // Explosion animations.
         self.active.retain(|a| (now - a.start) * a.fps < self.anims[a.frames].len() as f32);
@@ -1580,6 +1624,9 @@ impl Effects {
             let pos = prev.lerp(cur, alpha);
             let dir = turning.normalize_or(vel).lerp(vel.normalize_or(Vec3::Z), alpha).normalize_or(Vec3::Z);
             let tint = weapon_color(w, sim);
+            let look = &w.def.look;
+            // (A mod's trail along its flight, and where it ends should it end in smoke.)
+            self.mod_flight(sim, p, pos, vel * 30.0, now, dt);
             match w.def.render_type {
                 RenderType::Laser => {
                     // A bolt: a white-hot core in a glow of its colour (TA's `color2`, the heavy
@@ -1589,9 +1636,18 @@ impl Effects {
                     // behind the barrel it left; the harder it hits, the broader and longer.
                     let shape = LaserShape::of(w);
                     let len = shape.length.min(travelled(p, alpha));
-                    let width = shape.width;
-                    let beam = BeamInstance::new(pos.to_array(), (pos - dir * len).to_array(), width * 2.0, tint.map(|c| c * 1.6), 1.0);
-                    self.beams.push(beam.core(0.14 + 0.06 * shape.heavy).tapered(width, 0.6).cover(0.6));
+                    // (A mod's thickness: the bolt's width across.)
+                    let width = look.thickness.map_or(shape.width, |t| t * 0.5);
+                    let tail = pos - dir * len;
+                    let beam = BeamInstance::new(pos.to_array(), tail.to_array(), width * 2.0, tint.map(|c| c * 1.6), 1.0);
+                    match look.rgb_color2 {
+                        // (A core of a mod's own colour, not white-hot.)
+                        Some(core) => {
+                            self.beams.push(beam.core(0.04).tapered(width, 0.6).cover(0.6));
+                            self.beams.push(BeamInstance::new(pos.to_array(), tail.to_array(), width * 0.7, core.map(|c| c * 3.0), 1.0).core(0.001).tapered(width * 0.5, 0.6).cover(0.3));
+                        }
+                        None => self.beams.push(beam.core(0.14 + 0.06 * shape.heavy).tapered(width, 0.6).cover(0.6)),
+                    }
                     self.additive.push(SpriteInstance::new(pos.to_array(), self.glow).scale(0.035 * width).tint(beam_color(tint)).brightness(2.5 + 1.5 * shape.heavy));
                     if shape.heavy > 0.0 {
                         // (A heavy beam's light about it as it passes.)
@@ -1604,10 +1660,14 @@ impl Effects {
                     // a fifteenth of a second a stroke, rather than taking a new shape every frame
                     // (which strobed at the frame rate). A glow round a hot core, as the storm's;
                     // fainter, and in some strokes only, in a crowd of bolts (see `BoltLook`).
-                    let look = self.bolts.get(&p.id).copied().unwrap_or(BoltLook::among(1));
-                    if !look.shown {
+                    let crowd = self.bolts.get(&p.id).copied().unwrap_or(BoltLook::among(1));
+                    if !crowd.shown {
                         continue;
                     }
+                    // (A mod's colours and thickness: its glow, its core.)
+                    let bolt_width = look.thickness.unwrap_or(8.0);
+                    let bolt_glow = look.rgb_color.map_or([0.55, 0.65, 1.2], |c| c.map(|v| v * 1.2));
+                    let bolt_core = look.rgb_color2.or(look.rgb_color).map_or([2.5, 3.0, 6.0], |c| c.map(|v| v * 3.0 + 1.0));
                     let start = bolt_start(p);
                     let stroke = p.age / 2;
                     let mut a = start;
@@ -1621,8 +1681,8 @@ impl Effects {
                             Vec3::new(k(0), k(1), k(2)) * 18.0
                         };
                         let b = start.lerp(pos, t) + jitter;
-                        self.beams.push(BeamInstance::new(a.to_array(), b.to_array(), 8.0, [0.55, 0.65, 1.2], look.glow).cover(0.3));
-                        self.beams.push(BeamInstance::new(a.to_array(), b.to_array(), 2.5, [2.5, 3.0, 6.0], look.core).core(0.4));
+                        self.beams.push(BeamInstance::new(a.to_array(), b.to_array(), bolt_width, bolt_glow, crowd.glow).cover(0.3));
+                        self.beams.push(BeamInstance::new(a.to_array(), b.to_array(), bolt_width * 0.31, bolt_core, crowd.core).core(0.4));
                         a = b;
                     }
                 }
@@ -1645,6 +1705,8 @@ impl Effects {
                         let (id, matrices) = (m.model, m.pieces.iter().map(|piece| at * *piece).collect());
                         self.model_matrices.push(matrices);
                         self.model_ids.push(id);
+                        // (In its owner's colour, as the unit that fired it.)
+                        self.model_teams.push(mods::owner_color(sim, p.owner_player));
                     } else {
                         self.additive.push(SpriteInstance::new(pos.to_array(), self.glow).scale(0.25).tint(tint).brightness(4.0));
                     }
@@ -1653,10 +1715,11 @@ impl Effects {
                         self.bubbles(pos, sim.world.sea_level.to_f32(), now);
                     }
                     if w.def.smoke_trail {
-                        // Its exhaust from its tail, back along its body; its smoke from there on.
+                        // Its exhaust from its tail, back along its body; its smoke from there on, a
+                        // puff as often as its `smokedelay` says (TA's 0.1 s: every 0.04 s).
                         let climbing = w.vlaunch && p.age < w.launch_ticks;
                         let smoke = self.missile_flame(p.id, pos + dir * tail, dir, girth, climbing, now, dt);
-                        trails.push((p.id, smoke));
+                        trails.push((p.id, smoke, mods::smoke_pace(w.def.smoke_delay)));
                     }
                 }
                 RenderType::Flame => {
@@ -1672,15 +1735,21 @@ impl Effects {
                     // Plasma shells: hot glowing ball with a short tail (orange, not white: a
                     // battle has dozens in the air at once), as big as the gun that fired it: a
                     // light tank's spark, a Bertha's or an Intimidator's fireball.
-                    let size = shell_size(w);
-                    self.additive.push(SpriteInstance::new(pos.to_array(), self.glow).scale(0.2 * size).tint([1.0, 0.55, 0.22]).brightness(3.0));
+                    // (A mod's thickness: its glow's size across, 12.8 px a Bulldog's; its colours,
+                    // the glow's and its tail's.)
+                    let size = look.thickness.map_or(shell_size(w), |t| t / 12.8);
+                    let glow = look.rgb_color.unwrap_or([1.0, 0.55, 0.22]);
+                    let streak = look.rgb_color2.or(look.rgb_color).map_or([2.0, 0.95, 0.3], |c| c.map(|v| v * 2.0));
+                    self.additive.push(SpriteInstance::new(pos.to_array(), self.glow).scale(0.2 * size).tint(glow).brightness(3.0));
                     // (Its tail narrows and fades out behind it, a comet's, not a stick ending
                     // in a square cut; never reaching back behind the barrel it left.)
                     let tail = (20.0 * size).min(travelled(p, alpha));
-                    self.beams.push(BeamInstance::new(pos.to_array(), (pos - dir * tail).to_array(), 4.0 * size, [2.0, 0.95, 0.3], 0.7).tapered(2.0 * size, 1.0));
+                    self.beams.push(BeamInstance::new(pos.to_array(), (pos - dir * tail).to_array(), 4.0 * size, streak, 0.7).tapered(2.0 * size, 1.0));
                 }
             }
         }
+        self.mod_landed(sim, &flying, now);
+        self.adjacency_beams(sim, now);
         self.update_debris(sim, now, dt);
         self.update_remains(sim, now, dt);
         self.update_aftermath(sim, now);
@@ -1691,15 +1760,16 @@ impl Effects {
         self.update_nano(sim, now, dt);
         self.collect_lights(sim, now, alpha);
 
-        // Missile smoke trails: a puff every ~40 ms per projectile, where its flame ends.
+        // Missile smoke trails: a puff every ~40 ms per projectile (its `smokedelay`'s pace),
+        // where its flame ends.
         let mut live = std::collections::HashSet::new();
-        for (id, behind) in trails {
+        for (id, behind, pace) in trails {
             live.insert(id);
             let t = self.trail_timer.entry(id).or_insert(0.0);
             *t += dt;
             let mut puffs = 0;
-            while *t > 0.04 {
-                *t -= 0.04;
+            while *t > pace && puffs < 8 {
+                *t -= pace;
                 puffs += 1;
             }
             for _ in 0..puffs {
@@ -1766,6 +1836,8 @@ impl Effects {
         if self.reduced_flashes {
             soften_flashes(&mut self.additive, &mut self.beams, &mut self.lights);
         }
+        // (The mods' effects' budget anew for the next frame: its events' and its trails'.)
+        self.mods.queued = 0.0;
     }
 
     /// Missiles and flying debris in view, as model instances.
@@ -1774,7 +1846,8 @@ impl Effects {
         self.model_ids
             .iter()
             .zip(&self.model_matrices)
-            .map(|(&model, m)| DrawInstance { model, pieces: m, team: 0, flags: 0, build: 1.0, damage: 0.0, travel: [0.0; 2], piece: None, playing: ta_render::model::PLAYING_ALL, key: 0 })
+            .zip(&self.model_teams)
+            .map(|((&model, m), &team)| DrawInstance { model, pieces: m, team, flags: 0, build: 1.0, damage: 0.0, travel: [0.0; 2], piece: None, playing: ta_render::model::PLAYING_ALL, key: 0 })
             .chain(self.debris.iter().filter(|d| in_view(d.pos)).map(|d| DrawInstance { model: d.model, pieces: std::slice::from_ref(&d.matrix), team: d.team, flags: DEAD_LIGHTS, build: 1.0, damage: d.damage, travel: [0.0; 2], piece: Some(d.piece as u32), playing: 0, key: 0 }))
             .chain(self.remains_instances())
             .collect()
@@ -1820,6 +1893,10 @@ fn beam_color(c: [f32; 3]) -> [f32; 3] {
 /// tachyon weapons) and `color2` round it (their blue, their violet; the light lasers' green):
 /// the glow is `color2`'s, or `color`'s where it has none (the yellow lasers).
 fn weapon_color(w: &ta_sim::WeaponType, sim: &Sim) -> [f32; 3] {
+    // (A mod's true colour, `rgbcolor`, over the palette's and Reborn's own.)
+    if let Some(c) = w.def.look.rgb_color {
+        return c;
+    }
     let rgb = |index: u8| {
         let [r, g, b] = sim.data.palette.rgb(index);
         [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0]

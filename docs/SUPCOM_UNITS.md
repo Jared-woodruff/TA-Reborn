@@ -18,17 +18,18 @@ pack is maps alone and keeps nobody apart, though a battle on one of its maps ne
 every computer.
 
 This page records what the game's units are made of (`crates/ta_supcom`: [`unit`], [`projectile`],
-[`behaviour`], [`motions`], [`scm`], [`sca`]) and how they are made into TA's ([`factions`]): their
-models, paint, build pictures and gameplay, their walks and deaths, what their buildings do
-as they work, and their sounds.
+[`behaviour`], [`motions`], [`fx`], [`scm`], [`sca`]) and how they are made into TA's ([`factions`]):
+their models, paint, build pictures and gameplay, their walks and deaths, what their buildings do
+as they work, how their weapons look, and their sounds.
 
 - **Players:** the launcher's Mods page, **SUPREME COMMANDER…** (or the Maps page's, its
   FACTIONS tab). The dialog finds the game (as for its maps: GOG's or Steam's copy, or a folder
   chosen, kept for the next start), counts each faction's units by kind, with its commander's
   build picture, and makes the factions chosen into the mod **Supreme Commander factions**
-  (`supcom-factions`), turned on, a side each in skirmish. All four take about 770 MB (5,157
-  files, their sounds 63 MB of it) and, on a fast computer, about half a minute, most of it
-  writing and installing their files; the room on the disk is checked first. A stop installs nothing (not once the mod is being
+  (`supcom-factions`), turned on, a side each in skirmish. All four take about 793 MB (5,310
+  files: their sounds 63 MB of it, their weapons' effects and projectiles' models 25 MB) and, on a
+  fast computer, about half a minute, most of it writing and installing their files; the room on
+  the disk is checked first. A stop installs nothing (not once the mod is being
   installed: STOP is greyed then), and the mod is made whole each time, of the factions chosen
   (those left out are taken out of it); a unit that cannot be made is named in the dialog. It goes
   on with the dialog closed (the launcher's footer shows it), and an update of the launcher waits
@@ -45,9 +46,11 @@ as they work, and their sounds.
   there, the conventions below held over all of them, and every unit made a model twice, the same:
   `cargo test --release -p ta_supcom --test installed_units -- --ignored --nocapture`
   (`TA_SUPCOM_DIR=<folder>` another copy; `every_sound_the_units_name_is_made` and
-  `the_sounds_are_clean` for the sounds alone). `ta-tools supcom-units <mod folder> [--only UEL0201,..]
+  `the_sounds_are_clean` for the sounds alone, `every_weapons_projectile_and_effects_are_made`
+  every weapon's effects and projectile's model, `TA_SUPCOM_FX_OUT=<dir>` writing the effects'
+  files there). `ta-tools supcom-units <mod folder> [--only UEL0201,..]
   [--faction uef] [--game <folder>] [--preview <dir>]` makes the units' models, surfaces, paint,
-  build pictures and sounds, with first unit files, into a folder to mount as a mod (`--demo gallery
+  build pictures, sounds and effects, with first unit files, into a folder to mount as a mod (`--demo gallery
   TA_GALLERY_UNITS=UEL0201` shows them; `ta-tools --mod <mod folder> gaf anims/supcomlogos.gaf
   <dir>` writes the sides' emblems' frames as pictures). The launcher's dialog for captures:
   `--page mods --show supcom-factions` (`supcom-factions:uef,cybran`, or `:all`, imports those once
@@ -334,9 +337,10 @@ Each unit becomes a TA unit (`units/<id>.fbi`, `scripts/<id>.cob`; `ta_supcom::f
   32 (a missile's its projectile's top speed), splash diameters twice the damage radius × 32
   (FA's blasts deal their damage evenly to their edge: flak's edge 0.9), a nuke's inner damage
   over its outer radius. FA's minimum ranges are TA Reborn's (`minrange`, Abilities, below).
-  Each looks as TA's weapons of its kind (lasers, shells, artillery, missiles, torpedoes, bombs,
-  anti-air, the D-gun, nukes, anti-missiles), TA's own art, and sounds as in Forged Alliance
-  (Sounds, below; TA's of its kind where the copy has none).
+  Each sounds as in Forged Alliance (Sounds, below; TA's of its kind where the copy has none),
+  and is drawn as TA Reborn draws its kind, looking as Forged Alliance's own (its muzzle flash,
+  its shot's colours, its trail, its impacts, its projectile's own model: [Weapons'
+  effects](#weapons-effects)).
 - **Firing** as FA's rules fire it (its `lua/sim/defaultweapons.lua`: `units::cycle`): each time
   it fires one rack fires, in turn, or all of them (`RackFireTogether`); a rack fires its
   muzzles one after another `MuzzleSalvoSize` times, or all of them at once (`MuzzleSalvoDelay`
@@ -569,7 +573,8 @@ Each unit becomes a TA unit (`units/<id>.fbi`, `scripts/<id>.cob`; `ta_supcom::f
   build bonus to size 20 is a tenth of the others' (−1.25%), and its generators' reload bonus goes
   to artillery of size 4 alone (the tech 2 artillery and the Salvation), the tables naming no other
   size of it. Not played: the adjacency's effect beams (TA Reborn draws its own link across the
-  seam, and the bonus in the hover card, the selection's details and on the information page).
+  seam, and the bonus in the hover card, the selection's details and on the information page; and
+  its beams since converter version 18: [Weapons' effects](#weapons-effects)).
 - **Abilities** (`factions::abilities`; TA Reborn's own, docs/MODDING.md, "Abilities"), from the
   blueprints and the scripts (`crate::abilities`, read as data):
   - **Minimum ranges**: a weapon's `MinRadius` ×32 (`minrange`), 64 weapons: the artillery (the tech
@@ -717,16 +722,16 @@ in 20 minutes, UEF against Cybran: 15 tech 1 generators beside the UEF's air and
 factories, 15 beside the Cybran's, and storage beside a tech 2 extractor of each). They build no
 engineering stations.
 
-Not yet in TA Reborn: Forged Alliance's weapon effects (TA's of their kinds play), the Kennel's
-drone (the station works with its own beams), the adjacency's effect beams, shields and
-teleporting, and the enhancements that need them (and drones, the Sacrificial System); its
-jammers' false blips (TA Reborn's jammers hide what is near them), the sniper bot's slower walk in
-sniper mode, the remote viewing's opening drain, factories that move and build within themselves,
-and air transports carrying more than one unit at a time.
+Not yet in TA Reborn: the units' own effects (an engineer's, an aircraft's exhaust), the Kennel's
+drone (the station works with its own beams), shields and teleporting, and the enhancements that
+need them (and drones, the Sacrificial System); its jammers' false blips (TA Reborn's jammers hide
+what is near them), the sniper bot's slower walk in sniper mode, the remote viewing's opening
+drain, factories that move and build within themselves, and air transports carrying more than
+one unit at a time.
 
 ## Sounds
 
-Each unit sounds as it does in Forged Alliance (converter version 16), its sounds made from the
+Each unit sounds as it does in Forged Alliance (converter version 17), its sounds made from the
 copy's own banks (`sounds/` and `sounds/Voice/US/`, docs/FORMATS.md, "Supreme Commander's sound
 banks"; `factions::sounds`) with TA Reborn's sound keys (docs/MODDING.md, "Sounds"), in the mod's
 sound add-on, `gamedata/sound_supcom.tdf`: a category a unit (`SUPCOM_<ID>`, its unit file's
@@ -785,6 +790,72 @@ diving and surfacing, a commander's arrival, a missile's sound in flight (`Exist
 gatling's spin-up (`BarrelStart`), a capture's start; and of XACT's settings, the curves but the
 distance's (fades in and out, the camera's distance, the music ducking under voices) and a
 sound's place in the pan.
+
+## Weapons' effects
+
+What Forged Alliance shows of its weapons, made TA Reborn's (`factions::effects`, from what [`fx`]
+reads; the keys and the effects' files are docs/MODDING.md's "How weapons look, and effects of a
+mod's own"), from converter version 18: each faction's weapons look as their own, the UEF's
+shells, the Cybran's red lasers, the Aeon's green and white, the Seraphim's yellow and violet.
+
+- **Where it is named.** A weapon's class in its unit's script (`Weapons = { MainGun =
+  Class(TDFGaussCannonWeapon) {} }`, the script's own fields over its class's, through its bases
+  as Lua looks them up: `lua/terranweapons.lua` and the others, `lua/sim/defaultweapons.lua`)
+  names its muzzle flash (`FxMuzzleFlash`, at `FxMuzzleFlashScale`) and, a beam weapon, its beam
+  (`BeamType`: its collision beam's `FxBeam`, `FxBeamStartPoint` and `FxBeamEndPoint`). Its
+  projectile's script class (beside its blueprint) names what it carries in flight (`FxTrails`, at
+  `FxTrailScale`), the ribbons trailing it (`PolyTrail`, `PolyTrails`), the beams drawn on it
+  (`BeamName`: a bolt's look, a missile's exhaust) and where it lands (`FxImpactLand`, else
+  `FxImpactUnit`, at their scales; `FxImpactWater`). A list is often a template of
+  `lua/EffectTemplates.lua` (one named after another, `TableCat`, a prefix's name before a path),
+  read for its names alone. Of the 380 weapons of the 364 units (but their death blasts), 366 show
+  a muzzle effect, 337 a hit effect, 180 a trail and 206 their shots' own colours; those without
+  have none in the game (the tractor claws, the Cybran EMP, the nukes' own blasts).
+- **Emitters as bursts.** Each particle emitter (`EmitterBlueprint`) becomes a burst: its kind by
+  its picture's name and how it blends (a flare, a glow, plasma glow; a streak or a sparkle flying
+  is sparks, standing it glints; smoke painted over is smoke, added it glows; grit and dust in the
+  ground's colour; a flat ring runs out over the ground; a distortion, or a ring standing up, is
+  not drawn); how many it makes, its rate (a tick) over its life (a tick at least), a trail's its
+  rate a second; its particles' lives (ticks, a tenth of a second each), sizes (ogrids, 32 pixels),
+  speeds (its velocity, ogrids a tick, times its direction curves, which are not of unit length:
+  their length scales it) and directions (the curves' values the way, their ranges the cone), where
+  they start (its position curves, their ranges the ball), how they fall (its acceleration, and
+  Forged Alliance's gravity where it asks for it) and the air slows them (its resistance). A curve's
+  value is the mean over its range of keys, its random range a particle's spread either side. The
+  colour is the emitter's picture's on average (the bright and opaque texels counting most)
+  through its ramp at a particle's birth, and the colour it turns to its ramp's near its death; a
+  glow's brightness the ramp's (a glow, a spark, a flame or a ring its ramp fades in from black
+  takes the ramp's colour where it is brightest, which is what shows; one black throughout is left
+  out; smoke keeps the black it is born). At most 12 bursts an effect, 48 particles a burst at once (160 an
+  effect, thinned alike), 90 a second a trail's. An effect is named after what plays it
+  (`UEF_TDFGAUSS02_HIT`, `CYBRAN_CDFLASERHEAVYWEAPON_FIRE`), one of the same text once, a file a
+  faction (`effects/supcom_<side>.tdf`).
+- **Shots' and beams' colours.** A beam weapon's beam (`BeamBlueprint`) gives its colour (its
+  picture's through its start colour), a core whiter than it and its width (`Thickness`, ogrids,
+  twice over: the Monkeylord's microwave laser 35 pixels across): `rgbcolor`, `rgbcolor2`,
+  `thickness`. A shot takes its bolt's beam (`BeamName`) or its ribbon's colour, then its brightest
+  glowing trail's (its colour and size: a shell's glow) or, a shell Forged Alliance draws as a
+  glowing mesh (`TMeshGlow`: the UEF's gauss shells), its paint's; a bolt's core is its colour,
+  whiter. A ribbon's own width (hundredths of an ogrid) is no bolt's: a bolt keeps TA Reborn's
+  width for its damage.
+- **Projectiles' own models.** A weapon TA Reborn draws as a model (missiles, torpedoes, bombs,
+  nukes, anti-missiles, anti-air missiles) whose projectile has a mesh (`<name>_lod0.scm` beside its
+  blueprint) is drawn with it, in its owner's colour: the mesh made a model with its surface and
+  paint as a unit's is (`model::convert`, at its blueprint's `UniformScale`; its paint glowing all
+  over where its shader glows), 27 projectiles' for 47 weapons. A shell keeps TA Reborn's glow, in
+  its own colours: its mesh, a fraction of an ogrid, would be lost at TA's distances.
+- **Adjacency beams.** A structure giving bonuses draws its faction's beam to those it helps
+  (`AdjacencyBeamColor`, `AdjacencyBeamThickness`), its colour and width the beam the game draws
+  between them (`adjacency_<faction>_beam_01_emit.bp`: the UEF's blue, the Cybran's red, the
+  Aeon's blue-green); the Seraphim's draw none.
+- **Cost.** Made in under half a second; the four effects' files take 285 KB, the projectiles'
+  models and paint 24 MB (the mod 3.5% larger than version 15's).
+
+Not made: Forged Alliance's decals and camera shakes of its impacts (TA Reborn's scorch and shake
+for the blast stay), its explosions of dying units, the units' own effects (an engineer's build
+effects, exhausts, ambient effects: TA Reborn's `SfxEffects` hook is there for them), and the
+continuous look of its beam weapons, which fly as TA's laser bolts at the converter's speeds
+(coloured and as wide as their beams).
 
 ## Animations (`.sca`, version 5)
 

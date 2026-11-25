@@ -5,7 +5,7 @@
 use ta_formats::image::Palette;
 use ta_formats::surface::Material;
 
-use super::{abilities, anims, emblem, enhance, faction, model, pictures, script, sounds, textures, units, work, UNIT_SCALE};
+use super::{abilities, anims, effects, emblem, enhance, faction, model, pictures, script, sounds, textures, units, work, UNIT_SCALE};
 use crate::files::Files;
 use crate::scm::{self, Mesh};
 use crate::sca;
@@ -43,8 +43,12 @@ pub const TAGS: [&str; 3] = ["units", "factions", "supreme commander"];
 /// the weapon toggles, and the enhancements they made playable: the radar jammer, resource
 /// allocation, the regeneration auras, the EMP Burst and the Chrono Dampener; 17: Forged Alliance's
 /// own sounds, made from the copy's banks (`sounds`): a sound category a unit, sets, the weapons'
-/// and projectiles' keys, the announcer, IMA ADPCM waves in `sounds/supcom/`).
-pub const VERSION: u32 = 17;
+/// and projectiles' keys, the announcer, IMA ADPCM waves in `sounds/supcom/`; 18: the weapons' own
+/// looks, Forged Alliance's muzzle flashes, trails and impacts made TA Reborn's particle effects
+/// (`effects/supcom_<side>.tdf`), their shots' and beams' true colours and widths, their
+/// projectiles' own models where TA Reborn draws them as models, and the structures' adjacency
+/// beams: `effects`).
+pub const VERSION: u32 = 18;
 
 /// What [`make`]'s watch is told it makes once the units are made: their sounds.
 pub const SOUNDS: &str = "sounds";
@@ -101,6 +105,10 @@ pub fn make(files: &Files, units: &[UnitBlueprint], palette: Option<&Palette>, s
     if let Some(banner) = &banner {
         put(crate::banner::PATH, banner, &mut made)?;
     }
+    // How each weapon looks (Forged Alliance's effects made TA Reborn's), the units made with it.
+    let fx = effects::make(files, units)?;
+    let dressed: Vec<UnitBlueprint> = units.iter().map(|u| fx.dressed(u)).collect();
+    let units = &dressed[..];
     // The copy's sound banks (where they read: otherwise the units keep TA's sounds).
     let banks = match sounds.map(sounds::Banks::read) {
         Some(Ok(banks)) => Some(banks),
@@ -158,6 +166,7 @@ pub fn make(files: &Files, units: &[UnitBlueprint], palette: Option<&Palette>, s
             // (Its weapon toggle is found with its model's footprint: `unit`.)
             toggle: None,
             sound_category,
+            look: fx.unit_keys(u),
         };
         let shown: Vec<Vec<String>> = list.iter().map(|e| enhance::shown_bones(u, e)).collect();
         match unit(files, u, &extra, &extra_weapons, shown, &unpack_sounds, &mut |path, bytes| put(path, bytes, &mut made))? {
@@ -209,6 +218,20 @@ pub fn make(files: &Files, units: &[UnitBlueprint], palette: Option<&Palette>, s
             put(path, bytes, &mut made)
         })?;
         made.sounds = count;
+    }
+    // The factions' effects, and their projectiles' own models.
+    for (path, text) in &fx.files {
+        put(path, text.as_bytes(), &mut made)?;
+    }
+    for path in &fx.models {
+        let shot = units.iter().flat_map(|u| &u.weapons).find_map(|w| w.shot.as_ref().filter(|s| s.path == *path));
+        if let Some(shot) = shot
+            && let Some(model) = effects::projectile_model(files, path, shot)?
+        {
+            for (p, bytes) in &model {
+                put(p, bytes, &mut made)?;
+            }
+        }
     }
     Ok(made)
 }
@@ -590,8 +613,45 @@ mod tests {
         files.push(("projectiles/Frag/Frag_proj.bp".into(), projectile("'INDIRECTFIRE'", "Physics = { InitialSpeed = 30 }, Audio = { Impact = Sound { Bank = 'UELWeapon', Cue = 'Late' } }").into_bytes()));
         // (What the announcer says of a commander under attack, as the game's brain names it.)
         files.push(("lua/aibrain.lua".into(), b"AIBrain = Class(Base) { OnPlayCommanderUnderAttackVO = function(self) local Voice = Sound { Bank = 'XGG', Cue = 'Alarm', } end, }".to_vec()));
-        files.push(("projectiles/Frag/Frag_script.lua".into(), b"Frag = Class(Base) { OnImpact = function(self, t, e) local ChildProjectileBP = '/projectiles/Shell/Shell_proj.bp' \
-            self:CreateChildProjectile(ChildProjectileBP) local numProjectiles = 4 for i = 0, (numProjectiles -1) do self:CreateChildProjectile(ChildProjectileBP) end end, }".to_vec()));
+        files.push(("projectiles/Frag/Frag_script.lua".into(), b"Frag = Class(TestShellProjectile) { OnImpact = function(self, t, e) local ChildProjectileBP = '/projectiles/Shell/Shell_proj.bp' \
+            self:CreateChildProjectile(ChildProjectileBP) local numProjectiles = 4 for i = 0, (numProjectiles -1) do self:CreateChildProjectile(ChildProjectileBP) end end, }\nTypeClass = Frag".to_vec()));
+        // Their weapons' effects: the game's templates and classes (made up, `fx::tests`), the
+        // tank's gun's class, the emitters they name and their pictures; the tactical missile's
+        // own mesh; the UEF's adjacency beam.
+        files.push(("lua/EffectTemplates.lua".into(), crate::fx::tests::TEMPLATES_LUA.as_bytes().to_vec()));
+        files.push(("lua/terranweapons.lua".into(), crate::fx::tests::CLASSES_LUA.as_bytes().to_vec()));
+        files.push(("units/UEL0201/UEL0201_script.lua".into(), b"local TestCannonWeapon = import('/lua/terranweapons.lua').TestCannonWeapon\nUEL0201 = Class(TLandUnit) { Weapons = { MainGun = Class(TestCannonWeapon) {}, }, }\nTypeClass = UEL0201".to_vec()));
+        let emitter = |texture: &str, blend: u32, lifetime: f64, curves: &str| format!(
+            "EmitterBlueprint {{ Lifetime = {lifetime}, Blendmode = {blend}, Texture = [[/textures/particles/{texture}.dds]], RampTexture = [[/textures/particles/test_ramp.dds]], {curves} }}"
+        );
+        let curve = |name: &str, y: f64, z: f64| format!("{name} = {{ XRange = 1, Keys = {{ {{ x=0.5,y={y},z={z} }}, }}, }},");
+        let flash = emitter("flare_test", 3, 1.0, &[curve("EmitRateCurve", 4.0, 0.0), curve("LifetimeCurve", 2.0, 0.0), curve("StartSizeCurve", 0.5, 0.0), curve("EndSizeCurve", 0.25, 0.0)].concat());
+        let sparks = emitter("sparkle_test", 3, 3.0, &[curve("EmitRateCurve", 5.0, 2.0), curve("LifetimeCurve", 8.0, 4.0), curve("VelocityCurve", 0.6, 0.2), curve("YDirectionCurve", 0.5, 0.6), curve("XDirectionCurve", 0.0, 0.6), curve("StartSizeCurve", 0.05, 0.0), curve("YAccelCurve", -0.01, 0.0)].concat());
+        let smoke = emitter("cloud_smoke_test", 0, 2.0, &[curve("EmitRateCurve", 3.0, 0.0), curve("LifetimeCurve", 10.0, 2.0), curve("VelocityCurve", 0.1, 0.0), curve("YDirectionCurve", 1.0, 0.2), curve("StartSizeCurve", 0.3, 0.0), curve("EndSizeCurve", 0.8, 0.1)].concat());
+        let trail = emitter("glow_test", 3, -1.0, &[curve("EmitRateCurve", 2.0, 0.0), curve("LifetimeCurve", 1.0, 0.0), curve("StartSizeCurve", 0.4, 0.0)].concat());
+        for (name, text) in [("test_flash_01", flash), ("test_sparks_01", sparks), ("test_smoke_01", smoke), ("test_trail_01", trail)] {
+            files.push((format!("effects/emitters/{name}_emit.bp"), text.into_bytes()));
+        }
+        files.push(("effects/emitters/test_polytrail_01_emit.bp".into(), b"TrailEmitterBlueprint { Lifetime = -1, TrailLength = 4, Size = 0.05, RepeatTexture = [[/textures/particles/glow_test.dds]], RampTexture = [[/textures/particles/test_ramp.dds]], }".to_vec()));
+        files.push(("effects/emitters/adjacency_uef_beam_01_emit.bp".into(), b"BeamBlueprint { Lifetime = 1, TextureName = '/textures/particles/glow_test.dds', Thickness = 0.05, Length = 8, StartColor = {x=0.2,y=0.4,z=1,w=0.5}, EndColor = {x=0,y=0,z=0,w=0}, }".to_vec()));
+        // (Pictures: a warm flare, blue sparkles, grey smoke, a white glow; a ramp from white to red.)
+        let picture = |rgba: [u8; 4]| -> Vec<u8> {
+            let mut file = ta_formats::dds::header(8, 8, 1, None);
+            for i in 0..64u32 {
+                let edge = if (i % 8 == 0) || (i / 8 == 0) { 0 } else { rgba[3] };
+                file.extend_from_slice(&[rgba[2], rgba[1], rgba[0], edge]);
+            }
+            file
+        };
+        for (name, rgba) in [("flare_test", [255, 200, 120, 255]), ("sparkle_test", [120, 160, 255, 255]), ("cloud_smoke_test", [128, 128, 128, 200]), ("glow_test", [255, 255, 255, 255])] {
+            files.push((format!("textures/particles/{name}.dds"), picture(rgba)));
+        }
+        let mut ramp = ta_formats::dds::header(16, 1, 1, None);
+        for i in 0..16u32 {
+            ramp.extend_from_slice(&[(255 - i * 16) as u8 / 2, (255 - i * 16) as u8, 255, 255 - (i * 12) as u8]);
+        }
+        files.push(("textures/particles/test_ramp.dds".into(), ramp));
+        files.push(("projectiles/Tactical/Tactical_lod0.scm".into(), mesh.clone()));
         files.push(("projectiles/Tactical/Tactical_proj.bp".into(), projectile("'TACTICAL', 'MISSILE'", "Economy = { BuildCostMass = 180, BuildCostEnergy = 3600, BuildTime = 300 }, Physics = { MaxSpeed = 12, TrackTarget = true }").into_bytes()));
         files.push(("projectiles/Nuke/Nuke_proj.bp".into(), projectile("'STRATEGIC', 'MISSILE'", "Economy = { BuildCostMass = 12000, BuildCostEnergy = 1350000, BuildTime = 324000 }, Physics = { MaxSpeed = 30, Acceleration = 3 }").into_bytes()));
         files.push(("projectiles/AntiNuke/AntiNuke_proj.bp".into(), projectile("'ANTIMISSILE'", "Economy = { BuildCostMass = 3600, BuildCostEnergy = 360000, BuildTime = 259200 }, Physics = { MaxSpeed = 90, Acceleration = 30, TrackTarget = true, TurnRate = 180 }").into_bytes()));
@@ -724,6 +784,25 @@ mod tests {
         let menus = &texts["download/supcom_uef.tdf"];
         assert!(!menus.contains("UNITNAME=UEB0104;"), "the station not on its menu: its suite's");
         assert!(paths.iter().any(|p| p == "units/ueb0201.fbi") && paths.iter().any(|p| p == "weapons/supcom_uef.tdf"), "{paths:?}");
+        // The weapons' effects, as Forged Alliance's classes and emitters name them: the tank's gun
+        // flashes, trails and hits in TA Reborn's effects, read as the game reads them; the missile
+        // truck's missile is its projectile's own model; the generator draws its adjacency beam.
+        let gun = weapons.section("UEL0201_MAINGUN").expect("the tank's gun");
+        let fx = ta_formats::tdf::parse(&texts["effects/supcom_uef.tdf"]);
+        for key in ["fireeffect", "traileffect", "hiteffect"] {
+            let name = gun.get(key).unwrap_or_else(|| panic!("{key}"));
+            let effect = fx.section(name).unwrap_or_else(|| panic!("{key} {name}"));
+            let (def, problems) = ta_data::EffectDef::from_tdf(effect);
+            assert!(problems.is_empty() && !def.bursts.is_empty(), "{key}: {problems:?}");
+        }
+        assert_eq!(gun.get("fireeffect"), Some("UEF_TESTCANNONWEAPON_FIRE"));
+        let hit = ta_data::EffectDef::from_tdf(fx.section(gun.get("hiteffect").unwrap()).unwrap()).0;
+        assert_eq!(hit.bursts.iter().map(|b| b.kind.name()).collect::<Vec<_>>(), ["glow", "spark", "smoke"], "the flash, the sparks flying, the smoke");
+        assert!(gun.get("rgbcolor").is_some(), "its shot in its own colour");
+        assert_eq!(weapons.section("UEL0111_MISSILEWEAPON").and_then(|w| w.get("model")), Some("tactical"));
+        assert!(paths.iter().any(|p| p == "objects3d/tactical.3do") && paths.iter().any(|p| p == "objects3d/tactical.surface") && paths.iter().any(|p| p == "textures/supcom/tactical_albedo.dds"), "the missile's model: {paths:?}");
+        assert!(generator.get("AdjacencyBeamColor").is_some() && generator.get("AdjacencyBeamThickness").is_some(), "the generator's beam");
+        assert!(station("ueb0101").get("AdjacencyBeamColor").is_none(), "a factory gives nothing: no beam of its own");
         assert_eq!(run().2, first, "made twice, the same bytes");
         assert_eq!(first, EXPECTED, "the converter's bytes changed: if it was meant to, put the new hash here");
     }
@@ -828,7 +907,7 @@ mod tests {
     }
 
     /// The hash of the test faction's mod (see the test above).
-    const EXPECTED: &str = "0ef31848766e57ac695a76b421640a6c88567ff49b9d67c8580dd4035ee37bfa";
+    const EXPECTED: &str = "1d3ce9c1c8efa3c41e19a32a77a2d21cf8dd4241cc6133a1627dedcaeeb450bd";
 
     /// A unit whose mesh does not read is left out, with its reason; the rest are made.
     #[test]

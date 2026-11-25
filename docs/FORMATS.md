@@ -896,6 +896,12 @@ take up to all 32 bits of a texel.
   Sniper.
 * Weapon `rendertype`: 0 laser, 1 model (missile), 2 point, 3 D-gun, 4 shell, 5 flame,
   6 bomb, 7 lightning.
+* Weapon `smokedelay` and `endsmoke`, as TA's own weapons file explains them in its comments: the
+  seconds between a smoke trail's puffs, and a puff of smoke where a shot ends. 50 of TA's weapons
+  say `smokedelay=.1` (the default too); the Pyro's `FLAMETHROWER` says `smokedelay=1` and
+  `endsmoke=1`, the only `endsmoke` of TA's. TA Reborn puffs a `smoketrail` 2.5 times as often as
+  `smokedelay` says, smaller (TA's 0.1: every 0.04 s), and a shot of an `endsmoke` weapon ends in a
+  puff. The keys a mod gives its weapons' looks beyond TA's are docs/MODDING.md's.
 * **`HealTime`**: only the Commanders (`ARMCOM`, `CORCOM`) give one, 27. Modding guides call it
   the time in seconds it takes the unit to heal itself; players timing TA's Commander found it
   mending about 100 hit points every 27 seconds (some 3.7 a second; one test found the same rate
