@@ -1718,9 +1718,12 @@ own while installed). One shield a unit. TA's own units have none; TA itself ign
   the dome (they go out, an enemy's too: an enemy under it fires freely), a blast going off under
   it, strategic missiles (`targetable` of the strategic class: they go through shields, as Forged
   Alliance's nukes do), what runs under the water (`waterweapon`: torpedoes and depth charges pass
-  under) and interceptors. A paralyzer's shot bursts on it too, stunning nothing under it, and takes
-  nothing off it. Aircraft count as flying over every dome: an aircraft's shot fired from under an
-  enemy's dome bursts on it at once (TA's flying heights are low, under a big dome's top).
+  under, and so do their blasts) and interceptors. A paralyzer's shot bursts on it too, stunning
+  nothing under it, and takes nothing off it; a piercing shot (`noexplode`) stops at it as well,
+  harming nothing under it. Aircraft count as flying over every dome: an aircraft's shot fired from
+  under an enemy's dome bursts on it at once (TA's flying heights are low, under a big dome's top).
+  A dome flatter than a ball (`ShieldHeight` under `ShieldRadius`) is met by every blast that
+  reaches it, wherever on it.
 - **Hit points**: run out, a shield collapses, and comes back whole `ShieldRechargeTime` seconds
   later, the time counting only while it is powered. Hit, it regains `ShieldRegen` a second once
   `ShieldRegenDelay` seconds have gone without a hit.

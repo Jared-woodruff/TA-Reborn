@@ -547,12 +547,17 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   it comes into from outside (`Sim::bubble_entry`, `segment_entry` in the dome's round space: not a
   strategic missile, an interceptor or a `waterweapon`; an aircraft's shot under a dome at its first
   stretch at once), before the units and the ground (`Impact::shield`), and bursts there
-  (`Sim::blast` with `struck`). A blast (`Sim::blast`, `explode_at`'s body) first meets the domes up
-  of the source's enemies with its middle outside them and in its reach (`Sim::blast_on_bubbles`):
-  each takes what reaches it as a unit at its surface would (falloff; the struck one all), through
-  cheats, perks and mutators, and lets through the share it could not hold (`Cover::through`): the
-  units under it take that much of their own damage (a stun nothing: `stun_round` asks
-  `Sim::shielded_from`). A personal shield takes `damage_unit`'s damage before the unit's health
+  (`Sim::blast` with `struck`); a missile whose impact was planned with an interceptor's flight
+  checks its dome as it reaches it (collapsed by another shot that tick: worked out afresh, and it
+  flies on), and a piercing shot's sweep (`noexplode`) stops at the dome and spares what is under an
+  enemy's dome it came at from outside (`Sim::shielded_from`). A blast (`Sim::blast`, `explode_at`'s
+  body; not a `waterweapon`'s, which passes the domes) first meets the domes up of the source's
+  enemies with its middle outside them and in its reach (`Sim::blast_on_bubbles`; how far it is from
+  a dome, `Bubble::distance_out`, is the ellipsoid's first-order estimate, never more than the true
+  distance): each takes what reaches it as a unit at its surface would (falloff; the struck one
+  all), through cheats, perks and mutators, and lets through the share it could not hold
+  (`Cover::through`): the units under it take that much of their own damage (a stun nothing:
+  `stun_round` asks `Sim::shielded_from`). A personal shield takes `damage_unit`'s damage before the unit's health
   (`shield::absorb`), but its own blast. Events: `ShieldHit` (where, how much), `ShieldChanged` (up,
   down, collapsed). The state is in the checksum where a unit has one: TA's games sum as before.
 * **Standing orders** (`Command::SetStates`, never touching the queue): fire (hold, return,
