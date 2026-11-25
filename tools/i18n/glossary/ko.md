@@ -693,3 +693,10 @@ Slot names (LCH, RCH, Back) come from the data as they are.
 | Builds {n} more kinds: {names} and {more} others | 추가 건설 가능 {n}종: {names} 외 {more}종 |
 | Mends {n} hit points a second / {weapon}: stronger | 초당 체력 {n} 회복 / {weapon}: 위력 증가 |
 | refusals: it has no build power / cannot upgrade into that / needs another enhancement first | 건설력 없음 / 그 종류로는 업그레이드할 수 없음 / 다른 강화를 먼저 장착해야 함 |
+| SOUNDTRACK (Options, Sound) | 사운드트랙 |
+| BY SIDE (its choice) | 진영별 |
+| Supreme Commander music (the mod) | Supreme Commander 음악 |
+| Menu theme | 메뉴 테마 |
+| Building theme {n} | 건설 테마 {n} |
+| Briefing {n} | 브리핑 {n} |
+| THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | 메뉴 / 브리핑 / 동영상 |

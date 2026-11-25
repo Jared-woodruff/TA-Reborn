@@ -526,6 +526,13 @@ impl MusicPlayer {
         self.config.shuffle
     }
 
+    /// The files `config`'s playlist for `mood` names, as this player finds them among the music
+    /// files it knows: another set of playlists than its own resolved (the game's jukebox lists
+    /// TA's whatever the soundtrack playing).
+    pub fn resolve(&self, config: &MusicConfig, mood: Mood) -> Vec<String> {
+        config.playlists.get(mood).iter().filter_map(|t| resolve_track(t, &self.available)).collect()
+    }
+
     /// Resolved VFS paths of a mood's playlist.
     pub fn playlist(&self, mood: Mood) -> &[String] {
         &self.playlists[mood.index()]

@@ -688,3 +688,10 @@ stay in the nominative behind a noun: „do wersji {name}”, „usprawnienie {n
 | more kinds it builds / {more} others | nowe opcje budowy („Nowe opcje budowy ({n}): {names}”) / i jeszcze {more} |
 | hit points (mended a second) | pkt. zdrowia („Regeneruje {n} pkt. zdrowia na sekundę”) |
 | stronger (a weapon) | większa siła ognia (no gender to agree with) |
+| SOUNDTRACK (Options, Sound) | ŚCIEŻKA DŹWIĘKOWA |
+| BY SIDE (its choice) | WEDŁUG STRONY |
+| Supreme Commander music (the mod) | Muzyka Supreme Commander |
+| Menu theme | Motyw menu |
+| Building theme {n} | Motyw budowy {n} |
+| Briefing {n} | Odprawa {n} |
+| THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | MENU / ODPRAWY / FILMY |

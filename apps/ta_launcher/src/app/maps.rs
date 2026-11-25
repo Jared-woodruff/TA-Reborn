@@ -16,6 +16,10 @@ impl LauncherApp {
             self.notify("Wait for the Supreme Commander factions being made, then try again.", AMBER);
             return true;
         }
+        if self.supcom.music.importing() {
+            self.notify("Wait for the Supreme Commander music being made, then try again.", AMBER);
+            return true;
+        }
         if !self.maps.importing() { return false; }
         self.notify("Checking and importing maps…", AMBER);
         true

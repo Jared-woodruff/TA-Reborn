@@ -13,6 +13,9 @@
 //!   ([`behaviour`]; what they move as the units work, [`motions`]);
 //! - [`adjacency`]: what their structures give the structures beside them;
 //! - [`scm`], [`sca`]: their meshes and animations.
+//!
+//! Its soundtrack too ([`soundtrack`], read from its sound banks: [`xact`]), made into TA Reborn's
+//! music.
 
 pub mod adjacency;
 pub mod behaviour;
@@ -30,7 +33,9 @@ pub mod sca;
 pub mod scd;
 pub mod scm;
 pub mod scmap;
+pub mod soundtrack;
 pub mod unit;
+pub mod xact;
 
 use std::path::{Path, PathBuf};
 

@@ -442,7 +442,7 @@ impl AudioEngine {
 
     fn build(mut settings: AudioSettings, bank: Arc<SoundBank>, music: MusicConfig) -> AudioEngine {
         for bus in VOLUME_BUSES { *settings.volume_mut(bus) = volume_gain(settings.volume(bus)); }
-        let available = bank.source().list("music");
+        let available = music_files(bank.source().as_ref());
         let voices = VoiceManager::new(VoiceConfig {
             max_voices: settings.max_voices as usize,
             merge_window: settings.merge_window.max(0.0) as f64,
@@ -709,9 +709,10 @@ impl AudioEngine {
         self.music.set_mood(mood);
     }
 
-    /// Replaces the music configuration (playlists resolved against the VFS `music/` folder).
+    /// Replaces the music configuration (playlists resolved against the VFS `music/` folder,
+    /// and Forged Alliance's soundtrack in `music/supcom/` where it is installed).
     pub fn set_music_config(&mut self, config: MusicConfig) {
-        let available = self.bank.source().list("music");
+        let available = music_files(self.bank.source().as_ref());
         self.music.set_config(config, &available);
     }
 
@@ -863,6 +864,14 @@ impl Drop for AudioEngine {
             a.stop_decoders();
         }
     }
+}
+
+/// The music files a playlist may name: TA's in `music/`, and Forged Alliance's soundtrack made
+/// from the player's own copy in `music/supcom/` (`ta_supcom::soundtrack`).
+fn music_files(source: &dyn crate::SoundSource) -> Vec<String> {
+    let mut files = source.list("music");
+    files.extend(source.list("music/supcom"));
+    files
 }
 
 #[cfg(test)]

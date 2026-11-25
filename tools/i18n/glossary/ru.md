@@ -619,3 +619,10 @@ Commander installs enhancements on itself, one a slot. Widths measured in Bahnsc
 | hit points / a weapon stronger / range from … to | ед. здоровья ("Восстанавливает {n} ед. здоровья в секунду") / мощнее (no gender to agree with {weapon}) / дальность с {from} до {to} |
 | Builds {n} more kinds | Новые варианты постройки ({n}): {names} и ещё {more} |
 | {n} of the selection upgrade (shown for two or more) | Из выбранных модернизируются: {n} |
+| SOUNDTRACK (Options, Sound) | САУНДТРЕК |
+| BY SIDE (its choice) | ПО СТОРОНЕ |
+| Supreme Commander music (the mod) | Музыка Supreme Commander |
+| Menu theme | Тема меню |
+| Building theme {n} | Тема строительства {n} |
+| Briefing {n} | Брифинг {n} |
+| THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | МЕНЮ / БРИФИНГИ / РОЛИКИ |

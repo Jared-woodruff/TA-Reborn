@@ -561,3 +561,10 @@ print them (Alt, Ctrl, Shift, Cmd, Option, Enter, Esc, Tab, Home, End).
 | Shift: queued / queued after the upgrade under way | Shift：排入佇列 / 排在進行中的升級之後 |
 | Builds {n} more kinds / Mends {n} hit points a second / {weapon}: stronger | 可額外建造 {n} 種 / 每秒修復 {n} 點生命值 / {weapon}：威力提升 |
 | Weapon: {weapon} (a weapon the enhancement adds) | 新增武器：{weapon} |
+| SOUNDTRACK (Options, Sound) | 配樂 |
+| BY SIDE (its choice) | 依陣營 |
+| Supreme Commander music (the mod) | Supreme Commander 音樂 |
+| Menu theme | 選單主題曲 |
+| Building theme {n} | 建造主題曲 {n} |
+| Briefing {n} | 簡報 {n} |
+| THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | 選單 / 簡報 / 影片 |

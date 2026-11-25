@@ -531,17 +531,19 @@ https://github.com/user-attachments/assets/0c29747c-1139-4f19-877a-3661836a55c5
   map in miniature, a check for problems and TEST PLAY; it takes your pictures as heights, art or
   tile brushes, shows features as pictures and scatters them, and saves maps as mods the skirmish
   page lists at once.
-- **Supreme Commander's maps and factions play too**: with Supreme Commander: Forged Alliance
+- **Supreme Commander's maps, factions and music play too**: with Supreme Commander: Forged Alliance
   installed (GOG's or Steam's), the Maps page's SUPREME COMMANDER… makes its skirmish maps (and your
   own downloaded and Forged Alliance Forever ones) into TA Reborn maps from your copy: their land and painted ground,
   cliffs that still stop tanks, forests, rocks, mass points as metal, hydrocarbons as vents, and
   starts, for skirmish ([SUPCOM_MAPS.md](docs/SUPCOM_MAPS.md)). The Mods page's SUPREME COMMANDER…
   makes its four factions into a mod: the UEF, the Cybran, the Aeon and the Seraphim, every unit
   and building with the game's own model, paint and numbers, a side each in skirmish
-  ([SUPCOM_UNITS.md](docs/SUPCOM_UNITS.md)).
+  ([SUPCOM_UNITS.md](docs/SUPCOM_UNITS.md)). Its MUSIC tab makes the soundtrack into lossless
+  tracks of TA Reborn's own, which the SOUNDTRACK setting plays in the menus and battles, in TA's
+  place, beside it or by side, and the jukebox lists ([SUPCOM_MUSIC.md](docs/SUPCOM_MUSIC.md)).
 - **`ta-tools`** inspects, converts and validates TA's data files (`validate`, `map`, `gaf`, `model`,
   `cob`, `cat`, `find`…), grows TA Reborn's maps (`mapgen`; [MAPS.md](docs/MAPS.md)), and makes
-  Supreme Commander's maps and units into TA's (`supcom`, `supcom-units`).
+  Supreme Commander's maps, units and music into TA's (`supcom`, `supcom-units`, `supcom-music`).
 
 </details>
 

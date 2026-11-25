@@ -190,13 +190,14 @@ impl LauncherApp {
         for (tab, importing, progress, text) in [
             (crate::supcom::Tab::Maps, self.supcom.importing(), &self.supcom.progress, n("SUPREME COMMANDER MAPS")),
             (crate::supcom::Tab::Factions, self.supcom.factions.importing(), &self.supcom.factions.progress, n("SUPREME COMMANDER FACTIONS")),
+            (crate::supcom::Tab::Music, self.supcom.music.importing(), &self.supcom.music.progress, n("SUPREME COMMANDER MUSIC")),
         ] {
             if importing {
                 let page = if tab == crate::supcom::Tab::Maps { Page::Maps } else { Page::Mods };
                 items.push(Activity { mods_tab: None, page, dialog: Some(tab), text: t(text).to_string(), progress: progress.lock().unwrap().fraction(), color: AMBER, update: false, work: true });
             }
         }
-        if self.mod_validation.busy() && !self.game_running() && !self.installer.busy() && !self.maps.busy() && !self.supcom.importing() && !self.supcom.factions.importing() {
+        if self.mod_validation.busy() && !self.game_running() && !self.installer.busy() && !self.maps.busy() && !self.supcom.any_importing() {
             items.push(Activity { mods_tab: Some(ModsTab::Library), page: Page::Mods, dialog: None,
                 text: t("VALIDATING MODS…").to_string(), progress: self.mod_validation.fraction(), color: SKY, update: false, work: true });
         }

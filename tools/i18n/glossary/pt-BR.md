@@ -622,3 +622,10 @@ aprimorar is only the building's upgrade, melhoria only the commander's enhancem
 | needs {name} (first) / needs another enhancement first (a refusal) | requer {name} (antes) / requer outra melhoria antes |
 | Mends {n} hit points a second | Recupera {n} de vida por segundo |
 | Builds {n} more kinds | Constrói novos tipos ({n}) |
+| SOUNDTRACK (Options, Sound) | TRILHA SONORA |
+| BY SIDE (its choice) | POR LADO |
+| Supreme Commander music (the mod) | Música do Supreme Commander |
+| Menu theme | Tema do menu |
+| Building theme {n} | Tema de construção {n} |
+| Briefing {n} | Briefing {n} |
+| THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | OS MENUS / BRIEFINGS / FILMES |

@@ -1,9 +1,10 @@
-//! The dialog that imports Supreme Commander: Forged Alliance's maps (`crate::supcom`) and its
-//! factions (`crate::supcom_factions`), a tab each: where the game is, its maps (and the player's
-//! own) with the game's pictures of them to choose from, or its four factions with their units
-//! counted and their commanders' pictures, and the import under way (or how the last went). The
-//! dialog is as tall on either tab: the tabs stay at its top and each tab's contents scroll under
-//! them where they run past the room. The maps' list ends between two rows and draws only the
+//! The dialog that imports Supreme Commander: Forged Alliance's maps (`crate::supcom`), its
+//! factions (`crate::supcom_factions`) and its music (`crate::supcom_music`), a tab each: where
+//! the game is, its maps (and the player's own) with the game's pictures of them to choose from,
+//! its four factions with their units counted and their commanders' pictures, or its soundtrack's
+//! tracks by their parts, and the import under way (or how the last went). The dialog is as tall
+//! on every tab: the tabs stay at its top and each tab's contents scroll under them where they run
+//! past the room. The maps' list ends between two rows and draws only the
 //! rows in sight, and one past either edge for the keys to reach (each map's picture uploaded
 //! once); the buttons stay in sight under the body however small the window, and why one cannot
 //! be pressed is written beside it.
@@ -17,6 +18,7 @@ use super::path_label;
 use crate::app::{Action, LauncherApp};
 use crate::supcom::{self, Phase, State, Tab};
 use crate::supcom_factions;
+use crate::supcom_music;
 use crate::theme::*;
 use crate::widgets::{self, ActionButton};
 
@@ -41,6 +43,11 @@ const PORTRAIT: f32 = 64.0;
 const FACTION_ROW: f32 = PORTRAIT + 8.0;
 /// The narrowest a faction's card is: two stand in a row where they fit.
 const FACTION_CARD: f32 = 330.0;
+/// The narrowest a track's line is in the music's list (up to three stand in a row), its height,
+/// and the room between two in a row (wide: a track's length and the next one's name stay apart).
+const TRACK: f32 = 240.0;
+const TRACK_ROW: f32 = 22.0;
+const TRACK_GAP: f32 = 32.0;
 /// The dialog's size at most: the same height on either tab, whatever each holds.
 const WIDTH: f32 = 880.0;
 const HEIGHT: f32 = 820.0;
@@ -60,7 +67,7 @@ struct Footer {
     chosen: usize,
     blocked: Option<&'static str>,
     /// What is chosen is installed already, made by this TA Reborn: IMPORT would make it again
-    /// for nothing (the factions' tab).
+    /// for nothing (the factions' and the music's tabs).
     current: bool,
 }
 
@@ -112,6 +119,8 @@ impl LauncherApp {
             Some(t("Close the game first: maps cannot be imported while it runs."))
         } else if self.supcom.factions.importing() {
             Some(t("Wait for the Supreme Commander factions being made, then import these."))
+        } else if self.supcom.music.importing() {
+            Some(t("Wait for the Supreme Commander music being made, then import these."))
         } else if self.installer.busy() {
             Some(t("Wait for the mod being installed, then import these."))
         } else if self.maps.importing() {
@@ -128,6 +137,8 @@ impl LauncherApp {
             Some(t("Close the game first: the factions cannot be imported while it runs."))
         } else if self.supcom.importing() {
             Some(t("Wait for the Supreme Commander maps being made, then import these."))
+        } else if self.supcom.music.importing() {
+            Some(t("Wait for the Supreme Commander music being made, then import these."))
         } else if self.installer.busy() {
             Some(t("Wait for the mod being installed, then import these."))
         } else if self.maps.importing() {
@@ -136,6 +147,23 @@ impl LauncherApp {
             // (A copy in TA Reborn's program folder comes before the mods folder, where the mod is
             // made: made there it would change nothing.)
             supcom_factions::mod_copy(&self.mods).and_then(|copy| copy.blocks())
+        }
+    }
+
+    /// Why the game's music cannot be imported now, if it cannot. (It needs nothing of TA's.)
+    pub(crate) fn music_blocked(&self) -> Option<&'static str> {
+        if self.game_running() {
+            Some(t("Close the game first: the music cannot be imported while it runs."))
+        } else if self.supcom.importing() {
+            Some(t("Wait for the Supreme Commander maps being made, then import the music."))
+        } else if self.supcom.factions.importing() {
+            Some(t("Wait for the Supreme Commander factions being made, then import the music."))
+        } else if self.installer.busy() {
+            Some(t("Wait for the mod being installed, then import the music."))
+        } else if self.maps.importing() {
+            Some(t("Wait for the maps being imported, then import the music."))
+        } else {
+            supcom_music::mod_copy(&self.mods).and_then(|copy| copy.blocks())
         }
     }
 
@@ -204,6 +232,22 @@ impl LauncherApp {
                         && found.factions.iter().any(|e| e.state == State::Imported)),
                 }
             }
+            Tab::Music => {
+                let music = &self.supcom.music;
+                let found = music.found();
+                Footer {
+                    tab: Tab::Music,
+                    importing: music.importing(),
+                    stopping: music.stopping(),
+                    progress: music.progress.lock().unwrap().clone(),
+                    outcome: music.outcome.as_ref().map(|o| (o.summary(), o.went().colour(), o.skipped.clone())),
+                    listed: found.as_ref().is_some_and(|found| found.install.is_some() && !found.tracks.is_empty()),
+                    // (The soundtrack is made whole: nothing to choose.)
+                    chosen: found.as_ref().map_or(0, |found| found.tracks.len()),
+                    blocked: self.music_blocked(),
+                    current: found.as_ref().is_some_and(|found| found.state == State::Imported),
+                }
+            }
         }
     }
 
@@ -211,55 +255,61 @@ impl LauncherApp {
     fn supcom_body(&mut self, ui: &mut Ui, actions: &mut Vec<Action>) {
         ui.spacing_mut().item_spacing.y = 6.0;
         let mut tab = self.supcom.tab;
-        if widgets::segmented(ui, &mut tab, &[(Tab::Maps, Tab::Maps.label()), (Tab::Factions, Tab::Factions.label())]).changed() {
+        let tabs = Tab::ALL.map(|tab| (tab, tab.label()));
+        if widgets::segmented(ui, &mut tab, &tabs).changed() {
             self.supcom.set_tab(tab);
         }
         ui.add_space(space::XS);
-        // (All the room left: the dialog as tall on either tab, the tabs where they are.)
+        // (All the room left: the dialog as tall on every tab, the tabs where they are.)
         let room = (ui.available_height() - 1.0).max(2.0 * ROW);
-        let area = ScrollArea::vertical().id_salt(("supcom_tab", self.supcom.tab == Tab::Maps)).max_height(room).min_scrolled_height(room).auto_shrink([false, false]);
+        let area = ScrollArea::vertical().id_salt(("supcom_tab", self.supcom.tab.label())).max_height(room).min_scrolled_height(room).auto_shrink([false, false]);
         ta_ui::scroll::show(ui, area, ta_ui::scroll::Behind::Plate, |ui| {
             ui.spacing_mut().item_spacing.y = 6.0;
             self.other_tab_news(ui);
             match self.supcom.tab {
                 Tab::Maps => self.maps_body(ui, actions),
                 Tab::Factions => self.factions_body(ui, actions),
+                Tab::Music => self.music_body(ui, actions),
             }
         });
     }
 
-    /// The other tab's import under way, or how it went where it ended unseen: a line at the top,
-    /// with the way to that tab.
+    /// The other tabs' import under way, or how each went where it ended unseen: a line at the
+    /// top for each, with the way to its tab.
     fn other_tab_news(&mut self, ui: &mut Ui) {
-        let other = match self.supcom.tab {
-            Tab::Maps => Tab::Factions,
-            Tab::Factions => Tab::Maps,
-        };
-        let (running, words, colour) = match other {
-            Tab::Maps if self.supcom.importing() => (true, progress_words(Tab::Maps, &self.supcom.progress.lock().unwrap(), self.supcom.stopping()), TEXT),
-            Tab::Maps => match self.supcom.outcome.as_ref().filter(|_| self.supcom.unseen) {
-                Some(outcome) => (false, outcome.summary(), outcome.went().colour()),
-                None => return,
-            },
-            Tab::Factions if self.supcom.factions.importing() => (true, progress_words(Tab::Factions, &self.supcom.factions.progress.lock().unwrap(), self.supcom.factions.stopping()), TEXT),
-            Tab::Factions => match self.supcom.factions.outcome.as_ref().filter(|_| self.supcom.factions.unseen) {
-                Some(outcome) => (false, outcome.summary(), outcome.went().colour()),
-                None => return,
-            },
-        };
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 10.0;
-            ui.label(widgets::caption(other.label()));
-            if running {
-                let (rail, _) = ui.allocate_exact_size(vec2(60.0, 8.0), Sense::hover());
-                ta_ui::progress::paint(ui, rail, None, true);
-            }
-            ui.add(egui::Label::new(RichText::new(words).color(colour)).wrap());
-            if widgets::text_link(ui, "SHOW").clicked() {
-                self.supcom.set_tab(other);
-            }
-        });
-        ui.add_space(space::XS);
+        let shown = self.supcom.tab;
+        for other in Tab::ALL.into_iter().filter(|&tab| tab != shown) {
+            let (running, words, colour) = match other {
+                Tab::Maps if self.supcom.importing() => (true, progress_words(Tab::Maps, &self.supcom.progress.lock().unwrap(), self.supcom.stopping()), TEXT),
+                Tab::Maps => match self.supcom.outcome.as_ref().filter(|_| self.supcom.unseen) {
+                    Some(outcome) => (false, outcome.summary(), outcome.went().colour()),
+                    None => continue,
+                },
+                Tab::Factions if self.supcom.factions.importing() => (true, progress_words(Tab::Factions, &self.supcom.factions.progress.lock().unwrap(), self.supcom.factions.stopping()), TEXT),
+                Tab::Factions => match self.supcom.factions.outcome.as_ref().filter(|_| self.supcom.factions.unseen) {
+                    Some(outcome) => (false, outcome.summary(), outcome.went().colour()),
+                    None => continue,
+                },
+                Tab::Music if self.supcom.music.importing() => (true, progress_words(Tab::Music, &self.supcom.music.progress.lock().unwrap(), self.supcom.music.stopping()), TEXT),
+                Tab::Music => match self.supcom.music.outcome.as_ref().filter(|_| self.supcom.music.unseen) {
+                    Some(outcome) => (false, outcome.summary(), outcome.went().colour()),
+                    None => continue,
+                },
+            };
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 10.0;
+                ui.label(widgets::caption(other.label()));
+                if running {
+                    let (rail, _) = ui.allocate_exact_size(vec2(60.0, 8.0), Sense::hover());
+                    ta_ui::progress::paint(ui, rail, None, true);
+                }
+                ui.add(egui::Label::new(RichText::new(words).color(colour)).wrap());
+                if widgets::text_link(ui, "SHOW").clicked() {
+                    self.supcom.set_tab(other);
+                }
+            });
+            ui.add_space(space::XS);
+        }
     }
 
     /// The maps' tab: what it does, where the game is, and its maps to choose from.
@@ -392,25 +442,84 @@ impl LauncherApp {
         }
     }
 
+    /// The music's tab: what it does, where the game is, and its soundtrack's tracks by their
+    /// parts (it is made whole: nothing to choose).
+    fn music_body(&mut self, ui: &mut Ui, actions: &mut Vec<Action>) {
+        ui.add(egui::Label::new(RichText::new(t("Supreme Commander: Forged Alliance's soundtrack, made into TA Reborn's music from your own copy of the game: its menu theme, building and battle themes, briefings and films, each track a lossless file.")).color(TEXT)).wrap());
+        ui.add_space(space::S);
+        self.supcom_source(ui, actions);
+        let Some(found) = self.supcom.music.found() else { return };
+        if found.install.is_none() || found.tracks.is_empty() {
+            return;
+        }
+        ui.add_space(space::S);
+        // How many, how long, and what they take; whether they are in already.
+        let minutes = (found.seconds() / 60.0).round() as u64;
+        let summary = tf("{n} tracks, {minutes} minutes: about {size} on the disk", &[("n", &found.tracks.len()), ("minutes", &minutes), ("size", &supcom::size_text(supcom_music::size_estimate(&found.tracks)))]);
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 12.0;
+            ui.label(RichText::new(summary).color(STEEL));
+            if let Some(label) = found.state.label() {
+                widgets::tag(ui, label, if found.state == State::Imported { GREEN } else { AMBER });
+            }
+        });
+        // The tracks by their parts: a heading each, the tracks under it, up to three in a row.
+        let width = ui.available_width();
+        let columns = (((width + TRACK_GAP) / (TRACK + TRACK_GAP)).floor() as usize).clamp(1, 3);
+        let cell = ((width - TRACK_GAP * (columns - 1) as f32) / columns as f32).max(1.0);
+        for part in ta_supcom::soundtrack::Part::ALL {
+            let tracks: Vec<&ta_supcom::soundtrack::Track> = found.tracks.iter().filter(|track| track.part == part).collect();
+            if tracks.is_empty() {
+                continue;
+            }
+            ui.add_space(space::XS);
+            ui.label(widgets::caption(supcom_music::part_label(part)));
+            ui.scope(|ui| {
+                ui.spacing_mut().item_spacing = vec2(TRACK_GAP, 0.0);
+                for row in tracks.chunks(columns) {
+                    ui.horizontal(|ui| {
+                        for track in row {
+                            track_line(ui, &supcom_music::track_name(track), track.seconds, cell);
+                        }
+                    });
+                }
+            });
+        }
+        ui.add_space(space::S);
+        // (Made, the mod is on, and the game's SOUNDTRACK chooses whose music plays.)
+        ui.add(egui::Label::new(RichText::new(t("Once made, the music's mod is on: choose SOUNDTRACK in the game's Options, Sound, for Total Annihilation's music, Forged Alliance's, both, or by side (Forged Alliance's while you command one of its factions). The jukebox lists its tracks. Online, the other players need not have it.")).color(STEEL)).wrap());
+    }
+
     /// Where the game is (or that it was not found, or could not be looked for) as the tab shown
     /// found it, and on the maps' tab the player's own maps' folders.
     fn supcom_source(&mut self, ui: &mut Ui, actions: &mut Vec<Action>) {
         let maps = self.supcom.tab == Tab::Maps;
-        let (looking, failed, source) = if maps {
-            let found = self.supcom.found().unwrap_or_default();
-            (self.supcom.scanning() && self.supcom.look.found.is_none(), self.supcom.look.failed, Source { copies: found.copies.clone(), install: found.install.clone(), picked_gone: found.picked_gone.clone(), error: found.error.clone() })
-        } else {
-            let found = self.supcom.factions.found().unwrap_or_default();
-            (self.supcom.factions.scanning() && self.supcom.factions.look.found.is_none(), self.supcom.factions.look.failed, Source { copies: found.copies.clone(), install: found.install.clone(), picked_gone: found.picked_gone.clone(), error: found.error.clone() })
+        let (looking, failed, source) = match self.supcom.tab {
+            Tab::Maps => {
+                let found = self.supcom.found().unwrap_or_default();
+                (self.supcom.scanning() && self.supcom.look.found.is_none(), self.supcom.look.failed, Source { copies: found.copies.clone(), install: found.install.clone(), picked_gone: found.picked_gone.clone(), error: found.error.clone() })
+            }
+            Tab::Factions => {
+                let found = self.supcom.factions.found().unwrap_or_default();
+                (self.supcom.factions.scanning() && self.supcom.factions.look.found.is_none(), self.supcom.factions.look.failed, Source { copies: found.copies.clone(), install: found.install.clone(), picked_gone: found.picked_gone.clone(), error: found.error.clone() })
+            }
+            Tab::Music => {
+                let found = self.supcom.music.found().unwrap_or_default();
+                (self.supcom.music.scanning() && self.supcom.music.look.found.is_none(), self.supcom.music.look.failed, Source { copies: found.copies.clone(), install: found.install.clone(), picked_gone: found.picked_gone.clone(), error: found.error.clone() })
+            }
         };
         if looking {
-            widgets::busy_line(ui, if maps { t("Looking for Supreme Commander: Forged Alliance…") } else { t("Looking for Supreme Commander: Forged Alliance and its units…") });
+            widgets::busy_line(ui, match self.supcom.tab {
+                Tab::Maps => t("Looking for Supreme Commander: Forged Alliance…"),
+                Tab::Factions => t("Looking for Supreme Commander: Forged Alliance and its units…"),
+                Tab::Music => t("Looking for Supreme Commander: Forged Alliance and its music…"),
+            });
             return;
         }
         let found = &source;
-        // (The copy in use is not changed while either tab's import reads it, nor while a folder
+        // (The copy in use is not changed while any tab's import reads it, nor while a folder
         // chosen is looked through.)
-        let held = (self.supcom.importing() || self.supcom.factions.importing()).then(|| t("Held until the import ends"));
+        let held = self.supcom.any_importing().then(|| t("Held until the import ends"));
         let checking = self.supcom.checking().map(|dir| dir.to_path_buf());
         ui.horizontal_wrapped(|ui| {
             ui.label(widgets::caption("FORGED ALLIANCE"));
@@ -684,7 +793,30 @@ fn progress_words(tab: Tab, p: &supcom::Progress, stopping: bool) -> String {
         (Tab::Factions, Phase::Making) if stopping => t("Stopping: nothing is installed, and the factions stay as they were…").to_string(),
         (Tab::Factions, Phase::Making) => tf("Making {unit} ({i} of {n})…", &[("unit", &p.current), ("i", &p.number()), ("n", &p.total)]),
         (Tab::Factions, Phase::Installing) => t("Installing the factions…").to_string(),
+        (Tab::Music, Phase::Reading) => t("Reading the game's music…").to_string(),
+        (Tab::Music, Phase::Making) if stopping => t("Stopping: nothing is installed, and the music stays as it was…").to_string(),
+        (Tab::Music, Phase::Making) => tf("Making {track} ({i} of {n})…", &[("track", &p.current), ("i", &p.number()), ("n", &p.total)]),
+        (Tab::Music, Phase::Installing) => t("Installing the music…").to_string(),
     }
+}
+
+/// A track of the soundtrack in the music's list: its name, and how long it plays at the right,
+/// `width` wide.
+fn track_line(ui: &mut Ui, name: &str, seconds: f64, width: f32) {
+    let (rect, _) = ui.allocate_exact_size(vec2(width, TRACK_ROW), Sense::hover());
+    let painter = ui.painter_at(rect);
+    let length = egui::WidgetText::from(RichText::new(clock(seconds)).font(mono(12.0)).color(STEEL)).into_galley(ui, Some(egui::TextWrapMode::Extend), width, egui::TextStyle::Body);
+    let room = (width - length.size().x - 12.0).max(1.0);
+    let title = egui::WidgetText::from(RichText::new(name).font(body(13.0)).color(TEXT)).into_galley(ui, Some(egui::TextWrapMode::Truncate), room, egui::TextStyle::Body);
+    painter.galley(egui::pos2(rect.left(), rect.center().y - title.size().y / 2.0), title, TEXT);
+    let at = egui::pos2(rect.right() - length.size().x - 4.0, rect.center().y - length.size().y / 2.0);
+    painter.galley(at, length, STEEL);
+}
+
+/// How long a track plays, as minutes and seconds ("4:02").
+fn clock(seconds: f64) -> String {
+    let whole = seconds.max(0.0).round() as u64;
+    format!("{}:{:02}", whole / 60, whole % 60)
 }
 
 /// The tab's import under way (map by map, unit by unit), or the button to start one, and what
@@ -706,11 +838,19 @@ fn supcom_footer(ui: &mut Ui, footer: &Footer, asked: &mut Asked) {
                 (true, false) if p.phase == Phase::Making => n("STOP AFTER THIS MAP"),
                 _ => n("STOP"),
             };
-            let tip = if maps { t("The maps made so far are kept.") } else { t("Nothing is installed: the factions stay as they were.") };
+            let tip = match footer.tab {
+                Tab::Maps => t("The maps made so far are kept."),
+                Tab::Factions => t("Nothing is installed: the factions stay as they were."),
+                Tab::Music => t("Nothing is installed: the music stays as it was."),
+            };
             let stop = ui.add_enabled(!installing && !footer.stopping, ActionButton::secondary(label)).hover_tip(tip);
             let stop = if installing { stop.disabled_tip(t("Installing cannot be stopped.")) } else { stop };
             if stop.clicked() {
-                asked.actions.push(if maps { Action::SupcomStop } else { Action::SupcomFactionsStop });
+                asked.actions.push(match footer.tab {
+                    Tab::Maps => Action::SupcomStop,
+                    Tab::Factions => Action::SupcomFactionsStop,
+                    Tab::Music => Action::SupcomMusicStop,
+                });
             }
             if ui.add(ActionButton::secondary("CLOSE")).hover_tip(t("The import goes on with this closed.")).clicked() {
                 asked.close = true;
@@ -723,13 +863,14 @@ fn supcom_footer(ui: &mut Ui, footer: &Footer, asked: &mut Asked) {
     if let Some((summary, colour, failed)) = &footer.outcome {
         ui.add(egui::Label::new(RichText::new(summary).color(*colour)).wrap());
         if !failed.is_empty() {
-            let header = match (maps, failed.len()) {
-                (true, 1) => t("1 map could not be made").to_string(),
-                (true, n) => tf("{n} maps could not be made", &[("n", &n)]),
-                (false, n) => tf("Units that could not be made: {n}", &[("n", &n)]),
+            let header = match (footer.tab, failed.len()) {
+                (Tab::Maps, 1) => t("1 map could not be made").to_string(),
+                (Tab::Maps, n) => tf("{n} maps could not be made", &[("n", &n)]),
+                (Tab::Factions, n) => tf("Units that could not be made: {n}", &[("n", &n)]),
+                (Tab::Music, n) => tf("Tracks that could not be made: {n}", &[("n", &n)]),
             };
             ui.collapsing(header, |ui| {
-                egui::ScrollArea::vertical().id_salt(("supcom_failed", maps)).max_height(FAILED_HEIGHT).auto_shrink([false, true]).show(ui, |ui| {
+                egui::ScrollArea::vertical().id_salt(("supcom_failed", footer.tab.label())).max_height(FAILED_HEIGHT).auto_shrink([false, true]).show(ui, |ui| {
                     for (name, why) in failed {
                         ui.label(RichText::new(name).font(strong(12.5)).color(TEXT));
                         ui.add(egui::Label::new(RichText::new(why).color(AMBER)).wrap());
@@ -741,21 +882,25 @@ fn supcom_footer(ui: &mut Ui, footer: &Footer, asked: &mut Asked) {
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 10.0;
         if footer.listed {
-            let (label, tip, none) = if maps {
-                (n("IMPORT MAPS"), t("Makes the chosen maps into TA Reborn maps, in a map pack of their own, turned on once made: the smallest in seconds, the largest in about a minute each on a fast computer."), t("Choose the maps to import."))
-            } else {
-                (n("IMPORT FACTIONS"), t("Makes the chosen factions into a mod of TA Reborn units, turned on once made. All four take about half a minute on a fast computer."), t("Choose the factions to import."))
+            let (label, tip, none) = match footer.tab {
+                Tab::Maps => (n("IMPORT MAPS"), t("Makes the chosen maps into TA Reborn maps, in a map pack of their own, turned on once made: the smallest in seconds, the largest in about a minute each on a fast computer."), t("Choose the maps to import.")),
+                Tab::Factions => (n("IMPORT FACTIONS"), t("Makes the chosen factions into a mod of TA Reborn units, turned on once made. All four take about half a minute on a fast computer."), t("Choose the factions to import.")),
+                Tab::Music => (n("IMPORT MUSIC"), t("Makes the soundtrack into TA Reborn's music, a lossless file a track, in a mod of its own, turned on once made: in seconds on a fast computer."), t("No tracks were found to import.")),
             };
             let why = footer.blocked.or((footer.chosen == 0).then_some(none));
             // (Everything chosen made already, by this TA Reborn: the button makes it again, no
             // longer the way on.)
-            let (button, tip) = if footer.current {
-                (ActionButton::secondary("MAKE AGAIN"), t("The factions chosen are imported already, made by this version of TA Reborn: makes their mod again all the same."))
-            } else {
-                (ActionButton::primary(label), tip)
+            let (button, tip) = match (footer.current, footer.tab) {
+                (true, Tab::Music) => (ActionButton::secondary("MAKE AGAIN"), t("The soundtrack is imported already, made by this version of TA Reborn: makes its mod again all the same.")),
+                (true, _) => (ActionButton::secondary("MAKE AGAIN"), t("The factions chosen are imported already, made by this version of TA Reborn: makes their mod again all the same.")),
+                (false, _) => (ActionButton::primary(label), tip),
             };
             if ui.add_enabled(why.is_none(), button).hover_tip(tip).disabled_tip(why.unwrap_or_default()).clicked() {
-                asked.actions.push(if maps { Action::SupcomImport } else { Action::SupcomFactionsImport });
+                asked.actions.push(match footer.tab {
+                    Tab::Maps => Action::SupcomImport,
+                    Tab::Factions => Action::SupcomFactionsImport,
+                    Tab::Music => Action::SupcomMusicImport,
+                });
             }
             if ui.add(ActionButton::secondary("CLOSE")).clicked() {
                 asked.close = true;
@@ -780,7 +925,7 @@ fn game_needed(ui: &mut Ui, actions: &mut Vec<Action>) {
     widgets::card(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 6.0;
         ui.label(RichText::new(t("SUPREME COMMANDER: FORGED ALLIANCE NEEDED")).font(strong(15.0)).color(TEXT_BRIGHT).extra_letter_spacing(ta_ui::i18n::tracking(1.0)));
-        ui.add(egui::Label::new(RichText::new(t("The maps and factions are made on your computer from your own installed copy of Supreme Commander: Forged Alliance: GOG's Gold Edition, or Steam's Forged Alliance. The original Supreme Commander alone will not do. TA Reborn downloads nothing of it and includes none of it.")).color(TEXT)).wrap());
+        ui.add(egui::Label::new(RichText::new(t("The maps, factions and music are made on your computer from your own installed copy of Supreme Commander: Forged Alliance: GOG's Gold Edition, or Steam's Forged Alliance. The original Supreme Commander alone will not do. TA Reborn downloads nothing of it and includes none of it.")).color(TEXT)).wrap());
         ui.add(egui::Label::new(RichText::new(t("It looks for GOG's, Steam's and a boxed copy. Installed it since this opened? LOOK AGAIN. Installed it somewhere else? CHOOSE FOLDER… above.")).color(STEEL)).wrap());
         ui.add_space(space::XS);
         ui.horizontal_wrapped(|ui| {
@@ -851,11 +996,29 @@ mod tests {
         supcom_factions::Found { install: Some(install.clone()), copies: vec![install], factions, ..Default::default() }
     }
 
+    /// The music's look of a copy of the game: a track or two of each part, the mod as `state`.
+    fn music_found(state: State) -> supcom_music::Found {
+        use ta_supcom::soundtrack::{Part, Track};
+        let track = |part, number, stem: &str, seconds| Track { part, number, stem: stem.into(), bank: "Music.xwb", wave: 0, seconds, bytes: 40_000_000 };
+        let tracks = vec![
+            track(Part::Menu, 1, "menu", 81.0),
+            track(Part::Building, 1, "building_1", 242.0),
+            track(Part::Building, 2, "building_2", 180.4),
+            track(Part::Battle, 1, "battle_1", 150.0),
+            track(Part::Battle, 2, "battle_2", 151.0),
+            track(Part::Briefing, 1, "briefing_1", 95.0),
+            track(Part::Film, 5, "film_credits", 120.0),
+        ];
+        let install = ta_supcom::install::Install { root: PathBuf::from("C:/Game"), store: ta_supcom::install::Store::Gog };
+        supcom_music::Found { install: Some(install.clone()), copies: vec![install], tracks, state, ..Default::default() }
+    }
+
     /// A frame of the dialog, `size` points large: the words drawn, where, and what they are
     /// clipped to.
     fn frame(ctx: &egui::Context, app: &mut LauncherApp, size: egui::Vec2, events: Vec<egui::Event>) -> (egui::FullOutput, Vec<(String, Rect, Rect)>) {
         app.supcom.poll(ctx);
         app.supcom.factions.poll(ctx, app.supcom.open);
+        app.supcom.music.poll(ctx, app.supcom.open);
         let input = egui::RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)), events, ..Default::default() };
         let mut output = ctx.run_ui(input, |ui| app.supcom_dialog(ui.ctx()));
         output.textures_delta.clear();
@@ -935,14 +1098,19 @@ mod tests {
         let (found, previews) = found(54);
         app.supcom.pretend_found(found, previews);
         app.supcom.factions.pretend_found(factions_found([State::Imported, State::New, State::Outdated, State::New]), Default::default());
+        app.supcom.music.pretend_found(music_found(State::New));
         let size = egui::vec2(723.0, 461.0);
         let screen = Rect::from_min_size(Pos2::ZERO, size);
-        for tab in [Tab::Maps, Tab::Factions] {
+        for tab in Tab::ALL {
             app.supcom.tab = tab;
             for _ in 0..4 { frame(&ctx, &mut app, size, Vec::new()); }
             let (_, texts) = frame(&ctx, &mut app, size, Vec::new());
-            let import = if tab == Tab::Maps { "IMPORT MAPS" } else { "IMPORT FACTIONS" };
-            for words in [import, "CLOSE", "MAPS", "FACTIONS"] {
+            let import = match tab {
+                Tab::Maps => "IMPORT MAPS",
+                Tab::Factions => "IMPORT FACTIONS",
+                Tab::Music => "IMPORT MUSIC",
+            };
+            for words in [import, "CLOSE", "MAPS", "FACTIONS", "MUSIC"] {
                 let (_, rect, clip) = texts.iter().find(|(text, _, _)| text == words).unwrap_or_else(|| panic!("{words}: {:?}", texts_of(&texts)));
                 assert!(screen.contains_rect(*rect) && clip.contains_rect(*rect), "{tab:?}: {words} in sight: {rect:?}, clipped to {clip:?}");
             }
@@ -960,9 +1128,10 @@ mod tests {
         let (found, previews) = found(54);
         app.supcom.pretend_found(found, previews);
         app.supcom.factions.pretend_found(factions_found([State::New; 4]), Default::default());
+        app.supcom.music.pretend_found(music_found(State::New));
         for size in [egui::vec2(723.0, 461.0), egui::vec2(1120.0, 720.0), egui::vec2(1600.0, 900.0)] {
             let mut heights = Vec::new();
-            for tab in [Tab::Maps, Tab::Factions] {
+            for tab in Tab::ALL {
                 app.supcom.tab = tab;
                 for _ in 0..4 { frame(&ctx, &mut app, size, Vec::new()); }
                 heights.push(dialog_rect(&ctx).height());
@@ -975,7 +1144,7 @@ mod tests {
                     assert!(shown.iter().all(|(_, rect, clip)| clip.contains_rect(*rect)), "{size:?}: a row cut by the list's foot");
                 }
             }
-            assert!((heights[0] - heights[1]).abs() < 1.0, "{size:?}: the dialog's height jumps between tabs: {heights:?}");
+            assert!(heights.iter().all(|h| (h - heights[0]).abs() < 1.0), "{size:?}: the dialog's height jumps between tabs: {heights:?}");
         }
         drop(app);
         let _ = std::fs::remove_dir_all(root);
@@ -1118,6 +1287,44 @@ mod tests {
         let (_, texts) = frame(&ctx, &mut app, size, Vec::new());
         assert!(texts.iter().any(|(text, _, _)| text == "4 factions to choose from"), "{:?}", texts_of(&texts));
         assert!(texts.iter().any(|(text, _, _)| text == "Choose the factions to import."), "{:?}", texts_of(&texts));
+        drop(app);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// The music's tab: the soundtrack's tracks by their parts, each with how long it plays, how
+    /// many, how long and what they take, and IMPORT MUSIC (nothing to choose: it is made whole);
+    /// made by this version, MAKE AGAIN and up to date; while the factions are made, why it waits,
+    /// and the factions' news with the way to their tab.
+    #[test]
+    fn the_music_tab_lists_the_soundtrack_by_its_parts_and_imports_it_whole() {
+        let (root, ctx, mut app) = launcher("music");
+        app.supcom.open = true;
+        app.supcom.tab = Tab::Music;
+        app.supcom.music.pretend_found(music_found(State::New));
+        let size = egui::vec2(900.0, 900.0);
+        for _ in 0..4 { frame(&ctx, &mut app, size, Vec::new()); }
+        let (_, texts) = frame(&ctx, &mut app, size, Vec::new());
+        for words in ["THE MENUS", "BUILDING", "BATTLE", "BRIEFINGS", "FILMS", "Menu theme", "Building theme 2", "Battle theme 1", "Briefing 1", "Credits", "1:21", "4:02", "3:00", "IMPORT MUSIC"] {
+            assert!(texts.iter().any(|(text, _, _)| text == words), "{words}: {:?}", texts_of(&texts));
+        }
+        assert!(texts.iter().any(|(text, _, _)| text == "7 tracks, 17 minutes: about 0.1 GB on the disk"), "{:?}", texts_of(&texts));
+        assert!(texts.iter().any(|(text, _, _)| text.contains("choose SOUNDTRACK in the game's Options, Sound")), "{:?}", texts_of(&texts));
+        assert!(texts.iter().any(|(text, _, _)| text.contains("Online, the other players need not have it")), "{:?}", texts_of(&texts));
+        assert!(!texts.iter().any(|(text, _, _)| text == "IMPORTED"), "not in yet: {:?}", texts_of(&texts));
+        // Made by this version: MAKE AGAIN, and up to date.
+        app.supcom.music.pretend_found(music_found(State::Imported));
+        for _ in 0..2 { frame(&ctx, &mut app, size, Vec::new()); }
+        let (_, texts) = frame(&ctx, &mut app, size, Vec::new());
+        for words in ["IMPORTED", "MAKE AGAIN", "Imported and up to date."] {
+            assert!(texts.iter().any(|(text, _, _)| text == words), "{words}: {:?}", texts_of(&texts));
+        }
+        // The factions being made: the music waits, said why, and the factions' news is at the top.
+        app.supcom.factions.pretend_importing();
+        for _ in 0..2 { frame(&ctx, &mut app, size, Vec::new()); }
+        let (_, texts) = frame(&ctx, &mut app, size, Vec::new());
+        assert!(texts.iter().any(|(text, _, _)| text == "Wait for the Supreme Commander factions being made, then import the music."), "{:?}", texts_of(&texts));
+        assert!(texts.iter().any(|(text, _, _)| text == "SHOW"), "the way to the factions' tab: {:?}", texts_of(&texts));
+        app.supcom.factions.finish_on_exit();
         drop(app);
         let _ = std::fs::remove_dir_all(root);
     }

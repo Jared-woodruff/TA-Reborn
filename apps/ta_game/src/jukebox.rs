@@ -90,8 +90,35 @@ struct TrackMetadata {
     title: Option<String>,
 }
 
-/// A track of TA's by its part in the music ("music/7.mp3" → "Battle theme 6").
+/// A track of Forged Alliance's soundtrack by its part ("music/supcom/building_2.flac" →
+/// "Building theme 2"); none for a file of another.
+fn fa_track_name(path: &str) -> Option<String> {
+    let stem = path.strip_prefix("music/supcom/")?.rsplit_once('.')?.0;
+    let numbered = stem.rsplit_once('_').and_then(|(part, n)| Some((part, n.parse::<usize>().ok()?)));
+    Some(match numbered {
+        Some(("building", n)) => tf("Building theme {n}", &[("n", &n)]),
+        Some(("battle", n)) => tf("Battle theme {n}", &[("n", &n)]),
+        Some(("briefing", n)) => tf("Briefing {n}", &[("n", &n)]),
+        _ => match stem {
+            "menu" => t("Menu theme").to_string(),
+            "building" => tf("Building theme {n}", &[("n", &1)]),
+            "battle" => tf("Battle theme {n}", &[("n", &1)]),
+            "film_intro" => t("Intro").to_string(),
+            "film_outro" => t("Outro").to_string(),
+            "film_epilogue" => t("Epilogue").to_string(),
+            "film_timeline" => t("Timeline").to_string(),
+            "film_credits" => t("Credits").to_string(),
+            other => other.replace('_', " "),
+        },
+    })
+}
+
+/// A track of TA's by its part in the music ("music/7.mp3" → "Battle theme 6"); of Forged
+/// Alliance's soundtrack, by its part in that.
 pub fn ta_track_name(path: &str) -> String {
+    if let Some(name) = fa_track_name(path) {
+        return name;
+    }
     let n: Option<u32> = path.rsplit('/').next().and_then(|f| f.split('.').next()).and_then(|s| s.parse().ok());
     let Some(n) = n else { return path.to_string() };
     let lists = ta_audio::music::Playlists::default();
@@ -248,11 +275,13 @@ impl Jukebox {
         if self.tracks.is_none() {
             out.push(JukeboxRequest::Rescan);
         }
-        // (TA's two short duplicates, 9 and 10, are left out.)
-        let ta_list: Vec<&String> = ta_tracks.iter().filter(|p| !p.contains("/9.") && !p.contains("/10.")).collect();
+        // (TA's two short duplicates, 9 and 10, are left out. Forged Alliance's soundtrack, where
+        // it is installed, has a list of its own.)
+        let ta_list: Vec<&String> = ta_tracks.iter().filter(|p| !p.starts_with("music/supcom/") && !p.contains("/9.") && !p.contains("/10.")).collect();
+        let fa_list: Vec<&String> = ta_tracks.iter().filter(|p| p.starts_with("music/supcom/")).collect();
         let user_keys: Vec<String> = self.tracks.as_deref().unwrap_or_default().iter().map(|(p, _)| format!("file:{}", p.display())).collect();
         if self.tracks.is_some() {
-            self.read_metadata(ta_list.iter().map(|p| (*p).clone()).chain(user_keys.iter().cloned()).collect(), source);
+            self.read_metadata(ta_list.iter().chain(&fa_list).map(|p| (*p).clone()).chain(user_keys.iter().cloned()).collect(), source);
         }
         // The record turns, and the spectrum moves, while the music plays (and settles after).
         let dt = ctx.input(|i| i.stable_dt).clamp(0.0, 0.1);
@@ -272,7 +301,8 @@ impl Jukebox {
             Some(path) => {
                 let place = match path.strip_prefix("file:") {
                     Some(_) => user_keys.iter().position(|k| k == path).map(|i| (n("YOUR MUSIC"), i, user_keys.len())),
-                    None => ta_list.iter().position(|p| p.as_str() == path).map(|i| (n("TOTAL ANNIHILATION"), i, ta_list.len())),
+                    None => ta_list.iter().position(|p| p.as_str() == path).map(|i| (n("TOTAL ANNIHILATION"), i, ta_list.len()))
+                        .or_else(|| fa_list.iter().position(|p| p.as_str() == path).map(|i| (n("SUPREME COMMANDER"), i, fa_list.len()))),
                 };
                 let line = match place {
                     Some((list, i, count)) => tf("{list} · TRACK {n} OF {count}", &[("list", &t(list)), ("n", &(i + 1)), ("count", &count)]),
@@ -391,6 +421,26 @@ impl Jukebox {
                         }
                         if row.clicked() {
                             out.push(JukeboxRequest::Play((*path).clone()));
+                        }
+                    }
+                    // Forged Alliance's soundtrack, where it is installed.
+                    if !fa_list.is_empty() {
+                        ui.add_space(6.0);
+                        ui.label(section(n("SUPREME COMMANDER"), fa_list.iter().map(|p| self.length(p))));
+                        for (i, path) in fa_list.iter().enumerate() {
+                            let name = name_of(path);
+                            if !found(&name, &search) {
+                                continue;
+                            }
+                            shown += 1;
+                            let on = now == Some(path.as_str()) && playing;
+                            let row = panel::numbered_row(ui, on, true, i + 1, fa_list.len(), RichText::new(name), detail(path, on));
+                            if on && reveal {
+                                row.scroll_to_me(Some(egui::Align::Center));
+                            }
+                            if row.clicked() {
+                                out.push(JukeboxRequest::Play((*path).clone()));
+                            }
                         }
                     }
                     ui.add_space(6.0);
@@ -637,6 +687,12 @@ mod tests {
         assert_eq!(ta_track_name("music/11.mp3"), "Peace theme 1");
         assert_eq!(ta_track_name("music/0.mp3"), "Victory");
         assert_eq!(ta_track_name("music/17.ogg"), "Briefing");
+        // Forged Alliance's soundtrack, by its parts.
+        assert_eq!(ta_track_name("music/supcom/menu.flac"), "Menu theme");
+        assert_eq!(ta_track_name("music/supcom/building_2.flac"), "Building theme 2");
+        assert_eq!(ta_track_name("music/supcom/battle_4.flac"), "Battle theme 4");
+        assert_eq!(ta_track_name("music/supcom/briefing_6.flac"), "Briefing 6");
+        assert_eq!(ta_track_name("music/supcom/film_credits.flac"), "Credits");
     }
 
     #[test]
