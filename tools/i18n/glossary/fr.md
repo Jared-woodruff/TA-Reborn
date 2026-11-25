@@ -794,3 +794,23 @@ mod keys are entrées: "des entrées de bouclier".
 | collapse / collapsed / after collapsing | s'effondrer / effondré / après son effondrement |
 | Shield off / Shield down: short of energy / coming up in {secs} s / back in {secs} s | Bouclier désactivé / Bouclier inactif : trop peu d'énergie / Bouclier actif dans {secs} s / de retour dans {secs} s |
 | shield keys (a mod's) | entrées de bouclier |
+
+## La logistique (`game.rs`, `hud/deck.rs`, `hud/logistics.rs`, `hud_classic.rs`, `validation/logistics.rs`)
+
+Mods can give units air transports with slots, teleporting, drones and factories that move. The
+order is Téléporter (an infinitive, as Déplacer, Décharger); a unit se téléporte. Its charge (energy
+over some seconds, paid before it goes) is sa charge ("une fois sa charge payée"). The HUD's strings
+keep straight apostrophes, the mod check's curly ’; all put a no-break space before : ; and %. The
+mod keys are masculine: son Unit, un Count, le Piece d’un drone. The overview's second line agrees
+with Logistique: "Jouée comme le décrit docs/MODDING.md".
+
+| English | Français |
+|---|---|
+| teleport (the order) / to teleport / teleporting | Téléporter / se téléporter / téléportation |
+| TELEPORT / WARP (TA's 1997 panel: long and short) | TÉLÉPORTER / TÉLÉP. |
+| Charging to teleport / About to teleport (the card) | Charge de la téléportation : {pct} % / Téléportation imminente |
+| charge (a teleport's) | charge ("une charge de téléportation") |
+| drone / {name} drone (the mod check's reference) / Keeps {n} drones | drone (m.) / drone de {name} / "Drones ({name}) : {n}" |
+| slot (an air transport's, for one passenger) / transport slots (TransportSlots) | emplacement / emplacements de transport; sizes as labels: petits : {small}, moyens : {medium}, grands : {large} |
+| factory that moves (MobileFactory) | usine mobile |
+| TA Reborn's logistics (the report's overview) | Logistique de TA Reborn |

@@ -688,3 +688,24 @@ page's lines start with シールド where they can (シールド：HP {health}�
 | collapse, collapsed / back (after a collapse) / coming up | 崩壊 / 復帰 / 展開 |
 | Shield off (switched off) / Shield down: short of energy | シールドオフ / シールド停止：エネルギー不足 |
 | shield keys (a unit's ShieldHealth...) | シールドのキー |
+
+## TA Reborn's logistics: air transports with slots, teleporting, drones, factories that move (`game.rs`, `hud/deck.rs`, `hud/logistics.rs`, `hud_classic.rs`, `validation/logistics.rs`)
+
+One word each everywhere (the order, its buttons, the card, the information page, the mod check):
+テレポート (as the Talon's テレポーター), its charge チャージ (once it is paid: チャージが済むと), a drone
+ドローン (counted 機), a transport's slot スロット (as an enhancement's), a factory that moves 移動式工場.
+Air transports are 輸送機 (as 輸送機に搭乗中). The information page's lines put the ability first and its
+costs after the colon, as その場で{name}にアップグレード：金属 {metal}、エネルギー {energy}.
+
+| English | 日本語 |
+|---|---|
+| Teleport (the order) / TELEPORT, WARP (classic, long and short) | テレポート / テレポート、ワープ |
+| charge (a teleport's: energy over some seconds) / Charging to teleport / About to teleport | チャージ / テレポートのチャージ中 / テレポートを準備中 |
+| Teleports anywhere: … more the farther it goes | どこへでもテレポート：…（遠いほど増加） |
+| Click the place to teleport to | テレポート先の地点をクリック |
+| drone / Keeps {n} drones / {name} drone (a reference in the mod check) | ドローン / ドローン{n}機を保有 / {name}のドローン |
+| slot (a transport's) / small, medium, large (its classes) | スロット / 小型、中型、大型 (not 小・中・大: 小2、中1 read as school years) |
+| air transport with slots / its passengers (the units it carries) | スロット付き輸送機 / 積んだユニット |
+| factory that moves (MobileFactory) | 移動式工場 |
+| logistics (the mod check's report) | 兵站 |
+| piece (a model's) / the model's middle | ピース (as the scripts' findings) / モデルの中心 |

@@ -788,3 +788,23 @@ are 체력, as a unit's.
 | collapse, collapsed / back (after a collapse) / coming up | 붕괴 / 복구 / 전개 |
 | Shield off (switched off) / Shield down: short of energy | 방어막 꺼짐 / 방어막 정지: 에너지 부족 |
 | shield keys (a unit's ShieldHealth...) | 방어막 키 |
+
+## TA Reborn's logistics: air transports with slots, teleporting, drones, factories that move (`game.rs`, `hud/deck.rs`, `hud/logistics.rs`, `hud_classic.rs`, `validation/logistics.rs`)
+
+One word each everywhere (the order, its buttons, the card, the information page, the mod check):
+순간이동 (as teleporting above), its charge 충전, a drone 드론 (counted 기), a transport's slot 슬롯 (as an
+enhancement's), a factory that moves 이동식 공장. A unit's name before a particle that changes takes 유닛
+({unit} 유닛은), as a weapon's takes 무기; 에 and 의 follow it bare.
+
+| English | 한국어 |
+|---|---|
+| Teleport (the order) / TELEPORT, WARP (classic, long and short) | 순간이동 / 순간이동, 워프 |
+| charge (a teleport's) / Charging to teleport / About to teleport | 충전 / 순간이동 충전 중 / 순간이동 준비 중 |
+| Teleports anywhere: … more the farther it goes | 어디로든 순간이동: … (멀리 갈수록 증가) |
+| Click the place to teleport to | 순간이동할 지점을 클릭하세요 |
+| drone / Keeps {n} drones / {name} drone (a reference in the mod check) | 드론 / 드론 {n}기 보유 / {name} 드론 |
+| slot (a transport's) / small, medium, large (its classes) | 슬롯 / 소형, 중형, 대형 |
+| air transport with slots / its passengers (the units it carries) | 슬롯이 있는 공중 수송기 / 탑재 유닛 |
+| factory that moves (MobileFactory) | 이동식 공장 |
+| logistics (the mod check's report) | 병참 |
+| piece (a model's) / the model's middle | 부품 (as the scripts' findings) / 모델의 중심 |

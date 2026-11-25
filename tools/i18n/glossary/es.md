@@ -783,3 +783,21 @@ a unit's. A shield's mod keys are entradas (as "estas entradas"): "{unit} indica
 | collapse / collapsed / after collapsing | colapsar / colapsado / después de colapsar |
 | Shield off / Shield down: short of energy / coming up in {secs} s / back in {secs} s | Escudo desactivado / Escudo caído: falta energía / Escudo activo en {secs} s / vuelve en {secs} s |
 | shield keys (a mod's) | entradas de escudo |
+
+## Logística (`game.rs`, `hud/deck.rs`, `hud/logistics.rs`, `hud_classic.rs`, `validation/logistics.rs`)
+
+Transportes aéreos con plazas, teletransporte, drones y fábricas móviles, que los mods pueden dar a
+sus unidades. La orden va en infinitivo, como Mover o Descargar; la unidad se teletransporta. Su
+carga (energía durante unos segundos, pagada antes de partir) es la carga ("una vez pagada la
+carga"). Las claves de mod son masculinas, como "un WorkerTime": su Unit, un Count, el Piece.
+
+| English | Español |
+|---|---|
+| teleport (la orden) / to teleport / teleporting | Teletransportar / teletransportarse / teletransporte |
+| TELEPORT / WARP (el panel clásico: largo y corto) | TELETRANSPORTAR / TELETR. |
+| Charging to teleport / About to teleport (la ficha) | Cargando el teletransporte: {pct}% / A punto de teletransportarse |
+| charge (la de un teletransporte) | carga ("una carga de teletransporte") |
+| drone / {name} drone (la referencia) / Keeps {n} drones | dron (pl. drones) / dron de {name} / "Drones ({name}): {n}" |
+| slot (de un transporte aéreo, para un pasajero) / transport slots (TransportSlots) | plaza / plazas de transporte; tamaños como etiquetas: pequeñas: {small}, medianas: {medium}, grandes: {large} |
+| factory that moves (MobileFactory) | fábrica móvil |
+| TA Reborn's logistics (el resumen del informe) | Logística de TA Reborn |

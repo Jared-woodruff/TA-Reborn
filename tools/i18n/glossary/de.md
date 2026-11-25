@@ -829,3 +829,22 @@ shield's mod keys are Schildeinträge.
 | collapse / collapsed / after collapsing | zusammenbrechen / zusammengebrochen / nach dem Zusammenbruch |
 | Shield off / Shield down: short of energy / coming up in {secs} s / back in {secs} s | Schild aus / Schild ausgefallen: zu wenig Energie / Schild aktiv in {secs} s / zurück in {secs} s |
 | shield keys (a mod's) | Schildeinträge |
+
+## Logistik (`game.rs`, `hud/deck.rs`, `hud/logistics.rs`, `hud_classic.rs`, `validation/logistics.rs`)
+
+Mods can give units air transports with slots, teleporting, drones and factories that move. The
+order is Teleportieren (an infinitive, as Bewachen, Entladen); a unit teleportiert sich. Its charge
+(energy over some seconds, paid before it goes) is die Aufladung ("sobald die Aufladung bezahlt ist",
+"Lädt zum Teleportieren auf: {pct}%"). The mod keys keep the feminine of the earlier findings: eine
+Unit, eine Count, die Piece einer Drohne.
+
+| English | Deutsch |
+|---|---|
+| teleport (the order) / to teleport / teleporting | Teleportieren / sich teleportieren / Teleportation |
+| TELEPORT / WARP (TA's 1997 panel: long and short) | TELEPORT / TELEP. |
+| About to teleport (the card) | Teleportiert sich gleich |
+| charge (a teleport's) | Aufladung |
+| drone / {name} drone (the mod check's reference) / Keeps {n} drones | Drohne (pl. Drohnen) / {name}-Drohne / "Drohnen ({name}): {n}" |
+| slot (an air transport's, for one passenger) / transport slots (TransportSlots) | Transportplatz, Platz / Transportplätze; sizes as labels: klein {small}, mittel {medium}, groß {large} |
+| factory that moves (MobileFactory) | mobile Fabrik |
+| TA Reborn's logistics (the report's overview) | TA Reborns Logistik |

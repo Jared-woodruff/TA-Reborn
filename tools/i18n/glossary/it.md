@@ -760,3 +760,22 @@ short (f.: propria); a shield whose hit points run out collassa (il collasso) an
 | collapse / collapsed / after collapsing | collassare / collassato / dopo il collasso |
 | Shield off / Shield down: short of energy / coming up in {secs} s / back in {secs} s | Scudo disattivato / Scudo inattivo: energia insufficiente / Scudo attivo tra {secs} s / torna tra {secs} s |
 | shield keys (a mod's) | voci di scudo |
+
+## La logistica (`game.rs`, `hud/deck.rs`, `hud/logistics.rs`, `hud_classic.rs`, `validation/logistics.rs`)
+
+Mods can give units air transports with slots, teleporting, drones and factories that move. The
+order is Teletrasporta (an imperative, as Muovi, Scarica); a unit si teletrasporta. Its charge
+(energy over some seconds, paid before it goes) is la carica ("una volta pagata la carica"). The
+mod keys are masculine: il suo Unit, un Count, il Piece di un drone. The overview's second line
+agrees with Logistica: "Si gioca come la descrive docs/MODDING.md". Straight apostrophes.
+
+| English | Italiano |
+|---|---|
+| teleport (the order) / to teleport / teleporting | Teletrasporta / teletrasportarsi / teletrasporto |
+| TELEPORT / WARP (TA's 1997 panel: long and short) | TELETRASPORTA / TELETR. |
+| Charging to teleport / About to teleport (the card) | Carica del teletrasporto: {pct}% / Sta per teletrasportarsi |
+| charge (a teleport's) | carica ("una carica di teletrasporto") |
+| drone / {name} drone (the mod check's reference) / Keeps {n} drones | drone (pl. droni) / drone di {name} / "Droni ({name}): {n}" |
+| slot (an air transport's, for one passenger) / transport slots (TransportSlots) | slot (invariable, as the enhancements') / slot di trasporto; sizes as labels: piccoli: {small}, medi: {medium}, grandi: {large} |
+| factory that moves (MobileFactory) | fabbrica mobile |
+| TA Reborn's logistics (the report's overview) | Logistica di TA Reborn |

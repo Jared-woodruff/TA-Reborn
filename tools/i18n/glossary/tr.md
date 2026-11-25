@@ -716,3 +716,23 @@ var ama ShieldHealth yok").
 | collapse / collapsed / after collapsing | çökmek / çöktü / çöktükten sonra |
 | Shield off / Shield down: short of energy / coming up in {secs} s / back in {secs} s | Kalkan kapalı / Kalkan devre dışı: enerji yetmiyor / Kalkan {secs} sn sonra devrede / {secs} sn sonra geri gelir |
 | shield keys (a mod's) | kalkan anahtarları |
+
+## Lojistik (`game.rs`, `hud/deck.rs`, `hud/logistics.rs`, `hud_classic.rs`, `validation/logistics.rs`)
+
+Mods can give units air transports with slots, teleporting, drones and factories that move. The
+order is Işınlan (an imperative, as İndir, Uzaktan izle); a unit ışınlanır. Its charge (energy over
+some seconds, paid before it goes) is şarj, not yükleme, which is the Load order's ("şarjı
+ödendiğinde", "Işınlanmak için şarj oluyor: %{pct}"). Counts stand before a bare noun: "{n} dron
+tutar", "{small} küçük".
+
+| English | Türkçe |
+|---|---|
+| teleport (the order) / to teleport / teleporting | Işınlan / ışınlanmak / ışınlanma |
+| TELEPORT / WARP (TA's 1997 panel: long and short) | IŞINLAN / IŞIN |
+| About to teleport (the card) | Işınlanmak üzere |
+| Click the place to teleport to | Işınlanılacak yere tıkla (as "Uzaktan izlenecek yere tıkla") |
+| charge (a teleport's) | şarj ("ışınlanma şarjı") |
+| drone / {name} drone (the mod check's reference) | dron (TDK; dronlar, dronu) / {name} dronu |
+| slot (an air transport's, for one passenger) / transport slots (TransportSlots) / with slots | yuva / nakliye yuvaları / yuvalı |
+| factory that moves (MobileFactory) | hareketli fabrika |
+| TA Reborn's logistics (the report's overview) | TA Reborn'un lojistiği |
