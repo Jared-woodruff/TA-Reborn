@@ -208,11 +208,24 @@ pub fn flac(pcm: &[u8], channels: u16, rate: u32, bits: u16) -> Result<Vec<u8>> 
     Ok(sink.as_slice().to_vec())
 }
 
+/// The menu theme's loudness in [`banner::BARS`](crate::banner::BARS) stretches, as the music's
+/// banner shows it, read from the copy whose `sounds` folder is `sounds`: none where it has no
+/// menu theme.
+pub fn menu_loudness(sounds: &Path) -> Result<Option<Vec<u16>>> {
+    let Some(track) = tracks(sounds)?.into_iter().find(|t| t.part == Part::Menu) else { return Ok(None) };
+    let bank = bank_head(sounds, track.bank)?;
+    let pcm = wave_data(sounds, track.bank, &bank, track.wave)?;
+    let wave = &bank.waves[track.wave];
+    Ok(Some(crate::banner::loudness(&pcm, wave.bits, wave.channels, wave.rate, crate::banner::BARS)))
+}
+
 /// Makes the music mod of the copy whose `sounds` folder is `sounds`, for TA Reborn `reborn` and
-/// newer: each track a FLAC file, the list, the manifest, written through `write` (a path in the
-/// mod, its bytes). `watch` is told before each track how many are made and the track's file
-/// name: false from it stops the making there ([`Made::stopped`]).
-pub fn make(sounds: &Path, reborn: &str, write: &mut dyn FnMut(&str, &[u8]) -> Result<()>, watch: &mut dyn FnMut(usize, &str) -> bool) -> Result<Made> {
+/// newer: each track a FLAC file, the list, the manifest, and the banner the launcher shows it by
+/// (the menu theme's loudness over a painting of the game's, from its `files` where given),
+/// written through `write` (a path in the mod, its bytes). `watch` is told before each track how
+/// many are made and the track's file name: false from it stops the making there
+/// ([`Made::stopped`]).
+pub fn make(sounds: &Path, files: Option<&crate::files::Files>, reborn: &str, write: &mut dyn FnMut(&str, &[u8]) -> Result<()>, watch: &mut dyn FnMut(usize, &str) -> bool) -> Result<Made> {
     let tracks = tracks(sounds)?;
     let mut made = Made::default();
     let mut put = |path: &str, bytes: &[u8], made: &mut Made| -> Result<()> {
@@ -220,8 +233,10 @@ pub fn make(sounds: &Path, reborn: &str, write: &mut dyn FnMut(&str, &[u8]) -> R
         made.bytes += bytes.len() as u64;
         write(path, bytes)
     };
-    put("mod.toml", manifest(reborn).as_bytes(), &mut made)?;
+    put("mod.toml", (manifest(reborn) + &crate::banner::manifest_lines()).as_bytes(), &mut made)?;
     let mut done: Vec<Track> = Vec::new();
+    // (The menu theme's loudness, for the banner, taken as its track is made.)
+    let mut loudness: Vec<u16> = Vec::new();
     // (A bank's file read once for its tracks, the tracks in its order.)
     let mut held: Option<(&str, Vec<u8>, WaveBank)> = None;
     for (i, track) in tracks.iter().enumerate() {
@@ -238,6 +253,11 @@ pub fn make(sounds: &Path, reborn: &str, write: &mut dyn FnMut(&str, &[u8]) -> R
         }
         let (_, bytes, bank) = held.as_ref().expect("the track's bank, read");
         let wave = &bank.waves[track.wave];
+        if track.part == Part::Menu && loudness.is_empty()
+            && let Some(pcm) = bank.data(bytes, track.wave)
+        {
+            loudness = crate::banner::loudness(pcm, wave.bits, wave.channels, wave.rate, crate::banner::BARS);
+        }
         let made_flac = bank.data(bytes, track.wave).ok_or_else(|| Error::Format(format!("{}: wave {} has no data", track.bank, track.wave))).and_then(|pcm| flac(pcm, wave.channels, wave.rate, wave.bits));
         match made_flac {
             Ok(flac) => {
@@ -248,6 +268,7 @@ pub fn make(sounds: &Path, reborn: &str, write: &mut dyn FnMut(&str, &[u8]) -> R
         }
     }
     put(LIST, list(&done).as_bytes(), &mut made)?;
+    put(crate::banner::PATH, &crate::banner::music(files, &loudness), &mut made)?;
     made.tracks = done.len();
     Ok(made)
 }
@@ -287,29 +308,33 @@ mod tests {
         assert_eq!(tracks[1].file(), "music/supcom/building_1.flac");
     }
 
-    /// The mod made: its manifest, a FLAC file a track, the list naming each with its part;
-    /// stopped, no list.
+    /// The mod made: its manifest naming its banner, a FLAC file a track, the list naming each
+    /// with its part, and the banner (a PNG, made without the game's painting where its files are
+    /// not given); stopped, no list.
     #[test]
     fn the_music_mod_is_made_a_flac_file_a_track() {
         let dir = crate::tests::Temp::new("soundtrack_make");
         copy(&dir.0);
         let mut files: Vec<(String, Vec<u8>)> = Vec::new();
-        let made = make(&dir.0, "1.0.9", &mut |path, bytes| {
+        let made = make(&dir.0, None, "1.0.9", &mut |path, bytes| {
             files.push((path.to_string(), bytes.to_vec()));
             Ok(())
         }, &mut |_, _| true).unwrap();
         assert_eq!((made.tracks, made.skipped.len(), made.stopped), (5, 0, false));
         let paths: Vec<&str> = files.iter().map(|(p, _)| p.as_str()).collect();
-        assert_eq!(paths, ["mod.toml", "music/supcom/menu.flac", "music/supcom/building_1.flac", "music/supcom/building_2.flac", "music/supcom/battle.flac", "music/supcom/film_intro.flac", LIST]);
+        assert_eq!(paths, ["mod.toml", "music/supcom/menu.flac", "music/supcom/building_1.flac", "music/supcom/building_2.flac", "music/supcom/battle.flac", "music/supcom/film_intro.flac", LIST, crate::banner::PATH]);
+        let manifest = String::from_utf8(files[0].1.clone()).unwrap();
+        assert!(manifest.ends_with("\n[media]\nbanner = \"media/banner.png\"\n"), "{manifest}");
         let flac = &files[1].1;
         assert_eq!(&flac[..4], b"fLaC");
         // (Its least block size its most, the last block aside, as FLAC has it: else the game's
         // decoder takes the blocks to vary and reads none.)
         assert_eq!(flac[8..10], flac[10..12], "fixed blocks: {:02x?}", &flac[..12]);
-        let list = String::from_utf8(files.last().unwrap().1.clone()).unwrap();
+        let list = String::from_utf8(files[files.len() - 2].1.clone()).unwrap();
         assert!(list.contains("file = \"music/supcom/battle.flac\"\npart = \"battle\"\nnumber = 1"), "{list}");
+        assert_eq!(&files.last().unwrap().1[..8], b"\x89PNG\r\n\x1a\n");
         let mut seen = 0;
-        let stopped = make(&dir.0, "1.0.9", &mut |_, _| Ok(()), &mut |i, _| {
+        let stopped = make(&dir.0, None, "1.0.9", &mut |_, _| Ok(()), &mut |i, _| {
             seen = i;
             i < 2
         }).unwrap();

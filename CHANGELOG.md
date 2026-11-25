@@ -45,6 +45,12 @@
   lettering and slate panels, its pictures behind the menus one after another in place of the
   film, its frames round the panels, its clicks, and its menu theme as the menus' music. The menus
   keep their layout, and the battle its own look ([SUPCOM_MENUS.md](docs/SUPCOM_MENUS.md)).
+- The Supreme Commander imports' mods have banners in the Mods library in place of a plate with
+  their names, each made from your own copy of the game as the mod is: the map pack's pictures of
+  its maps as cards in a row, the factions' hall with the emblems of the factions you made, the
+  menu theme's loudest moments as a row of bars over one of the game's paintings, and the game's
+  logo and a panel of its menus over their space. Mods imported before get theirs when the
+  launcher starts, without being made again ([SUPCOM_MAPS.md](docs/SUPCOM_MAPS.md), "Banners").
 
 ### Changed
 - The enemy Commanders' transmissions (their greetings, taunts and answers coming in at the top

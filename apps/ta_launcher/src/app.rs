@@ -294,6 +294,8 @@ pub struct LauncherApp {
     /// Whether the Supreme Commander menus' and music's mods were on: MENU THEME and SOUNDTRACK
     /// follow them as they are turned on or off.
     pub(crate) followed_mods: crate::supcom::Followed,
+    /// Banners being made for the Supreme Commander imports' mods installed without one.
+    pub(crate) supcom_banners: crate::supcom_banners::Banners,
     pub(crate) skins: crate::skins::Library,
     pub(crate) game: GameState,
     /// The last folder picked with "Browse…" that is not a valid install, and what it lacks.
@@ -650,6 +652,7 @@ impl LauncherApp {
             maps: Default::default(),
             supcom: crate::supcom::Import::new(supcom_choice),
             followed_mods,
+            supcom_banners: Default::default(),
             game: GameState::Idle,
             browse_error: None,
             actions: match (args.autoplay, args.autobenchmark) {
@@ -2968,6 +2971,15 @@ impl eframe::App for LauncherApp {
             }
         }
         self.followed_mods.follow(&mut self.config);
+        // (The imports' mods installed before imports made banners get theirs, from the player's
+        // copy, once a launch, while no import or install is at work: read again once made. Not
+        // in the launcher's tests, which never look for this computer's copy of the game.)
+        if cfg!(not(test)) && !self.supcom.any_importing() && !self.installer.busy() {
+            self.supcom_banners.start(crate::supcom_banners::wanted(&self.mods), &self.store.dir());
+        }
+        if self.supcom_banners.poll().is_some_and(|made| made > 0) {
+            self.refresh_mods();
+        }
         // (The game's folder as the player chose it, kept for the next start.)
         if let Some(choice) = self.supcom.take_choice()
             && let Err(e) = crate::supcom::save_choice(&self.store.dir(), choice.as_deref())

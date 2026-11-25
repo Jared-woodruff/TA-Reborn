@@ -1,6 +1,6 @@
 //! `ta-tools supcom-music`: Supreme Commander: Forged Alliance's soundtrack made into TA Reborn's
 //! music, into a folder to mount as a mod (docs/SUPCOM_MUSIC.md), as `ta_supcom::soundtrack::make`
-//! makes it: a FLAC file a track and the list of them.
+//! makes it: a FLAC file a track, the list of them and the banner the launcher shows the mod by.
 
 use std::path::Path;
 
@@ -20,7 +20,9 @@ pub fn run(out: &Path, game: Option<&Path>) -> Result<()> {
         eprintln!("  {:<10} {:>2}  {:<18} {:>6.1} s  ({} wave {})", t.part.key(), t.number, t.stem, t.seconds, t.bank, t.wave);
     }
     let started = std::time::Instant::now();
-    let made = soundtrack::make(&sounds, env!("CARGO_PKG_VERSION"), &mut |path, bytes| {
+    // (The game's own archives, for the banner's painting: without them, it is made without.)
+    let files = ta_supcom::files::Files::own(&install).ok();
+    let made = soundtrack::make(&sounds, files.as_ref(), env!("CARGO_PKG_VERSION"), &mut |path, bytes| {
         let at = out.join(path);
         if let Some(dir) = at.parent() {
             std::fs::create_dir_all(dir).map_err(|e| ta_supcom::Error::Format(format!("{}: {e}", dir.display())))?;

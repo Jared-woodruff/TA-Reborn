@@ -98,6 +98,9 @@ and white; pictures, map previews and portraits, drawn in textures of their own,
 - **`menus/supcom/panel/<place>.dds`:** the panel art's nine pieces, named for their places.
 - **`sounds/supcom-menus/<cue>.wav`:** each sound once, as WAV.
 - **`music/supcom-menus/menu.flac`:** the menu music, lossless.
+- **`media/banner.png`:** the picture the launcher's Mods library shows the mod by (its manifest's
+  `[media] banner`; `banner::menus`): the game's logo and a panel of its menus holding one of its
+  paintings, over the space its menus show (docs/SUPCOM_MAPS.md, "Banners").
 - **`menus/supcom/theme.toml`:** what each is for, as the game reads it: `pictures`, `music`,
   `[colours]` (the palette's keys), `[panel]` (the nine places) and `[sounds]` (TA's interface
   events: `BIGBUTTON`, `SMLBUTTON`, `SMALLBUTTON`, `PREVIOUS`, `MORE`, `SKIRMISH`, `MULTI`,

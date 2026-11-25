@@ -258,6 +258,44 @@ Portable`, `convert::trig`), and nothing depends on thread order.
   digits of its FNV-1a). The same for every player who has the map: the lobby finds maps by it.
   An import never writes over another map's files of the same name; it says so instead.
 
+## Banners
+
+Each import's mod has a banner, the picture the launcher's Mods library shows it by on its card
+and its page (`media/banner.png`, named by its manifest's `[media] banner`), 1280 by 640, made by
+the import from the player's own copy of the game as the mod itself is (`ta_supcom::banner`):
+
+- **The map pack's:** the game's pictures of the maps it holds, as cards in a row over the game's
+  loading rays, the middle one facing, the others turned away and darker further out. The maps of
+  `banner::SHOWCASE` come first where the pack has them (Seton's Clutch in the middle), then the
+  rest by folder. A pack of a few maps shows them round and round along the row, one alone stands
+  by itself. Each picture is found by the folder its map was made from (its OTA's `supcommap`), in
+  the game's maps folder or the player's own.
+- **The factions':** the game's hall of the factions (its campaign's, with their banners), and
+  along its floor the emblems of the factions the mod holds, on medallions of their colours.
+- **The music's:** the menu theme's loudest eight seconds as a row of bars, amber to the game's
+  cyan, mirrored on a line of light, over the game's painting of a fleet under a red sky.
+- **The menus':** the game's logo, and a panel of its menus holding one of its paintings, over the
+  space its menus show.
+
+A banner is made in whole numbers, the same from the same copy on every computer, in about a
+second for all four. Neither `media/` nor the manifest counts in the digests saved games, replays
+and multiplayer compare. Where the copy lacks the pictures a banner is made of, the mod has none,
+and the library draws its plate with its name.
+
+**Mods imported before banners were made.** The launcher makes theirs (`supcom_banners.rs`): once
+a launch, on a worker, while no import or install is at work, for each import's mod it lists
+without a banner (named as the import names it; not an archive, nor a copy in TA Reborn's program
+folder), from the copy in use. It writes `media/banner.png` into the mod's folder and adds the
+`[media]` table to the end of its manifest, the rest kept as it is (a manifest with a `[media]`
+table of its own is left alone), then reads the mods again. Without the game, nothing changes.
+
+**Tests:** `banner::tests` in `ta_supcom` (pictures made smaller and larger evenly, the PNG read
+back, a medallion, a turned card, the showcase's order, the loudness, the four banners made of a
+copy written in the tests); `supcom_banners::tests` and
+`supcom::tests::the_packs_banner_shows_its_maps` in the launcher. From the player's copy:
+`cargo test --release -p ta_supcom --test installed the_banners_of_the_installed_copy -- --ignored
+--nocapture` makes them all (`TA_BANNER_OUT=<dir>`: written there to look at).
+
 ## Multiplayer
 
 The pack holds maps alone (`maps/*.tnt`, `.ota`, `.features`): it is no part of the data

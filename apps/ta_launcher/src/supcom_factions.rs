@@ -380,11 +380,15 @@ fn kind_of(u: &UnitBlueprint) -> usize {
 /// The converter's version that made the mod in `dir`, and the sides it holds.
 fn installed_state(dir: &Path) -> (u32, BTreeSet<String>) {
     let version = ta_vfs::mods::read_mod(dir).ok().flatten().and_then(|m| m.manifest.version.trim().parse().ok()).unwrap_or(0);
-    let sides = std::fs::read(dir.join("gamedata").join("sidedata_supcom.tdf")).map(|bytes| {
+    (version, installed_sides(dir))
+}
+
+/// The sides the mod in `dir` holds, as its side add-on names them (`UEF`, `CYBRAN`...).
+pub(crate) fn installed_sides(dir: &Path) -> BTreeSet<String> {
+    std::fs::read(dir.join("gamedata").join("sidedata_supcom.tdf")).map(|bytes| {
         let doc = ta_formats::tdf::parse_bytes(&bytes);
         doc.sections.iter().filter(|s| s.name.to_ascii_lowercase().starts_with("side")).filter_map(|s| s.get("name")).map(|n| n.trim().to_ascii_uppercase()).collect()
-    }).unwrap_or_default();
-    (version, sides)
+    }).unwrap_or_default()
 }
 
 /// The game in use (of the `copies` found, or the folder `picked` while it still holds the game),
