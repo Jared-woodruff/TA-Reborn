@@ -11,8 +11,9 @@
 //!   pipes;
 //! - its interface sounds (by TA's interface events) and its menu music (the menus' playlist).
 //!
-//! The layouts and the widgets' shapes stay TA Reborn's. The battle (its HUD, its dialogs) keeps
-//! its own look.
+//! The layouts and the widgets' shapes stay TA Reborn's. The battle takes the look too (its
+//! modern HUD, its pages and dialogs: [`battle_in_look`]; not the classic interface, TA's own),
+//! and so do the loading screens, one of the theme's pictures behind them ([`loading_look`]).
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
@@ -247,13 +248,20 @@ impl Grade {
 
     /// A frame's meshes in the theme's colours: those drawn in egui's own texture (shapes and
     /// text); not pictures, previews, portraits or the theme's own art (textures of their own).
+    /// (A battle's frame has many: a run of vertices of one colour is worked out once.)
     pub fn apply(&mut self, prims: &mut [egui::ClippedPrimitive]) {
+        let mut last: Option<(Color32, Color32)> = None;
         for prim in prims {
             if let egui::epaint::Primitive::Mesh(mesh) = &mut prim.primitive
                 && mesh.texture_id == egui::TextureId::default()
             {
                 for v in &mut mesh.vertices {
-                    v.color = self.colour(v.color);
+                    let to = match last {
+                        Some((from, to)) if from == v.color => to,
+                        _ => self.colour(v.color),
+                    };
+                    last = Some((v.color, to));
+                    v.color = to;
                 }
             }
         }
@@ -288,6 +296,11 @@ impl Pictures {
     pub fn new(files: Vec<String>, vfs: Arc<ta_vfs::Vfs>, seed: u64) -> Pictures {
         let shown = if files.is_empty() { 0 } else { (seed % files.len() as u64) as usize };
         Pictures { files, vfs, shown, since: f64::NAN, textures: HashMap::new(), decoding: None, broken: Default::default() }
+    }
+
+    /// The file of the picture shown now.
+    pub fn shown_file(&self) -> Option<&str> {
+        self.files.get(self.shown).map(String::as_str)
     }
 
     /// Decodes picture `index` on a worker, unless one is decoding or it is held.
@@ -420,6 +433,42 @@ fn draw(painter: &egui::Painter, screen: Rect, texture: &TextureHandle, age: f64
     painter.add(mesh);
 }
 
+/// Whether the battle is drawn in the menus' theme's look: a menu theme in use (MENU THEME), on
+/// the battlefield, with the modern HUD (the classic interface is TA's own, as it was).
+pub fn battle_in_look(look: bool, playing: bool, classic: bool) -> bool {
+    look && playing && !classic
+}
+
+/// A picture of the game's files decoded at once (for a loading screen, whose window waits on
+/// nothing else): none where it does not read.
+pub fn decode_picture(vfs: &ta_vfs::Vfs, path: &str) -> Option<ColorImage> {
+    let bytes = vfs.read(path).map_err(|e| log::warn!("{path}: {e}")).ok()?;
+    let image = ta_formats::dds::decode(&bytes, 0).map_err(|e| log::warn!("{path}: {e}")).ok()?;
+    let pixels: Vec<u8> = image.rgba.iter().flat_map(|p| [p[0], p[1], p[2], 255]).collect();
+    Some(ColorImage::from_rgba_unmultiplied([image.width as usize, image.height as usize], &pixels))
+}
+
+/// A loading screen in a menu theme's look: its colours, and the picture behind it.
+pub struct LoadingLook {
+    pub palette: Palette,
+    pub picture: Option<ColorImage>,
+}
+
+/// The loading screen's look for a menu theme: the theme in use's (`look`, its picture shown
+/// now, the menus' screen carried on); else, at the game's start, the theme of the game's files
+/// (`vfs`) with the picture `seed` chooses. None without a theme.
+pub fn loading_look(look: Option<&Look>, vfs: &ta_vfs::Vfs, seed: u64) -> Option<LoadingLook> {
+    let (palette, file) = match look {
+        Some(look) => (look.theme.palette, look.pictures.shown_file().map(str::to_owned)),
+        None => {
+            let theme = MenuTheme::read(vfs)?;
+            let file = (!theme.pictures.is_empty()).then(|| theme.pictures[(seed % theme.pictures.len() as u64) as usize].clone());
+            (theme.palette, file)
+        }
+    };
+    Some(LoadingLook { palette, picture: file.and_then(|f| decode_picture(vfs, &f)) })
+}
+
 /// The panel border's pieces of the theme as textures, decoded from the game's files.
 pub fn panel_art(ctx: &egui::Context, vfs: &ta_vfs::Vfs, files: &[String; 9]) -> Option<ta_ui::panel::PanelArt> {
     let mut pieces = Vec::with_capacity(9);
@@ -456,6 +505,48 @@ fn mean_colour(texels: &[[u8; 4]]) -> egui::Color32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The battle takes the look on the battlefield with the modern HUD; never with the classic
+    /// interface (TA's own), off the battlefield, or without a theme in use.
+    #[test]
+    fn the_battle_takes_the_look_with_the_modern_hud() {
+        assert!(battle_in_look(true, true, false));
+        assert!(!battle_in_look(true, true, true), "the classic interface is TA's own");
+        assert!(!battle_in_look(true, false, false), "off the battlefield, the menus' own rule");
+        assert!(!battle_in_look(false, true, false), "no theme in use");
+    }
+
+    /// A loading screen's look from the game's files (at the game's start): the theme's colours
+    /// and the picture the seed chooses, decoded at once; a picture that does not read, none of
+    /// it; without a theme, no look.
+    #[test]
+    fn a_loading_screen_takes_the_themes_colours_and_a_picture() {
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("ta-loading-look-{}-{nanos}", std::process::id()));
+        let pictures = dir.join("menus/supcom/pictures");
+        std::fs::create_dir_all(&pictures).unwrap();
+        let mut dds = ta_formats::dds::header(4, 2, 1, None);
+        for _ in 0..8 {
+            dds.extend_from_slice(&[20, 40, 200, 255]);
+        }
+        std::fs::write(pictures.join("a.dds"), dds).unwrap();
+        std::fs::write(pictures.join("broken.dds"), b"not a picture").unwrap();
+        let theme = |picture: &str| format!("pictures = [\"menus/supcom/pictures/{picture}\"]\n\n[colours]\ntext = \"#badbdb\"\n");
+        std::fs::write(dir.join(THEME), theme("a.dds")).unwrap();
+        let mount = || {
+            let mut vfs = ta_vfs::Vfs::new();
+            vfs.mount_mod_dir(&dir, "menus").unwrap();
+            vfs
+        };
+        let look = loading_look(None, &mount(), 7).expect("a theme");
+        assert_eq!(look.palette.text, Color32::from_rgb(0xba, 0xdb, 0xdb));
+        let picture = look.picture.expect("its picture");
+        assert_eq!((picture.size, picture.pixels[0]), ([4, 2], Color32::from_rgb(200, 40, 20)));
+        std::fs::write(dir.join(THEME), theme("broken.dds")).unwrap();
+        assert!(loading_look(None, &mount(), 7).is_some_and(|look| look.picture.is_none()), "its colours, without the picture");
+        assert!(loading_look(None, &ta_vfs::Vfs::new(), 7).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// A panel's middle as it looks from afar: its texels' mean, their colours carried by their
     /// alphas (what a list over the panel fades into).

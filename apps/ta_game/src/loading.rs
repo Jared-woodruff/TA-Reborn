@@ -33,6 +33,8 @@ pub struct LoadingHost {
     short: bool,
     /// Explicit developer capture only; ordinary loading never reads the GPU back.
     captures: Option<LoadingCaptures>,
+    /// A menu theme's colours (MENU THEME), every mesh of the screen moved onto them.
+    grade: Option<crate::menu_theme::Grade>,
 }
 
 impl LoadingHost {
@@ -75,8 +77,16 @@ impl LoadingHost {
         Self {
             window, gpu, ctx, input, renderer, screen: LoadingScreen::new(kind), kind, short,
             status: ta_ui::i18n::t("Starting TA Reborn").to_owned(), detail: String::new(),
-            since: Instant::now(), occluded: false, leaving_since: None, captures,
+            since: Instant::now(), occluded: false, leaving_since: None, captures, grade: None,
         }
+    }
+
+    /// The screen in a menu theme's look (MENU THEME): its colours, and `picture` (its own, as
+    /// the menus showed it) behind the bay.
+    pub fn set_look(&mut self, look: crate::menu_theme::LoadingLook) {
+        let picture = look.picture.map(|p| self.ctx.load_texture("loading picture", p, egui::TextureOptions::LINEAR));
+        self.screen.set_picture(picture);
+        self.grade = Some(crate::menu_theme::Grade::new(&look.palette));
     }
 
     /// How long the screen takes to go once loading is done: none between a benchmark's scenes
@@ -173,7 +183,10 @@ impl LoadingHost {
         if matches!(self.kind, LoadingKind::Benchmark) { output.platform_output.cursor_icon = egui::CursorIcon::None; }
         self.input.handle_platform_output(&self.window, output.platform_output);
         let pixels_per_point = output.pixels_per_point;
-        let primitives = self.ctx.tessellate(output.shapes, pixels_per_point);
+        let mut primitives = self.ctx.tessellate(output.shapes, pixels_per_point);
+        if let Some(grade) = self.grade.as_mut() {
+            grade.apply(&mut primitives);
+        }
         for (id, deltas) in output.textures_delta.set.drain() {
             for delta in deltas {
                 if let Some(renderer) = self.renderer.as_mut() {

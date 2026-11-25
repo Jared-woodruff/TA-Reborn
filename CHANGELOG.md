@@ -44,7 +44,10 @@
   and back to TA REBORN as it is turned off. It dresses the menus in Forged Alliance's pale cyan
   lettering and slate panels, its pictures behind the menus one after another in place of the
   film, its frames round the panels, its clicks, and its menu theme as the menus' music. The menus
-  keep their layout, and the battle its own look ([SUPCOM_MENUS.md](docs/SUPCOM_MENUS.md)).
+  keep their layout. The loading screens take its colours, with the picture the menus showed
+  behind them, and so does the battle with the modern HUD: its HUD, its battle menu, Options and
+  pages and its result page in Forged Alliance's colours and frames (the classic interface stays
+  TA's own) ([SUPCOM_MENUS.md](docs/SUPCOM_MENUS.md)).
 - The Supreme Commander imports' mods have banners in the Mods library in place of a plate with
   their names, each made from your own copy of the game as the mod is: the map pack's pictures of
   its maps as cards in a row, the factions' hall with the emblems of the factions you made, the

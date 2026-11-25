@@ -672,6 +672,9 @@ The theme draws the battle's HUD, and only that:
   that the HUD opens (sharing, cheats, a unit's page, the battle's history, a replay's video and
   clip export), the result page, the tutorial's windows, the tips and hints, and the cockpit (its
   view, its glass and instruments).
+- **The player's MENU THEME over it**: where the player chose a menu theme (FORGED ALLIANCE, the
+  Supreme Commander menus mod's; docs/SUPCOM_MENUS.md), a battle with the modern HUD is drawn in
+  that theme's look, its HUD, menus and pages alike, and a mod's interface theme gives way.
 
 ```toml
 [theme]

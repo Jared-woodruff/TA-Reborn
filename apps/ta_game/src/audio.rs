@@ -776,7 +776,8 @@ impl GameAudio {
         }
     }
 
-    /// Whether the menus are shown: their theme's interface sounds play then.
+    /// Whether the menus are shown (or a battle in their theme's look): their theme's interface
+    /// sounds play then.
     pub fn set_in_menus(&mut self, in_menus: bool) {
         self.in_menus = in_menus;
     }
