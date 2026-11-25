@@ -15,7 +15,7 @@ use crate::Result;
 pub const MOD_ID: &str = "supcom-factions";
 pub const MOD_NAME: &str = "Supreme Commander factions";
 /// The mod's words and tags as its manifest keeps them, in English.
-pub const DESCRIPTION: &str = "Supreme Commander: Forged Alliance's four factions, their units and buildings, made from your own copy of the game.";
+pub const DESCRIPTION: &str = "Supreme Commander: Forged Alliance's factions, their units and buildings, made from your own copy of the game.";
 pub const TAGS: [&str; 3] = ["units", "factions", "supreme commander"];
 /// The converter's version, the mod's own (its manifest's `version`): a mod made by an older one
 /// is offered to be made again. Raised whenever what is made changes (8: buildings' work and
@@ -33,8 +33,10 @@ pub const TAGS: [&str; 3] = ["units", "factions", "supreme commander"];
 /// units Forged Alliance makes only by upgrading made, so that what upgrades into them says so: the
 /// tech 3 Kennel, the Hives of tech 2 and 3, the Cybran shield generator's four upgrades;
 /// 13: units of a faction's different tiers sharing a name shown with their tiers, "T2 Engineer"
-/// (`units::shown_name`), and every wreck by its unit's name, never its id).
-pub const VERSION: u32 = 13;
+/// (`units::shown_name`), and every wreck by its unit's name, never its id; 14: a name's article
+/// giving way to its tier, "T2 Kennel", the mod's words those of whatever factions it holds, and
+/// its banner in the launcher's library).
+pub const VERSION: u32 = 14;
 
 /// What was made.
 #[derive(Clone, Debug, Default)]
@@ -708,7 +710,7 @@ mod tests {
     }
 
     /// The hash of the test faction's mod (see the test above).
-    const EXPECTED: &str = "767037adbecaa137b1d628c47f1cf69d01d1930189019d781e078a5fa69ea16e";
+    const EXPECTED: &str = "d6300b903f800eba06ee1d2188633c3cce61d424f53285d103be0c0389597a86";
 
     /// A unit whose mesh does not read is left out, with its reason; the rest are made.
     #[test]

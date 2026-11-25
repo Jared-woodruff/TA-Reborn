@@ -912,18 +912,19 @@ pub struct Extra<'a> {
 /// buildings' and engineers'), else its id; where another unit of its faction of another tier would
 /// be shown by the same (Forged Alliance tells its tiers apart by their pictures' frames, TA's menus
 /// and cards by name), its tier before it, as Forged Alliance's players say it: "T2 Engineer",
-/// "T3 Land Factory". Units of one tier sharing a name keep it (an upgrade's step tells those
-/// apart in the game).
+/// "T3 Land Factory" (a name's article giving way to it: "T2 Kennel", not "T2 The Kennel").
+/// Units of one tier sharing a name keep it (an upgrade's step tells those apart in the game).
 pub fn shown_name(u: &UnitBlueprint, faction: &[&UnitBlueprint]) -> String {
     let own = |u: &UnitBlueprint| -> String {
         if !u.name.is_empty() { u.name.clone() } else if !u.description.is_empty() { u.description.clone() } else { u.id.to_ascii_uppercase() }
     };
     let name = own(u);
     let shared = faction.iter().any(|o| o.id != u.id && o.tech != u.tech && own(o).eq_ignore_ascii_case(&name));
+    let bare = name.strip_prefix("The ").filter(|rest| !rest.trim().is_empty()).unwrap_or(&name).to_string();
     match u.tech {
-        Some(Tech::T1) if shared => format!("T1 {name}"),
-        Some(Tech::T2) if shared => format!("T2 {name}"),
-        Some(Tech::T3) if shared => format!("T3 {name}"),
+        Some(Tech::T1) if shared => format!("T1 {bare}"),
+        Some(Tech::T2) if shared => format!("T2 {bare}"),
+        Some(Tech::T3) if shared => format!("T3 {bare}"),
         _ => name,
     }
 }
@@ -1504,6 +1505,11 @@ mod tests {
         assert_eq!(shown_name(&t2, &faction), "T2 Engineer");
         assert_eq!(shown_name(&named, &faction), "Builder Bob");
         assert_eq!(shown_name(&t1, &[&t1]), "Engineer", "alone of its name: as it is");
+        // (A name's article gives way to its tier.)
+        let kennel = |id: &str, tech: &str| bp(id, tech, ", UnitName = 'The Kennel'");
+        let (k2, k3) = (kennel("XEB0104", "TECH2"), kennel("XEB0204", "TECH3"));
+        assert_eq!((shown_name(&k2, &[&k2, &k3]), shown_name(&k3, &[&k2, &k3])), ("T2 Kennel".to_string(), "T3 Kennel".to_string()));
+        assert_eq!(shown_name(&k2, &[&k2]), "The Kennel", "alone of its name: as it is");
         let wrecks = super::super::faction::wrecks(&faction);
         assert!(wrecks.contains("description=T2 Engineer Wreckage;") && !wrecks.contains("UEL0"), "{wrecks}");
     }

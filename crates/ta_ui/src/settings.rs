@@ -1093,7 +1093,7 @@ fn sound(ui: &mut Ui, rows: &mut Rows, a: &mut Audio, fa_soundtrack: bool) {
     setting_row(ui, rows, "MASTER VOLUME", "", "sound audio loudness mute", |ui| percent(ui, &mut a.master, limits::VOLUME, value_box));
     setting_row(ui, rows, "MUSIC", "", "soundtrack volume", |ui| percent(ui, &mut a.music, limits::VOLUME, value_box));
     // (Forged Alliance's choices once its music is installed; before, said where it comes from.)
-    setting_row(ui, rows, "SOUNDTRACK", "Whose music plays in the menus and battles: Total Annihilation's, Supreme Commander: Forged Alliance's, both, or by side (Forged Alliance's when you command one of its factions). TA's victory and defeat stay.", "music soundtrack supreme commander forged alliance songs themes side faction", |ui| {
+    setting_row(ui, rows, "SOUNDTRACK", "Whose music plays in the menus and battles: Total Annihilation's, Supreme Commander: Forged Alliance's, both, or by side (Forged Alliance's when you command one of its factions). TA's victory and defeat stay. A MENU THEME's own music joins the menus'.", "music soundtrack supreme commander forged alliance songs themes side faction", |ui| {
         ui.add_enabled_ui(fa_soundtrack, |ui| {
             widgets::segmented_fill(ui, &mut a.soundtrack, &[(Soundtrack::TotalAnnihilation, "TA"), (Soundtrack::ForgedAlliance, "FORGED ALLIANCE"), (Soundtrack::Both, "BOTH"), (Soundtrack::BySide, "BY SIDE")]);
         });
@@ -1108,8 +1108,8 @@ fn sound(ui: &mut Ui, rows: &mut Rows, a: &mut Audio, fa_soundtrack: bool) {
     setting_row(ui, rows, "SIMULTANEOUS SOUNDS", "More voices keep big battles fuller, at some CPU cost. Takes effect the next time the game starts", "channels voices polyphony", |ui| {
         widgets::value_slider(ui, Slider::new(&mut a.max_voices, limits::MAX_VOICES).step_by(8.0), value_box);
     });
-    setting_row(ui, rows, "YOUR MUSIC", "Your own music (the folders below) with TA's soundtrack or in its place; TA's victory and defeat stay. The jukebox (J) plays any track", "jukebox own songs playlist mp3 ogg flac soundtrack", |ui| {
-        widgets::segmented_fill(ui, &mut a.user_music, &[(UserMusic::Off, "OFF"), (UserMusic::Mixed, "WITH TA'S"), (UserMusic::Only, "INSTEAD OF TA'S")]);
+    setting_row(ui, rows, "YOUR MUSIC", "Your own music (the folders below) with the game's soundtrack or in its place; TA's victory and defeat stay. The jukebox (J) plays any track", "jukebox own songs playlist mp3 ogg flac soundtrack", |ui| {
+        widgets::segmented_fill(ui, &mut a.user_music, &[(UserMusic::Off, "OFF"), (UserMusic::Mixed, "WITH THE GAME'S"), (UserMusic::Only, "INSTEAD OF THE GAME'S")]);
     });
     setting_row(ui, rows, "MUSIC FOLDER", "MP3, Ogg, FLAC, WAV and M4A files in this folder (and in the settings folder's music folder)", "jukebox own music directory songs", |ui| {
         // The folder from the column's left edge, its buttons at its right.

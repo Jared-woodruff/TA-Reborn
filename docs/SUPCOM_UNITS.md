@@ -35,7 +35,8 @@ as they work. Their sounds come later.
   for it; the mod cannot be removed or replaced meanwhile. Like the maps' pack, it is made again
   where the launcher finds it, and in place of another mod of its id only once the player agrees.
   Its banner in the Mods library is the game's hall of the factions with the emblems of those it
-  holds (`media/banner.png`; docs/SUPCOM_MAPS.md, "Banners").
+  holds (`media/banner.png`; docs/SUPCOM_MAPS.md, "Banners"), and its page names them ("Its
+  factions: UEF and CYBRAN", from its side add-on).
   The mod keeps the version of the converter that made it (`factions::make::VERSION`, its
   manifest's `version`): a mod made by an older one is marked UPDATE, in the dialog and on the Mods
   page (its card, the UPDATES filter, UPDATE…). It needs the TA Reborn that made it, or newer
@@ -265,7 +266,8 @@ Each unit becomes a TA unit (`units/<id>.fbi`, `scripts/<id>.cob`; `ta_supcom::f
 - **Name:** its own (`General.UnitName`), else its description (most engineers, factories and
   economy buildings have no name of their own); where another unit of its faction of another tier
   has the same, its tier before it (`units::shown_name`: "T1 Engineer", "T2 Engineer", "T3 Land
-  Factory"), as Forged Alliance's players say it: its menus tell tiers apart by their pictures'
+  Factory"; a name's article giving way to it, "T2 Kennel", converter 14), as Forged Alliance's
+  players say it: its menus tell tiers apart by their pictures'
   frames, TA's menus and cards by name. Units of one tier sharing a name keep it (the Cybran's
   Hives: the game shows an upgrade's step, "The Hive II"). Converter 13 and later; its wreck goes
   by the same name, never its id.

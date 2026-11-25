@@ -501,8 +501,9 @@ fn holds(ui: &mut Ui, own: &Own) {
     section(ui, "IN THIS MOD");
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = vec2(8.0, 8.0);
-        let kinds = [(n("UNITS"), own.units), (n("WEAPONS"), own.weapons), (n("FEATURES"), own.features), (n("MAPS"), own.maps), (n("SOUNDS"), own.sounds), (n("FILES"), own.files)];
-        for (label, count) in kinds.into_iter().filter(|&(label, count)| count > 0 || label == "FILES") {
+        // (Its files the checks read: a mod's music and pictures are not.)
+        let kinds = [(n("UNITS"), own.units), (n("WEAPONS"), own.weapons), (n("FEATURES"), own.features), (n("MAPS"), own.maps), (n("SOUNDS"), own.sounds), (n("FILES CHECKED"), own.files)];
+        for (label, count) in kinds.into_iter().filter(|&(label, count)| count > 0 || label == "FILES CHECKED") {
             let figure = widgets::galley(ui, RichText::new(grouped(count)).font(display(22.0)).color(TEXT_BRIGHT));
             let word = widgets::galley(ui, RichText::new(t(label)).font(strong(10.5)).color(STEEL).extra_letter_spacing(ta_ui::i18n::tracking(1.0)));
             let size = vec2(figure.size().x.max(word.size().x) + 24.0, figure.size().y + word.size().y + 12.0);
@@ -699,7 +700,7 @@ fn scope(ui: &mut Ui, saved: &SavedReport) {
     // (The mod's own, and what it was checked with: the original game's files are most of them.)
     match &counts.own {
         Some(own) => {
-            wrapped(ui, tf("This mod: {files} files · {units} units · {maps} maps · {sounds} sounds", &[("files", &grouped(own.files)), ("units", &grouped(own.units)), ("maps", &grouped(own.maps)), ("sounds", &grouped(own.sounds))]), STEEL_DIM);
+            wrapped(ui, tf("This mod: {files} files checked · {units} units · {maps} maps · {sounds} sounds", &[("files", &grouped(own.files)), ("units", &grouped(own.units)), ("maps", &grouped(own.maps)), ("sounds", &grouped(own.sounds))]), STEEL_DIM);
             wrapped(ui, tf("Checked with what it plays over: {files} files", &[("files", &grouped(counts.files_checked))]), STEEL_DIM);
         }
         None => wrapped(ui, tf("{files} files · {units} units · {maps} maps · {sounds} sounds", &[("files", &grouped(counts.files_checked)), ("units", &grouped(counts.units)), ("maps", &grouped(counts.maps)), ("sounds", &grouped(counts.sounds))]), STEEL_DIM),

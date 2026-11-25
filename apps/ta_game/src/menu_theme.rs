@@ -423,19 +423,48 @@ fn draw(painter: &egui::Painter, screen: Rect, texture: &TextureHandle, age: f64
 /// The panel border's pieces of the theme as textures, decoded from the game's files.
 pub fn panel_art(ctx: &egui::Context, vfs: &ta_vfs::Vfs, files: &[String; 9]) -> Option<ta_ui::panel::PanelArt> {
     let mut pieces = Vec::with_capacity(9);
+    let mut middle = egui::Color32::TRANSPARENT;
     for (place, path) in PANEL_PLACES.iter().zip(files) {
         let bytes = vfs.read(path).map_err(|e| log::warn!("{path}: {e}")).ok()?;
         let image = ta_formats::dds::decode(&bytes, 0).map_err(|e| log::warn!("{path}: {e}")).ok()?;
+        if *place == "middle" {
+            middle = mean_colour(&image.rgba);
+        }
         let pixels: Vec<u8> = image.rgba.iter().flatten().copied().collect();
         let colour = ColorImage::from_rgba_unmultiplied([image.width as usize, image.height as usize], &pixels);
         pieces.push(ctx.load_texture(format!("menu panel {place}"), colour, TextureOptions::LINEAR));
     }
-    Some(ta_ui::panel::PanelArt { pieces: pieces.try_into().ok()? })
+    Some(ta_ui::panel::PanelArt { pieces: pieces.try_into().ok()?, middle })
+}
+
+/// The mean of `texels`, their colours carried by their alphas (premultiplied): what they look
+/// like from afar, laid over what is under them.
+fn mean_colour(texels: &[[u8; 4]]) -> egui::Color32 {
+    let n = texels.len().max(1) as u64;
+    let mut sum = [0u64; 4];
+    for t in texels {
+        let a = t[3] as u64;
+        for c in 0..3 {
+            sum[c] += t[c] as u64 * a / 255;
+        }
+        sum[3] += a;
+    }
+    let [r, g, b, a] = sum.map(|s| (s / n) as u8);
+    egui::Color32::from_rgba_premultiplied(r, g, b, a)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A panel's middle as it looks from afar: its texels' mean, their colours carried by their
+    /// alphas (what a list over the panel fades into).
+    #[test]
+    fn a_pictures_mean_is_carried_by_its_alpha() {
+        let mean = mean_colour(&[[255, 0, 0, 255], [0, 0, 255, 0]]);
+        assert_eq!(mean, egui::Color32::from_rgba_premultiplied(127, 0, 0, 127));
+        assert_eq!(mean_colour(&[]), egui::Color32::TRANSPARENT);
+    }
 
     /// A theme's list as the launcher writes it (`ta_supcom::menus::theme`).
     const LIST: &str = r##"# Supreme Commander: Forged Alliance's look for TA Reborn's menus

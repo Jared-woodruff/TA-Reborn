@@ -39,8 +39,10 @@ use crate::words::{en, enf, Fill, Words};
 /// paint is, their mip levels and texels (`texture.levels`, `texture.paint`), a far model's pieces
 /// (`model.far`), a surface's textures that are no DDS (`model.surface_texture`), animations clip
 /// by clip; 20: a unit's adjacency bonuses that do nothing (`unit.adjacency`), and a building
-/// working round it by itself with no build power (`unit.assist_patrol`)).
-pub const SCHEMA_VERSION: u32 = 20;
+/// working round it by itself with no build power (`unit.assist_patrol`); 21: a building whose
+/// build power only upgrades it in place (`UpgradesTo`, no `Builder`) asks its script for no
+/// nano-lathe (`script.builder`)).
+pub const SCHEMA_VERSION: u32 = 21;
 
 /// The keys of `gamedata/sound.tdf`'s categories the game plays (`ta_audio`'s sound events), each
 /// with or without a variant number (`select1`, `select2`…), with `count0` to `count9`; the
@@ -1001,7 +1003,7 @@ enum Use { File(String), Record(String) }
 /// `script`: the unit's script as the game finds it (`UnitDef::script_path`); `builds`: it has
 /// build power (`WorkerTime`), which makes it a builder whatever its Builder flag, as the game
 /// has it; `takes_no_ground`: a mod's upgrade module (`UnitDef::takes_no_ground`).
-struct UnitFacts { name: String, object: String, script: String, builds: bool, takes_no_ground: bool, weapons: [bool; crate::unit::MAX_WEAPONS] }
+struct UnitFacts { name: String, object: String, script: String, builds: bool, upgrades_alone: bool, takes_no_ground: bool, weapons: [bool; crate::unit::MAX_WEAPONS] }
 #[derive(Default)]
 struct Animation { frames: usize, size: AnimSize }
 
@@ -1444,7 +1446,10 @@ impl<'a> Scan<'a> {
             // (NONE: a unit meant to be silent.)
             if !unit.sound_category.trim().eq_ignore_ascii_case("none") { optional(&mut refs, "sounds", &unit.sound_category, part(en("{name} sounds"), &unit.name), Severity::Warning); }
             if unit.can_move && !unit.can_fly { optional(&mut refs, "move", &unit.movement_class, part(en("{name} movement class"), &unit.name), Severity::Warning); }
-            let facts = UnitFacts { name: unit.name.clone(), object: unit.object.clone(), script, builds: unit.worker_time > 0.0, takes_no_ground: unit.takes_no_ground, weapons: unit.weapons.clone().map(|w| w.is_some_and(|w| !w.trim().is_empty())) };
+            // (Its build power only upgrades it in place: a building that is no builder but
+            // becomes another, Supreme Commander's extractors and radars.)
+            let upgrades_alone = !unit.builder && !unit.upgrades_to.trim().is_empty();
+            let facts = UnitFacts { name: unit.name.clone(), object: unit.object.clone(), script, builds: unit.worker_time > 0.0, upgrades_alone, takes_no_ground: unit.takes_no_ground, weapons: unit.weapons.clone().map(|w| w.is_some_and(|w| !w.trim().is_empty())) };
             self.record(key("unit", &unit.name), Record { path: path.into(), refs, unit: Some(facts) });
         } else if direct(path, "weapons", "tdf") {
             let own = self.own(path);
@@ -1973,7 +1978,8 @@ impl<'a> Scan<'a> {
             if let Some(message) = message {
                 self.issue(Severity::Info, "script.weapon", path, message, en("Add the functions to the unit's BOS script, returning the pieces the shots leave from, and recompile."));
             }
-            if unit.builds && !functions.contains("querynanopiece") && !self.module_builders.contains(record_key) {
+            // (A building upgrading itself in place, or making its own modules, sprays nothing.)
+            if unit.builds && !unit.upgrades_alone && !functions.contains("querynanopiece") && !self.module_builders.contains(record_key) {
                 self.issue(Severity::Info, "script.builder", path, enf("{unit} builds but its script {script} has no QueryNanoPiece: its build spray comes from the unit's centre.", [("unit", Fill::name(&unit.name)), ("script", Fill::name(&script))]), en("Add QueryNanoPiece to the unit's BOS script, returning its nano-lathe piece, and recompile."));
             }
         }
@@ -3194,6 +3200,16 @@ mod tests {
         assert!(report.issues.iter().any(|i| i.code == "unit.picture" && i.path == "units/geoup.fbi"), "the geothermal plant's page is read: its module can be built: {text}");
         assert!(!report.issues.iter().any(|i| i.code == "definition.footprint"), "a module's footprint of none is kept: {text}");
         assert!(!report.issues.iter().any(|i| i.code == "script.builder" && i.path == "units/geo.fbi"), "a building making its own modules has no spray: {text}");
+        // (Build power that only upgrades a building in place asks for no nano-lathe: a factory
+        // that upgrades and builds does.)
+        f.put("mod", "units/mex.fbi", b"[UNITINFO]{UnitName=MEX;ObjectName=example;Side=ARM;WorkerTime=100;UpgradesTo=GEOUP;}");
+        f.put("mod", "scripts/mex.cob", script_with("base", &["Create"], &[cob::op::RETURN]));
+        f.put("mod", "units/lab.fbi", b"[UNITINFO]{UnitName=LAB;ObjectName=example;Side=ARM;Builder=1;WorkerTime=100;UpgradesTo=GEOUP;}");
+        f.put("mod", "scripts/lab.cob", script_with("base", &["Create"], &[cob::op::RETURN]));
+        let report = validate_all(&f.vfs(&["mod"]));
+        let text = report.to_text();
+        assert!(!report.issues.iter().any(|i| i.code == "script.builder" && i.path == "units/mex.fbi"), "an extractor upgrading itself has no spray: {text}");
+        assert!(report.issues.iter().any(|i| i.code == "script.builder" && i.path == "units/lab.fbi"), "a factory that upgrades builds all the same: {text}");
         assert!(!text.contains("MAKENUKE"), "a silo without build power offers nothing: {text}");
     }
 

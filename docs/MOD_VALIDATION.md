@@ -209,7 +209,7 @@ original game's).
 - **Scripts against models and duties:** pieces a script names that the model lacks; weapons
   with no Query function (shots from the unit's centre) and builders with no QueryNanoPiece
   (notes; not a building whose every option is an upgrade module of its own, built with no
-  spray).
+  spray, nor one whose build power only upgrades it in place, `UpgradesTo` with no `Builder`).
 - **Scripts against the engine:** unit values a script asks for (`get`) or sets (`set`) that
   Reborn does not answer (`script.value`: they read 0, setting them does nothing), where the
   code names them outright. A mod made for a later patch of TA's engine shows here what it relies

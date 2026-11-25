@@ -35,6 +35,10 @@ pub const PACK_ID: &str = "map-pack-supreme-commander";
 /// name also tells a pack an import made from another mod of its id.
 pub(crate) const PACK_NAME: &str = n("Supreme Commander maps");
 const PACK_DESCRIPTION: &str = n("Maps of Supreme Commander: Forged Alliance, made into TA maps from your own copy of the game.");
+/// What SUPREME COMMANDER… opens, as its button on the Mods and Maps pages says it.
+pub const BUTTON_TIP: &str = n("Make Supreme Commander: Forged Alliance's maps, factions, soundtrack and look for the menus from your own copy of the game (GOG's or Steam's).");
+/// What a tab says of a mod an older TA Reborn made.
+pub const OUTDATED: &str = n("Made by an older TA Reborn: import it again to update it.");
 /// The pack's tags, as the factions' mod has its own (the library's filters and search find it by
 /// them).
 const PACK_TAGS: [&str; 2] = ["maps", "supreme commander"];
@@ -65,6 +69,33 @@ pub fn mod_name(manifest: &ModManifest) -> &str {
         crate::supcom_music::MOD_ID if manifest.name.trim() == crate::supcom_music::MOD_NAME => crate::supcom_music::mod_name(),
         crate::supcom_menus::MOD_ID if manifest.name.trim() == crate::supcom_menus::MOD_NAME => crate::supcom_menus::mod_name(),
         _ => &manifest.name,
+    }
+}
+
+/// A mod's words as the Mods page shows them: an import's (named as its import names it) as this
+/// TA Reborn words them, in the language in use (an older import's manifest keeps its own: the
+/// factions' said "four factions", whatever it held); any other's as its manifest has them,
+/// translated where they can be.
+pub fn mod_description(manifest: &ModManifest) -> &str {
+    match import_tab(manifest) {
+        Some(Tab::Maps) => t(PACK_DESCRIPTION),
+        Some(Tab::Factions) => t(crate::supcom_factions::MOD_DESCRIPTION),
+        Some(Tab::Music) => t(crate::supcom_music::MOD_DESCRIPTION),
+        Some(Tab::Menus) => t(crate::supcom_menus::MOD_DESCRIPTION),
+        None => t(&manifest.description),
+    }
+}
+
+/// The import an import's mod comes of (its tab in the dialog), where its name is the import's:
+/// its kind, as its card in the library shows it.
+pub fn import_tab(manifest: &ModManifest) -> Option<Tab> {
+    let ours = |name: &str| manifest.name.trim() == name;
+    match manifest.id.as_str() {
+        PACK_ID if ours(PACK_NAME) => Some(Tab::Maps),
+        crate::supcom_factions::MOD_ID if ours(crate::supcom_factions::MOD_NAME) => Some(Tab::Factions),
+        crate::supcom_music::MOD_ID if ours(crate::supcom_music::MOD_NAME) => Some(Tab::Music),
+        crate::supcom_menus::MOD_ID if ours(crate::supcom_menus::MOD_NAME) => Some(Tab::Menus),
+        _ => None,
     }
 }
 
@@ -659,11 +690,11 @@ pub(crate) fn enough_room(paths: &[&Path], needed: u64) -> Result<()> {
     Ok(())
 }
 
-/// A size as the dialog tells it: in gigabytes with a decimal from a tenth of one, else in whole
-/// megabytes (at least 1), the decimal point as the language in use writes it.
+/// A size as the dialog tells it: in gigabytes with a decimal from one, else in whole megabytes
+/// (at least 1), the decimal point as the language in use writes it.
 pub fn size_text(bytes: u64) -> String {
     let gb = bytes as f64 / 1e9;
-    if gb >= 0.1 {
+    if gb >= 1.0 {
         tf("{size} GB", &[("size", &one_decimal(gb))])
     } else {
         tf("{size} MB", &[("size", &((bytes as f64 / 1e6).round() as u64).max(1))])
@@ -1141,6 +1172,11 @@ fn first_choice(found: &Found) -> BTreeSet<PathBuf> {
     if !outdated.is_empty() {
         return outdated;
     }
+    // (Once the pack holds maps, the player has chosen those they wanted: none more is chosen
+    // for them, twenty minutes of work behind one button.)
+    if found.maps.iter().any(|e| e.state == State::Imported) {
+        return BTreeSet::new();
+    }
     found.maps.iter().filter(|e| !e.players_own && e.state != State::Imported).map(|e| e.folder.clone()).collect()
 }
 
@@ -1437,7 +1473,7 @@ fn make_pack(
     // (The pack's version is its oldest map's converter's: one made by an older converter than
     // this TA Reborn's is offered as an update.)
     let version = made_by(&maps_out).values().copied().min().unwrap_or(convert::VERSION);
-    let manifest = ModManifest { id: PACK_ID.into(), name: PACK_NAME.into(), version: version.to_string(), description: PACK_DESCRIPTION.into(), tags: PACK_TAGS.map(String::from).to_vec(), ..Default::default() };
+    let manifest = ModManifest { id: PACK_ID.into(), name: PACK_NAME.into(), version: version.to_string(), requires_reborn: env!("CARGO_PKG_VERSION").into(), description: PACK_DESCRIPTION.into(), tags: PACK_TAGS.map(String::from).to_vec(), ..Default::default() };
     install(&payload, &manifest)?;
     Ok(outcome)
 }
@@ -1650,6 +1686,22 @@ mod tests {
         std::fs::remove_dir_all(dir).unwrap();
     }
 
+    /// An import's mod is known by its id and the name its import gives it, and shown in this
+    /// TA Reborn's words (an older import's "four factions" mended); another mod of the id is
+    /// not one, its words its own.
+    #[test]
+    fn an_imports_mod_is_known_by_its_id_and_name() {
+        let manifest = |id: &str, name: &str, words: &str| ModManifest { id: id.into(), name: name.into(), description: words.into(), ..Default::default() };
+        assert_eq!(import_tab(&manifest(PACK_ID, PACK_NAME, "")), Some(Tab::Maps));
+        assert_eq!(import_tab(&manifest(crate::supcom_factions::MOD_ID, crate::supcom_factions::MOD_NAME, "")), Some(Tab::Factions));
+        assert_eq!(import_tab(&manifest(crate::supcom_music::MOD_ID, crate::supcom_music::MOD_NAME, "")), Some(Tab::Music));
+        assert_eq!(import_tab(&manifest(crate::supcom_menus::MOD_ID, crate::supcom_menus::MOD_NAME, "")), Some(Tab::Menus));
+        assert_eq!(import_tab(&manifest(crate::supcom_music::MOD_ID, "Bob's music", "")), None, "another mod of the id");
+        assert_eq!(mod_description(&manifest(crate::supcom_music::MOD_ID, "Bob's music", "Bob's words")), "Bob's words");
+        let older = manifest(crate::supcom_factions::MOD_ID, crate::supcom_factions::MOD_NAME, "Supreme Commander: Forged Alliance's four factions, their units and buildings, made from your own copy of the game.");
+        assert_eq!(mod_description(&older), crate::supcom_factions::MOD_DESCRIPTION);
+    }
+
     #[test]
     fn a_map_made_again_replaces_its_older_files_only() {
         let dir = temp("import");
@@ -1773,11 +1825,12 @@ mod tests {
         assert_eq!(chosen(&import), ["C:/Game/maps/SCMP_001", "C:/Game/maps/SCMP_002", "C:/Game/maps/SCMP_003"]);
         import.choose_all(true);
         assert_eq!(chosen(&import).len(), 4);
-        // Another copy of the game: its own maps not imported yet.
+        // Another copy of the game, the pack holding some of its maps: none more chosen for the
+        // player (twenty minutes of work behind one button); with none in the pack, all of them.
         let steam = Install { root: PathBuf::from("C:/Steam/Game"), store: Store::Steam };
         import.pretend_found(found(&steam, [State::Imported, State::New, State::Imported]), Previews::new());
         import.poll(&ctx);
-        assert_eq!(chosen(&import), ["C:/Game/maps/SCMP_002"]);
+        assert!(chosen(&import).is_empty(), "{:?}", chosen(&import));
     }
 
     /// The game's pictures are made small for the list, a player's map's picture too large to
