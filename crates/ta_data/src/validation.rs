@@ -41,8 +41,9 @@ use crate::words::{en, enf, Fill, Words};
 /// by clip; 20: a unit's adjacency bonuses that do nothing (`unit.adjacency`), and a building
 /// working round it by itself with no build power (`unit.assist_patrol`); 21: a building whose
 /// build power only upgrades it in place (`UpgradesTo`, no `Builder`) asks its script for no
-/// nano-lathe (`script.builder`)).
-pub const SCHEMA_VERSION: u32 = 21;
+/// nano-lathe (`script.builder`); 22: a side's art in the classic interface where its side data
+/// names it, its panels' GAF (`intgaf`) and its emblem (`logogaf`, `logo`)).
+pub const SCHEMA_VERSION: u32 = 22;
 
 /// The keys of `gamedata/sound.tdf`'s categories the game plays (`ta_audio`'s sound events), each
 /// with or without a variant number (`select1`, `select2`…), with `count0` to `count9`; the
@@ -1531,7 +1532,20 @@ impl<'a> Scan<'a> {
                         self.engine.sides.push(name.trim().to_string());
                     }
                     if name.trim().is_empty() || commander.trim().is_empty() { self.issue(Severity::Error, "side.definition", path, enf("[{section}] needs a faction name and starting commander.", [("section", Fill::name(&s.name))]), en("Set name and commander to a valid faction and UnitName.")); }
-                    let refs = vec![Reference::new("unit", commander, part(en("{name} starting commander"), name), Severity::Error)];
+                    let mut refs = vec![Reference::new("unit", commander, part(en("{name} starting commander"), name), Severity::Error)];
+                    // (Its art in the classic interface, where it names it: its panels' GAF,
+                    // `intgaf`, and its emblem, `logogaf` and `logo` (`SideDef::emblem`). Named
+                    // neither, the game finds TA's own by the side's name.)
+                    let intgaf = s.get("intgaf").unwrap_or("").trim();
+                    if !intgaf.is_empty() {
+                        refs.push(Reference::new("file", &asset("anims", intgaf, "gaf"), part(en("{name} interface art"), name), Severity::Warning));
+                    }
+                    let (logo_gaf, logo) = (s.get("logogaf").unwrap_or("").trim(), s.get("logo").unwrap_or("").trim());
+                    if !logo_gaf.is_empty() || !logo.is_empty() {
+                        let gaf = if logo_gaf.is_empty() { "logos" } else { logo_gaf };
+                        let entry = if logo.is_empty() { format!("{}32Lt", name.trim()) } else { logo.to_string() };
+                        animation_ref(&mut refs, gaf, &entry, part(en("{name} emblem"), name));
+                    }
                     self.record(key("side", name), Record { path: path.into(), refs, ..Default::default() });
                 }
             }
@@ -2391,6 +2405,32 @@ mod tests {
         let report = validate(&f.vfs(&["base", "mod"]), &options, |_| true);
         assert_eq!(report.status(), Status::Clean, "{}", report.to_text());
         assert!(report.issues.iter().any(|i| i.path == "units/aircraft.fbi" && !i.affects_status));
+    }
+
+    /// A side's art in the classic interface, where its side data names it: its panels' GAF
+    /// (`intgaf`) and its emblem (`logogaf`, `logo`: its GAF and the entry in it), each told
+    /// missing; there, nothing is said; a side naming none is never asked for any.
+    #[test]
+    fn a_sides_named_interface_art_and_emblem_are_checked() {
+        let f = Fixture::new(); f.valid("base");
+        let options = Options { target_layer: Some("mod".into()), ..Default::default() };
+        f.put("mod", "gamedata/sidedata_talon.tdf", b"[SIDE0]{name=TALON;commander=EXAMPLE;intgaf=TALINT;logogaf=talonlogos;logo=TALON32Lt;} [SIDE1]{name=GOK;commander=EXAMPLE;}");
+        let missing = |report: &Report| -> Vec<String> {
+            report.issues.iter().filter(|i| i.code == "reference.missing").map(|i| i.message.clone()).collect()
+        };
+        let report = validate(&f.vfs(&["base", "mod"]), &options, |_| true);
+        let told = missing(&report);
+        assert!(told.iter().any(|m| m.contains("TALON interface art") && m.contains("anims/talint.gaf")), "{told:?}");
+        assert!(told.iter().any(|m| m.contains("TALON emblem") && m.contains("anims/talonlogos.gaf")), "{told:?}");
+        assert!(!told.iter().any(|m| m.contains("GOK")), "a side naming no art: {told:?}");
+        f.put("mod", "anims/talint.gaf", gaf(&[("panel", 1, 1, 1)]));
+        f.put("mod", "anims/talonlogos.gaf", gaf(&[("OTHER32Lt", 10, 32, 32)]));
+        let told = missing(&validate(&f.vfs(&["base", "mod"]), &options, |_| true));
+        assert!(!told.iter().any(|m| m.contains("interface art")), "{told:?}");
+        assert!(told.iter().any(|m| m.contains("TALON emblem") && m.to_ascii_lowercase().contains("talon32lt")), "an entry its GAF lacks: {told:?}");
+        f.put("mod", "anims/talonlogos.gaf", gaf(&[("TALON32Lt", 10, 32, 32)]));
+        let told = missing(&validate(&f.vfs(&["base", "mod"]), &options, |_| true));
+        assert!(!told.iter().any(|m| m.contains("TALON")), "{told:?}");
     }
 
     #[test]

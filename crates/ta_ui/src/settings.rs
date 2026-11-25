@@ -210,7 +210,7 @@ impl SettingsView {
         if compact(ui.available_width()) {
             self.compact_navigation(ui);
             ui.add_space(space::L);
-            self.list(ui, config, host);
+            self.list(ui, config, host, None);
             if !self.searching() {
                 ui.add_space(space::L);
                 self.restore_controls(ui, config, ui.available_width());
@@ -218,12 +218,12 @@ impl SettingsView {
         } else {
             let row = ui.horizontal_top(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
-                self.sidebar(ui, config, host.height);
+                let side = self.sidebar(ui, config, host.height);
                 ui.add_space(space::XXL);
                 ui.vertical(|ui| {
                     // (The controls in a row keep their gaps.)
                     ui.spacing_mut().item_spacing.x = gap;
-                    self.list(ui, config, host)
+                    self.list(ui, config, host, Some(side))
                 });
             });
             // A seam between the categories and the list.
@@ -313,7 +313,8 @@ impl SettingsView {
     /// The search box, the categories, and restoring the shown category's defaults; the
     /// categories closer together when the list is short (a small window), so that the column
     /// is no taller than the list beside it.
-    fn sidebar(&mut self, ui: &mut Ui, config: &mut Config, list_height: Option<f32>) {
+    /// The categories beside the list, and its RESTORE DEFAULTS: how tall they came out.
+    fn sidebar(&mut self, ui: &mut Ui, config: &mut Config, list_height: Option<f32>) -> f32 {
         // (Beside the list: its title and line of text, about 64 points, and the list.)
         let count = Category::shown(self.in_launcher).count() as f32;
         let item = list_height.map_or(widgets::NAV_ITEM_HEIGHT, |h| ((h + 64.0 - 34.0 - 10.0 - 18.0 - 30.0) / count - 4.0).clamp(30.0, widgets::NAV_ITEM_HEIGHT));
@@ -346,7 +347,10 @@ impl SettingsView {
             }
             ui.add_space(18.0);
             self.restore_controls(ui, config, SIDEBAR);
-        });
+        })
+        .response
+        .rect
+        .height()
     }
 
     fn restore_controls(&mut self, ui: &mut Ui, config: &mut Config, width: f32) {
@@ -378,8 +382,10 @@ impl SettingsView {
         }
     }
 
-    /// The shown category's title and its settings, or the search's results.
-    fn list(&mut self, ui: &mut Ui, config: &mut Config, host: &Host) {
+    /// The shown category's title and its settings, or the search's results; beside the
+    /// categories (`side`: how tall they came out), the list's foot level with theirs.
+    fn list(&mut self, ui: &mut Ui, config: &mut Config, host: &Host, side: Option<f32>) {
+        let top = ui.cursor().min.y;
         let searching = self.searching();
         if searching {
             metal::embossed_label(ui, RichText::new(t("SEARCH")).font(display(24.0)).extra_letter_spacing(crate::i18n::tracking(1.4)), TEXT_BRIGHT);
@@ -409,6 +415,9 @@ impl SettingsView {
         };
         match host.height {
             Some(height) => {
+                // (Its foot level with the categories': a column too narrow for the title and its
+                // line of text, which the categories leave room for, gives the list their room.)
+                let height = side.map_or(height, |side| height.max(side - (ui.cursor().min.y - top)));
                 let area = ScrollArea::vertical().id_salt(list_id).max_height(height).min_scrolled_height(height).auto_shrink([false, false]);
                 crate::scroll::show(ui, area, crate::scroll::Behind::Plate, draw);
             }

@@ -180,6 +180,9 @@ pub enum Action {
     /// The Mods page's offer of the wizard taken up (it opens) or put away (NOT NOW): not made
     /// again either way.
     SupcomOffer(bool),
+    /// The Mods page's word on the wizard's parts left waiting as the launcher last closed taken
+    /// up (the wizard opens, those parts ticked) or put away (NOT NOW): forgotten either way.
+    SupcomPending(bool),
     Rescan,
     BrowseInstall,
     /// Forgets the configured game folder and detects the install automatically.
@@ -592,6 +595,7 @@ impl LauncherApp {
         // the Mods page offered its import's wizard.)
         let supcom_choice = crate::supcom::load_choice(&store.dir());
         let supcom_offered = crate::supcom::load_offered(&store.dir());
+        let supcom_pending = crate::supcom::load_pending(&store.dir());
         let unattended = args.screenshot.is_some() || args.film.is_some();
         let window = (!unattended && args.window_size.is_none()).then(|| (config.launcher.window.unwrap_or([1120.0, 720.0]), config.launcher.maximized));
         // A handheld's first start maximises this window too (it opened before the settings
@@ -669,7 +673,7 @@ impl LauncherApp {
             mods,
             mod_validation,
             maps: Default::default(),
-            supcom: crate::supcom::Import::new(supcom_choice, supcom_offered),
+            supcom: crate::supcom::Import::new(supcom_choice, supcom_offered, supcom_pending),
             followed_mods,
             supcom_banners: Default::default(),
             held_factions: None,
@@ -1183,6 +1187,7 @@ impl LauncherApp {
             Action::SupcomWizardStop => self.stop_wizard(),
             Action::SupcomTabs => self.supcom_tabs(),
             Action::SupcomOffer(take) => self.take_supcom_offer(take),
+            Action::SupcomPending(take) => self.take_supcom_pending(take),
             Action::ShowModReport(id) => self.mod_validation.selected = Some(id),
             Action::ValidateMod(id) => {
                 // Mod authors may have just changed a manifest or added a dependency.
@@ -2159,9 +2164,16 @@ impl LauncherApp {
 
     /// CLOSE ANYWAY: the launcher closes; during a Supreme Commander import, once the maps made
     /// are installed (the one in hand left out), the window answering meanwhile.
+    /// Whether the launcher is closing: CLOSE ANYWAY said, waiting for an import to stop first.
+    pub(crate) fn closing(&self) -> bool {
+        self.close_confirmed || self.close_after_import
+    }
+
     fn close_anyway(&mut self, ctx: &egui::Context) {
         self.confirm_close = false;
-        // (The wizard's parts after the one in hand are left: none starts as the launcher closes.)
+        // (The wizard's parts after the one in hand are left: none starts as the launcher closes.
+        // Those not made are kept, to be offered again at the next start.)
+        self.keep_wizard_pending();
         self.supcom.wizard.stop();
         if self.supcom.importing() {
             self.supcom.abandon();
@@ -3285,6 +3297,9 @@ impl eframe::App for LauncherApp {
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.mod_validation.shutdown();
+        // (The wizard's parts not made yet, the launcher closing under it, an update's say:
+        // kept, to be offered again at the next start.)
+        self.keep_wizard_pending();
         // (An import under way installs the maps it made: they are turned on, as in logic().)
         if self.supcom.finish_on_exit().is_some_and(|outcome| !outcome.imported.is_empty()) {
             modlist::set_enabled(&mut self.config.mods.enabled, crate::supcom::PACK_ID, true);

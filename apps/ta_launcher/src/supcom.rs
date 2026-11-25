@@ -135,6 +135,21 @@ impl Tab {
         }
     }
 
+    /// Its name in the launcher's settings (`supcom.toml`'s `pending`): never translated.
+    pub fn key(self) -> &'static str {
+        match self {
+            Tab::Maps => "maps",
+            Tab::Factions => "factions",
+            Tab::Music => "music",
+            Tab::Menus => "menus",
+        }
+    }
+
+    /// The tab of the name `key` (as [`Tab::key`] gives it), if any.
+    pub fn of_key(key: &str) -> Option<Tab> {
+        Tab::ALL.into_iter().find(|tab| tab.key().eq_ignore_ascii_case(key.trim()))
+    }
+
     /// Its import's mod: its id, and the name the import gives it (another mod of the id is not
     /// the import's).
     pub fn mod_of(self) -> (&'static str, &'static str) {
@@ -805,6 +820,25 @@ pub(crate) fn save_offered(store_dir: &Path) -> std::io::Result<()> {
     keep(store_dir, &table)
 }
 
+/// The wizard's parts left waiting when the launcher last closed (or updated itself) while it
+/// imported, as the launcher's settings keep them (`pending`): offered again on the Mods page.
+pub(crate) fn load_pending(store_dir: &Path) -> Vec<Tab> {
+    let table = kept(store_dir);
+    let names = table.get("pending").and_then(toml::Value::as_array).cloned().unwrap_or_default();
+    Tab::ALL.into_iter().filter(|tab| names.iter().any(|n| n.as_str().and_then(Tab::of_key) == Some(*tab))).collect()
+}
+
+/// Keeps the wizard's parts left waiting (`parts`; none: forgotten).
+pub(crate) fn save_pending(store_dir: &Path, parts: &[Tab]) -> std::io::Result<()> {
+    let mut table = kept(store_dir);
+    if parts.is_empty() {
+        table.remove("pending");
+    } else {
+        table.insert("pending".into(), toml::Value::Array(parts.iter().map(|tab| toml::Value::String(tab.key().into())).collect()));
+    }
+    keep(store_dir, &table)
+}
+
 /// What a folder the player chose came to, checked on a worker.
 enum Checked {
     /// The game, there or one level down.
@@ -858,6 +892,9 @@ pub struct Import {
     pub wizard: crate::supcom_wizard::Wizard,
     /// The Mods page's offer of the wizard, once the game is found and nothing of it imported.
     pub offer: crate::supcom_wizard::Offer,
+    /// The wizard's parts left waiting when the launcher last closed while it imported (the
+    /// settings' `pending`): offered again on the Mods page while still not made.
+    pub pending: Vec<Tab>,
     /// In a test, what starts a tab's import in place of its own (never this computer's copy of
     /// the game): given the tab, once its import has been asked for past the question over
     /// another mod of its id.
@@ -868,9 +905,9 @@ pub struct Import {
 impl Import {
     /// The dialog, closed, the game's folder as the player chose it before (`picked`; none: the
     /// copy found), and the Mods page's offer of the wizard as it was left (`offered`: taken up or
-    /// put away).
-    pub fn new(picked: Option<PathBuf>, offered: bool) -> Self {
-        Import { picked, offer: crate::supcom_wizard::Offer::new(offered), ..Default::default() }
+    /// put away), and the wizard's parts left waiting as it last closed (`pending`).
+    pub fn new(picked: Option<PathBuf>, offered: bool, pending: Vec<Tab>) -> Self {
+        Import { picked, offer: crate::supcom_wizard::Offer::new(offered), pending, ..Default::default() }
     }
 
     pub fn scanning(&self) -> bool {
@@ -2316,6 +2353,13 @@ mod tests {
         assert!(load_offered(&dir), "the offer kept as the folder is chosen");
         save_choice(&dir, None).unwrap();
         assert!(load_offered(&dir) && load_choice(&dir).is_none(), "and as it is forgotten");
+        // The wizard's parts left waiting, kept beside them and forgotten again.
+        assert!(load_pending(&dir).is_empty());
+        save_pending(&dir, &[Tab::Menus, Tab::Music]).unwrap();
+        assert_eq!(load_pending(&dir), [Tab::Music, Tab::Menus], "in the tabs' order");
+        assert!(load_offered(&dir), "the offer kept as they are");
+        save_pending(&dir, &[]).unwrap();
+        assert!(load_pending(&dir).is_empty() && load_offered(&dir));
         std::fs::remove_dir_all(dir).unwrap();
     }
 

@@ -57,6 +57,28 @@ pub const BANDS: usize = 40;
 /// The panel's width (its content's), and where its top is.
 const WIDTH: f32 = 460.0;
 const TOP: f32 = 60.0;
+/// On a short screen, two columns (the player, and its tracks beside it), each as wide as the
+/// room beside the title menu gives them up to this, at least the player's buttons' row, and the
+/// gap between them: one column leaves its list too little room under the player.
+const COLUMN: f32 = 280.0;
+const MIN_COLUMN: f32 = 248.0;
+const COLUMN_GAP: f32 = 12.0;
+/// The room for the panel under which one column leaves its list too little.
+const ONE_COLUMN_ROOM: f32 = 655.0;
+/// The panel's frame round its content, both sides together (its pipes and their gap).
+const FRAME_WIDTH: f32 = 68.0;
+
+/// The music's volume, right to left: its slider, and a speaker before it (its level 0 to 1).
+fn volume_slider(ui: &mut egui::Ui, music: f32, out: &mut Vec<JukeboxRequest>) {
+    ui.spacing_mut().slider_width = 92.0;
+    let mut level = music.clamp(0.0, 1.0);
+    let slider = ui.add(Slider::new(&mut level, 0.0..=1.0).show_value(false)).on_hover_text(tf("Music volume: {n}%", &[("n", &((level * 100.0).round() as u32))]));
+    if slider.changed() || slider.drag_stopped() {
+        out.push(JukeboxRequest::Volume { level, done: !slider.dragged() });
+    }
+    let (glyph, _) = ui.allocate_exact_size(vec2(18.0, 32.0), Sense::hover());
+    w::paint_glyph(ui.painter(), w::Glyph::Speaker, glyph.center(), 1.0, if level > 0.0 { STEEL } else { STEEL_DIM });
+}
 
 #[derive(Default)]
 pub struct Jukebox {
@@ -261,8 +283,11 @@ impl Jukebox {
 
     /// The jukebox's panel, when open. `ta_tracks`: TA's music files (read from `source`);
     /// `music`: what plays, how far in and how it sounds; `audio`: the settings; `bottom`: the
-    /// room to leave under it (the title screen's footer's).
-    pub fn draw(&mut self, ctx: &egui::Context, ta_tracks: &[String], music: &Music, source: &Arc<dyn ta_audio::SoundSource>, audio: &ta_config::Audio, bottom: f32) -> Vec<JukeboxRequest> {
+    /// room to leave under it (the title screen's footer's); `left`: where the room for it
+    /// starts (right of the title menu's column); `lockup`: the corner of what it keeps clear of
+    /// above that (the title's lockup: its right edge and its foot), where there is one.
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw(&mut self, ctx: &egui::Context, ta_tracks: &[String], music: &Music, source: &Arc<dyn ta_audio::SoundSource>, audio: &ta_config::Audio, bottom: f32, left: f32, lockup: Option<egui::Pos2>) -> Vec<JukeboxRequest> {
         let mut out = Vec::new();
         if !self.open {
             self.revealed = None;
@@ -318,14 +343,44 @@ impl Jukebox {
         let mut close = false;
         // The room under the panel's top: the list as long as the rest leaves room for, and on a
         // short screen the panel's body scrolls over its buttons.
-        let room = ctx.content_rect().height() - TOP - bottom;
+        let screen = ctx.content_rect();
+        // (On a short screen, two columns where they fit beside the title menu: the player, and
+        // its tracks beside it as long as the panel. Right of the title's lockup at the panel's
+        // top; where there is not room for them there, under the lockup.)
+        let short = screen.height() - TOP - bottom < ONE_COLUMN_ROOM;
+        let columns = |from: f32| ((screen.max.x - 14.0 - from - FRAME_WIDTH - COLUMN_GAP) / 2.0).min(COLUMN);
+        let (column, top) = match lockup {
+            _ if !short => (None, TOP),
+            Some(corner) if columns(left.max(corner.x + 12.0)) >= MIN_COLUMN => (Some(columns(left.max(corner.x + 12.0))), TOP),
+            Some(corner) if columns(left) >= MIN_COLUMN => (Some(columns(left)), TOP.max(corner.y - screen.min.y + 8.0)),
+            None if columns(left) >= MIN_COLUMN => (Some(columns(left)), TOP),
+            _ => (None, TOP),
+        };
+        let wide = column.is_some();
+        let width = column.map_or(WIDTH, |c| 2.0 * c + COLUMN_GAP);
+        let room = screen.height() - top - bottom;
         let yours = self.tracks.as_ref().map_or(0, |t| t.len());
         let (mut open_folder, mut look_again) = (false, false);
-        egui::Area::new(egui::Id::new("jukebox")).anchor(Align2::RIGHT_TOP, [-14.0, TOP]).order(egui::Order::Foreground).show(ctx, |ui| {
-            let page = Panel::new("JUKEBOX").width(WIDTH).exit(Exit::Close).max_height(room);
+        let mut chosen_mode = None;
+        egui::Area::new(egui::Id::new("jukebox")).anchor(Align2::RIGHT_TOP, [-14.0, top]).order(egui::Order::Foreground).show(ctx, |ui| {
+            let page = Panel::new("JUKEBOX").width(width).exit(Exit::Close).max_height(room);
             let footer = |ui: &mut egui::Ui| {
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
+                    // (In two columns, which music plays, here after the buttons, in the room they leave
+                    // (a drop-down where the row of them does not fit), the list's column all the
+                    // list's.)
+                    if wide {
+                        open_folder = ui.add(ActionButton::secondary("OPEN MUSIC FOLDER")).on_hover_text(t("Your music goes here, or in the folder chosen in the settings")).clicked();
+                        look_again = ui.add(ActionButton::secondary("LOOK AGAIN")).clicked();
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let mut mode = audio.user_music;
+                            if w::segmented(ui, &mut mode, &[(UserMusic::Off, "THE GAME'S"), (UserMusic::Mixed, "BOTH"), (UserMusic::Only, "YOURS")]).on_hover_text(t("Which music plays: the game's, yours, or both")).changed() {
+                                chosen_mode = Some(mode);
+                            }
+                        });
+                        return;
+                    }
                     open_folder = ui.add(ActionButton::secondary("OPEN MUSIC FOLDER")).on_hover_text(t("Your music goes here, or in the folder chosen in the settings")).clicked();
                     look_again = ui.add(ActionButton::secondary("LOOK AGAIN")).clicked();
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -334,9 +389,17 @@ impl Jukebox {
                 });
             };
             let response = page.show_with_footer(ui, 44.0, |ui| {
-                ui.set_width(WIDTH);
+                ui.set_width(width);
+                // (The body's top and its view, for the room its list is left: wherever it is
+                // scrolled to. The body scrolls in the panel, and there the room offered below is
+                // boundless.)
+                let body_top = ui.min_rect().top();
+                let view = ui.clip_rect().height();
+                // The player in a column, and its tracks under it (`beside`: none) or beside it.
+                let mut body = |player: &mut egui::Ui, beside: Option<&mut egui::Ui>| {
+                let ui = &mut *player;
                 // The record, the track's name, its sound.
-                let (rect, _) = ui.allocate_exact_size(vec2(WIDTH, 100.0), Sense::hover());
+                let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 100.0), Sense::hover());
                 deck_card(ui.painter(), rect, &card, self.spin, &self.bars, &self.peaks);
                 ui.add_space(4.0);
                 if let Some(seconds) = progress_bar(ui, progress, 30.0, &mut self.scrub) {
@@ -345,6 +408,7 @@ impl Jukebox {
                 ui.add_space(4.0);
                 // A player's transport, as the replay bar's: the track before, play or stop (brass,
                 // the main one), another track; the order of play; the volume.
+                let narrow = ui.available_width() < 380.0;
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
                     let size = vec2(44.0, 32.0);
@@ -368,33 +432,44 @@ impl Jukebox {
                     if w::glyph_button(ui, w::Glyph::Repeat, vec2(38.0, 32.0), toggle(audio.music_repeat), true).on_hover_text(repeat_tip).clicked() {
                         out.push(JukeboxRequest::Repeat(!audio.music_repeat));
                     }
-                    // The volume, at the right.
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.spacing_mut().slider_width = 92.0;
-                        let mut level = audio.music.clamp(0.0, 1.0);
-                        let slider = ui.add(Slider::new(&mut level, 0.0..=1.0).show_value(false)).on_hover_text(tf("Music volume: {n}%", &[("n", &((level * 100.0).round() as u32))]));
-                        if slider.changed() || slider.drag_stopped() {
-                            out.push(JukeboxRequest::Volume { level, done: !slider.dragged() });
-                        }
-                        let (glyph, _) = ui.allocate_exact_size(vec2(18.0, 32.0), Sense::hover());
-                        w::paint_glyph(ui.painter(), w::Glyph::Speaker, glyph.center(), 1.0, if level > 0.0 { STEEL } else { STEEL_DIM });
-                    });
-                });
-                ui.add_space(6.0);
-                let mut mode = audio.user_music;
-                ui.horizontal(|ui| {
-                    ui.label(w::caption("PLAYS"));
-                    if w::segmented(ui, &mut mode, &[(UserMusic::Off, "THE GAME'S"), (UserMusic::Mixed, "BOTH"), (UserMusic::Only, "YOURS")]).changed() {
-                        out.push(JukeboxRequest::Mode(mode));
+                    // The volume, at the right (under them in a narrow column).
+                    if !narrow {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| volume_slider(ui, audio.music, &mut out));
                     }
                 });
-                ui.add_space(6.0);
-                w::search_field(ui, &mut self.search, t("Find a track"), WIDTH, None);
+                if narrow {
+                    ui.horizontal(|ui| {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| volume_slider(ui, audio.music, &mut out));
+                    });
+                }
+                // Its tracks, under it or beside it, and which of them play (a drop-down where a
+                // column is too narrow for the row of them).
+                let ui: &mut egui::Ui = match beside {
+                    Some(ui) => ui,
+                    None => {
+                        player.add_space(6.0);
+                        player
+                    }
+                };
+                if !wide {
+                    let mut mode = audio.user_music;
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(w::caption("PLAYS"));
+                        if w::segmented(ui, &mut mode, &[(UserMusic::Off, "THE GAME'S"), (UserMusic::Mixed, "BOTH"), (UserMusic::Only, "YOURS")]).changed() {
+                            out.push(JukeboxRequest::Mode(mode));
+                        }
+                    });
+                    ui.add_space(6.0);
+                }
+                w::search_field(ui, &mut self.search, t("Find a track"), ui.available_width(), None);
                 ui.add_space(4.0);
                 let found = |name: &str, search: &str| search.is_empty() || name.to_lowercase().contains(&search.to_lowercase());
                 let search = self.search.trim().to_owned();
                 let name_of = |p: &str| self.name_of(p);
-                let list = (ui.available_height() - 12.0).clamp(100.0, 300.0);
+                // (The list as tall as the panel's body leaves it, so that it shows without the body
+                // scrolling: the body scrolls in the panel, whose room is the body's view, and
+                // there the room offered below is boundless.)
+                let list = (view - (ui.cursor().min.y - body_top) - 12.0).clamp(100.0, if wide { 600.0 } else { 300.0 });
                 let area = egui::ScrollArea::vertical().max_height(list).auto_shrink([false, true]);
                 scroll::well(ui, area, |ui| {
                     ui.spacing_mut().item_spacing.y = 1.0;
@@ -475,9 +550,22 @@ impl Jukebox {
                         ui.label(RichText::new(t("No track is called that.")).color(STEEL));
                     }
                 });
+                };
+                if wide {
+                    ui.spacing_mut().item_spacing.x = COLUMN_GAP;
+                    ui.columns(2, |columns| {
+                        let (player, beside) = columns.split_at_mut(1);
+                        body(&mut player[0], Some(&mut beside[0]));
+                    });
+                } else {
+                    body(ui, None);
+                }
             }, footer);
             close = response.exit;
         });
+        if let Some(mode) = chosen_mode {
+            out.push(JukeboxRequest::Mode(mode));
+        }
         if open_folder {
             let dir = ta_config::music_folders(audio).into_iter().next_back().unwrap_or_else(|| ta_config::config_dir().join("music"));
             let _ = std::fs::create_dir_all(&dir);
@@ -515,9 +603,11 @@ fn deck_card(painter: &Painter, rect: Rect, card: &(String, String, bool), spin:
     record(painter, centre, r, spin, card.2);
     let left = centre.x + r + 16.0;
     let (name, line, on) = card;
-    let caption = painter.layout_no_wrap(line.clone(), strong(11.5), if *on { AMBER } else { STEEL_DIM });
-    painter.galley(pos2(left, rect.min.y + 10.0), caption, AMBER);
     let room = rect.max.x - 12.0 - left;
+    let mut job = egui::text::LayoutJob::simple_singleline(line.clone(), strong(11.5), if *on { AMBER } else { STEEL_DIM });
+    job.wrap = egui::text::TextWrapping::truncate_at_width(room);
+    let caption = painter.layout_job(job);
+    painter.galley(pos2(left, rect.min.y + 10.0), caption, AMBER);
     let mut job = egui::text::LayoutJob::simple_singleline(name.clone(), strong(19.0), if *on { TEXT_BRIGHT } else { STEEL });
     job.wrap = egui::text::TextWrapping::truncate_at_width(room);
     let title = painter.layout_job(job);

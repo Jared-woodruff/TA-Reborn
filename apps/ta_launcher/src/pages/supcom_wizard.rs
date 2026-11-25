@@ -624,6 +624,48 @@ impl LauncherApp {
         }
     }
 
+    /// The wizard's parts not made yet as the launcher closes (waiting their turn, asked about
+    /// or in hand), kept in the settings to be offered again at the next start.
+    pub(crate) fn keep_wizard_pending(&mut self) {
+        if !self.supcom.wizard.running() {
+            return;
+        }
+        let parts: Vec<Tab> = self.supcom.wizard.parts.iter().filter(|p| !p.fate.over()).map(|p| p.tab).collect();
+        if let Err(e) = supcom::save_pending(&self.store.dir(), &parts) {
+            log::warn!("the Supreme Commander parts still to make could not be kept in the settings: {e}");
+        }
+        self.supcom.pending = parts;
+    }
+
+    /// The parts left waiting as the launcher last closed, forgotten (in the settings too).
+    fn forget_pending(&mut self) {
+        if self.supcom.pending.is_empty() {
+            return;
+        }
+        self.supcom.pending.clear();
+        if let Err(e) = supcom::save_pending(&self.store.dir(), &[]) {
+            log::warn!("the Supreme Commander parts still to make could not be forgotten in the settings: {e}");
+        }
+    }
+
+    /// The Mods page's word on the parts left waiting taken up (the wizard opens, at the game's
+    /// step where nothing is imported, else at what to make, those parts ticked) or put away:
+    /// forgotten either way.
+    pub(crate) fn take_supcom_pending(&mut self, take: bool) {
+        let parts = self.supcom.pending.clone();
+        self.forget_pending();
+        if !take {
+            return;
+        }
+        let kind = if self.supcom_missing().len() == Tab::ALL.len() { Kind::First } else { Kind::Rest };
+        self.open_supcom_wizard(kind);
+        if self.supcom.wizard.shown && !self.supcom.wizard.running() {
+            for tab in self.supcom.wizard.offered.clone() {
+                self.supcom.wizard.tick(tab, parts.contains(&tab));
+            }
+        }
+    }
+
     // ---- The wizard's import, driven from the app's update ---------------------------------
 
     /// The wizard's import, a step on: the part in hand taken in once its import has ended (or
@@ -657,6 +699,11 @@ impl LauncherApp {
         }
         if self.supcom.wizard.stopping {
             self.supcom.wizard.leave_rest();
+        }
+        // (A run under way takes the place of the parts left waiting as the launcher last closed;
+        // not one stopping as it closes now, whose parts were just kept.)
+        if self.supcom.wizard.running() && !self.closing() {
+            self.forget_pending();
         }
         while let Some(tab) = self.supcom.wizard.next() {
             let fate = self.start_part(tab);
@@ -834,6 +881,31 @@ impl LauncherApp {
                 self.push(action);
             }
             return;
+        }
+        // (The wizard's parts left waiting as the launcher last closed, while still not made;
+        // forgotten once all are, by the tabs or another run.)
+        if !self.supcom.pending.is_empty() && !busy {
+            let missing = self.supcom_missing();
+            let parts: Vec<Tab> = self.supcom.pending.iter().copied().filter(|tab| missing.contains(tab)).collect();
+            if parts.is_empty() {
+                self.forget_pending();
+            } else {
+                let running = self.game_running();
+                let words = tf("The Supreme Commander import stopped as the launcher closed, before {parts} were made.", &[("parts", &parts_named(&parts))]);
+                let taken = offer_bar(ui, AMBER, &words, |ui| {
+                    let import = ui.add_enabled(!running, ActionButton::primary("IMPORT IN ONE GO…").height(28.0));
+                    let import = if running { import.disabled_tip(t("Close the game first: it may be using these mods.")) } else { import.hover_tip(t("Makes them one after another, each into a mod of its own, turned on once made.")) };
+                    if import.clicked() {
+                        return Some(Action::SupcomPending(true));
+                    }
+                    let later = ui.add(ActionButton::secondary("NOT NOW").height(28.0)).hover_tip(t("This is not offered again: SUPREME COMMANDER… above makes it whenever you like."));
+                    later.clicked().then_some(Action::SupcomPending(false))
+                });
+                if let Some(action) = taken {
+                    self.push(action);
+                }
+                return;
+            }
         }
         if self.supcom.offer.done || busy || self.supcom_missing().len() < Tab::ALL.len() {
             return;
@@ -1507,6 +1579,73 @@ mod tests {
         let mut app = LauncherApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()), args);
         app.skins.shutdown();
         assert!(app.supcom.offer.done, "the next launch remembers");
+        drop(app);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// The wizard's parts left waiting as the launcher closed are kept in the settings and
+    /// offered again on the Mods page at the next start, while still not made: IMPORT IN ONE GO…
+    /// opens the wizard with those parts alone ticked, NOT NOW forgets them, and one made
+    /// meanwhile is forgotten without a word.
+    #[test]
+    fn the_parts_left_waiting_as_the_launcher_closed_are_offered_again() {
+        const WORDS: &str = "The Supreme Commander import stopped as the launcher closed, before the music and the menus' look were made.";
+        let (root, ctx, mut app) = launcher("pending");
+        installed(&root, Tab::Factions, &factions::VERSION.to_string());
+        app.refresh_mods();
+        app.supcom.wizard.open(Kind::Rest, &[Tab::Music, Tab::Menus, Tab::Maps]);
+        app.supcom.wizard.begin(vec![Tab::Music, Tab::Menus]);
+        app.keep_wizard_pending();
+        assert_eq!(supcom::load_pending(&root), [Tab::Music, Tab::Menus]);
+        drop(app);
+        let start = || {
+            let args = crate::Args::parse_from(["ta-launcher", "--offline", "--pretend-missing", "--config", root.join("config.toml").to_str().unwrap()]);
+            let mut app = LauncherApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()), args);
+            app.skins.shutdown();
+            app.supcom.look.canned = Some(Arc::new(|| (supcom::Found::default(), Default::default())));
+            app.supcom.factions.look.canned = Some(Arc::new(|| (factions::Found::default(), Default::default())));
+            app.supcom.music.look.canned = Some(Arc::new(|| (music::Found::default(), Default::default())));
+            app.supcom.menus.look.canned = Some(Arc::new(|| (menus::Found::default(), Default::default())));
+            app.page = crate::app::Page::Mods;
+            app
+        };
+        let painted = |app: &mut LauncherApp| {
+            let mut texts = Vec::new();
+            for _ in 0..4 {
+                texts = whole(&ctx, app, Vec::new());
+            }
+            texts
+        };
+        let press = |at: Pos2, pressed: bool| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+        let click = |app: &mut LauncherApp, texts: &Texts, words: &str| {
+            let at = at(texts, words);
+            whole(&ctx, app, vec![egui::Event::PointerMoved(at), press(at, true)]);
+            whole(&ctx, app, vec![press(at, false)]);
+        };
+        // The next start: said on the Mods page; IMPORT IN ONE GO… opens the wizard at what to
+        // make (the factions made), those two ticked and not the maps.
+        let mut app = start();
+        assert_eq!(app.supcom.pending, [Tab::Music, Tab::Menus]);
+        let texts = painted(&mut app);
+        assert!(has(&texts, WORDS) && has(&texts, "IMPORT IN ONE GO…") && has(&texts, "NOT NOW"), "{:?}", self::words(&texts));
+        click(&mut app, &texts, "IMPORT IN ONE GO…");
+        assert!(app.supcom.open && app.supcom.wizard.shown && app.supcom.wizard.step == Step::Choose);
+        assert!(app.supcom.wizard.is_ticked(Tab::Music) && app.supcom.wizard.is_ticked(Tab::Menus) && !app.supcom.wizard.is_ticked(Tab::Maps));
+        assert!(app.supcom.pending.is_empty() && supcom::load_pending(&root).is_empty(), "forgotten once taken up");
+        drop(app);
+        // NOT NOW forgets them.
+        supcom::save_pending(&root, &[Tab::Music]).unwrap();
+        let mut app = start();
+        let texts = painted(&mut app);
+        click(&mut app, &texts, "NOT NOW");
+        assert!(!app.supcom.open && app.supcom.pending.is_empty() && supcom::load_pending(&root).is_empty());
+        assert!(!words(&painted(&mut app)).iter().any(|w| w.contains("stopped as the launcher closed")));
+        drop(app);
+        // A part made meanwhile: forgotten without a word.
+        supcom::save_pending(&root, &[Tab::Factions]).unwrap();
+        let mut app = start();
+        assert!(!words(&painted(&mut app)).iter().any(|w| w.contains("stopped as the launcher closed")));
+        assert!(supcom::load_pending(&root).is_empty());
         drop(app);
         let _ = std::fs::remove_dir_all(root);
     }
