@@ -1163,7 +1163,18 @@ impl LauncherApp {
             Action::SupcomMenusStop => self.supcom.menus.stop(),
             Action::SupcomReplace => {
                 if let Some((tab, _)) = self.supcom.confirm_replace.take() {
-                    self.start_supcom_import(tab, true);
+                    // (A part of the wizard's asked about is under way from here, what it comes to
+                    // read once its import ends, even where that is before the wizard looks again:
+                    // never taken for KEEP; failed, said why, where it cannot start.)
+                    if self.supcom.wizard.fate(tab) == Some(&crate::supcom_wizard::Fate::Asking) {
+                        let fate = match self.begin_supcom_import(tab, true) {
+                            Ok(()) => crate::supcom_wizard::Fate::Making,
+                            Err(why) => crate::supcom_wizard::Fate::Failed(why.to_string()),
+                        };
+                        self.supcom.wizard.set(tab, fate);
+                    } else {
+                        self.start_supcom_import(tab, true);
+                    }
                 }
             }
             Action::SupcomWizard(kind) => self.open_supcom_wizard(kind),

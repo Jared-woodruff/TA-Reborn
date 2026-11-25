@@ -640,7 +640,8 @@ impl LauncherApp {
         if let Some(tab) = self.supcom.wizard.in_hand() {
             let importing = self.supcom.importing_at(tab);
             match self.supcom.wizard.fate(tab) {
-                // (REPLACE AND IMPORT: under way; KEEP: not made.)
+                // (KEEP, or the question closed: not made. REPLACE AND IMPORT made it under way as it
+                // was pressed, `Action::SupcomReplace`.)
                 Some(Fate::Asking) if importing => self.supcom.wizard.set(tab, Fate::Making),
                 Some(Fate::Asking) if self.supcom.confirm_replace.is_some() => return,
                 Some(Fate::Asking) => self.supcom.wizard.set(tab, Fate::Failed(t("Not made: the other mod of its id was kept.").to_string())),
@@ -1536,6 +1537,40 @@ mod tests {
         assert_eq!(app.supcom.wizard.fate(Tab::Factions), Some(&Fate::Failed("Not made: the other mod of its id was kept.".into())));
         assert!(app.supcom.confirm_replace.is_none(), "not asked again");
         assert_eq!(started().iter().map(|(tab, _)| *tab).collect::<Vec<_>>(), [Tab::Music, Tab::Menus]);
+        drop(app);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// REPLACE AND IMPORT over another mod of its id: the part is under way as it is pressed, and
+    /// made, told in its import's own words, even where its import ends before the wizard looks
+    /// again (a window hidden, the menus' moment): never taken for KEEP.
+    #[test]
+    fn a_part_replacing_another_mod_of_its_id_is_made_even_when_it_ends_at_once() {
+        let (root, ctx, mut app) = launcher("replace");
+        let theirs = root.join("mods").join(factions::MOD_ID);
+        std::fs::create_dir_all(&theirs).unwrap();
+        std::fs::write(theirs.join("mod.toml"), format!("id = \"{}\"
+name = \"Bob's factions\"
+version = \"2\"
+", factions::MOD_ID)).unwrap();
+        app.refresh_mods();
+        with_the_game(&mut app, maps_found([State::New; 6]), factions_found([State::New; 4]), music_found(State::New), menus_found(State::New));
+        app.supcom.pretend_start = Some(pretend_at_once);
+        let size = vec2(1120.0, 720.0);
+        app.apply(Action::SupcomOpen(Tab::Factions), &eframe::Frame::_new_kittest());
+        settled(&ctx, &mut app, size);
+        app.apply(Action::SupcomWizardStep(Step::Choose), &eframe::Frame::_new_kittest());
+        app.supcom.wizard.tick(Tab::Maps, false);
+        app.apply(Action::SupcomWizardImport, &eframe::Frame::_new_kittest());
+        settled(&ctx, &mut app, size);
+        assert_eq!(app.supcom.wizard.fate(Tab::Factions), Some(&Fate::Asking));
+        app.apply(Action::SupcomReplace, &eframe::Frame::_new_kittest());
+        assert_eq!(app.supcom.wizard.fate(Tab::Factions), Some(&Fate::Making), "under way as it is pressed");
+        // (Its import ended before the next frame, whose poll takes it in before the wizard looks.)
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        until_done(&ctx, &mut app, size);
+        assert!(matches!(app.supcom.wizard.fate(Tab::Factions), Some(Fate::Ended { went: Went::Well, .. })), "{:?}", app.supcom.wizard.fate(Tab::Factions));
+        assert_eq!(started().iter().map(|(tab, _)| *tab).collect::<Vec<_>>(), [Tab::Factions, Tab::Music, Tab::Menus]);
         drop(app);
         let _ = std::fs::remove_dir_all(root);
     }
