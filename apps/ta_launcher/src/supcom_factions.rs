@@ -348,6 +348,12 @@ impl Factions {
         self.job = Some(job.unwrap());
     }
 
+    /// An import that comes to `outcome` at once: for tests.
+    #[cfg(test)]
+    pub fn pretend_imported(&mut self, outcome: Outcome) {
+        self.job = Some(Job::spawn("pretend factions import", self.progress.clone(), move |_| outcome).unwrap());
+    }
+
     /// A look that found `found`, taken in at the next [`Factions::poll`]: for tests.
     #[cfg(test)]
     pub fn pretend_found(&mut self, found: Found, pictures: Pictures) {
@@ -365,6 +371,16 @@ fn first_choice(found: &Found) -> BTreeSet<String> {
 /// What the factions chosen take on the disk once made, about (bytes).
 pub fn size_estimate(entries: &[Entry]) -> u64 {
     entries.iter().map(|e| e.units() as u64 * UNIT_BYTES).sum()
+}
+
+/// About how long a unit takes to make and install on a fast computer (milliseconds): the four
+/// factions' 364 in about half a minute.
+const UNIT_MILLIS: u64 = 80;
+
+/// About how long the factions chosen take to make on a fast computer, in seconds (the wizard's
+/// estimate; the tab says it in words).
+pub fn time_estimate(entries: &[Entry]) -> u64 {
+    (entries.iter().map(|e| e.units() as u64).sum::<u64>() * UNIT_MILLIS).div_ceil(1000)
 }
 
 /// How a unit is counted: a building, or by how it moves.

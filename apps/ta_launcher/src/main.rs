@@ -38,6 +38,7 @@ mod supcom_banners;
 mod supcom_factions;
 mod supcom_menus;
 mod supcom_music;
+mod supcom_wizard;
 mod persist;
 mod theme;
 mod sounds;

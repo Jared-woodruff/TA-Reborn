@@ -26,6 +26,10 @@ impl Capture {
     /// Report captures may include a first-time scan of a large installed mod.
     pub fn wait_for_validation(&mut self) { self.timeout = Duration::from_secs(180); }
 
+    /// The Supreme Commander wizard's import, every part made, the game's maps too (about twenty
+    /// minutes for all 54).
+    pub fn wait_for_import(&mut self) { self.timeout = Duration::from_secs(1800); }
+
     /// Call once per frame, after the UI was built; the frames are counted once `ready` (what
     /// the page shows has loaded).
     pub fn tick(&mut self, ctx: &egui::Context, ready: bool) {

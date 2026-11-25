@@ -166,6 +166,20 @@ pub enum Action {
     SupcomMenusStop,
     /// The import asked about goes ahead over another mod of its id (REPLACE AND IMPORT).
     SupcomReplace,
+    /// Opens the Supreme Commander dialog at its wizard, to make in one go every part, the parts
+    /// not imported yet, or those an older TA Reborn made (UPDATE ALL).
+    SupcomWizard(crate::supcom_wizard::Kind),
+    /// The wizard's NEXT or BACK: to this step (the game's, or what to make).
+    SupcomWizardStep(crate::supcom_wizard::Step),
+    /// The wizard's IMPORT: the parts ticked made one after another.
+    SupcomWizardImport,
+    /// The wizard's STOP: its import ends once the part in hand is made.
+    SupcomWizardStop,
+    /// The dialog's tabs in the wizard's place (CHOOSE IN DETAIL…).
+    SupcomTabs,
+    /// The Mods page's offer of the wizard taken up (it opens) or put away (NOT NOW): not made
+    /// again either way.
+    SupcomOffer(bool),
     Rescan,
     BrowseInstall,
     /// Forgets the configured game folder and detects the install automatically.
@@ -574,8 +588,10 @@ impl LauncherApp {
         } else {
             None
         };
-        // (Where Supreme Commander: Forged Alliance is, as the player chose it before.)
+        // (Where Supreme Commander: Forged Alliance is, as the player chose it before, and whether
+        // the Mods page offered its import's wizard.)
         let supcom_choice = crate::supcom::load_choice(&store.dir());
+        let supcom_offered = crate::supcom::load_offered(&store.dir());
         let unattended = args.screenshot.is_some() || args.film.is_some();
         let window = (!unattended && args.window_size.is_none()).then(|| (config.launcher.window.unwrap_or([1120.0, 720.0]), config.launcher.maximized));
         // A handheld's first start maximises this window too (it opened before the settings
@@ -653,7 +669,7 @@ impl LauncherApp {
             mods,
             mod_validation,
             maps: Default::default(),
-            supcom: crate::supcom::Import::new(supcom_choice),
+            supcom: crate::supcom::Import::new(supcom_choice, supcom_offered),
             followed_mods,
             supcom_banners: Default::default(),
             held_factions: None,
@@ -795,6 +811,24 @@ impl LauncherApp {
                 if all.eq_ignore_ascii_case("all") {
                     self.supcom.music.auto_start = true;
                     if let Some(capture) = &mut self.capture { capture.wait_for_validation(); }
+                }
+            }
+            // (The dialog's wizard, whatever is imported: at its first step, gone on by itself to
+            // what to make (`:choose`), or its import of every part begun (`:import`, the picture
+            // taken during it with TA_SUPCOM_SHOT_IMPORTING=1; `:done`, once made), the maps'
+            // part making only the maps named after (`supcom-wizard:done:SCMP_009,SCMP_003`).
+            // `supcom-rest`: the wizard for the parts not imported yet; `supcom-update`: UPDATE
+            // ALL, its maps' part likewise (`supcom-update:SCMP_009`).)
+            ("supcom-wizard" | "supcom-rest" | "supcom-update", rest) => {
+                let (kind, (step, maps)) = match what.split_once(':').map_or(what, |(name, _)| name) {
+                    "supcom-update" => (crate::supcom_wizard::Kind::Update, ("", rest)),
+                    "supcom-rest" => (crate::supcom_wizard::Kind::Rest, rest.split_once(':').unwrap_or((rest, ""))),
+                    _ => (crate::supcom_wizard::Kind::First, rest.split_once(':').unwrap_or((rest, ""))),
+                };
+                if self.show_supcom_wizard(kind, step, maps)
+                    && let Some(capture) = &mut self.capture
+                {
+                    capture.wait_for_import();
                 }
             }
             ("maps-details", _) => self.maps.details_open = true,
@@ -1132,6 +1166,12 @@ impl LauncherApp {
                     self.start_supcom_import(tab, true);
                 }
             }
+            Action::SupcomWizard(kind) => self.open_supcom_wizard(kind),
+            Action::SupcomWizardStep(step) => self.wizard_go(step),
+            Action::SupcomWizardImport => self.begin_wizard_import(),
+            Action::SupcomWizardStop => self.stop_wizard(),
+            Action::SupcomTabs => self.supcom_tabs(),
+            Action::SupcomOffer(take) => self.take_supcom_offer(take),
             Action::ShowModReport(id) => self.mod_validation.selected = Some(id),
             Action::ValidateMod(id) => {
                 // Mod authors may have just changed a manifest or added a dependency.
@@ -1419,15 +1459,24 @@ impl LauncherApp {
     }
 
     /// Where the launcher finds mods and installs them, for the Supreme Commander dialog.
-    fn supcom_roots(&self) -> crate::supcom::Roots {
+    pub(crate) fn supcom_roots(&self) -> crate::supcom::Roots {
         crate::supcom::Roots { folders: mod_folders(&self.config, &self.store), mods_dir: self.store.dir().join("mods") }
     }
 
     /// Opens the Supreme Commander dialog at `tab` (or at the other, where only its import is under
-    /// way), looking for the game where the tab's look is not current.
+    /// way), looking for the game where the tab's look is not current; at its wizard where none of
+    /// the four imports is made nor being made (from its first step), and where the wizard's import
+    /// is under way, or what it came to has not been seen yet.
     pub(crate) fn open_supcom(&mut self, tab: crate::supcom::Tab) {
         let roots = self.supcom_roots();
-        self.supcom.show(tab, roots);
+        if self.supcom.wizard.running() || self.supcom.wizard.unseen {
+            self.supcom.show_wizard_again(tab, roots);
+        } else if !self.supcom.any_importing() && self.supcom_missing().len() == crate::supcom::Tab::ALL.len() {
+            self.supcom.show_wizard(crate::supcom_wizard::Kind::First, &crate::supcom_wizard::ORDER, tab, roots);
+        } else {
+            self.supcom.wizard = Default::default();
+            self.supcom.show(tab, roots);
+        }
     }
 
     /// The tab of the Supreme Commander dialog that makes the mod `id` again: one of its imports'
@@ -1444,6 +1493,25 @@ impl LauncherApp {
     /// through afresh, and made again where it is.
     fn start_supcom_import(&mut self, tab: crate::supcom::Tab, replace: bool) {
         use crate::supcom::Tab;
+        let Err(why) = self.begin_supcom_import(tab, replace) else { return };
+        if !self.supcom.open {
+            self.notify(why, AMBER);
+        } else {
+            let error = Some(why.to_string());
+            match tab {
+                Tab::Maps => self.supcom.outcome = Some(crate::supcom::Outcome { error, ..Default::default() }),
+                Tab::Factions => self.supcom.factions.outcome = Some(crate::supcom_factions::Outcome { error, ..Default::default() }),
+                Tab::Music => self.supcom.music.outcome = Some(crate::supcom_music::Outcome { error, ..Default::default() }),
+                Tab::Menus => self.supcom.menus.outcome = Some(crate::supcom_menus::Outcome { error, ..Default::default() }),
+            }
+        }
+    }
+
+    /// The tab `tab`'s import started, or asked about first over another mod of its id (unless
+    /// `replace`); what keeps it from starting now, where something does (the tab's own words for
+    /// it, or the copy installed's). The wizard's parts start so, telling it in their own row.
+    pub(crate) fn begin_supcom_import(&mut self, tab: crate::supcom::Tab, replace: bool) -> Result<(), &'static str> {
+        use crate::supcom::Tab;
         let roots = self.supcom_roots();
         let place = match tab {
             Tab::Maps => crate::supcom::pack_place(&roots),
@@ -1458,22 +1526,16 @@ impl LauncherApp {
             Tab::Menus => self.menus_blocked(),
         }.or_else(|| place.copy.as_ref().and_then(|copy| copy.blocks()));
         if let Some(why) = blocked {
-            if !self.supcom.open {
-                self.notify(why, AMBER);
-            } else {
-                let error = Some(why.to_string());
-                match tab {
-                    Tab::Maps => self.supcom.outcome = Some(crate::supcom::Outcome { error, ..Default::default() }),
-                    Tab::Factions => self.supcom.factions.outcome = Some(crate::supcom_factions::Outcome { error, ..Default::default() }),
-                    Tab::Music => self.supcom.music.outcome = Some(crate::supcom_music::Outcome { error, ..Default::default() }),
-                    Tab::Menus => self.supcom.menus.outcome = Some(crate::supcom_menus::Outcome { error, ..Default::default() }),
-                }
-            }
-            return;
+            return Err(why);
         }
         if let Some(copy) = place.copy.as_ref().filter(|copy| !copy.ours && !replace) {
             self.supcom.confirm_replace = Some((tab, copy.clone()));
-            return;
+            return Ok(());
+        }
+        #[cfg(test)]
+        if let Some(pretend) = self.supcom.pretend_start {
+            pretend(&mut self.supcom, tab);
+            return Ok(());
         }
         match tab {
             Tab::Maps => {
@@ -1485,6 +1547,7 @@ impl LauncherApp {
             Tab::Music => self.supcom.music.start(self.store.dir(), place),
             Tab::Menus => self.supcom.menus.start(self.store.dir(), place),
         }
+        Ok(())
     }
 
     /// Starts the game (with `extra` arguments), then does as the player has the launcher do
@@ -1604,6 +1667,11 @@ impl LauncherApp {
         }
         if self.supcom.menus.importing() {
             self.notify("Wait for the Supreme Commander menus being made, then start the game.", AMBER);
+            return;
+        }
+        // (Nor while the wizard's parts wait their turn: the next would be made under the game.)
+        if self.supcom.wizard.running() {
+            self.notify("Wait for the Supreme Commander imports being made, then start the game.", AMBER);
             return;
         }
         // The game reads config.toml when it starts, so write pending edits first.
@@ -2082,6 +2150,8 @@ impl LauncherApp {
     /// are installed (the one in hand left out), the window answering meanwhile.
     fn close_anyway(&mut self, ctx: &egui::Context) {
         self.confirm_close = false;
+        // (The wizard's parts after the one in hand are left: none starts as the launcher closes.)
+        self.supcom.wizard.stop();
         if self.supcom.importing() {
             self.supcom.abandon();
             self.supcom.factions.stop();
@@ -2906,6 +2976,8 @@ impl eframe::App for LauncherApp {
             self.notify(ta_ui::i18n::tf("{mod}: the data check found errors. MOD INFO on the Mods page lists them.", &[("mod", &name)]), RED);
         }
         self.maps_tick(ctx);
+        // (A part of the wizard's import is told by the wizard, in its own row, and in one notice
+        // once all are made: not by its tab's news, nor by a notice of its own.)
         if let Some(outcome) = self.supcom.poll(ctx) {
             if !outcome.imported.is_empty() {
                 modlist::set_enabled(&mut self.config.mods.enabled, crate::supcom::PACK_ID, true);
@@ -2915,12 +2987,13 @@ impl eframe::App for LauncherApp {
             // (The dialog says what it came to, and lists its maps again; shown at the other tab,
             // that tab says it ended. Closed, a notice says it, failures and all, and the dialog
             // looks again when next opened.)
+            let wizard = self.supcom.wizard.holds(crate::supcom::Tab::Maps);
             if self.supcom.open {
                 self.supcom.rescan();
-                self.supcom.unseen = self.supcom.tab != crate::supcom::Tab::Maps;
+                self.supcom.unseen = !wizard && self.supcom.tab != crate::supcom::Tab::Maps;
             } else {
                 self.supcom.look.outdate();
-                if let Some(text) = outcome.notice() {
+                if let Some(text) = outcome.notice().filter(|_| !wizard) {
                     self.notify(text, outcome.went().colour());
                 }
             }
@@ -2930,12 +3003,13 @@ impl eframe::App for LauncherApp {
                 modlist::set_enabled(&mut self.config.mods.enabled, crate::supcom_factions::MOD_ID, true);
                 self.refresh_mods();
             }
+            let wizard = self.supcom.wizard.holds(crate::supcom::Tab::Factions);
             if self.supcom.open {
                 self.supcom.factions.rescan(self.supcom.picked.clone(), &self.supcom.roots);
-                self.supcom.factions.unseen = self.supcom.tab != crate::supcom::Tab::Factions;
+                self.supcom.factions.unseen = !wizard && self.supcom.tab != crate::supcom::Tab::Factions;
             } else {
                 self.supcom.factions.look.outdate();
-                if let Some(text) = outcome.notice() {
+                if let Some(text) = outcome.notice().filter(|_| !wizard) {
                     self.notify(text, outcome.went().colour());
                 }
             }
@@ -2948,12 +3022,13 @@ impl eframe::App for LauncherApp {
                 crate::supcom_menus::switch_on(&mut self.config.gameplay.menu_theme);
                 self.refresh_mods();
             }
+            let wizard = self.supcom.wizard.holds(crate::supcom::Tab::Menus);
             if self.supcom.open {
                 self.supcom.menus.rescan(self.supcom.picked.clone(), &self.supcom.roots);
-                self.supcom.menus.unseen = self.supcom.tab != crate::supcom::Tab::Menus;
+                self.supcom.menus.unseen = !wizard && self.supcom.tab != crate::supcom::Tab::Menus;
             } else {
                 self.supcom.menus.look.outdate();
-                if let Some(text) = outcome.notice() {
+                if let Some(text) = outcome.notice().filter(|_| !wizard) {
                     self.notify(text, outcome.went().colour());
                 }
             }
@@ -2964,17 +3039,21 @@ impl eframe::App for LauncherApp {
                 outcome.switched = self.supcom.music.switch_on(&mut self.config.audio.soundtrack);
                 self.refresh_mods();
             }
+            let wizard = self.supcom.wizard.holds(crate::supcom::Tab::Music);
             if self.supcom.open {
                 self.supcom.music.rescan(self.supcom.picked.clone(), &self.supcom.roots);
-                self.supcom.music.unseen = self.supcom.tab != crate::supcom::Tab::Music;
+                self.supcom.music.unseen = !wizard && self.supcom.tab != crate::supcom::Tab::Music;
             } else {
                 self.supcom.music.look.outdate();
-                if let Some(text) = outcome.notice() {
+                if let Some(text) = outcome.notice().filter(|_| !wizard) {
                     self.notify(text, outcome.went().colour());
                 }
             }
         }
         self.followed_mods.follow(&mut self.config);
+        // (The wizard's next part started once the one before has ended: its choice set, as its
+        // tab's would be, and its tab's own import started.)
+        self.wizard_tick();
         // (The imports' mods installed before imports made banners get theirs, from the player's
         // copy, once a launch, while no import or install is at work: read again once made. Not
         // in the launcher's tests, which never look for this computer's copy of the game.)
@@ -4677,6 +4756,54 @@ name = \"{}\"
         assert!(sent(&output, &egui::ViewportCommand::Close), "closed once the making stopped");
         assert!(app.close_confirmed && !app.supcom.factions.importing());
         assert!(!app.config.mods.enabled.iter().any(|id| id == crate::supcom_factions::MOD_ID), "nothing was installed, nothing turned on");
+        drop(app);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Closing during the Supreme Commander wizard's import: CLOSE ANYWAY stops the part in hand
+    /// as its own import stops, starts none of the parts after it, and closes.
+    #[test]
+    fn closing_during_the_wizards_import_starts_no_part_after_the_one_in_hand() {
+        use crate::supcom::Tab;
+        use crate::supcom_wizard::{Fate, Kind};
+        let dir = temp_dir("close_wizard_import");
+        let (ctx, mut app) = launcher(&dir.join("config.toml"), &["--pretend-missing"]);
+        app.skins.shutdown();
+        let sent = |output: &egui::FullOutput, command: &egui::ViewportCommand| output.viewport_output.get(&egui::ViewportId::ROOT)
+            .is_some_and(|viewport| viewport.commands.contains(command));
+        // (Never this computer's copy of the game: the looks canned, finding one.)
+        let game = ta_supcom::install::Install { root: dir.join("game"), store: ta_supcom::install::Store::Folder };
+        let factions = crate::supcom_factions::Found {
+            install: Some(game.clone()),
+            factions: ta_supcom::unit::Faction::PLAYABLE.into_iter().map(|faction| crate::supcom_factions::Entry { faction, buildings: 1, land: 1, air: 1, naval: 1, state: crate::supcom::State::New }).collect(),
+            ..Default::default()
+        };
+        let track = ta_supcom::soundtrack::Track { part: ta_supcom::soundtrack::Part::Menu, number: 1, stem: "menu".into(), bank: "Music.xwb", wave: 0, seconds: 60.0, bytes: 1_000_000 };
+        let music = crate::supcom_music::Found { install: Some(game), tracks: vec![track], ..Default::default() };
+        app.supcom.factions.look.canned = Some(std::sync::Arc::new(move || (factions.clone(), Default::default())));
+        app.supcom.music.look.canned = Some(std::sync::Arc::new(move || (music.clone(), Default::default())));
+        fn pretend(import: &mut crate::supcom::Import, tab: Tab) {
+            match tab {
+                Tab::Factions => import.factions.pretend_importing(),
+                _ => import.music.pretend_imported(crate::supcom_music::Outcome { tracks: 1, ..Default::default() }),
+            }
+        }
+        app.supcom.pretend_start = Some(pretend);
+        app.supcom.wizard.open(Kind::First, &[Tab::Factions, Tab::Music]);
+        app.supcom.wizard.begin(vec![Tab::Factions, Tab::Music]);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !app.supcom.factions.importing() && Instant::now() < deadline {
+            frame(&ctx, &mut app, RawInput::default());
+        }
+        assert!(app.supcom.factions.importing(), "the first part under way");
+        app.close_anyway(&ctx);
+        let mut output = frame(&ctx, &mut app, RawInput::default());
+        while !sent(&output, &egui::ViewportCommand::Close) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(5));
+            output = frame(&ctx, &mut app, RawInput::default());
+        }
+        assert!(sent(&output, &egui::ViewportCommand::Close), "closed once the part in hand stopped");
+        assert!(!app.supcom.music.importing() && app.supcom.wizard.fate(Tab::Music) == Some(&Fate::Left), "the music never started");
         drop(app);
         let _ = std::fs::remove_dir_all(dir);
     }
