@@ -116,8 +116,10 @@ pub use transport::{Client, Host, HostEvent};
 /// simulation 114, the computer players' defence from the air, their Commander's retreat from guns
 /// and their climb up the tiers, and armies' worth without the Commanders. 120: simulation 115,
 /// TA Reborn's abilities: `Command::SetToggle`, `Order::RemoteView`, minimum ranges, stealth fields,
-/// stuns, regeneration auras and enhancements' production.
-pub const PROTOCOL: u32 = 120;
+/// stuns, regeneration auras and enhancements' production. 121: the sound tables (TA's `sound.tdf`
+/// and the sound add-ons) out of what peers compare (`Compatibility::network`): builds of 120 would
+/// take each other's data for different.
+pub const PROTOCOL: u32 = 121;
 pub const DEFAULT_PORT: u16 = 7890;
 /// Ticks between state hash reports (which double as progress reports).
 pub const HASH_INTERVAL: u64 = 15;

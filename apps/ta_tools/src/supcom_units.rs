@@ -33,15 +33,20 @@ pub fn run(out: &Path, only: Option<&str>, faction: Option<&str>, game: Option<&
     if palette.is_none() {
         eprintln!("no copy of TA found: the sides' emblems are left out");
     }
+    // Forged Alliance's sounds, from the copy's own banks.
+    let sounds = ta_vfs::install::find_dir_ci(&install.root, "sounds");
+    if sounds.is_none() {
+        eprintln!("no sounds folder in the copy: the units keep TA's sounds");
+    }
     let started = std::time::Instant::now();
-    let made = make::make(&files, &units, palette.as_ref(), env!("CARGO_PKG_VERSION"), &mut |path, bytes| {
+    let made = make::make(&files, &units, palette.as_ref(), sounds.as_deref(), env!("CARGO_PKG_VERSION"), &mut |path, bytes| {
         let at = out.join(path);
         if let Some(dir) = at.parent() {
             std::fs::create_dir_all(dir).map_err(|e| ta_supcom::Error::Format(format!("{}: {e}", dir.display())))?;
         }
         std::fs::write(&at, bytes).map_err(|e| ta_supcom::Error::Format(format!("{}: {e}", at.display())))
     }, &mut |_, _| true)?;
-    eprintln!("{} of {} units made into {}: {} files, {} MB, in {:.1} s", made.units, units.len(), out.display(), made.files, made.bytes >> 20, started.elapsed().as_secs_f32());
+    eprintln!("{} of {} units made into {}: {} files ({} sounds), {} MB, in {:.1} s", made.units, units.len(), out.display(), made.files, made.sounds, made.bytes >> 20, started.elapsed().as_secs_f32());
     for (id, why) in &made.skipped {
         eprintln!("  {id} left out: {why}");
     }

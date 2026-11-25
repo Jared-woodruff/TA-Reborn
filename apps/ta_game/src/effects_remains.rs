@@ -25,7 +25,7 @@ use ta_render::{DrawInstance, ModelId, ParticleBurst as Burst, ParticleKind as K
 use ta_sim::{Locomotion, Sim};
 
 use super::particles::Blast;
-use super::{Burning, Effects, Particle, Scorch};
+use super::{Burning, EffectSound, Effects, Particle, Scorch};
 use crate::scene::Remnant;
 
 /// How a unit came to its end (see [`Effects::unit_died`]).
@@ -206,7 +206,7 @@ impl Effects {
         let Some(fate) = fate else {
             // A building whose wreck stands in its place: only the dust it throws up and the rumble.
             if t.locomotion == Locomotion::Static && !wet && death.complete {
-                self.collapse_dust(pos, ground, size);
+                self.collapse_dust(pos, ground, size, type_id);
             }
             return;
         };
@@ -280,8 +280,8 @@ impl Effects {
             look: (r.team, if fate == Fate::Clip { CLIP_DAMAGE } else { 1.0 }),
         };
         match fate {
-            Fate::Collapse => self.collapse_dust(pos, ground, size),
-            Fate::Sink => self.sounds.push(("xplosml2", pos, 0.5)),
+            Fate::Collapse => self.collapse_dust(pos, ground, size, type_id),
+            Fate::Sink => self.sounds.push(EffectSound::of_unit(type_id, ta_audio::SoundEvent::Sink, "xplosml2", pos, 0.5)),
             Fate::Crash | Fate::Clip => {}
         }
         self.remains.push(remains);
@@ -325,7 +325,7 @@ impl Effects {
                     if r.pos.y <= floor + 2.0 {
                         let at = Vec3::new(r.pos.x, floor, r.pos.z);
                         if self.sees(sim, at) {
-                            self.crash(at, ground < sea, r.size, now);
+                            self.crash(at, ground < sea, r.size, now, r.type_id);
                         }
                         r.done = true;
                     } else if age > r.duration {
@@ -462,8 +462,8 @@ impl Effects {
         self.debris_trail_particles(p, vel);
     }
 
-    /// A falling wreck hits the ground (or the sea) at `p`.
-    fn crash(&mut self, p: Vec3, water: bool, size: f32, now: f32) {
+    /// A falling wreck (of a unit of type `type_id`) hits the ground (or the sea) at `p`.
+    fn crash(&mut self, p: Vec3, water: bool, size: f32, now: f32, type_id: usize) {
         let big = size >= 24.0;
         let key = if big { "fx/explode4" } else { "fx/explode3" };
         if let Some(&a) = self.generic_blasts.get(key) {
@@ -482,7 +482,7 @@ impl Effects {
             let life = 2.5 + self.rand() * 2.0;
             self.dark_puff(p + off + Vec3::Y * 6.0, Vec3::new(0.0, 16.0, 0.0), now + 0.1, life, 24.0, 70.0, 0.55);
         }
-        self.sounds.push((if big { "xplolrg1" } else { "xplomed2" }, p, 0.8));
+        self.sounds.push(EffectSound::of_unit(type_id, ta_audio::SoundEvent::Crash, if big { "xplolrg1" } else { "xplomed2" }, p, 0.8));
         self.shake = self.shake.max(if big { 3.0 } else { 1.5 });
     }
 
@@ -504,8 +504,8 @@ impl Effects {
         }
     }
 
-    /// The dust a building throws up as it comes down, and the rumble.
-    fn collapse_dust(&mut self, p: Vec3, ground: f32, size: f32) {
+    /// The dust a building (of type `type_id`) throws up as it comes down, and the rumble.
+    fn collapse_dust(&mut self, p: Vec3, ground: f32, size: f32, type_id: usize) {
         let g = [p.x, ground + 2.0, p.z];
         let n = (10.0 + size * 0.9).min(120.0) as u32;
         self.burst(
@@ -521,7 +521,7 @@ impl Effects {
                 .over(0.6),
         );
         self.burst(Burst::new(Kind::Dirt, g, (8.0 + size * 0.8).min(160.0) as u32).ground_color().radius(size * 0.6).toward([0.0, 1.0, 0.0], 0.8).speed(30.0, 90.0 + size).life(0.6, 1.4).size(3.0, 2.6));
-        self.sounds.push(("xplobld1", p, 0.7));
+        self.sounds.push(EffectSound::of_unit(type_id, ta_audio::SoundEvent::Collapse, "xplobld1", p, 0.7));
     }
 
     /// One of a big unit's later blasts.
@@ -537,7 +537,7 @@ impl Effects {
         self.light(p.pos + Vec3::Y * 10.0, now, 0.3, p.size * 5.0, [1.6, 0.7, 0.2]);
         self.dark_puff(p.pos, Vec3::new(0.0, 14.0, 0.0), now, 2.6, p.size, p.size * 2.5, 0.5);
         if self.rand() < 0.5 {
-            self.sounds.push(("xplosml2", p.pos, 0.45));
+            self.sounds.push(("xplosml2", p.pos, 0.45).into());
         }
     }
 }

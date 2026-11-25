@@ -672,3 +672,14 @@ to a toggle's weapon is "{name} [TOGGLE] {key}" (as "{name} {key}").
 | hit points a second / {share}% of their health | saniyede {rate} can puanı / canlarının %{share} kadarı |
 | minimum range / Fires no nearer than {range} | minimum menzil / {range} mesafeden yakına ateş etmez |
 | stun / Stuns for {secs} s | felç, felç etmek (as "Felçli {secs} sn") / {secs} sn boyunca felç eder |
+
+## Modların sesleri (`validation.rs`: ses eklentileri, ses setleri; `supcom_factions.rs`)
+
+| English | Türkçe |
+|---|---|
+| sound add-on (`gamedata/sound_<name>.tdf`) | ses eklentisi |
+| sound set (a section of `[SOUNDSETS]`) | ses seti ("ses seti {name}", "ses seti {set} {key}"; no suffix on {set}: "Ses seti {set} içinde") |
+| firing sound under the water / firing loop / its end | {name} su altında atış sesi / {name} atış döngüsü / {name} atış döngüsünün sonu |
+| a category's base (its `base` key) | {category} temel kategorisi |
+| a side's alerts (its announcer) | uyarılar (as UNIT REPLIES' help) |
+| stream information (FLAC) | akış bilgisi |

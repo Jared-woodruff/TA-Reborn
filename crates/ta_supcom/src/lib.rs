@@ -27,6 +27,7 @@ pub mod convert;
 pub use ta_formats::dds;
 pub mod factions;
 pub mod files;
+pub mod ima;
 pub mod install;
 pub mod lua;
 pub mod map;

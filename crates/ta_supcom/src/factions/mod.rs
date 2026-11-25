@@ -27,6 +27,7 @@ pub mod make;
 pub mod model;
 pub mod pictures;
 pub mod script;
+pub mod sounds;
 pub mod textures;
 pub mod units;
 pub mod work;

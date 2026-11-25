@@ -1136,6 +1136,62 @@ take up to all 32 bits of a texel.
 * Cutscenes: `Data/*.ZRB` are Smacker 2 (640×240 line-interlaced → 640×480, 30 fps,
   DPCM 22 kHz stereo audio). Decoder: `crates/ta_video`.
 * Music: `music/0..17.mp3` (GOG converted CD audio). Sounds: 11 kHz 8-bit mono WAV.
+* COB `play-sound <n>` (one operand, nothing taken from the stack, as TA Reborn runs it): the
+  script's sound `n`, of the sound table TA: Kingdoms' scripts carry (version 6: two more header
+  words after the code pointer's and the zero after it, at bytes 44 and 48: where the table of
+  pointers to the sounds' names is, and how many; the names nul-ended). TA's own scripts (version
+  4) have none; TA Reborn writes a script with sounds as version 6 (`ta_formats::cob`).
+
+## Supreme Commander's sound banks (XACT 3, version 43)
+
+Verified over the 90 sound banks and 89 wave banks of GOG's Forged Alliance (`sounds/` and
+`sounds/Voice/US/`; `crates/ta_supcom/src/xact.rs`, docs/SUPCOM_MUSIC.md for the wave banks and
+the banks' headers): every event below reads, and every wave a cue names is in a wave bank.
+
+* **A cue** (complex, 15 bytes): flags (u8; 0x04: of one sound), the sound's offset (u32), 4
+  bytes, its instance limit (u8: at most this many at once; 255 none), fade in and out (u16 ms
+  each), flags (u8: its behaviour past the limit in its top five bits: 0 not played, 2 the oldest
+  gives way, 4 the least important). A simple cue is 5 bytes: flags, the sound's offset.
+* **A sound:** flags (u8: 0x01 of clips, 0x02 curves of its own, 0x04 its clips' curves),
+  its category (u16, the global settings'), volume (a volume byte), pitch (i16, hundredths of a
+  semitone), priority (u8), its length (u16); then a wave of its own (track u16, wave bank u8) or
+  a clip count (u8); where any of 0x0E is set, the curves (a u16 length counting itself; with
+  0x02 a count, u8, and the curves' offsets in the global settings, u32 each; then each clip's);
+  then 5 bytes a clip: its volume (a volume byte) and its events' offset (u32).
+* **A volume byte** is 3969 · log10(b / 28240) + 8715 hundredths of a decibel (FAudio's reading:
+  0xB4 is +0.01 dB, 0 silence).
+* **An event:** a u32 (its kind in bits 0–4, its delay after the cue starts in bits 5–20, ms),
+  a random delay (u16, ms: up to that much more), then a separator (0xFF) and flags (u8). The four
+  kinds the units' banks use, after the header (offsets from the separator):
+
+  | Kind | Times used | Layout |
+  | --- | --- | --- |
+  | 1, a wave | 108 | +2 track u16, +4 wave bank u8, +5 loop count u8, +6 pan angle u16, +8 arc u16 (10 bytes) |
+  | 3, one of several | 5 | +2 loop count u8, +3 angle u16, +5 arc u16, +7 count u16, +9 variation u16, 4 bytes, +15 the tracks |
+  | 4, a wave, varied | 1,557 | as 1, then +10 pitch from and to (i16 each), +14 volume from and to (bytes), +16 what varies (u8) (17 bytes) |
+  | 6, one of several, varied | 118 | +2 loop count, +3 angle, +5 arc, +7 the 7 bytes of 4's ranges, +14 count u16, +16 variation u16, 4 bytes, +22 the tracks |
+
+  A track is 5 bytes: track u16, wave bank u8, weight from and to (bytes: its weight the
+  difference; 0 and 255 in every one). A loop count of 255 plays on until stopped (384 events);
+  another plays that many times more (one event once more, one 4 times more). What varies: 0x40 the pitch (from its two values), 0x80 the volume; where a flag is
+  clear its values are XACT's defaults, -100 to 100 cents and bytes 151 to 214, and nothing varies
+  (held so in every event: 128 events vary the pitch alone, 100 the volume alone, 1,447 both).
+  A variation's low three bits choose: 3, never the same twice running (121 of 123; the others
+  0x43). 124 events start after a delay (50 ms to 5.3 s), 6 with a random one on top.
+* **A wave** is found through its event's wave bank index: the sound bank's list of wave banks
+  names the bank by its own name, which is not always its file's (`XAS_Weapon` is in
+  `XAS_Weapons.xwb`); cues of one bank play another's waves (170 of the 3,476 waves cues name).
+* **The global settings** (`SupCom.xgs`, `XGSF`, tool 43, format 42): after the magic, the tool
+  and format versions (u16 each), a checksum (u16), 8 bytes of date and the platform (u8); the
+  counts (u16 each from byte 19: categories, variables, two unused, curves, two of DSP), then 11
+  offsets (u32 from byte 33: categories, variables, two unused, the category names' index, an
+  unused, the variable names' index, the category names, the variable names, the curves, DSP).
+  A category is 10 bytes: instance limit, fade in and out, behaviour, its parent (u16, 0xFFFF
+  none) at +6, its volume (a volume byte) at +8. A curve: its variable (u16, by the names' order),
+  its point count (u8), what it changes (u16: 0 the volume), then 9 bytes a point (x and y f32,
+  a shape u8): a volume curve's y in hundredths of a decibel. The units' sounds follow `Distance`
+  curves falling 30 dB from about 140 (a builder's loop) to 4,700 (a weapon's) of the game's
+  units away.
 
 ## Reborn local records and profile metadata
 

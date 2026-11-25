@@ -605,3 +605,19 @@ long-range in Taiwan, as 遠程電漿砲). A unit's own side round it, on any un
 | {rate} hit points a second / {share}% of their health a second, {rate} at most | 每秒 {rate} 點生命值 / 每秒最大生命值的 {share}%，最多 {rate} 點 |
 | minimum range / Fires no nearer than {range} | 最小射程 / 最小射程 {range} |
 | stun, stunned / Stuns for {secs} s / TA's paralyzers (paralyzer=1) | 癱瘓 (as Paralyzed 已癱瘓) / 造成 {secs} 秒癱瘓 / TA 的癱瘓武器 |
+
+## Sounds a mod shapes: sound sets, sound add-ons, a side's alerts (`validation.rs`, `supcom_factions.rs`)
+
+Keys stay as written (sound1=, sound2=, volume=, pitch=, radius=, maxplaying=, fadeout=, priority= with
+low, normal, high); what a key takes is 填 (radius= 填一個大於 0 的數). Labels of what names a file follow
+{name} 射擊音效 (no 的).
+
+| English | 繁體中文 |
+|---|---|
+| sound set / sound category / sound add-on (gamedata/sound_<name>.tdf) | 音效集 (as tile set 圖塊集) / 音效類別 / 音效擴充檔 (as add-on race 擴充種族) |
+| sound set {set} {key} / weight (a variant's) | 音效集 {set} 的 {key} / 權重 |
+| {name} firing sound under the water / firing loop / firing loop's end | {name} 水下射擊音效 / {name} 射擊循環音效 / {name} 射擊循環結束音效 |
+| {category} base (the category it takes the sounds it lacks from) | {category} 基礎類別 (as base game 基礎遊戲) |
+| {name} alerts (a side's announcer) | {name} 警報語音 (as alerts 警報 in the UNIT REPLIES help) |
+| FLAC stream information | 串流資訊 |
+| the units' sounds (a step of the factions import, in 正在製作 {unit}) | 單位音效 |

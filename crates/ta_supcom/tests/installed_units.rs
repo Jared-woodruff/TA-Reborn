@@ -305,9 +305,11 @@ fn the_mod_is_made_the_same_twice() {
     let files = Files::own(&game).unwrap();
     let units: Vec<_> = unit::catalogue(&files).unwrap().into_iter().filter(|u| u.playable()).collect();
     let palette = ta_palette();
+    // (Its sounds too, from the copy's own banks.)
+    let sounds = ta_vfs::install::find_dir_ci(&game.root, "sounds");
     let run = || {
         let mut out: Vec<(String, usize, u64)> = Vec::new();
-        let made = make::make(&files, &units, palette.as_ref(), "test", &mut |path, bytes| {
+        let made = make::make(&files, &units, palette.as_ref(), sounds.as_deref(), "test", &mut |path, bytes| {
             let mut h = std::collections::hash_map::DefaultHasher::new();
             bytes.hash(&mut h);
             out.push((path.to_string(), bytes.len(), h.finish()));
@@ -321,7 +323,7 @@ fn the_mod_is_made_the_same_twice() {
     let (_, second) = run();
     assert!(first == second, "made again, the same files");
     // Stopped by its watch before the third unit: two made, and said so.
-    let stopped = make::make(&files, &units, None, "test", &mut |_, _| Ok(()), &mut |i, _| i < 2).unwrap();
+    let stopped = make::make(&files, &units, None, None, "test", &mut |_, _| Ok(()), &mut |i, _| i < 2).unwrap();
     assert!(stopped.stopped && stopped.units == 2, "{stopped:?}");
     for u in &units {
         let id = u.id.to_ascii_lowercase();
@@ -744,7 +746,7 @@ fn factories_roll_off_weapons_unpack_and_anti_air_shoots_aircraft_alone() {
     let units: Vec<_> = unit::catalogue(&files).unwrap().into_iter().filter(|u| u.playable()).collect();
     let mut texts: BTreeMap<String, String> = BTreeMap::new();
     let mut scripts: BTreeMap<String, ta_formats::cob::CobScript> = BTreeMap::new();
-    make::make(&files, &units, None, "test", &mut |path, bytes| {
+    make::make(&files, &units, None, None, "test", &mut |path, bytes| {
         if let Some(id) = path.strip_prefix("units/").and_then(|p| p.strip_suffix(".fbi")) {
             texts.insert(id.to_ascii_uppercase(), String::from_utf8_lossy(bytes).into_owned());
         } else if let Some(id) = path.strip_prefix("scripts/").and_then(|p| p.strip_suffix(".cob")) {
@@ -880,7 +882,7 @@ fn stations_upgrades_and_adjacency_are_made() {
     let files = Files::own(&game).unwrap();
     let units: Vec<_> = unit::catalogue(&files).unwrap().into_iter().filter(|u| u.playable()).collect();
     let mut texts: BTreeMap<String, String> = BTreeMap::new();
-    make::make(&files, &units, None, "test", &mut |path, bytes| {
+    make::make(&files, &units, None, None, "test", &mut |path, bytes| {
         if path.starts_with("units/") || path.starts_with("download/") {
             texts.insert(path.to_string(), String::from_utf8_lossy(bytes).into_owned());
         }
@@ -930,4 +932,135 @@ fn stations_upgrades_and_adjacency_are_made() {
         let given = given.sections.iter().find(|s| s.name == "ADJACENCY").expect("its bonuses");
         assert!(given.sections.iter().any(|b| b.get("Affects") == Some("BuildEnergy") && b.get("Size") == Some("16")), "{}: build energy to size 16", generator.id);
     }
+}
+
+/// The copy's sound banks and the units' plan of sounds (every playable unit's category and
+/// weapons, the announcer).
+fn sound_plan(game: &Install, files: &Files, units: &[unit::UnitBlueprint]) -> Option<(ta_supcom::factions::sounds::Banks, ta_supcom::factions::sounds::Plan)> {
+    use ta_supcom::factions::sounds;
+    let dir = ta_vfs::install::find_dir_ci(&game.root, "sounds")?;
+    let banks = sounds::Banks::read(&dir).unwrap();
+    let mut plan = sounds::Plan::default();
+    for u in units {
+        for w in u.weapons.iter().filter(|w| w.unpack.is_some()) {
+            plan.unpacking(&banks, u, w);
+        }
+        plan.unit(&banks, u, units::ta_sound_category(u, &units::weapons(u)));
+    }
+    plan.commander_alert(&banks, files).unwrap();
+    Some((banks, plan))
+}
+
+/// Every sound the playable units' blueprints name (their own, their weapons' and their
+/// projectiles') is a set of waves the copy has, but those the game's own data names and does not
+/// have (listed: a cue no bank of that name holds); every set's files are made; the announcer's two.
+#[test]
+#[ignore]
+fn every_sound_the_units_name_is_made() {
+    let Some(game) = the_game() else {
+        eprintln!("no copy of Forged Alliance found: nothing to read");
+        return;
+    };
+    let files = Files::own(&game).unwrap();
+    let units: Vec<_> = unit::catalogue(&files).unwrap().into_iter().filter(|u| u.playable()).collect();
+    let Some((banks, plan)) = sound_plan(&game, &files, &units) else {
+        eprintln!("no sounds folder in the copy");
+        return;
+    };
+    let (sound_banks, wave_banks, settings) = banks.counts();
+    eprintln!("{sound_banks} sound banks, {wave_banks} wave banks, global settings read: {settings}");
+    assert!(settings, "the global settings");
+    let mut not_in_the_game = Vec::new();
+    for (bank, cue) in &plan.missing {
+        assert!(!banks.has_cue(bank, cue), "{bank}/{cue}: the copy has the cue, but not its sound as read");
+        not_in_the_game.push(format!("{bank}/{cue}"));
+    }
+    eprintln!("named by the blueprints but not in the copy's banks ({}): {not_in_the_game:?}", not_in_the_game.len());
+    let made: std::collections::BTreeSet<String> = plan.files().collect();
+    let sets: Vec<_> = plan.sets().collect();
+    for (name, variants, _) in &sets {
+        assert!(!variants.is_empty(), "{name}");
+        for v in variants {
+            assert!(made.contains(&format!("{v}.wav")), "{name}: {v}");
+        }
+    }
+    let table = plan.table(&["UEF"]);
+    assert!(table.contains("commanderattacked=FA_") && table.contains("nuclearlaunch=FA_"), "the announcer's two");
+    eprintln!("{} sets, {} loops, {} files, {} weapons with sounds of their own", sets.len(), sets.iter().filter(|s| s.2).count(), made.len(), plan.weapons.len());
+}
+
+/// The units' sounds as the game decodes them, against the copy's own waves: as long, never
+/// clipping where the wave does not (three samples running at full scale), the noise IMA ADPCM
+/// leaves well under the sound, its level the wave's block by block (no jumps), no click at either
+/// end.
+#[test]
+#[ignore]
+fn the_sounds_are_clean() {
+    use ta_supcom::factions::sounds;
+    let Some(game) = the_game() else {
+        eprintln!("no copy of Forged Alliance found: nothing to read");
+        return;
+    };
+    let files = Files::own(&game).unwrap();
+    let units: Vec<_> = unit::catalogue(&files).unwrap().into_iter().filter(|u| u.playable()).collect();
+    let Some((banks, plan)) = sound_plan(&game, &files, &units) else { return };
+    let mut written: BTreeMap<String, Vec<u8>> = BTreeMap::new();
+    plan.write(&banks, 64, &mut |path, bytes| {
+        written.insert(path.to_string(), bytes.to_vec());
+        Ok(())
+    })
+    .unwrap();
+    let mut snrs: Vec<(f64, String)> = Vec::new();
+    let (mut clipped, mut rails, mut jumps, mut edges, mut bytes) = (0, 0, 0, 0, 0usize);
+    for (path, source) in plan.sources() {
+        let data = &written[&path];
+        bytes += data.len();
+        let (sound, _) = ta_audio::decode::wav::decode(data).unwrap_or_else(|e| panic!("{path}: {e}"));
+        let decoded = sound.samples();
+        let first = decoded.first().copied().unwrap_or(0.0).abs();
+        let last = decoded.last().copied().unwrap_or(0.0).abs();
+        if first > 0.25 || last > 0.25 {
+            edges += 1;
+        }
+        let Some((bank, wave, delay)) = source else { continue };
+        let (pcm, rate) = sounds::samples(&banks, bank, wave).unwrap();
+        let lead = (delay as u64 * rate as u64 / 1000) as usize;
+        assert!(decoded.len() >= lead + pcm.len() && decoded.len() < lead + pcm.len() + 8, "{path}: {} for {}", decoded.len(), lead + pcm.len());
+        let (mut signal, mut noise) = (0f64, 0f64);
+        // (Full scale where the wave is not: a sample now and then is the codec's error, three
+        // running a clip.)
+        let mut run = 0;
+        for (i, &a) in pcm.iter().enumerate() {
+            let at_rail = (decoded[lead + i] as f64 * 32768.0).abs() >= 32767.0 && (a as f64).abs() < 32000.0;
+            rails += at_rail as usize;
+            run = if at_rail { run + 1 } else { 0 };
+            clipped += (run == 3) as usize;
+        }
+        let block = (rate as usize / 20).max(1);
+        for (k, chunk) in pcm.chunks(block).enumerate() {
+            let (mut s, mut n) = (0f64, 0f64);
+            for (i, &a) in chunk.iter().enumerate() {
+                let b = decoded[lead + k * block + i] as f64 * 32768.0;
+                s += (a as f64).powi(2);
+                n += (a as f64 - b).powi(2);
+            }
+            // (A block a twentieth of a second: the decoded one's level within a decibel of the
+            // wave's where the wave is to be heard.)
+            let level = |e: f64| 10.0 * (e / chunk.len() as f64).max(1e-9).log10();
+            let decoded_energy: f64 = chunk.iter().enumerate().map(|(i, _)| (decoded[lead + k * block + i] as f64 * 32768.0).powi(2)).sum();
+            if level(s) > 40.0 && (level(s) - level(decoded_energy)).abs() > 1.0 {
+                jumps += 1;
+            }
+            signal += s;
+            noise += n;
+        }
+        snrs.push((10.0 * (signal / noise.max(1.0)).log10(), path));
+    }
+    snrs.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let median = snrs[snrs.len() / 2].0;
+    eprintln!("{} files, {:.1} MB; IMA ADPCM's noise under the sound: median {median:.1} dB, the worst {:?}", written.len(), bytes as f64 / 1048576.0, &snrs[..snrs.len().min(5)]);
+    eprintln!("clips where the wave has none: {clipped} (samples at full scale where the wave is not: {rails}); blocks a decibel off their wave's level: {jumps}; files starting or ending loud: {edges}");
+    assert_eq!(clipped, 0);
+    assert!(median > 20.0, "{median}");
+    assert!(jumps * 1000 < snrs.len() * 50, "{jumps} blocks");
 }

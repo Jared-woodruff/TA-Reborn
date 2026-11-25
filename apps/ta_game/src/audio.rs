@@ -9,6 +9,8 @@ use ta_vfs::Vfs;
 
 use crate::sound_log::SoundLog;
 
+mod units;
+
 pub struct GameAudio {
     engine: AudioEngine,
     categories: SoundCategories,
@@ -66,7 +68,12 @@ pub struct GameAudio {
     menu_sounds: std::collections::BTreeMap<String, String>,
     menu_music: Option<String>,
     in_menus: bool,
+    /// The units followed for the sounds they make as they go about the battle (`units`).
+    units: units::UnitSounds,
 }
+
+/// Ticks between two announcements of a strategic missile's launch (a salvo is one).
+const LAUNCH_ANNOUNCED_EVERY: u64 = 150;
 
 /// The sides of Supreme Commander's factions (their mod, made from the player's own copy): the
 /// soundtrack by side plays Forged Alliance's music when the player commands one.
@@ -283,6 +290,9 @@ impl GameAudio {
             log::warn!("sound categories unavailable: {e}");
             SoundCategories::default()
         });
+        let mut engine = engine;
+        // (Their sound sets, named wherever a sound's file name goes.)
+        engine.set_sound_sets(categories.sets().clone());
         let interface = ta_audio::UiSounds::load(vfs.as_ref()).unwrap_or_else(|e| {
             log::warn!("interface sounds unavailable: {e}");
             ta_audio::UiSounds::default()
@@ -322,6 +332,7 @@ impl GameAudio {
             menu_sounds: std::collections::BTreeMap::new(),
             menu_music: None,
             in_menus: false,
+            units: units::UnitSounds::default(),
         };
         audio.ta_music = audio.engine.music().config().clone();
         audio.fa_tracks = fa_tracks(vfs.as_ref());
@@ -345,6 +356,10 @@ impl GameAudio {
             return;
         }
         let pos = sim.unit(id).map(|u| u.pos.to_f32()).unwrap_or_default();
+        // (The unit the player sent somewhere, to be heard arriving.)
+        if event == SoundEvent::Ok {
+            self.ordered(sim, id);
+        }
         if let Some(cat) = self.unit_category(sim, id).cloned() {
             let voice = self.engine.play_unit_sound(&cat, event, pos, 1.0);
             if self.sing && event.is_acknowledgement() && !voice.is_none() {
@@ -399,6 +414,34 @@ impl GameAudio {
         self.engine.play_at(name, pos.to_array(), volume);
     }
 
+    /// An effect's sound: TA's where it is, or a unit's own for it (a wreck crashing, sinking,
+    /// a building coming down) where its sound category gives one.
+    pub fn play_effect(&mut self, sim: &Sim, sound: crate::effects::EffectSound) {
+        if let Some((type_id, event)) = sound.unit
+            && self.type_has(sim, type_id, event)
+        {
+            self.type_sound(sim, type_id, &[event], sound.pos.to_array(), sound.volume);
+            return;
+        }
+        self.play_ambient(sound.name, sound.pos, sound.volume);
+    }
+
+    /// Whether unit type `type_id`'s sound category gives `event`.
+    fn type_has(&self, sim: &Sim, type_id: usize, event: SoundEvent) -> bool {
+        type_id < sim.types.types.len() && self.categories.try_category(&sim.types.get(type_id).def.sound_category).is_some_and(|c| c.get(event).is_some())
+    }
+
+    /// The local player's side's alert for `event` (its alerts category's: Forged Alliance's
+    /// announcer), played over the battle: false where the side has none (TA's own).
+    fn side_alert(&mut self, sim: &Sim, player: u8, event: SoundEvent) -> bool {
+        let Some(side) = sim.players.get(player as usize).map(|p| p.side.clone()) else { return false };
+        let named = sim.data.sides.iter().find(|s| s.name.eq_ignore_ascii_case(&side)).map(|s| s.alerts.clone());
+        let Some(alerts) = self.categories.alerts(&side, named.as_deref()).cloned() else { return false };
+        let Some(name) = self.engine.pick(&alerts, event) else { return false };
+        self.engine.play(&name, PlayParams::voice(1.0).priority(ta_audio::Priority::Critical).kind(SoundKind::Alert));
+        true
+    }
+
     /// `viewer`: whose eyes the view uses (none: everything is seen); the world's sounds of
     /// what they cannot see are not heard.
     pub fn on_event(&mut self, e: &SimEvent, sim: &Sim, local_player: u8, viewer: Option<u8>) {
@@ -411,26 +454,53 @@ impl GameAudio {
                 if !seen(*pos) && !(crate::game::nuclear::strategic(&sim.weapon_types.types[*weapon]) && viewer.zip(*player).is_some_and(|(v, o)| sim.allied(v, o))) => {}
             SimEvent::NanoSpray { builder, .. } | SimEvent::Reclaiming { builder, .. } if !unit_seen(*builder) => {}
             SimEvent::UnitLoaded { transport, .. } | SimEvent::UnitUnloaded { transport, .. } if !unit_seen(*transport) => {}
-            SimEvent::WeaponFired { weapon, pos, .. } => {
+            SimEvent::WeaponFired { unit, weapon, pos, burst_start, .. } => {
                 let w = &sim.weapon_types.types[*weapon].def;
-                if !w.sound_start.is_empty() {
-                    self.engine.play_at(&w.sound_start, pos.to_f32(), 0.8);
+                // (Under the water, its sound for there where it has one; with `soundtrigger`,
+                // once a burst.)
+                let under = pos.y < sim.world.sea_level && !w.sound_start_water.is_empty();
+                let name = if under { &w.sound_start_water } else { &w.sound_start };
+                if !name.is_empty() && (*burst_start || !w.sound_trigger) {
+                    self.engine.play_at(name, pos.to_f32(), 0.8);
+                }
+                self.weapon_loop(sim, *unit, *weapon, pos.to_f32());
+                // A strategic missile's launch, announced by the player's side where it has an
+                // announcer (at most one every few seconds: a salvo is one).
+                if crate::game::nuclear::strategic(&sim.weapon_types.types[*weapon]) && self.units.announced.is_none_or(|at| sim.tick >= at + LAUNCH_ANNOUNCED_EVERY) && self.side_alert(sim, local_player, SoundEvent::NuclearLaunch) {
+                    self.units.announced = Some(sim.tick);
                 }
                 self.intensity += 0.15;
             }
-            SimEvent::Explosion { weapon, pos, water, .. } => {
-                let w = &sim.weapon_types.types[*weapon].def;
-                let name = if *water && !w.sound_water.is_empty() { &w.sound_water } else { &w.sound_hit };
-                if !name.is_empty() {
-                    self.engine.play_at(name, pos.to_f32(), 1.0);
+            SimEvent::Explosion { weapon, pos, water, death_of, .. } => {
+                // (A unit's death blast: its own death sound in the blast's place, where its sound
+                // category gives one.)
+                match death_of.filter(|&t| self.type_has(sim, t, SoundEvent::Death)) {
+                    Some(t) => {
+                        self.type_sound(sim, t, &[SoundEvent::Death], pos.to_f32(), 1.0);
+                    }
+                    None => {
+                        let w = &sim.weapon_types.types[*weapon].def;
+                        let name = if *water && !w.sound_water.is_empty() { &w.sound_water } else { &w.sound_hit };
+                        if !name.is_empty() {
+                            self.engine.play_at(name, pos.to_f32(), 1.0);
+                        }
+                    }
                 }
                 self.intensity += 0.3;
             }
-            SimEvent::UnitExploded { pos, big, .. } => {
-                self.engine.play_at(if *big { "xplolrg1" } else { "xplomed2" }, pos.to_f32(), 1.0);
+            SimEvent::UnitExploded { pos, big, type_id, .. } => {
+                if self.type_has(sim, *type_id, SoundEvent::Death) {
+                    self.type_sound(sim, *type_id, &[SoundEvent::Death], pos.to_f32(), 1.0);
+                } else {
+                    self.engine.play_at(if *big { "xplolrg1" } else { "xplomed2" }, pos.to_f32(), 1.0);
+                }
                 self.intensity += 1.0;
             }
-            SimEvent::UnitCompleted { id, .. } => {
+            SimEvent::UnitCompleted { id, type_id } => {
+                // Done, where it stands (seen): its `donebuilt`.
+                if let Some(pos) = sim.unit(*id).map(|u| u.pos).filter(|p| seen(*p)) {
+                    self.type_sound(sim, *type_id, &[SoundEvent::DoneBuilt], pos.to_f32(), 1.0);
+                }
                 if sim.unit(*id).is_some_and(|u| u.owner == local_player) {
                     // Factory-built units announce themselves; buildings chime.
                     if let Some(cat) = self.unit_category(sim, *id).cloned() {
@@ -475,11 +545,24 @@ impl GameAudio {
                 }
             }
             SimEvent::UnderAttack { player, unit, .. }
-                // A global alert (not placed in the world), in the attacked unit's voice.
+                // A global alert (not placed in the world), in the attacked unit's voice (one of
+                // its variants), or the side's announcer for its commander.
                 if *player == local_player => {
-                    let name = self.unit_category(sim, *unit).and_then(|c| c.get(SoundEvent::UnderAttack)).unwrap_or("warning1").to_string();
-                    self.engine.play(&name, PlayParams::ui(0.9).kind(SoundKind::Alert));
+                    let commander = sim.unit(*unit).is_some_and(|u| sim.unit_type(u).def.is_commander);
+                    if !(commander && self.side_alert(sim, local_player, SoundEvent::CommanderAttacked)) {
+                        let cat = self.unit_category(sim, *unit).cloned();
+                        let name = cat.and_then(|c| self.engine.pick(&c, SoundEvent::UnderAttack)).unwrap_or_else(|| "warning1".to_string());
+                        self.engine.play(&name, PlayParams::ui(0.9).kind(SoundKind::Alert));
+                    }
                 }
+            // A script's sound (COB `play-sound`), where its unit is.
+            SimEvent::ScriptSound { unit, sound } => {
+                if let Some(u) = sim.unit(*unit).filter(|u| seen(u.pos))
+                    && let Some(name) = sim.unit_type(u).script.as_ref().and_then(|s| s.script.sounds.get(usize::try_from(*sound).ok()?).cloned())
+                {
+                    self.engine.play_at(&name, u.pos.to_f32(), 1.0);
+                }
+            }
             _ => {}
         }
     }
@@ -643,12 +726,14 @@ impl GameAudio {
         for kind in [SoundKind::World, SoundKind::Voice, SoundKind::Alert] {
             self.engine.stop_kind(kind);
         }
+        self.units.forget();
         self.intensity = 0.0;
     }
 
     /// Leave a battlefield or narration behind while the soundtrack continues.
     pub fn reset_scene(&mut self) {
         self.engine.stop_all();
+        self.units.forget();
         self.movie = ta_audio::SoundHandle::NONE;
         self.narration = ta_audio::SoundHandle::NONE;
         self.wind = ta_audio::SoundHandle::NONE;
@@ -1256,6 +1341,222 @@ number = 1
         // Looking along +z, -x is on the right.
         assert!(heard(eye + glam::Vec3::new(-150.0, 0.0, 0.0)).pan > 0.1);
         assert!(heard(eye + glam::Vec3::new(150.0, 0.0, 0.0)).pan < -0.1);
+    }
+
+    /// A battle for the unit sounds' tests: a tank whose category gives its moves and death (a
+    /// sound set), a builder, a radar at work, a commander of a side with an announcer, a gun of a
+    /// loop, a burst gun of one sound a burst, a nuke; the sounds in a sound add-on, their files
+    /// in the bank. The audio logs what it plays.
+    fn sounding() -> (std::path::PathBuf, GameAudio, Sim) {
+        use ta_sim::{Fx, FxVec3, PlayerSetup, UnitTypes};
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("ta-unit-sounds-{}-{nanos}", std::process::id()));
+        std::fs::create_dir_all(dir.join("gamedata")).unwrap();
+        std::fs::write(dir.join("gamedata/sound_test.tdf"), "[MOVER]\n{\nstartmove=go;\nstopmove=halt;\nmoveloop=engine;\ndeath=BOOMSET;\ncrash=wreck;\nok1=yes;\narrived1=there;\n}\n\
+            [WORKER]\n{\nbuildloop=drill;\nbuildstop=drilled;\n}\n[DISH]\n{\nactiveloop=hum;\nopen=unfold;\nclose=fold;\ndonebuilt=done;\n}\n\
+            [ALERTS_UEF]\n{\ncommanderattacked=help;\nnuclearlaunch=launch;\n}\n[STARTER]\n{\nstartmove=go;\nstopmove=halt;\n}\n[FARMOVER]\n{\nmoveloop=FARSET;\n}\n\
+            [SOUNDSETS]\n{\n[BOOMSET]\n{\nsound1=boom;\nvolume=0.5;\n}\n[FARSET]\n{\nsound1=engine;\nradius=3;\n}\n}\n").unwrap();
+        let mut vfs = Vfs::new();
+        vfs.mount_mod_dir(&dir, "sounds").unwrap();
+        let vfs = Arc::new(vfs);
+        let bank = Arc::new(SoundBank::from_vfs(vfs.clone()));
+        for name in ["go", "halt", "engine", "boom", "wreck", "yes", "there", "drill", "drilled", "hum", "unfold", "fold", "done", "help", "launch", "whirr", "spun", "fire", "bubble", "zap", "xplomed2", "xplosml2"] {
+            bank.insert(name, ta_audio::SoundData::new(1000, 1, vec![0.2; 3000]).unwrap());
+        }
+        let mut engine = AudioEngine::new_offline(AudioSettings::default(), bank, 1000);
+        engine.set_logging(true);
+        let audio = GameAudio::with_engine(engine, vfs);
+        let mut data = ta_data::GameData::load(&Vfs::new());
+        for text in [
+            "[UNITINFO] { UnitName=TANK; CanMove=1; MaxVelocity=3; Acceleration=1; BrakeRate=1; TurnRate=2000; FootprintX=2; FootprintZ=2; SoundCategory=MOVER; }",
+            "[UNITINFO] { UnitName=RADAR; FootprintX=2; FootprintZ=2; SoundCategory=DISH; OnOffable=1; }",
+            "[UNITINFO] { UnitName=BOSS; Commander=1; CanMove=1; MaxVelocity=1; FootprintX=2; FootprintZ=2; SoundCategory=MOVER; }",
+            "[UNITINFO] { UnitName=STARTER; CanMove=1; MaxVelocity=3; Acceleration=1; BrakeRate=1; TurnRate=2000; FootprintX=2; FootprintZ=2; SoundCategory=STARTER; }",
+            "[UNITINFO] { UnitName=FARTANK; CanMove=1; MaxVelocity=3; Acceleration=1; BrakeRate=1; TurnRate=2000; FootprintX=2; FootprintZ=2; SoundCategory=FARMOVER; }",
+        ] {
+            data.units.push(ta_data::UnitDef::from_tdf(&ta_formats::tdf::parse(text).sections[0]).unwrap());
+        }
+        data.weapons.push(ta_data::WeaponDef { name: "SPINNER".into(), sound_start: "fire".into(), sound_loop: "whirr".into(), sound_stop: "spun".into(), sound_start_water: "bubble".into(), reload_time: 0.1, ..Default::default() });
+        data.weapons.push(ta_data::WeaponDef { name: "EMG".into(), sound_start: "fire".into(), sound_trigger: true, ..Default::default() });
+        data.weapons.push(ta_data::WeaponDef { name: "NUKE".into(), stockpile: true, targetable: true, area_of_effect: 512.0, ..Default::default() });
+        data.sides.push(ta_data::SideDef { name: "UEF".into(), ..Default::default() });
+        let data = Arc::new(data);
+        let mut types = UnitTypes::compile(&data, &|_| None);
+        // (The radar's script plays its sound 0.)
+        let script = ta_formats::cob::CobScript { sounds: vec!["zap".into()], ..Default::default() };
+        types.types[1].script = Some(Arc::new(ta_sim::cob::CobProgram::new(script, &[])));
+        let map = ta_formats::tnt::TntMap { width: 64, height: 64, sea_level: 0, tiles: Vec::new(), tile_map: Vec::new(), heights: vec![0; 4096], features: vec![ta_formats::tnt::FEATURE_NONE; 4096], feature_names: Vec::new(), minimap: Default::default(), flags: Vec::new() };
+        let player = PlayerSetup { side: "UEF".into(), color: 0, start: FxVec3::ZERO, metal: Fx::from_int(1000), energy: Fx::from_int(1000), ai: false };
+        let sim = Sim::new(Arc::new(types), data, &map, &ta_data::MapInfo::default(), 0, &[player], 7);
+        (dir, audio, sim)
+    }
+
+    /// The files started since the last look, in order.
+    fn started(audio: &mut GameAudio) -> Vec<String> {
+        audio.engine.take_log().into_iter().filter_map(|e| match e {
+            ta_audio::PlayEvent::Start(s) => Some(s.path.trim_start_matches("sounds/").trim_end_matches(".wav").to_string()),
+            _ => None,
+        }).filter(|p| p != "__wind").collect()
+    }
+
+    fn step(sim: &mut Sim, audio: &mut GameAudio, ticks: usize, commands: &[ta_sim::sim::Command]) {
+        for i in 0..ticks {
+            sim.step(if i == 0 { commands } else { &[] });
+            for e in sim.take_events() {
+                audio.on_event(&e, sim, 0, None);
+            }
+            audio.update_units(sim, None, 0, false);
+            audio.update_idle(1.0 / 30.0);
+        }
+    }
+
+    /// A unit heard setting off (`startmove`), on its way (`moveloop`, a loop following it),
+    /// coming to a stop (`stopmove`, the loop stopped), arriving where the player sent it
+    /// (`arrived`, after its `ok`), dying (`death`, a set, in the blast's place); a building
+    /// opening (`open`), at work (`activeloop`), closing (`close`).
+    #[test]
+    fn units_are_heard_as_they_go_about_the_battle() {
+        use ta_sim::{FxVec3, Order};
+        let (dir, mut audio, mut sim) = sounding();
+        let tank = sim.spawn_unit(0, 0, FxVec3::from_ints(100, 0, 100), 0, true).unwrap();
+        step(&mut sim, &mut audio, 2, &[]);
+        assert!(started(&mut audio).is_empty(), "nothing on the first look");
+        audio.unit_voice(&sim, tank, SoundEvent::Ok);
+        let go = ta_sim::sim::Command::Order { player: 0, units: vec![tank], order: Order::Move(FxVec3::from_ints(300, 0, 100)), queue: false };
+        step(&mut sim, &mut audio, 10, &[go]);
+        let heard = started(&mut audio);
+        assert_eq!(heard.iter().take(3).map(String::as_str).collect::<Vec<_>>(), ["yes", "go", "engine"], "{heard:?}");
+        assert_eq!(audio.units.playing()[0], 1, "the loop on");
+        step(&mut sim, &mut audio, 240, &[]);
+        let heard = started(&mut audio);
+        assert!(heard.contains(&"halt".to_string()) && heard.contains(&"there".to_string()), "{heard:?}");
+        assert_eq!(audio.units.playing()[0], 0, "the loop off");
+        // Its death: its own sound (the set's file), not the blast's.
+        audio.on_event(&SimEvent::Explosion { weapon: 0, pos: FxVec3::from_ints(300, 0, 100), water: false, when: ta_sim::Fx::ZERO, player: Some(0), death_of: Some(0) }, &sim, 0, None);
+        audio.on_event(&SimEvent::UnitExploded { id: tank, pos: FxVec3::from_ints(700, 0, 100), big: false, type_id: 0 }, &sim, 0, None);
+        assert_eq!(started(&mut audio), ["boom", "boom"]);
+        audio.on_event(&SimEvent::UnitExploded { id: tank, pos: FxVec3::from_ints(300, 0, 100), big: false, type_id: 1 }, &sim, 0, None);
+        assert_eq!(started(&mut audio), ["xplomed2"], "TA's blast for a unit without one");
+        // A wreck crashing: its own; a building coming down without one: TA's.
+        audio.play_effect(&sim, crate::effects::EffectSound::of_unit(0, SoundEvent::Crash, "xplomed2", glam::Vec3::new(100.0, 0.0, 100.0), 0.8));
+        audio.play_effect(&sim, crate::effects::EffectSound::of_unit(1, SoundEvent::Collapse, "xplosml2", glam::Vec3::new(100.0, 0.0, 100.0), 0.8));
+        assert_eq!(started(&mut audio), ["wreck", "xplosml2"]);
+        // The radar: done where it stands, open, at work, closed.
+        let radar = sim.spawn_unit(1, 0, FxVec3::from_ints(200, 0, 300), 0, false).unwrap();
+        step(&mut sim, &mut audio, 1, &[]);
+        audio.on_event(&SimEvent::UnitCompleted { id: radar, type_id: 1 }, &sim, 0, None);
+        assert_eq!(started(&mut audio), ["done"]);
+        let dish = sim.spawn_unit(1, 0, FxVec3::from_ints(250, 0, 300), 0, true).unwrap();
+        let switch = |on| ta_sim::sim::Command::SetActive { player: 0, units: vec![dish], on };
+        step(&mut sim, &mut audio, 2, &[switch(false)]);
+        started(&mut audio);
+        step(&mut sim, &mut audio, 3, &[switch(true)]);
+        assert_eq!(started(&mut audio), ["unfold", "hum"], "opened, then at work");
+        assert_eq!(audio.units.playing()[2], 1);
+        step(&mut sim, &mut audio, 3, &[switch(false)]);
+        assert_eq!(started(&mut audio), ["fold"]);
+        assert_eq!(audio.units.playing()[2], 0);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A weapon's loop on from its first shot while the shots keep coming, its `soundstop` once
+    /// they stop; a burst's sound once a burst (`soundtrigger`); a shot from under the water its
+    /// own; the announcer for the commander and a launch (once for a salvo); a script's sound.
+    #[test]
+    fn weapons_announcers_and_scripts_are_heard() {
+        use ta_sim::{Fx, FxVec3};
+        let (dir, mut audio, mut sim) = sounding();
+        let tank = sim.spawn_unit(0, 0, FxVec3::from_ints(100, 0, 100), 0, true).unwrap();
+        let boss = sim.spawn_unit(2, 0, FxVec3::from_ints(150, 0, 100), 0, true).unwrap();
+        let radar = sim.spawn_unit(1, 0, FxVec3::from_ints(200, 0, 100), 0, true).unwrap();
+        step(&mut sim, &mut audio, 2, &[]);
+        started(&mut audio);
+        let fired = |weapon, y, burst_start| SimEvent::WeaponFired { unit: tank, weapon, pos: FxVec3::from_ints(100, y, 100), target: FxVec3::from_ints(400, 0, 100), burst_start };
+        audio.on_event(&fired(0, 10, true), &sim, 0, None);
+        assert_eq!(started(&mut audio), ["fire", "whirr"]);
+        for _ in 0..4 {
+            step(&mut sim, &mut audio, 3, &[]);
+            audio.on_event(&fired(0, 10, false), &sim, 0, None);
+        }
+        assert_eq!(started(&mut audio), ["fire"; 4], "the loop goes on, unstarted");
+        assert_eq!(audio.units.playing()[3], 1);
+        step(&mut sim, &mut audio, 30, &[]);
+        assert_eq!(started(&mut audio), ["spun"], "stopped as the shots stopped");
+        assert_eq!(audio.units.playing()[3], 0);
+        audio.on_event(&fired(0, -20, true), &sim, 0, None);
+        assert_eq!(started(&mut audio)[0], "bubble", "from under the water");
+        audio.on_event(&fired(1, 10, false), &sim, 0, None);
+        assert!(started(&mut audio).is_empty(), "a burst's sound not again");
+        audio.on_event(&fired(1, 10, true), &sim, 0, None);
+        assert_eq!(started(&mut audio), ["fire"]);
+        // The announcer: the commander attacked (a unit not: its own, TA's), launches.
+        audio.on_event(&SimEvent::UnderAttack { player: 0, unit: boss, pos: FxVec3::ZERO }, &sim, 0, None);
+        audio.on_event(&SimEvent::UnderAttack { player: 0, unit: radar, pos: FxVec3::ZERO }, &sim, 0, None);
+        assert_eq!(started(&mut audio), ["help"], "the radar has no underattack and TA's warning is not in the bank");
+        audio.on_event(&fired(2, 10, true), &sim, 0, None);
+        audio.on_event(&fired(2, 10, true), &sim, 0, None);
+        assert_eq!(started(&mut audio), ["launch"], "a salvo announced once");
+        // The radar's script plays its sound.
+        audio.on_event(&SimEvent::ScriptSound { unit: radar, sound: 0 }, &sim, 0, None);
+        audio.on_event(&SimEvent::ScriptSound { unit: radar, sound: 9 }, &sim, 0, None);
+        assert_eq!(started(&mut audio), ["zap"]);
+        // A shield's hook, and the scene's end stopping every loop.
+        audio.on_event(&fired(0, 10, true), &sim, 0, None);
+        audio.reset_scene();
+        assert_eq!(audio.units.playing(), [0; 4]);
+        audio.shield_changed(&sim, radar, true);
+        let _ = (Fx::ZERO, std::fs::remove_dir_all(dir));
+    }
+
+    /// Of many units on the move, the nearest alone are heard looping; none while the battle is
+    /// paused.
+    #[test]
+    fn only_the_nearest_units_loop() {
+        use ta_sim::{FxVec3, Order};
+        let (dir, mut audio, mut sim) = sounding();
+        let tanks: Vec<_> = (0..14).map(|i| sim.spawn_unit(0, 0, FxVec3::from_ints(100 + 40 * i, 0, 100 + 40 * (i % 3)), 0, true).unwrap()).collect();
+        step(&mut sim, &mut audio, 2, &[]);
+        let go = ta_sim::sim::Command::Order { player: 0, units: tanks, order: Order::Move(FxVec3::from_ints(600, 0, 800)), queue: false };
+        step(&mut sim, &mut audio, 20, &[go]);
+        assert_eq!(audio.units.playing()[0], 8, "the eight nearest");
+        // (Silent while the battle stands still, back as it goes on.)
+        audio.update_units(&sim, None, 0, true);
+        assert_eq!(audio.units.playing(), [0; 4]);
+        audio.update_units(&sim, None, 0, false);
+        assert_eq!(audio.units.playing()[0], 8);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Units that only set off and stop (`startmove`, no `moveloop`) take no loop's place: ten
+    /// of them nearer leave a farther tank's loop on.
+    #[test]
+    fn a_unit_without_a_loop_takes_no_loops_place() {
+        use ta_sim::{FxVec3, Order};
+        let (dir, mut audio, mut sim) = sounding();
+        let mut movers: Vec<_> = (0..10).map(|i| sim.spawn_unit(3, 0, FxVec3::from_ints(100 + 20 * i, 0, 100), 0, true).unwrap()).collect();
+        movers.push(sim.spawn_unit(0, 0, FxVec3::from_ints(400, 0, 300), 0, true).unwrap());
+        step(&mut sim, &mut audio, 2, &[]);
+        let go = ta_sim::sim::Command::Order { player: 0, units: movers, order: Order::Move(FxVec3::from_ints(600, 0, 700)), queue: false };
+        step(&mut sim, &mut audio, 10, &[go]);
+        assert_eq!(audio.units.playing()[0], 1, "the tank's loop on, the ten without one taking no place");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A unit whose sound reaches farther (a sound set's `radius`) is listened to farther than an
+    /// ordinary sound: its loop heard where a plain tank's is not.
+    #[test]
+    fn a_far_reaching_sound_is_listened_to_farther() {
+        use ta_sim::{FxVec3, Order};
+        let (dir, mut audio, mut sim) = sounding();
+        // (A narrow view: an ordinary sound heard to 440 px round the listener.)
+        audio.engine.set_listener([0.0; 3], [0.0, 0.0, -1.0], [1.0, 0.0, 0.0], 400.0);
+        let far = sim.spawn_unit(4, 0, FxVec3::from_ints(600, 0, 300), 0, true).unwrap();
+        let plain = sim.spawn_unit(0, 0, FxVec3::from_ints(600, 0, 340), 0, true).unwrap();
+        step(&mut sim, &mut audio, 2, &[]);
+        let go = ta_sim::sim::Command::Order { player: 0, units: vec![far, plain], order: Order::Move(FxVec3::from_ints(700, 0, 400)), queue: false };
+        step(&mut sim, &mut audio, 10, &[go]);
+        assert_eq!(audio.units.playing()[0], 1, "the far-reaching one alone");
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

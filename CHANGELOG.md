@@ -3,6 +3,22 @@
 ## Unreleased
 
 ### Added
+- Supreme Commander: Forged Alliance's factions sound as they do in their game: their guns, beams
+  and missiles, the blasts their shots end in, their deaths and wrecks crashing, their engines on
+  the move, their builders and buildings at work, their selection, and the announcer telling you
+  your commander is under attack or a nuclear launch is detected, all made from your own copy's
+  sound banks when the factions are made (63 MB more, a few seconds). Factions made before say
+  UPDATE on the Mods page ([SUPCOM_UNITS.md](docs/SUPCOM_UNITS.md), "Sounds").
+- Sounds for mods ([MODDING.md](docs/MODDING.md), "Sounds"): sound add-ons
+  (`gamedata/sound_<name>.tdf`) laid over TA's sound table rather than replacing it; sound sets
+  (variants with weights, a level and pitch picked within ranges, a priority, how far each is
+  heard, how many play at once, no repeats) wherever a sound's name goes; a unit's own death,
+  crash, sink and collapse sounds, its moves (setting off, stopping, an engine loop following its
+  speed), take-off and landing, the loops of its building, reclaiming and capturing, its building
+  at work, opening and closing, and its shield's; a category taking the rest from another's
+  (`base`); a weapon's loop for beams and gatlings, its sound under the water; a script's sounds
+  (`play-sound`); a side's announcer; FLAC sounds, and Ogg sounds kept mono so they pan. Sounds
+  keep nobody out of a multiplayer battle.
 - Taking control of a unit: riding along in one of your own ground units, hovercraft or ships (the
   perspective key, Q), press E to drive it yourself. It goes where you look: W ahead, A and D to
   either side and S back, still facing what you look at (astern at half speed), the unit coming
@@ -125,6 +141,9 @@
 - The mod check (MOD INFO, `ta-tools validate-mod`) checks a side's art in the classic interface
   where its side data names it: its panels' GAF (`intgaf`) and its emblem (`logogaf`, `logo`)
   ([MOD_VALIDATION.md](docs/MOD_VALIDATION.md)).
+- A unit sent somewhere says it has arrived (its `arrived` reply), and its under-attack warning
+  picks among its variants. Weapons with `soundtrigger=1` (TA's EMGs) play their sound once a
+  burst, as their sound holds the whole burst, rather than over it once a shot.
 - The enemy Commanders' transmissions (their greetings, taunts and answers coming in at the top
   left of the battlefield) are turned off with Options, GAMEPLAY: ENEMY TRANSMISSIONS, as COMPUTER
   PLAYERS TALK was called. It now takes effect at once, in a battle under way too: the card on the

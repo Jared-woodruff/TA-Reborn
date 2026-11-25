@@ -124,6 +124,14 @@ pub fn distance_gain(distance: f32, settings: &SpatialSettings) -> f32 {
 
 /// Places a sound at `position` relative to the listener.
 pub fn spatialize(listener: &Listener, settings: &SpatialSettings, position: [f32; 3]) -> Spatial {
+    spatialize_within(listener, settings, position, 1.0)
+}
+
+/// [`spatialize`] for a sound heard `radius` times as far as an ordinary one (a sound set's
+/// `radius`): the hearing curve's distances, its full-volume one too, that many times theirs. The
+/// pan stays where the sound is.
+pub fn spatialize_within(listener: &Listener, settings: &SpatialSettings, position: [f32; 3], radius: f32) -> Spatial {
+    let radius = if radius.is_finite() && radius > 0.0 { radius.min(16.0) } else { 1.0 };
     let half = listener.view_width * 0.5;
     let l = listener.position;
     let d = [position[0] - l[0], position[1] - l[1], position[2] - l[2]];
@@ -131,7 +139,7 @@ pub fn spatialize(listener: &Listener, settings: &SpatialSettings, position: [f3
     let along = dot(d, listener.forward);
     let total_sq = dot(d, d);
     // Whatever is neither across nor along the screen is height; it counts at full weight.
-    let distance = total_sq.max(across * across + along * along).sqrt() / half;
+    let distance = total_sq.max(across * across + along * along).sqrt() / half / radius;
     let zoom = if settings.zoom_rolloff > 0.0 && listener.view_width > settings.reference_view_width {
         (settings.reference_view_width / listener.view_width).powf(settings.zoom_rolloff).max(settings.min_zoom_gain)
     } else {
@@ -218,6 +226,21 @@ mod tests {
         assert!((g - 0.5).abs() < 1e-6, "{g}");
         let off = SpatialSettings { zoom_rolloff: 0.0, ..s };
         assert_eq!(spatialize(&wide, &off, p).gain, 1.0);
+    }
+
+    /// A sound set's radius stretches the curve (heard twice as far at 2, half as far at 0.5),
+    /// the pan where the sound is.
+    #[test]
+    fn a_radius_stretches_the_hearing_curve() {
+        let s = SpatialSettings::default();
+        let l = listener();
+        let near = spatialize(&l, &s, at(640.0, 0.0));
+        let far = spatialize_within(&l, &s, at(1280.0, 0.0), 2.0);
+        assert!((near.gain - far.gain).abs() < 1e-6, "twice as far at twice the radius");
+        assert_eq!(spatialize_within(&l, &s, at(640.0, 0.0), 0.5).gain, 0.0, "the screen's edge is out of earshot at half");
+        assert_eq!(spatialize_within(&l, &s, at(320.0, 0.0), 1.0), spatialize(&l, &s, at(320.0, 0.0)));
+        assert_eq!(spatialize_within(&l, &s, at(320.0, 0.0), 3.0).pan, spatialize(&l, &s, at(320.0, 0.0)).pan);
+        assert_eq!(spatialize_within(&l, &s, at(320.0, 0.0), f32::NAN), spatialize(&l, &s, at(320.0, 0.0)), "nonsense is ignored");
     }
 
     #[test]

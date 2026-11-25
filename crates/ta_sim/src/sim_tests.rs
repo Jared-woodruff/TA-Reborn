@@ -2541,7 +2541,7 @@ fn scripts_of_random_code_never_stop_the_battle() {
             functions.push(CobFunction { name: name.into(), offset: code.len() as u32 });
             code.extend([op::PUSH_CONSTANT, 7, op::POP_STATIC, 0, op::JUMP, rng.range_i32(0, len as i32) as u32]);
         }
-        let script = CobScript { functions, code, pieces: vec!["base".into(), "turret".into(), "barrel".into(), "flare".into()], static_var_count: 3 };
+        let script = CobScript { functions, code, pieces: vec!["base".into(), "turret".into(), "barrel".into(), "flare".into()], static_var_count: 3, sounds: Vec::new() };
         let program = Arc::new(CobProgram::new(script, &[]));
         let first = battle_of_scripts(&program);
         if seed == 1 {

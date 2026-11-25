@@ -627,3 +627,19 @@ own side round it, on any unit's information page, is 友军单位 (己方 is th
 | {rate} hit points a second / {share}% of their health a second, {rate} at most | 每秒 {rate} 点生命值 / 每秒最大生命值的 {share}%，最多 {rate} 点 |
 | minimum range / Fires no nearer than {range} | 最小射程 / 最小射程 {range} |
 | stun, stunned / Stuns for {secs} s / TA's paralyzers (paralyzer=1) | 麻痹 (as Paralyzed 已麻痹) / 造成 {secs} 秒麻痹 / TA 的麻痹武器 |
+
+## Sounds a mod shapes: sound sets, sound add-ons, a side's alerts (`validation.rs`, `supcom_factions.rs`)
+
+Keys stay as written (sound1=, sound2=, volume=, pitch=, radius=, maxplaying=, fadeout=, priority= with
+low, normal, high); what a key takes is 填 (radius= 填一个大于 0 的数). Labels of what names a file take 的,
+as {name} 的开火音效.
+
+| English | 简体中文 |
+|---|---|
+| sound set / sound category / sound add-on (gamedata/sound_<name>.tdf) | 音效集 (as tile set 图块集) / 音效类别 / 音效附加文件 (as add-on race 附加种族) |
+| sound set {set} {key} / weight (a variant's) | 音效集 {set} 的 {key} / 权重 |
+| {name} firing sound under the water / firing loop / firing loop's end | {name} 的水下开火音效 / {name} 的开火循环音效 / {name} 的开火循环结束音效 |
+| {category} base (the category it takes the sounds it lacks from) | {category} 的基础类别 (as base game 基础游戏) |
+| {name} alerts (a side's announcer) | {name} 的警报语音 (as alerts 警报 in the UNIT REPLIES help) |
+| FLAC stream information | 流信息 |
+| the units' sounds (a step of the factions import, in 正在制作 {unit}) | 单位音效 |

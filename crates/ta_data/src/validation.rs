@@ -46,13 +46,31 @@ mod abilities;
 /// nano-lathe (`script.builder`); 22: a side's art in the classic interface where its side data
 /// names it, its panels' GAF (`intgaf`) and its emblem (`logogaf`, `logo`); 23: abilities, a
 /// weapon's minimum range (`weapon.min_range`) and stun (`weapon.paralyze`), a unit's mending aura
-/// (`unit.regen_aura`) and remote viewing (`unit.remote_view`), a toggle's weapons).
-pub const SCHEMA_VERSION: u32 = 23;
+/// (`unit.regen_aura`) and remote viewing (`unit.remote_view`), a toggle's weapons; 24: the sound
+/// add-ons, `gamedata/sound_<name>.tdf`, read as the game lays them over `gamedata/sound.tdf`, TA
+/// Reborn's own sound keys, sound sets (`sound.set`) and the names that name them, a side's
+/// `alerts`, a weapon's `soundloop`, `soundstop` and `soundstartwater`, and Ogg and FLAC sounds in
+/// `sounds/`).
+pub const SCHEMA_VERSION: u32 = 24;
 
-/// The keys of `gamedata/sound.tdf`'s categories the game plays (`ta_audio`'s sound events), each
-/// with or without a variant number (`select1`, `select2`…), with `count0` to `count9`; the
-/// others (`load`, `unload`…) it never plays. (A test in `ta_audio` holds this to its events.)
-pub const PLAYED_SOUND_KEYS: &[&str] = &["select", "ok", "arrived", "cant", "underattack", "build", "repair", "working", "activate", "deactivate", "unitcomplete", "cloak", "uncloak", "capture", "canceldestruct"];
+/// The keys of the sound tables' categories the game plays (`ta_audio`'s sound events: TA's, then
+/// TA Reborn's own), each with or without a variant number (`select1`, `select2`…), with
+/// `count0` to `count9`; the others (`load`, `unload`…) it never plays. (A test in `ta_audio`
+/// holds this to its events.)
+pub const PLAYED_SOUND_KEYS: &[&str] = &[
+    "select", "ok", "arrived", "cant", "underattack", "build", "repair", "working", "activate", "deactivate", "unitcomplete", "cloak", "uncloak", "capture", "canceldestruct",
+    "death", "crash", "sink", "collapse", "startmove", "stopmove", "moveloop", "takeoff", "landing", "buildloop", "buildstop", "reclaimloop", "reclaimstop", "captureloop", "capturestop",
+    "donebuilt", "activeloop", "open", "close", "shieldon", "shieldoff", "commanderattacked", "nuclearlaunch",
+];
+
+/// The section of a sound table holding its sound sets (`ta_audio`'s `SoundCategories::SETS`).
+const SOUND_SETS: &str = "SOUNDSETS";
+
+/// Whether `path` is a sound table (`ta_audio::is_sound_table`): TA's `gamedata/sound.tdf`, or a
+/// sound add-on, `gamedata/sound_<name>.tdf`, laid over it.
+fn sound_table(path: &str) -> bool {
+    path == "gamedata/sound.tdf" || crate::compatibility::sound_add_on(path)
+}
 
 /// Whether the game plays a sound category's key (`select1`, `count3`): [`PLAYED_SOUND_KEYS`],
 /// each with or without a variant number, and `count0` to `count9`.
@@ -510,7 +528,9 @@ pub fn load_order_failure(error: &ta_vfs::mods::ModError) -> (&'static str, Word
 }
 
 fn severity_order(s: Severity) -> u8 { match s { Severity::Error => 0, Severity::Warning => 1, Severity::Info => 2 } }
-fn known(p: &str) -> bool { p.rsplit_once('.').is_some_and(|(_, e)| matches!(e, "3do" | "cob" | "gaf" | "tnt" | "pcx" | "tdf" | "fbi" | "gui" | "ota" | "fnt" | "pal" | "wav" | "features" | "surface" | "anims" | "dds")) }
+fn known(p: &str) -> bool {
+    p.rsplit_once('.').is_some_and(|(_, e)| matches!(e, "3do" | "cob" | "gaf" | "tnt" | "pcx" | "tdf" | "fbi" | "gui" | "ota" | "fnt" | "pal" | "wav" | "features" | "surface" | "anims" | "dds") || matches!(e, "ogg" | "flac") && p.starts_with("sounds/"))
+}
 
 /// Whether a page's button makes units, as the game reads the page: its `commonattribs` bit 4;
 /// on a hand-made page without them (the game reads its buttons all, keeping those that name
@@ -568,7 +588,8 @@ fn describe(reference: &str) -> Words {
         "move" => enf("movement class {name}", [("name", upper())]),
         "texture" => enf("texture {name}", [("name", upper())]),
         "sound" => enf("sound {name} ({path})", [("name", upper()), ("path", Fill::name(sound_path(name)))]),
-        "sounds" => enf("sound category {name} (gamedata/sound.tdf)", [("name", upper())]),
+        "sounds" => enf("sound category {name} (gamedata/sound.tdf or a sound add-on)", [("name", upper())]),
+        "soundset" => enf("sound set {name}", [("name", upper())]),
         "placed" => enf("unit or feature {name}", [("name", upper())]),
         "gaf" => match name.split_once('#') { Some((file, entry)) => enf("animation {entry} in {file}", [("entry", Fill::name(entry.to_ascii_uppercase())), ("file", Fill::name(file))]), None => Words::raw(name) },
         _ => Words::raw(reference),
@@ -623,6 +644,10 @@ pub fn sound_problem(bytes: &[u8]) -> Option<Words> {
     if !(bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WAVE") {
         if bytes.starts_with(b"OggS") {
             return (!ogg_stream_played(bytes)).then(|| Words::text(en("it is an Ogg file without a Vorbis or FLAC stream, the ones the game plays")));
+        }
+        // (FLAC: its stream information first, as the game's decoder reads it.)
+        if bytes.starts_with(b"fLaC") {
+            return (bytes.len() < 42 || bytes[4] & 0x7F != 0).then(|| Words::text(en("it is a FLAC file without its stream information")));
         }
         if bytes.len() >= 8 && (bytes.starts_with(b"DIGI") || bytes.starts_with(b"TALK")) {
             return (!humongous_samples(bytes)).then(|| Words::text(en("it is a Humongous sound block without its samples (no SDAT block within its length)")));
@@ -840,7 +865,8 @@ fn parse(vfs: &Vfs, path: &str, options: &Options) -> Parsed {
         "dds" => dds_content(&bytes),
         "fnt" => ta_formats::fnt::Font::parse(&bytes).map(|_| Content::Plain).map_err(|e| Failure::Invalid(e.to_string())),
         "pal" => ta_formats::image::Palette::parse(&bytes).map(|_| Content::Plain).map_err(|e| Failure::Invalid(e.to_string())),
-        "wav" => Ok(Content::Sound(sound_problem(&bytes))),
+        // (A sound of the sounds folder may be Ogg Vorbis or FLAC as well.)
+        "wav" | "ogg" | "flac" => Ok(Content::Sound(sound_problem(&bytes))),
         _ if bytes.len() > options.max_text_bytes => Err(Failure::TooLarge),
         // (TA ships some GUI pages in a binary form of its own: no text to lint.)
         _ => Ok(Content::Text { doc: tdf::parse_bytes(&bytes), syntax: if bytes.contains(&0) { Vec::new() } else { tdf::lint(&bytes) } }),
@@ -1406,6 +1432,47 @@ impl<'a> Scan<'a> {
         }
     }
 
+    /// A sound set of a sound table (`[SOUNDSETS]`): its variants' files as references, and what
+    /// in it plays nothing or is not read as written. A set of a name before it takes its place.
+    fn sound_set(&mut self, path: &str, s: &TdfSection) {
+        let first = self.report.issues.len();
+        let name = s.name.trim();
+        let set = || Fill::name(name.to_ascii_uppercase());
+        let mut refs = Vec::new();
+        let mut playable = 0;
+        let weight = |n: &str| s.get(&format!("weight{n}")).map(|w| w.trim().parse::<f64>().map_or(-1.0, |w| w.round()));
+        for (entry, value) in &s.entries {
+            let lower = entry.trim().to_ascii_lowercase();
+            let Some(number) = lower.strip_prefix("sound").filter(|n| n.chars().all(|c| c.is_ascii_digit())) else { continue };
+            if value.trim().is_empty() { continue; }
+            if weight(number).is_some_and(|w| w <= 0.0) { continue; }
+            playable += 1;
+            refs.push(Reference::new("file", &sound_path(value), enf("sound set {set} {key}", [("set", set()), ("key", Fill::name(entry.trim()))]), Severity::Warning));
+        }
+        if playable == 0 {
+            self.issue(Severity::Warning, "sound.set", path, enf("Sound set {set} has no sound to play: it plays nothing.", [("set", set())]), en("Name its sounds sound1=, sound2=… (files of sounds/), each with a weight above 0 where it gives one."));
+        }
+        // (Its numbers as the game reads them: one above 0, or two for a range.)
+        let numbers = |value: &str| -> Option<Vec<f64>> { value.split(|c: char| c.is_whitespace() || c == ',').filter(|p| !p.is_empty()).map(|p| p.parse::<f64>().ok().filter(|v| v.is_finite())).collect() };
+        for (entry, value) in &s.entries {
+            let lower = entry.trim().to_ascii_lowercase();
+            let fine = match lower.as_str() {
+                "volume" | "pitch" => numbers(value).is_some_and(|v| (1..=2).contains(&v.len()) && v.iter().all(|x| *x > 0.0)),
+                "radius" => numbers(value).is_some_and(|v| v.len() == 1 && v[0] > 0.0),
+                "maxplaying" | "fadeout" => numbers(value).is_some_and(|v| v.len() == 1 && v[0] >= 0.0),
+                "priority" => matches!(value.trim().to_ascii_lowercase().as_str(), "low" | "normal" | "high" | "0" | "1" | "2"),
+                _ => true,
+            };
+            if !fine {
+                let words = enf("Sound set {set}'s {key}={value} is not read: it plays as if it had none.", [("set", set()), ("key", Fill::name(entry.trim())), ("value", Fill::name(value.trim()))]);
+                self.issue(Severity::Warning, "sound.set", path, words, en("volume= and pitch= take a number above 0, or two for a range picked from each time (volume=0.8 1); radius= a number above 0; maxplaying= and fadeout= a number; priority= low, normal or high."));
+            }
+            if self.halted { return; }
+        }
+        self.attribute(first, &key("soundset", name));
+        self.record(key("soundset", name), Record { path: path.into(), refs, ..Default::default() });
+    }
+
     /// One finding for a footprint outside what Reborn keeps (either side). A footprint of none is
     /// a mod's upgrade module's, which takes no ground (`UnitDef::takes_no_ground`).
     fn footprint(&mut self, path: &str, s: &TdfSection) {
@@ -1473,7 +1540,7 @@ impl<'a> Scan<'a> {
                 let mut refs = Vec::new();
                 if !weapon.model.is_empty() && matches!(weapon.render_type, crate::RenderType::Model | crate::RenderType::Bomb) { refs.push(Reference::new("file", &asset("objects3d", &weapon.model, "3do"), part(en("{name} projectile model"), &weapon.name), Severity::Warning)); }
                 for (gaf, entry, label) in [(&weapon.explosion_gaf, &weapon.explosion_art, en("{name} explosion")), (&weapon.water_explosion_gaf, &weapon.water_explosion_art, en("{name} water explosion")), (&weapon.lava_explosion_gaf, &weapon.lava_explosion_art, en("{name} lava explosion"))] { animation_ref(&mut refs, gaf, entry, part(label, &weapon.name)); }
-                for (sound, label) in [(&weapon.sound_start, en("{name} firing sound")), (&weapon.sound_hit, en("{name} impact sound")), (&weapon.sound_water, en("{name} water impact sound"))] { optional(&mut refs, "sound", sound, part(label, &weapon.name), Severity::Warning); }
+                for (sound, label) in [(&weapon.sound_start, en("{name} firing sound")), (&weapon.sound_hit, en("{name} impact sound")), (&weapon.sound_water, en("{name} water impact sound")), (&weapon.sound_start_water, en("{name} firing sound under the water")), (&weapon.sound_loop, en("{name} firing loop")), (&weapon.sound_stop, en("{name} firing loop's end"))] { optional(&mut refs, "sound", sound, part(label, &weapon.name), Severity::Warning); }
                 if let crate::RenderType::Other(n) = weapon.render_type { self.issue(Severity::Warning, "weapon.render_type", path, enf("{name} uses unsupported RenderType={n}; Reborn will use its fallback projectile appearance.", [("name", Fill::name(&weapon.name)), ("n", Fill::number(n))]), en("Use TA RenderType 0..7, or report the required extension to Reborn's maintainers.")); }
                 self.weapon_abilities(path, &weapon);
                 self.attribute(first, &key("weapon", &weapon.name));
@@ -1512,9 +1579,17 @@ impl<'a> Scan<'a> {
                 }
                 if self.halted { break; }
             }
-        } else if path == "gamedata/sound.tdf" {
-            // A sound category: every entry names a sound (select1, ok1, build, count5…).
+        } else if sound_table(path) {
+            // A sound category: every entry names a sound (select1, ok1, build, count5…); a sound
+            // add-on's laid over the one of its name before it, key by key. The sound sets.
             for s in &doc.sections {
+                if s.name.trim().eq_ignore_ascii_case(SOUND_SETS) {
+                    for set in &s.sections {
+                        self.sound_set(path, set);
+                        if self.halted { break; }
+                    }
+                    continue;
+                }
                 let mut refs = Vec::new();
                 // (What the game plays: the keys it knows, a repeated one's last value.)
                 let mut played: Vec<(&str, &str)> = Vec::new();
@@ -1525,7 +1600,14 @@ impl<'a> Scan<'a> {
                     played.push((entry, value));
                 }
                 for (entry, value) in played { optional(&mut refs, "sound", value, enf("{category} {key} sound", [("category", Fill::name(s.name.to_ascii_uppercase())), ("key", Fill::name(entry))]), Severity::Warning); }
-                self.record(key("sounds", &s.name), Record { path: path.into(), refs, ..Default::default() });
+                // (TA Reborn's `base`: the category it takes what it lacks from.)
+                optional(&mut refs, "sounds", s.get("base").unwrap_or(""), enf("{category} base", [("category", Fill::name(s.name.to_ascii_uppercase()))]), Severity::Warning);
+                // (A category another sound table gave before is this one's too: no second
+                // definition of it, its keys laid over the other's.)
+                let category = key("sounds", &s.name);
+                let laid_over = self.records.get(&category).is_some_and(|old| old.path != path && sound_table(&old.path));
+                let record_key = if laid_over { key("soundpart", &format!("{}@{path}", s.name.trim())) } else { category };
+                self.record(record_key, Record { path: path.into(), refs, ..Default::default() });
                 if self.halted { break; }
             }
         } else if path == "gamedata/sidedata.tdf" || path.strip_prefix("gamedata/").is_some_and(|f| f.starts_with("sidedata_") && f.ends_with(".tdf") && !f.contains('/')) {
@@ -1556,6 +1638,8 @@ impl<'a> Scan<'a> {
                         let entry = if logo.is_empty() { format!("{}32Lt", name.trim()) } else { logo.to_string() };
                         animation_ref(&mut refs, gaf, &entry, part(en("{name} emblem"), name));
                     }
+                    // (Its announcer's alerts, TA Reborn's key: a sound category.)
+                    optional(&mut refs, "sounds", s.get("alerts").unwrap_or(""), part(en("{name} alerts"), name), Severity::Warning);
                     self.record(key("side", name), Record { path: path.into(), refs, ..Default::default() });
                 }
             }
@@ -2102,6 +2186,8 @@ fn animation_ref(refs: &mut Vec<Reference>, gaf: &str, entry: &str, what: Words)
 /// What a reference leads to, where it is there.
 /// (An empty file is there, but nothing: TA's way of blanking one out, `blanks`.)
 fn resolve(reference: &str, vfs: &Vfs, records: &BTreeMap<String, Record>, blanks: &BTreeSet<String>) -> Option<Use> {
+    // (A sound's name is a sound set's where one has it, before a file's.)
+    if let Some(name) = reference.strip_prefix("sound:") && records.contains_key(&key("soundset", name)) { return Some(Use::Record(key("soundset", name))); }
     if let Some(path) = file_of(reference) { return (vfs.exists(&path) && !blanks.contains(&path)).then_some(Use::File(path)); }
     if let Some(name) = reference.strip_prefix("placed:") { return [key("unit", name), key("feature", name)].into_iter().find(|k| records.contains_key(k)).map(Use::Record); }
     records.contains_key(reference).then(|| Use::Record(reference.to_string()))
@@ -2891,6 +2977,47 @@ mod tests {
         assert!(text.contains("GONE"), "{text}");
         assert!(text.contains("KEPT"), "an empty value leaves the one before: {text}");
         assert!(played_sound_key("Select2") && played_sound_key("count9") && !played_sound_key("count10") && !played_sound_key("unload"));
+    }
+
+    /// A sound add-on is read as the game lays it over TA's table: its categories' keys checked,
+    /// one of a name the table has no second definition; TA Reborn's keys checked as TA's are; a
+    /// name naming a sound set reaches the set, and the set its files; a set that plays nothing,
+    /// or whose keys do not read, is told; a side's alerts and a weapon's loop are references.
+    #[test]
+    fn sound_add_ons_and_sets_are_read_as_the_game_reads_them() {
+        let f = Fixture::new(); f.valid("mod");
+        f.put("mod", "gamedata/sound.tdf", "[CAT]\n{\nselect1=example;\n}\n");
+        f.put("mod", "gamedata/sound_extra.tdf", "[CAT]\n{\ndeath=BLAST;\nmoveloop=engine_gone;\n}\n[NEWCAT]\n{\nstartmove=example;\n}\n\
+            [SOUNDSETS]\n{\n[BLAST]\n{\nsound1=example;\nsound2=blast_gone;\nvolume=0.5 1;\n}\n[SILENT]\n{\nsound1=example;\nweight1=0;\npitch=fast;\n}\n}\n");
+        f.put("mod", "sounds/example.wav", b"");
+        f.put("mod", "gamedata/sidedata_x.tdf", "[SIDE0]{name=NEWSIDE;commander=SCOUT;alerts=NO_SUCH_ALERTS;}");
+        f.put("mod", "units/scout.fbi", b"[UNITINFO]{UnitName=SCOUT;ObjectName=example;Side=ARM;SoundCategory=NEWCAT;Weapon1=GUN;}");
+        f.put("mod", "weapons/gun.tdf", b"[GUN]{range=100;soundstart=BLAST;soundloop=hum_gone;}");
+        let report = validate_all(&f.vfs(&["mod"]));
+        let text = report.to_text();
+        assert!(!report.issues.iter().any(|i| i.code == "definition.duplicate"), "an add-on's category is laid over, not defined twice: {text}");
+        for missing in ["ENGINE_GONE", "sounds/blast_gone.wav", "HUM_GONE", "NO_SUCH_ALERTS"] {
+            assert!(report.issues.iter().any(|i| i.code == "reference.missing" && i.message.contains(missing)), "{missing}: {text}");
+        }
+        assert!(!report.issues.iter().any(|i| i.code == "reference.missing" && i.message.contains("sound BLAST ")), "a set's name is no file: {text}");
+        let sets: Vec<&Issue> = report.issues.iter().filter(|i| i.code == "sound.set").collect();
+        assert!(sets.iter().any(|i| i.message.contains("SILENT") && i.message.contains("no sound to play")), "{text}");
+        assert!(sets.iter().any(|i| i.message.contains("pitch=fast")), "{text}");
+        assert!(!sets.iter().any(|i| i.message.contains("BLAST")), "{text}");
+        assert!(played_sound_key("moveloop") && played_sound_key("Death2") && played_sound_key("nuclearlaunch") && !played_sound_key("footstep"));
+        assert!(sound_table("gamedata/sound_extra.tdf") && sound_table("gamedata/sound.tdf") && !sound_table("gamedata/sound_.tdf") && !sound_table("gamedata/soundx.tdf"));
+    }
+
+    /// Ogg and FLAC sounds of the sounds folder are judged as the game's decoder reads them.
+    #[test]
+    fn ogg_and_flac_sounds_are_judged_too() {
+        let f = Fixture::new(); f.valid("mod");
+        f.put("mod", "sounds/cut.flac", b"fLaC");
+        f.put("mod", "sounds/fine.flac", [&b"fLaC\x80\0\0\x22"[..], &[0; 34]].concat());
+        f.put("mod", "music/song.flac", b"not checked here");
+        let report = validate_all(&f.vfs(&["mod"]));
+        let formats: Vec<&str> = report.issues.iter().filter(|i| i.code == "sound.format").map(|i| i.path.as_str()).collect();
+        assert_eq!(formats, ["sounds/cut.flac"], "{}", report.to_text());
     }
 
     /// Sounds as the game's decoder reads them: Humongous's blocks and headerless 8-bit samples

@@ -14,7 +14,7 @@ use ta_render::sprites::{SpriteId, SpriteInstance};
 use ta_render::{ParticleBurst as Burst, ParticleKind as Kind};
 use ta_sim::{Fx, Locomotion, Sim, UnitId};
 
-use super::{Effects, Particle};
+use super::{EffectSound, Effects, Particle};
 
 /// The weather at a moment, to be put back (see [`Effects::weather_state`]).
 #[derive(Clone, Copy, Debug)]
@@ -901,7 +901,7 @@ impl Effects {
             }
             !now_due
         });
-        self.sounds.extend(due);
+        self.sounds.extend(due.into_iter().map(EffectSound::from));
         let strength = self.rain_strength(now) * self.detail.weather.min(1.0);
         let wet = self.ambient.wetness.unwrap_or(strength);
         let rate = if strength > wet { 1.0 / 10.0 } else { 1.0 / 70.0 };
@@ -953,7 +953,7 @@ impl Effects {
             points.push(foot);
             self.ambient.bolt = Some((points, now));
             // The crack of the strike, then the rumble rolling in.
-            self.sounds.push(("lghthvy1", foot, 0.7));
+            self.sounds.push(("lghthvy1", foot, 0.7).into());
             let rumble = now + 0.6 + self.rand() * 0.9;
             self.ambient.thunder.push((rumble, "xplolrg3", foot, 0.55));
             self.light(foot + Vec3::Y * 110.0, now, 0.4, 700.0, [7.0, 7.5, 9.0]);

@@ -117,6 +117,9 @@ pub struct Unpacking {
     pub locks_motion: bool,
     /// It packs up after each launch: a launcher of counted missiles (`CountedProjectile`).
     pub after_launch: bool,
+    /// What it plays as it starts to unpack and to pack up (sound names, `play-sound`: Forged
+    /// Alliance's, `factions::sounds`), where it has them.
+    pub sounds: (Option<String>, Option<String>),
 }
 
 impl Unpacking {
@@ -301,12 +304,20 @@ fn unpack_functions(asm: &mut Assembler, plan: &Plan, packs: &[Option<Packing>],
         let set = |f: &mut Function, value: i32| {
             f.push(IMMOBILE).push(value).op(op::SET_VALUE);
         };
-        // Unpacking: from the frame its pieces are at on to the last.
+        // Unpacking: from the frame its pieces are at on to the last (its sound as it sets off
+        // from short of it).
+        let (opening, closing) = (u.sounds.0.as_deref().map(|s| asm.sound(s)), u.sounds.1.as_deref().map(|s| asm.sound(s)));
         let mut unpack = Function::new(0);
         unpack.push(p.signal).op(op::SIGNAL).push(p.signal).op(op::SET_SIGNAL_MASK);
         unpack.push(1).pop_static(p.state);
         if p.locks {
             set(&mut unpack, 1);
+        }
+        if let Some(sound) = opening {
+            let quiet = unpack.label();
+            unpack.push_static(p.frame).push(last as i32).op(op::SET_LESS).jump_if_false(quiet);
+            unpack.play_sound(sound);
+            unpack.mark(quiet);
         }
         for j in 1..=last {
             let skip = unpack.label();
@@ -331,6 +342,13 @@ fn unpack_functions(asm: &mut Assembler, plan: &Plan, packs: &[Option<Packing>],
         }
         for &(piece, axis, _) in rests.get(slot).map_or(&[][..], |r| r.as_slice()) {
             pack.wait_turn(piece, axis);
+        }
+        // (Its sound as it sets off back from past its first frame.)
+        if let Some(sound) = closing {
+            let quiet = pack.label();
+            pack.push_static(p.frame).push(0).op(op::SET_GREATER).jump_if_false(quiet);
+            pack.play_sound(sound);
+            pack.mark(quiet);
         }
         for j in (0..last).rev() {
             let skip = pack.label();
@@ -1363,6 +1381,7 @@ QueryPrimary:
             now: i64,
             held: i32,
             target: i32,
+            sounds: Vec<i32>,
         }
         impl CobHost for Host {
             fn now_ms(&self) -> i64 {
@@ -1385,6 +1404,9 @@ QueryPrimary:
             }
             fn explode(&mut self, _: &CobInstance, _: usize, _: i32) {}
             fn emit_sfx(&mut self, _: &CobInstance, _: usize, _: i32) {}
+            fn play_sound(&mut self, sound: i32) {
+                self.sounds.push(sound);
+            }
         }
         let mesh = scm::parse(&scm::tests::tank()).unwrap();
         let unit = UnitBlueprint { id: "TRUCK".into(), ..Default::default() };
@@ -1392,7 +1414,7 @@ QueryPrimary:
         let key = |x: i32| Key { moved: [0; 3], turned: [x, 0, 0] };
         let clip = Clip { name: "unpack".into(), seconds: 1.0, pieces: vec![1], times: vec![0.0, 0.5, 1.0], keys: vec![key(0), key(-4096), key(-8192)] };
         assert_eq!(kept_frames(&clip), [0, 2], "the middle key on the line between the others");
-        let unpacking = Unpacking { clip, repack_ms: 500, locks_motion: true, after_launch: false };
+        let unpacking = Unpacking { clip, repack_ms: 500, locks_motion: true, after_launch: false, sounds: (Some("FA_OPEN".into()), Some("FA_CLOSE".into())) };
         let pieces: Vec<String> = mesh.bones.iter().map(|b| b.name.clone()).collect();
         let s = script(&Plan { unit: &unit, mesh: &mesh, pieces: pieces.clone(), weapons: vec![&w], factory: false, builder: false, pixels: 2.0, enhancements: Vec::new(), motions: Motions::default(), switched: false, unpacks: vec![Some(unpacking)] });
         for name in ["AimPrimary", "UnpackWeapon1", "PackWeapon1", "TargetCleared", "RestoreAfterDelay", "StartMoving", "StopMoving"] {
@@ -1400,7 +1422,7 @@ QueryPrimary:
         }
         let program = std::sync::Arc::new(CobProgram::new(CobScript::parse(&s.to_bytes()).unwrap(), &pieces));
         let mut cob = CobInstance::new(program);
-        let mut host = Host { now: 0, held: 0, target: 5 };
+        let mut host = Host { now: 0, held: 0, target: 5, sounds: Vec::new() };
         let mut tick = 0i64;
         let mut run = |cob: &mut CobInstance, host: &mut Host, ticks: i64, seen: &mut Vec<(i64, i32, i32)>| {
             for _ in 0..ticks {
@@ -1429,10 +1451,13 @@ QueryPrimary:
         assert_eq!(seen[2].2, 1, "held still from the start");
         assert!(seen[15].1 < -3000 && seen[15].1 > -5500, "half way up half way through: {:?}", seen[15]);
         assert_eq!(seen.last().unwrap().1, -8192, "up");
+        // (Its opening played as it set off, its script's first sound.)
+        assert_eq!((host.sounds.as_slice(), CobScript::parse(&s.to_bytes()).unwrap().sounds), (&[0][..], vec!["FA_OPEN".to_string(), "FA_CLOSE".to_string()]));
         // Its target gone: half a second's wait, then lowered over a second, and let go.
         cob.start("TargetCleared", &[1], ThreadTag::None);
         seen.clear();
         run(&mut cob, &mut host, 60, &mut seen);
+        assert_eq!(host.sounds, [0, 1], "its closing as it set off back");
         assert!(seen[..14].iter().all(|s| s.1 == -8192 && s.2 == 1), "waits its timeout: {:?}", &seen[..14]);
         assert_eq!(*seen.last().unwrap(), (seen.last().unwrap().0, 0, 0), "down, and let go");
         // Its target gone with no word from the engine (one it was told to attack, destroyed): its
@@ -1513,7 +1538,7 @@ QueryPrimary:
         // Pieces 1 (Turret: lifted 2 px, turned an eighth of a turn about y) and 3 (Exhaust).
         let key = |y: i32, yaw: i32| Key { moved: [0, y, 0], turned: [0, yaw, 0] };
         let clip = Clip { name: "unpack".into(), seconds: 1.0, pieces: vec![1, 3], times: vec![0.0, 1.0], keys: vec![key(0, 0), key(10 * px, 0), key(2 * px, 8192), key(20 * px, 0)] };
-        let unpacking = Unpacking { clip, repack_ms: 0, locks_motion: false, after_launch: false };
+        let unpacking = Unpacking { clip, repack_ms: 0, locks_motion: false, after_launch: false, sounds: (None, None) };
         let pieces: Vec<String> = mesh.bones.iter().map(|b| b.name.clone()).collect();
         let s = script(&Plan { unit: &unit, mesh: &mesh, pieces: pieces.clone(), weapons: vec![&w], factory: false, builder: false, pixels: 2.0, enhancements: Vec::new(), motions: Motions::default(), switched: false, unpacks: vec![Some(unpacking)] });
         let listing = ta_formats::cob::disassemble(&s);
@@ -1558,7 +1583,7 @@ QueryPrimary:
         use ta_formats::anims::{Clip, Key};
         let key = |x: i32, y: i32| Key { moved: [0, y, 0], turned: [x, 0, 0] };
         let clip = Clip { name: "unpack".into(), seconds: 1.0, pieces: vec![2, 5], times: vec![0.0, 1.0], keys: vec![key(0, 0), key(1, 10), key(100, 1000), key(200, 2000)] };
-        let up = Unpacking { clip, repack_ms: 0, locks_motion: false, after_launch: true };
+        let up = Unpacking { clip, repack_ms: 0, locks_motion: false, after_launch: true, sounds: (None, None) };
         let kept = up.clone().leaving_out(&[5]).expect("the turret's left");
         assert_eq!((kept.clip.pieces.as_slice(), kept.clip.keys.as_slice()), (&[2u32][..], &[key(0, 0), key(100, 1000)][..]));
         assert!(kept.after_launch);

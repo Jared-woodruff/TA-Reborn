@@ -3057,6 +3057,20 @@ where the units go (`hud/domain.rs`, below).
   applies before the device starts; unavailable outputs are retried every two seconds.
   Crossfades wait for the incoming decoder to buffer, and a song shared by two looping
   playlists continues when the mood changes. Track controls work during playlist gaps.
+* **Units heard as they go** (`audio.rs`, `audio/units.rs`; the sound keys and sets in
+  docs/MODDING.md, "Sounds"): the sound tables (TA's and the add-ons) are read once, their sets
+  handed to the engine (`AudioEngine::set_sound_sets`: any name played through a set picks a
+  variant, a level and pitch within its ranges, with the engine's own random numbers; the
+  `VoiceManager` merges a set's requests and caps how many are heard, `spatialize_within` hears
+  each as far as its radius says). The simulation's events carry what the speakers need and
+  nothing reads back (`WeaponFired::burst_start`, `Explosion::death_of`, `UnitExploded::type_id`,
+  `ScriptSound`): no simulation version changes with them. Each frame `GameAudio::update_units`
+  looks at the units whose categories give a moving, working or building-at-work key (a slot's
+  last state beside it: setting off, stopping, taking off, a job ending, switched on and off) and
+  keeps the loops of the nearest few, at a low priority, moved with their units, louder and
+  higher the faster a unit goes; weapons' loops last while the shots keep coming. Every loop
+  stops with its unit, out of sight, out of earshot, while the battle is paused and with the
+  scene. The film's sound log takes them as it takes every sound.
 * **Chat** (`hud.rs`): lines from others play TA's MessageArrived beep (`Game::chat_beep`)
   and go to the log; every line also goes to `Game::chat_history`, shown (scrollable) while
   the player types. Each speaker's picture is beside their lines and in the players panel

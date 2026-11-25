@@ -699,3 +699,15 @@ Forged Alliance's two features, in the terms the launcher's "Ще в плана�
 | one of TA's paralyzers (paralyzer=1) | паралізатор, як у TA |
 | a weapon's {name} in the mod check | anchored as "Зброя {name}" (feminine: її, вона) |
 | (px) after a mod key | (у пікселях) |
+
+## Звуки модів (`validation.rs`: звукові доповнення, набори звуків; `supcom_factions.rs`)
+
+| English | Українська |
+|---|---|
+| sound add-on (`gamedata/sound_<name>.tdf`) | звукове доповнення |
+| sound set (a section of `[SOUNDSETS]`) | набір звуків ("набір звуків {name}", "{key} набору звуків {set}") |
+| firing sound under the water / firing loop / its end | звук пострілу {name} під водою / зациклений звук стрільби {name} / кінець зацикленого звуку стрільби {name} |
+| a category's base (its `base` key) | база категорії {category} (as "звук {key} категорії {category}") |
+| a side's alerts (its announcer) | тривоги (as UNIT REPLIES' help) |
+| stream information (FLAC) | інформація про потік |
+| the units' sounds (after "Створюється {unit}") | озвучення юнітів (singular, for створюється) |

@@ -56,6 +56,34 @@ mod tests {
         assert_eq!(battle, original.for_match("battle", Some("mission.ota")));
     }
 
+    /// The sound tables keep no players apart: TA's own changed, what peers compare stays (what
+    /// records compare changes, as it always did); a sound add-on is in nothing, and a mod of it
+    /// alone gives the game no data.
+    #[test]
+    fn sound_tables_keep_no_players_apart() {
+        let root = std::env::temp_dir().join(format!("ta_match_sounds_{}", std::process::id()));
+        for (path, text) in [("units/armcom.fbi", "unit"), ("gamedata/sound.tdf", "[CAT]{select1=a;}"), ("gamedata/sound_extra.tdf", "[CAT]{death=b;}"), ("maps/battle.tnt", "map")] {
+            std::fs::create_dir_all(root.join(path).parent().unwrap()).unwrap();
+            std::fs::write(root.join(path), text).unwrap();
+        }
+        let mut vfs = Vfs::new();
+        vfs.mount_mod_dir(&root, "sounds").unwrap();
+        let original = Compatibility::load(&vfs);
+        let battle = original.for_match("battle", None);
+        std::fs::write(root.join("gamedata/sound_extra.tdf"), "[CAT]{death=c;}").unwrap();
+        let add_on = Compatibility::load(&vfs);
+        assert_eq!((add_on.network(), add_on.global(), add_on.for_match("battle", None)), (original.network(), original.global(), battle), "an add-on is in nothing");
+        std::fs::write(root.join("gamedata/sound.tdf"), "[CAT]{select1=z;}").unwrap();
+        let table = Compatibility::load(&vfs);
+        assert_eq!(table.network(), original.network(), "peers compare no sound table");
+        assert_ne!(table.for_match("battle", None), battle, "records compare TA's, as before");
+        std::fs::remove_file(root.join("units/armcom.fbi")).unwrap();
+        let mut sounds_alone = Vfs::new();
+        sounds_alone.mount_mod_dir(&root, "sounds").unwrap();
+        assert!(!Compatibility::load(&sounds_alone).gives_data("sounds"), "a mod of sounds alone gives no data");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
     /// A file that does not read (a damaged chunk of a mod's archive) is digested as such: the
     /// game starts, and every computer with the same files agrees.
     #[test]
@@ -218,6 +246,11 @@ mod tests {
     }
 }
 
+/// A sound add-on, `gamedata/sound_<name>.tdf` (`ta_audio::is_sound_add_on`).
+pub(crate) fn sound_add_on(path: &str) -> bool {
+    path.strip_prefix("gamedata/sound_").is_some_and(|rest| rest.len() > 4 && rest.ends_with(".tdf") && !rest.contains('/'))
+}
+
 fn feed(hash: &mut Sha256, path: &str, len: u64, digest: &[u8; 32]) {
     hash.update((path.len() as u64).to_le_bytes());
     hash.update(path.as_bytes());
@@ -240,7 +273,9 @@ impl Compatibility {
     pub fn load(vfs: &Vfs) -> Self {
         const FOLDERS: &[&str] = &["ai", "camps", "download", "features", "gamedata", "guis", "maps", "objects3d", "scripts", "units", "weapons"];
         let paths: Vec<_> = vfs.list("", None, true).into_iter()
-            .filter(|path| path.split_once('/').is_some_and(|(folder, _)| FOLDERS.contains(&folder))).collect();
+            .filter(|path| path.split_once('/').is_some_and(|(folder, _)| FOLDERS.contains(&folder)))
+            // (The sound add-ons, TA Reborn's, play on the speakers alone: no input of anything.)
+            .filter(|path| !sound_add_on(path)).collect();
         let read = |path: &String| -> (u64, [u8; 32]) {
             match vfs.read(path) {
                 Ok(bytes) => (bytes.len() as u64, Sha256::digest(&bytes).into()),
@@ -267,14 +302,20 @@ impl Compatibility {
         let mut use_only = BTreeMap::new();
         let mut data_layers = BTreeSet::new();
         for (path, (len, digest)) in paths.into_iter().zip(inputs) {
+            // TA's sound table plays on the speakers alone: a sound-only change keeps no players
+            // apart (it stays in what records compare, as it always was).
+            let sound_table = path == "gamedata/sound.tdf";
             feed(&mut global, &path, len, &digest);
             if path.starts_with("maps/") {
                 // (A battle reads its own map alone: the lobby checks that one.)
                 maps.insert(path, (len, digest));
                 continue;
             }
-            feed(&mut network, &path, len, &digest);
+            if !sound_table {
+                feed(&mut network, &path, len, &digest);
+            }
             if let Some(origin) = vfs.origin(&path)
+                && !sound_table
                 && !data_layers.contains(&origin.layer)
             {
                 data_layers.insert(origin.layer.clone());

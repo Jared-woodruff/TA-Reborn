@@ -4206,6 +4206,7 @@ dependencies = [
  "log",
  "rayon",
  "sha2",
+ "ta_audio",
  "ta_data",
  "ta_formats",
  "ta_mapart",

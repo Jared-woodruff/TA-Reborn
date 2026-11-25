@@ -317,6 +317,30 @@ pub use remains::Death;
 
 use particles::Blast;
 
+/// A sound an effect wants played: TA's `name` where it is, at `volume`; or, of a unit (`unit`:
+/// its type and the key: a wreck crashing, sinking, a building coming down), that unit's own
+/// sound for it where its sound category gives one, `name` where it gives none.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct EffectSound {
+    pub name: &'static str,
+    pub pos: Vec3,
+    pub volume: f32,
+    pub unit: Option<(usize, ta_audio::SoundEvent)>,
+}
+
+impl From<(&'static str, Vec3, f32)> for EffectSound {
+    fn from((name, pos, volume): (&'static str, Vec3, f32)) -> Self {
+        EffectSound { name, pos, volume, unit: None }
+    }
+}
+
+impl EffectSound {
+    /// A unit's own sound for `event` (its type `type_id`'s), `name` without one.
+    pub fn of_unit(type_id: usize, event: ta_audio::SoundEvent, name: &'static str, pos: Vec3, volume: f32) -> Self {
+        EffectSound { name, pos, volume, unit: Some((type_id, event)) }
+    }
+}
+
 pub struct Effects {
     /// TA's explosion animations (`effects_anims.rs`): each one's frames, and what it looks like.
     anims: Vec<Vec<SpriteId>>,
@@ -375,9 +399,9 @@ pub struct Effects {
     /// This frame's heat haze sources (position, radius, strength), for
     /// `Renderer::add_heat_source`.
     pub heat: Vec<(Vec3, f32, f32)>,
-    /// Sounds the effects want played (name, where, volume): thunder. The app hands them to
-    /// the audio engine each frame.
-    pub sounds: Vec<(&'static str, Vec3, f32)>,
+    /// Sounds the effects want played: thunder, the dead's remains. The app hands them to the
+    /// audio engine each frame.
+    pub sounds: Vec<EffectSound>,
     scorch_sprite: SpriteId,
     scorches: Vec<Scorch>,
     burning: Vec<Burning>,

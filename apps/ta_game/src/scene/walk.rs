@@ -1247,7 +1247,7 @@ mod tests {
         code.extend([op::JUMP, top]);
         code[idle] = code.len() as u32;
         code.extend([op::PUSH_CONSTANT, 100, op::SLEEP, op::JUMP, top]);
-        let script = CobScript { functions, pieces: vec!["base".into(), "leg".into()], code, static_var_count: 1 };
+        let script = CobScript { functions, pieces: vec!["base".into(), "leg".into()], code, static_var_count: 1, sounds: Vec::new() };
         std::sync::Arc::new(CobProgram::new(script, &["base".into(), "leg".into()]))
     }
 

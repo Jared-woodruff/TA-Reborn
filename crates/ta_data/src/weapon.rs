@@ -138,7 +138,15 @@ pub struct WeaponDef {
     pub sound_start: String,
     pub sound_hit: String,
     pub sound_water: String,
+    /// `soundtrigger=1`: `soundstart` once a burst, as its first shot leaves (TA's guns of a
+    /// burst whose sound holds the burst: the EMGs'), not for every shot.
     pub sound_trigger: bool,
+    /// TA Reborn's keys: `soundstartwater`, in place of `soundstart` for a shot leaving from
+    /// under the water; `soundloop`, on from the first shot while the shots keep coming (a beam's
+    /// hum, a gatling's barrels), and `soundstop` as it stops.
+    pub sound_start_water: String,
+    pub sound_loop: String,
+    pub sound_stop: String,
     pub shake_magnitude: f64,
     pub shake_duration: f64,
     /// The nearest it fires (`minrange`, pixels across the ground from its unit to the target):
@@ -255,6 +263,9 @@ impl WeaponDef {
             sound_hit: st("soundhit"),
             sound_water: st("soundwater"),
             sound_trigger: b("soundtrigger"),
+            sound_start_water: st("soundstartwater"),
+            sound_loop: st("soundloop"),
+            sound_stop: st("soundstop"),
             shake_magnitude: f("shakemagnitude", 0.0),
             shake_duration: f("shakeduration", 0.0),
             min_range: f("minrange", 0.0).max(0.0),

@@ -739,3 +739,15 @@ mod check); its description „obserwacja z daleka”. Mod keys (`[TOGGLE]`, `Re
 | hit points a second / {share}% of their health | pkt. zdrowia na sekundę / {share}% ich zdrowia |
 | minimum range / Fires no nearer than {range} | minimalny zasięg / Nie strzela bliżej niż {range} |
 | stun / Stuns for {secs} s | paraliż, paraliżować (as „Paraliż {secs} s”) / Paraliżuje na {secs} s |
+
+## Dźwięki modów (`validation.rs`: dodatki dźwiękowe, zestawy dźwięków; `supcom_factions.rs`)
+
+| English | Polski |
+|---|---|
+| sound add-on (`gamedata/sound_<name>.tdf`) | dodatek dźwiękowy |
+| sound set (a section of `[SOUNDSETS]`) | zestaw dźwięków (as zestaw kafelków): „zestaw dźwięków {name}”, „{key} zestawu dźwięków {set}” |
+| firing sound under the water / firing loop / its end | dźwięk strzału {name} pod wodą / pętla dźwięku strzału {name} / koniec pętli dźwięku strzału {name} |
+| a category's base (its `base` key) | baza kategorii {category} |
+| a side's alerts (its announcer) | ostrzeżenia (as UNIT REPLIES' help) |
+| stream information (FLAC) | informacje o strumieniu |
+| the units' sounds (after "Tworzenie: {unit}") | dźwięki jednostek (nominative) |

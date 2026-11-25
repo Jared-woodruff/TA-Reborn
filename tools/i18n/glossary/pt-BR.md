@@ -673,3 +673,14 @@ stay as written; the mod check's reference to a toggle's weapon is "{name} [TOGG
 | minimum range / Fires no nearer than {range} | alcance mínimo / Não dispara a menos de {range} |
 | stun / Stuns for {secs} s | paralisia, paralisar (as "Paralisado {secs} s") / Paralisa por {secs} s |
 | (a unit's file) gives (a key) / (a key) is not played | define / não tem efeito |
+
+## Sons dos mods (`validation.rs`: complementos de som, conjuntos de sons; `supcom_factions.rs`)
+
+| English | pt-BR |
+|---|---|
+| sound add-on (`gamedata/sound_<name>.tdf`) | complemento de som |
+| sound set (a section of `[SOUNDSETS]`) | conjunto de sons ("conjunto de sons {name}", "{key} do conjunto de sons {set}") |
+| firing sound under the water / firing loop / its end | som de disparo debaixo d'água / loop de disparo / fim do loop de disparo (de {name}) |
+| a category's base (its `base` key) | base de {category} |
+| a side's alerts (its announcer) | alertas (as UNIT REPLIES' help) |
+| stream information (FLAC) | informações do fluxo |

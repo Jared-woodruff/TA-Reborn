@@ -469,6 +469,12 @@ pub fn weapon_section(u: &UnitBlueprint, w: &WeaponBlueprint) -> String {
 
 /// A weapon's section under `name` (an enhancement's changed gun: `factions::enhance`).
 pub fn weapon_section_named(u: &UnitBlueprint, w: &WeaponBlueprint, name: &str) -> String {
+    weapon_section_sounding(u, w, name, &[])
+}
+
+/// [`weapon_section_named`] with its own sounds' keys (`factions::sounds`: Forged Alliance's), in
+/// place of TA's of its kind.
+pub fn weapon_section_sounding(u: &UnitBlueprint, w: &WeaponBlueprint, name: &str, sounds: &[(&'static str, String)]) -> String {
     let k = kind(w);
     let px = |ogrids: f64| (ogrids * UNIT_SCALE).round() as i64;
     let mut s = String::new();
@@ -672,8 +678,12 @@ pub fn weapon_section_named(u: &UnitBlueprint, w: &WeaponBlueprint, name: &str) 
             put("noexplode", "1".into());
         }
     }
-    put("soundstart", start.into());
-    put("soundhit", hit.into());
+    let own = |key: &str| sounds.iter().find(|(k, _)| *k == key).map(|(_, v)| v.clone());
+    put("soundstart", own("soundstart").unwrap_or_else(|| start.into()));
+    put("soundhit", own("soundhit").unwrap_or_else(|| hit.into()));
+    for (key, value) in sounds.iter().filter(|(k, _)| !matches!(*k, "soundstart" | "soundhit")) {
+        put(key, value.clone());
+    }
     put("explosiongaf", "fx".into());
     put("explosionart", explosion(blast).into());
     put("waterexplosiongaf", "fx".into());
@@ -913,6 +923,9 @@ pub struct Extra<'a> {
     /// Its weapon toggle (`factions::abilities::toggle`: its slots after its own and those its
     /// enhancements fill).
     pub toggle: Option<super::abilities::Toggle<'a>>,
+    /// Its own sound category, where the mod has its sounds (`factions::sounds`); none: TA's for
+    /// its kind.
+    pub sound_category: Option<String>,
 }
 
 /// The name a unit is shown by: its own, else its description (the commanders' and most
@@ -1340,22 +1353,10 @@ pub fn unit_file(u: &UnitBlueprint, weapons: &Weapons, carries: Option<(u32, u32
     {
         put("AdjacencySize", size.to_string());
     }
-    let ted = match (u.motion, builds) {
-        _ if commander => "COMMANDER",
-        (Motion::None, Builds::Factory) => "PLANT",
-        (Motion::None, _) if u.is("MASSEXTRACTION") || u.is("MASSFABRICATION") => "METAL",
-        (Motion::None, _) if u.is("ENERGYPRODUCTION") || u.is("ENERGYSTORAGE") => "ENERGY",
-        (Motion::None, _) if !weapons.slots.is_empty() => "FORT",
-        (Motion::None, _) => "SPECIAL",
-        (Motion::Air, _) => "VTOL",
-        (Motion::Water, _) => "SHIP",
-        (Motion::Sub, _) => "WATER",
-        (_, Builds::Mobile) => "CNSTR",
-        _ if walks => "KBOT",
-        _ => "TANK",
-    };
+    let ted = ted_class(u, weapons);
     put("TEDClass", ted.into());
-    put("SoundCategory", sound_category(u, ted).into());
+    // (Its own sounds' category where the mod has its sounds: `factions::sounds`.)
+    put("SoundCategory", extra.sound_category.clone().unwrap_or_else(|| sound_category(u, ted).into()));
     put("ThreeD", "1".into());
     put("ShootMe", "1".into());
     if !weapons.slots.is_empty() || weapons.kamikaze.is_some() {
@@ -1451,8 +1452,33 @@ pub fn unit_file(u: &UnitBlueprint, weapons: &Weapons, carries: Option<(u32, u32
     format!("[UNITINFO]\n\t{{\n{f}{}{}{adjacency}{toggle}\t}}\n", extra.enhancements, exits_section(&extra.exits))
 }
 
-/// TA's sound category for the unit's kind (TA's own sounds, `gamedata/sound.tdf`'s: Forged
-/// Alliance's are not read); the Cybran's and the Seraphim's the Core's.
+/// TA's class for the unit's kind (`TEDClass`): a commander, a factory, a building of the economy,
+/// a defence, an aircraft, a ship, a submarine, a builder, a kbot or a tank.
+pub fn ted_class(u: &UnitBlueprint, weapons: &Weapons) -> &'static str {
+    match (u.motion, builds(u)) {
+        _ if u.is("COMMAND") => "COMMANDER",
+        (Motion::None, Builds::Factory) => "PLANT",
+        (Motion::None, _) if u.is("MASSEXTRACTION") || u.is("MASSFABRICATION") => "METAL",
+        (Motion::None, _) if u.is("ENERGYPRODUCTION") || u.is("ENERGYSTORAGE") => "ENERGY",
+        (Motion::None, _) if !weapons.slots.is_empty() => "FORT",
+        (Motion::None, _) => "SPECIAL",
+        (Motion::Air, _) => "VTOL",
+        (Motion::Water, _) => "SHIP",
+        (Motion::Sub, _) => "WATER",
+        (_, Builds::Mobile) => "CNSTR",
+        _ if u.display.walk.is_some() => "KBOT",
+        _ => "TANK",
+    }
+}
+
+/// TA's sound category for the unit's kind ([`sound_category`] of its [`ted_class`]).
+pub fn ta_sound_category(u: &UnitBlueprint, weapons: &Weapons) -> &'static str {
+    sound_category(u, ted_class(u, weapons))
+}
+
+/// TA's sound category for the unit's kind (TA's own sounds, `gamedata/sound.tdf`'s); the
+/// Cybran's and the Seraphim's the Core's. Where the mod has Forged Alliance's sounds, the unit's
+/// own category takes what it does not give from this one (`factions::sounds`).
 fn sound_category(u: &UnitBlueprint, ted: &str) -> &'static str {
     let core = matches!(u.faction, Faction::Cybran | Faction::Seraphim);
     let pick = |arm: &'static str, cor: &'static str| if core { cor } else { arm };

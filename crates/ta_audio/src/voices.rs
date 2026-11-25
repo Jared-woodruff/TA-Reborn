@@ -13,6 +13,11 @@
 //!   [`Priority::Critical`] voices are never stolen.
 //! * **Virtual loops**: looping sounds that lose their voice, or drift out of earshot, keep
 //!   running silently and resume at the right phase when they become audible again.
+//! * **Sound sets** ([`PlayParams::group`]): a set's requests merge as one sound's do, whichever
+//!   of its variants each plays; with a cap ([`PlayParams::cap`]) at most that many of them hold
+//!   a mixer voice at once, a new one taking the place of the weakest of them where it outscores
+//!   it (a loop parked meanwhile, a one-shot not played otherwise). Each is heard as far as its
+//!   radius says ([`crate::spatialize_within`]).
 //! * **Log**: on request, every command that starts, changes or stops a voice is also recorded
 //!   as a [`PlayEvent`], with the sound's path and kind.
 
@@ -22,7 +27,7 @@ use crate::decode::SoundData;
 use crate::engine::{Bus, PlayParams, Priority, SoundHandle};
 use crate::mixer::{Command, MixBus};
 use crate::playlog::{PlayEvent, PlayStart};
-use crate::spatial::{Listener, SpatialSettings, pan_gains, spatialize};
+use crate::spatial::{Listener, SpatialSettings, pan_gains, spatialize_within};
 
 /// Destination of mixer commands: the real-time queue, or a `Vec` in tests.
 pub(crate) trait CommandSink {
@@ -138,7 +143,7 @@ impl LogicalVoice {
     fn update_spatial(&mut self, listener: &Listener, settings: &SpatialSettings) {
         (self.spatial_gain, self.pan) = match self.params.position {
             Some(p) => {
-                let s = spatialize(listener, settings, p);
+                let s = spatialize_within(listener, settings, p, self.params.radius);
                 (s.gain, s.pan)
             }
             None => (1.0, 0.0),
@@ -154,12 +159,13 @@ impl LogicalVoice {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum SlotState {
     Free,
     Playing { voice: u32 },
-    /// Still owned by the mixer: retry the stop when its command queue has room.
-    PendingStop { play_id: u64 },
+    /// Still owned by the mixer: retry the stop (fading out over `fade` seconds) when its
+    /// command queue has room.
+    PendingStop { play_id: u64, fade: f32 },
     /// Fading out after a stop/steal; free once the mixer reports the end.
     Releasing,
 }
@@ -311,8 +317,10 @@ impl VoiceManager {
             self.push_gains(index, sink);
             return self.handle(index);
         }
+        let score = voice.score(self.clock);
         let index = self.alloc(voice);
-        if self.try_start(index, 0.0, false, sink) {
+        // (A sound set's cap: room made in it, or none.)
+        if self.make_room_in_group(index, score, 0.0, sink) && self.try_start(index, 0.0, false, sink) {
             return self.handle(index);
         }
         if params.looping {
@@ -333,7 +341,9 @@ impl VoiceManager {
             if v.params.looping || !v.params.merge || v.params.bus != new.params.bus || self.clock - v.start > window {
                 return false;
             }
-            if *v.name != *new.name {
+            // (A sound set's requests are one sound whichever variant each plays.)
+            let same = if v.params.group != 0 || new.params.group != 0 { v.params.group == new.params.group } else { *v.name == *new.name };
+            if !same {
                 return false;
             }
             match (v.params.position, new.params.position) {
@@ -384,6 +394,45 @@ impl VoiceManager {
 
     fn free_slot(&self) -> Option<usize> {
         self.slots.iter().position(|(state, _)| *state == SlotState::Free)
+    }
+
+    /// Whether voice `index` (scoring `score`) may take a mixer voice within its sound set's cap:
+    /// the set under its cap, or the weakest of the set's voices heard now outscored by more
+    /// than `margin` and given up to it (a one-shot ended, a loop parked). Any voice of no set,
+    /// or of a set without a cap, may.
+    fn make_room_in_group(&mut self, index: usize, score: f32, margin: f32, sink: &mut dyn CommandSink) -> bool {
+        let Some(v) = self.voices[index].as_ref() else { return false };
+        let (group, cap) = (v.params.group, v.params.cap as usize);
+        if group == 0 || cap == 0 {
+            return true;
+        }
+        let mut heard = 0;
+        let mut weakest: Option<(usize, f32)> = None;
+        for (i, other) in self.voices.iter().enumerate() {
+            let Some(o) = other else { continue };
+            if i == index || o.params.group != group || o.slot.is_none() {
+                continue;
+            }
+            heard += 1;
+            let s = o.score(self.clock);
+            if o.params.priority != Priority::Critical && weakest.is_none_or(|(_, w)| s < w) {
+                weakest = Some((i, s));
+            }
+        }
+        if heard < cap {
+            return true;
+        }
+        match weakest {
+            Some((weak, weak_score)) if score > weak_score + margin => {
+                self.release(weak, sink);
+                self.stats.stolen += 1;
+                if !self.voices[weak].as_ref().is_some_and(|v| v.params.looping) {
+                    self.free(weak);
+                }
+                true
+            }
+            _ => false,
+        }
     }
 
     /// Gives voice `index` a mixer slot, stealing one from a weaker voice if the limit is
@@ -467,27 +516,33 @@ impl VoiceManager {
 
     /// Takes voice `index` off its mixer slot (fading out). The logical voice stays.
     fn release(&mut self, index: usize, sink: &mut dyn CommandSink) {
+        self.release_fading(index, STOP_FADE_SECONDS, sink);
+    }
+
+    /// [`VoiceManager::release`] fading out over `seconds` (the short fade at least).
+    fn release_fading(&mut self, index: usize, seconds: f64, sink: &mut dyn CommandSink) {
         let Some(v) = self.voices[index].as_mut() else { return };
         let Some(slot) = v.slot.take() else { return };
         let generation = v.slot_generation;
+        let fade = if seconds.is_finite() { seconds.clamp(STOP_FADE_SECONDS, 10.0) } else { STOP_FADE_SECONDS } as f32;
         // The logical voice may now be freed or virtualized, but the slot retains its
         // stop request until accepted, even if the logical table entry is reused.
-        self.slots[slot as usize] = (SlotState::PendingStop { play_id: v.play_id }, generation);
+        self.slots[slot as usize] = (SlotState::PendingStop { play_id: v.play_id, fade }, generation);
         self.pending_stops += 1;
         self.real -= 1;
         self.send_stop(slot as usize, sink);
     }
 
     fn send_stop(&mut self, slot: usize, sink: &mut dyn CommandSink) -> bool {
-        let (SlotState::PendingStop { play_id }, generation) = self.slots[slot] else { return true };
-        let fade = (STOP_FADE_SECONDS * self.config.output_rate as f64) as u32;
+        let (SlotState::PendingStop { play_id, fade: seconds }, generation) = self.slots[slot] else { return true };
+        let fade = (seconds as f64 * self.config.output_rate as f64) as u32;
         if sink.send(Command::Stop { slot: slot as u16, generation, fade }).is_err() {
             return false;
         }
         self.slots[slot].0 = SlotState::Releasing;
         self.pending_stops -= 1;
         if let Some(log) = self.log.as_mut() {
-            log.push(PlayEvent::Stop { id: play_id, fade: STOP_FADE_SECONDS as f32 });
+            log.push(PlayEvent::Stop { id: play_id, fade: seconds });
         }
         true
     }
@@ -580,7 +635,11 @@ impl VoiceManager {
             }
         }
         candidates.sort_by(|a, b| b.1.total_cmp(&a.1));
-        for &(index, _) in &candidates {
+        for &(index, score) in &candidates {
+            // (Its sound set full of louder ones: the others may still come back.)
+            if !self.make_room_in_group(index as usize, score, STEAL_HYSTERESIS, sink) {
+                continue;
+            }
             if !self.try_start(index as usize, STEAL_HYSTERESIS, true, sink) {
                 break;
             }
@@ -589,9 +648,15 @@ impl VoiceManager {
         self.candidates = candidates;
     }
 
+    #[cfg(test)]
     pub(crate) fn stop(&mut self, handle: SoundHandle, sink: &mut dyn CommandSink) {
+        self.stop_fading(handle, STOP_FADE_SECONDS, sink);
+    }
+
+    /// Stops a sound, fading out over `seconds` (the short fade at least).
+    pub(crate) fn stop_fading(&mut self, handle: SoundHandle, seconds: f64, sink: &mut dyn CommandSink) {
         if let Some(index) = self.voice_index(handle) {
-            self.release(index, sink);
+            self.release_fading(index, seconds, sink);
             self.free(index);
         }
     }
@@ -666,6 +731,7 @@ impl VoiceManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::spatial::spatialize;
 
     const RATE: u32 = 48_000;
 

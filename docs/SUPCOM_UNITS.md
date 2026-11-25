@@ -19,16 +19,16 @@ every computer.
 
 This page records what the game's units are made of (`crates/ta_supcom`: [`unit`], [`projectile`],
 [`behaviour`], [`motions`], [`scm`], [`sca`]) and how they are made into TA's ([`factions`]): their
-models, paint, build pictures and gameplay, their walks and deaths, and what their buildings do
-as they work. Their sounds come later.
+models, paint, build pictures and gameplay, their walks and deaths, what their buildings do
+as they work, and their sounds.
 
 - **Players:** the launcher's Mods page, **SUPREME COMMANDER…** (or the Maps page's, its
   FACTIONS tab). The dialog finds the game (as for its maps: GOG's or Steam's copy, or a folder
   chosen, kept for the next start), counts each faction's units by kind, with its commander's
   build picture, and makes the factions chosen into the mod **Supreme Commander factions**
-  (`supcom-factions`), turned on, a side each in skirmish. All four take about 700 MB (3,812
-  files) and, on a fast computer, about half a minute, most of it writing and installing their
-  files; the room on the disk is checked first. A stop installs nothing (not once the mod is being
+  (`supcom-factions`), turned on, a side each in skirmish. All four take about 770 MB (5,157
+  files, their sounds 63 MB of it) and, on a fast computer, about half a minute, most of it
+  writing and installing their files; the room on the disk is checked first. A stop installs nothing (not once the mod is being
   installed: STOP is greyed then), and the mod is made whole each time, of the factions chosen
   (those left out are taken out of it); a unit that cannot be made is named in the dialog. It goes
   on with the dialog closed (the launcher's footer shows it), and an update of the launcher waits
@@ -44,9 +44,10 @@ as they work. Their sounds come later.
 - **Developers:** every unit of the player's copy read, with what its blueprints name that is not
   there, the conventions below held over all of them, and every unit made a model twice, the same:
   `cargo test --release -p ta_supcom --test installed_units -- --ignored --nocapture`
-  (`TA_SUPCOM_DIR=<folder>` another copy). `ta-tools supcom-units <mod folder> [--only UEL0201,..]
-  [--faction uef] [--game <folder>] [--preview <dir>]` makes the units' models, surfaces, paint
-  and build pictures, with first unit files, into a folder to mount as a mod (`--demo gallery
+  (`TA_SUPCOM_DIR=<folder>` another copy; `every_sound_the_units_name_is_made` and
+  `the_sounds_are_clean` for the sounds alone). `ta-tools supcom-units <mod folder> [--only UEL0201,..]
+  [--faction uef] [--game <folder>] [--preview <dir>]` makes the units' models, surfaces, paint,
+  build pictures and sounds, with first unit files, into a folder to mount as a mod (`--demo gallery
   TA_GALLERY_UNITS=UEL0201` shows them; `ta-tools --mod <mod folder> gaf anims/supcomlogos.gaf
   <dir>` writes the sides' emblems' frames as pictures). The launcher's dialog for captures:
   `--page mods --show supcom-factions` (`supcom-factions:uef,cybran`, or `:all`, imports those once
@@ -333,8 +334,9 @@ Each unit becomes a TA unit (`units/<id>.fbi`, `scripts/<id>.cob`; `ta_supcom::f
   32 (a missile's its projectile's top speed), splash diameters twice the damage radius × 32
   (FA's blasts deal their damage evenly to their edge: flak's edge 0.9), a nuke's inner damage
   over its outer radius. FA's minimum ranges are TA Reborn's (`minrange`, Abilities, below).
-  Each looks and sounds as TA's weapons of its kind (lasers, shells, artillery, missiles,
-  torpedoes, bombs, anti-air, the D-gun, nukes, anti-missiles), TA's own art.
+  Each looks as TA's weapons of its kind (lasers, shells, artillery, missiles, torpedoes, bombs,
+  anti-air, the D-gun, nukes, anti-missiles), TA's own art, and sounds as in Forged Alliance
+  (Sounds, below; TA's of its kind where the copy has none).
 - **Firing** as FA's rules fire it (its `lua/sim/defaultweapons.lua`: `units::cycle`): each time
   it fires one rack fires, in turn, or all of them (`RackFireTogether`); a rack fires its
   muzzles one after another `MuzzleSalvoSize` times, or all of them at once (`MuzzleSalvoDelay`
@@ -715,12 +717,74 @@ in 20 minutes, UEF against Cybran: 15 tech 1 generators beside the UEF's air and
 factories, 15 beside the Cybran's, and storage beside a tech 2 extractor of each). They build no
 engineering stations.
 
-Not yet in TA Reborn: Forged Alliance's own sounds and weapon effects (TA's of their kinds play),
-the Kennel's drone (the station works with its own beams), the adjacency's effect beams,
-shields and teleporting, and the enhancements that need them (and drones, the Sacrificial
-System); its jammers' false blips (TA Reborn's jammers hide what is near them), the sniper bot's
-slower walk in sniper mode, the remote viewing's opening drain, factories that move and build
-within themselves, and air transports carrying more than one unit at a time.
+Not yet in TA Reborn: Forged Alliance's weapon effects (TA's of their kinds play), the Kennel's
+drone (the station works with its own beams), the adjacency's effect beams, shields and
+teleporting, and the enhancements that need them (and drones, the Sacrificial System); its
+jammers' false blips (TA Reborn's jammers hide what is near them), the sniper bot's slower walk in
+sniper mode, the remote viewing's opening drain, factories that move and build within themselves,
+and air transports carrying more than one unit at a time.
+
+## Sounds
+
+Each unit sounds as it does in Forged Alliance (converter version 16), its sounds made from the
+copy's own banks (`sounds/` and `sounds/Voice/US/`, docs/FORMATS.md, "Supreme Commander's sound
+banks"; `factions::sounds`) with TA Reborn's sound keys (docs/MODDING.md, "Sounds"), in the mod's
+sound add-on, `gamedata/sound_supcom.tdf`: a category a unit (`SUPCOM_<ID>`, its unit file's
+`SoundCategory`), the sides' alerts, and the sound sets. Where the copy has no `sounds` folder the
+units keep TA's sounds of their kinds, as before.
+
+| Forged Alliance's (a blueprint's `Audio`) | TA Reborn's |
+| --- | --- |
+| `UISelection` | `select1` |
+| `Destroyed` (else `DeathExplosion`, `Killed`); an aircraft's `Killed` (else `DeathExplosion`) | `death`, in place of its blast's |
+| An aircraft's `Destroyed` (else `AirUnitWaterImpact`) | `crash`: its wreck hitting the ground |
+| `StartMove`, `StopMove`, `AmbientMove` (the `Sub`, `Land` and `Water` ones where it has none of these) | `startmove`, `stopmove`, `moveloop` |
+| `TakeOff` (else `Thruster`), `Landing` | `takeoff`, `landing` |
+| `Construct`, `ConstructLoop`, `ConstructStop` | `build`, `buildloop`, `buildstop` |
+| `StartReclaim`, `ReclaimLoop`; `CaptureLoop` | `working`, `reclaimloop`; `captureloop` |
+| `DoneBeingBuilt` | `donebuilt` |
+| `ActiveLoop`; `Open` and `Close` (else `Unpack`, `Pack`) | `activeloop`; `open`, `close`, as its switch goes on and off |
+| A weapon's `Unpack` or `Open` and `Pack` or `Close` (else its unit's), where it unpacks before it fires | Its script's `play-sound` as it starts to unpack and to pack up |
+| `ShieldOn`, `ShieldOff` | `shieldon`, `shieldoff` (for when TA Reborn plays shields) |
+| A weapon's `Fire` (else `MuzzleChargeStart`, a beam's `BeamStart`) | `soundstart`: every shot; a beam's start and a salvo leaving together once a burst (`soundtrigger`) |
+| `BeamLoop` or `BarrelLoop`; `BeamStop` or `BarrelStop` | `soundloop`; `soundstop` |
+| `FireUnderWater` | `soundstartwater` |
+| Its projectile's `NukeExplosion`, else `Impact`, else `ImpactTerrain`; `ImpactWater` | `soundhit`; `soundwater` |
+| A silo's `NuclearLaunchDetected`; the cue the game's own `lua/aibrain.lua` plays for a commander under attack (read as data) | Each side's alerts (`ALERTS_UEF`...): `nuclearlaunch`, `commanderattacked` |
+
+What a unit's blueprint gives none of, TA's category for its kind gives (`base=ARM_TANK;` and the
+like): its replies to orders, its countdown, TA's nano-lathe for a builder without `Construct`.
+A key takes a cue that plays as it does: a loop for a loop's key, else one that plays once.
+
+- **A cue a set** (`FA_<BANK>_<CUE>`): its variants the cue's waves; its level the sound's volume
+  and its categories' (the global settings', but the one over them all), taken down by the
+  weapons' categories' (a weapon at Forged Alliance's 0 dB plays as loud as TA's own sounds do),
+  with its clip's and the range its event picks from; a voice (a selection, the announcer) as loud
+  as its sound says alone. Its pitch the sound's with the event's range, its cap the cue's
+  instance limit (two to four, most of them), no repeats where the cue never plays a wave twice
+  running. How far it is heard by the curve its volume follows by distance, against the
+  farthest-reaching one (falling 30 dB six tenths as far or more: 1, the weapons and blasts; a
+  fifth: 0.8, the units' moves; a tenth: 0.65, buildings at work; less: 0.5, builders' loops; no
+  such curve, or one that never falls so far: 1.25, missiles in flight and nukes). A loop fades out
+  over a quarter of a second. Whole numbers from tables alone (decibels, semitones): the same text
+  on every computer.
+- **A cue of several layers** (four of the units', a ship's death among them) plays them mixed into
+  a file a variant, each at its loudest against the loudest of them, after its delay, as many
+  times as it plays.
+- **Files:** a wave a file (`sounds/supcom/<wave bank>/<wave>.wav`; delayed, `_d<ms>`, its delay
+  leading silence; mixes in `sounds/supcom/mix/`), IMA ADPCM (`crate::ima`: a quarter of PCM's
+  bytes; each nibble the one of its sign whose sample, with the nearest the next can come to after
+  it, lies nearest the two, as the game's decoder rebuilds them), stereo made mono so that it pans,
+  written once however many cues play it: 1,344 files, 63 MB, in a few seconds. As the game decodes
+  them, against the copy's waves (`the_sounds_are_clean`): the noise the codec leaves lies 37 dB
+  under the sound (the median file; 15 dB under the noisiest wave, a hiss), no block a twentieth of a
+  second long off its wave's level by a decibel, no clip, no file starting or ending loud.
+
+Not played yet: the footsteps (`FootFall…`), refuelling, enhancing, loading and unloading,
+diving and surfacing, a commander's arrival, a missile's sound in flight (`ExistLoop`), a
+gatling's spin-up (`BarrelStart`), a capture's start; and of XACT's settings, the curves but the
+distance's (fades in and out, the camera's distance, the music ducking under voices) and a
+sound's place in the pan.
 
 ## Animations (`.sca`, version 5)
 
@@ -749,3 +813,6 @@ Seen across the 357 (the installed test lists them); the conversion steps round 
 - Animations named that are not there (URL0103's and XSL0304's deaths, UAS0103's third, named
   `uas00103`; the UEF hydrocarbon plant's opening, `ueb1102_Aopen`, which its script plays as it
   starts: it opens no hatch; the tech 3 extractors' upgrades, which they never make).
+- Five sounds the blueprints name that no bank of the copy holds (a ship's death, a depth charge,
+  an aircraft's thruster, a death of the Cybran air, a capture's loop: the installed test lists
+  them); TA's of their kinds play in their places.

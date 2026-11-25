@@ -1551,7 +1551,7 @@ pub fn explode(game: &mut Game, weapon: Option<&str>, size: f32, x: f32, z: f32,
     let ground = world.height_at(p.x, p.z);
     let water = ground < world.sea_level;
     let now = crate::scene::game_seconds(game.sim.tick, game.alpha()) as f32;
-    let e = SimEvent::Explosion { weapon, pos: FxVec3::new(p.x, ground.max(world.sea_level), p.z), water, when: Fx::ZERO, player: None };
+    let e = SimEvent::Explosion { weapon, pos: FxVec3::new(p.x, ground.max(world.sea_level), p.z), water, when: Fx::ZERO, player: None, death_of: None };
     game.effects.on_event(&e, &game.sim, now);
     if heard {
         game.events_out.push(e);
@@ -2421,7 +2421,7 @@ impl StageRun {
             let world = &game.sim.world;
             let ground = world.height_at(p.x, p.z);
             let water = ground < world.sea_level;
-            let e = SimEvent::Explosion { weapon, pos: FxVec3::new(p.x, ground.max(world.sea_level), p.z), water, when: Fx::ZERO, player: None };
+            let e = SimEvent::Explosion { weapon, pos: FxVec3::new(p.x, ground.max(world.sea_level), p.z), water, when: Fx::ZERO, player: None, death_of: None };
             game.effects.on_event(&e, &game.sim, now);
             game.events_out.push(e);
         }
