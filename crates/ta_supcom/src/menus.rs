@@ -20,16 +20,18 @@ pub const DESCRIPTION: &str = "Supreme Commander: Forged Alliance's look for TA 
 pub const TAGS: [&str; 3] = ["interface", "theme", "supreme commander"];
 /// The converter's version, the mod's own (its manifest's `version`): a mod made by an older one
 /// is offered to be made again. Raised whenever what is made changes. (2: the launcher's install of
-/// version 1 left its `menus/` folder out, its theme with it: made again, it is whole.)
-pub const VERSION: u32 = 2;
+/// version 1 left its `menus/` folder out, its theme with it: made again, it is whole; 3: the
+/// colossus's picture left out, letterboxed, and the banner the launcher shows the mod by.)
+pub const VERSION: u32 = 3;
 /// What the mod's files are for, as the game reads it.
 pub const THEME: &str = "menus/supcom/theme.toml";
 /// The menu music's file in the mod.
 pub const MUSIC: &str = "music/supcom-menus/menu.flac";
 
 /// The menus' pictures: each one's file in the game's archives and its name in the mod. (The game
-/// shows them behind its menus one after another.)
-pub const PICTURES: [(&str, &str); 12] = [
+/// shows them behind its menus one after another. Not the colossus's, `background-colossus_bmp`:
+/// letterboxed in black bars of its own, framed, with a wordmark, and `painting_1` again.)
+pub const PICTURES: [(&str, &str); 11] = [
     ("textures/ui/common/menus02/background_bmp.dds", "space_1"),
     ("textures/ui/common/menus02/background02_bmp.dds", "space_2"),
     ("textures/ui/common/menus02/background03_bmp.dds", "space_3"),
@@ -40,7 +42,6 @@ pub const PICTURES: [(&str, &str); 12] = [
     ("textures/ui/common/menus02/background-paint03_bmp.dds", "painting_3"),
     ("textures/ui/common/menus02/background-paint04_bmp.dds", "painting_4"),
     ("textures/ui/common/menus02/background-paint05_bmp.dds", "painting_5"),
-    ("textures/ui/common/menus02/background-colossus_bmp.dds", "colossus"),
     ("textures/ui/common/scx_menu/campaign-select/bg.dds", "factions"),
 ];
 
@@ -455,7 +456,7 @@ skins = {
         let pic = picture(8);
         let mut members: Vec<(String, Vec<u8>)> = vec![("lua/skins/skins.lua".into(), SKINS.as_bytes().to_vec())];
         members.push((PICTURES[0].0.into(), pic.clone()));
-        members.push((PICTURES[11].0.into(), pic.clone()));
+        members.push((PICTURES[10].0.into(), pic.clone()));
         for (file, _) in PANEL {
             members.push((format!("{PANEL_DIR}{file}.dds"), picture(4)));
         }

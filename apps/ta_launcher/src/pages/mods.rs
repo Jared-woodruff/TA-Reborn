@@ -87,7 +87,7 @@ impl LauncherApp {
                 self.push(Action::BrowsePackage);
             }
             if ui.add(ActionButton::secondary("SUPREME COMMANDER…").height(height))
-                .hover_tip(t("Import the factions of Supreme Commander: Forged Alliance from your own copy of the game (GOG's or Steam's): their units and buildings, to play in skirmish; its soundtrack, to play with TA's music or in its place; and its look for the game's menus.")).clicked() {
+                .hover_tip(t(crate::supcom::BUTTON_TIP)).clicked() {
                 self.push(Action::SupcomOpen(crate::supcom::Tab::Factions));
             }
             if ui.add(ActionButton::secondary("MOD FOLDERS…").height(height)).hover_tip(t("The folders mods are looked for in")).clicked() {
@@ -701,6 +701,13 @@ impl LauncherApp {
             None => getmods::paint_picture(&painter, frame, texture.as_ref(), &item.id, &item.name, bundled, 0.0, icon.as_ref()),
         }
         painter.add(ta_ui::metal::well(frame, Color32::TRANSPARENT));
+        // (A Supreme Commander import's kind on its card, the word its name is cut before there:
+        // "Supreme Commander fact…". At its top left, where the hidden view's ribbon goes.)
+        if !badge && frame.height() > 90.0 && !self.mod_library.hidden_view
+            && let Some(tab) = own.and_then(|info| crate::supcom::import_tab(&info.manifest))
+        {
+            crate::library::tag(ui, pos2(frame.left() + 8.0, frame.top() + 14.0), tab.label());
+        }
         if badge {
             let (label, colour) = self.fit_badge(item);
             getmods::badge(ui, &painter, frame.left_top() + vec2(10.0, 10.0), t(label), colour, egui::Align2::LEFT_TOP);
@@ -719,6 +726,21 @@ impl LauncherApp {
             widgets::paint_glyph(&painter, widgets::Glyph::Play, center + vec2(1.0, 0.0), 0.6, TEXT_BRIGHT);
         }
         ask
+    }
+
+    /// The factions the factions' mod in `dir` holds (their sides' names, in the game's order), read
+    /// again only when its side add-on changes.
+    fn held_factions(&mut self, dir: &std::path::Path) -> Vec<String> {
+        let stamp = std::fs::metadata(dir.join("gamedata").join("sidedata_supcom.tdf")).and_then(|m| m.modified()).ok();
+        if let Some((at, when, sides)) = &self.held_factions
+            && at == dir && *when == stamp
+        {
+            return sides.clone();
+        }
+        let held = crate::supcom_factions::installed_sides(dir);
+        let sides: Vec<String> = ta_supcom::unit::Faction::PLAYABLE.iter().map(|f| ta_supcom::factions::units::side(f).to_string()).filter(|side| held.contains(side)).collect();
+        self.held_factions = Some((dir.to_path_buf(), stamp, sides.clone()));
+        sides
     }
 
     /// How a mod fared: this copy's own check once installed, else the catalogue's review.
@@ -954,7 +976,14 @@ impl LauncherApp {
                     }
                 });
                 if !manifest.description.is_empty() {
-                    ui.add(egui::Label::new(RichText::new(t(&manifest.description)).font(body(13.5)).color(TEXT)).wrap());
+                    ui.add(egui::Label::new(RichText::new(crate::supcom::mod_description(manifest)).font(body(13.5)).color(TEXT)).wrap());
+                }
+                // (The factions' mod: those it holds, which its banner shows.)
+                if crate::supcom::import_tab(manifest) == Some(crate::supcom::Tab::Factions) {
+                    let sides = self.held_factions(&entry.info.path);
+                    if !sides.is_empty() {
+                        ui.add(egui::Label::new(RichText::new(tf("Its factions: {factions}", &[("factions", &super::listed(&sides))])).color(STEEL)).wrap());
+                    }
                 }
                 if !manifest.depends.is_empty() {
                     let names: Vec<String> = manifest.depends.iter().map(|id| self.mods.get(id).map_or(id.clone(), |m| m.info.manifest.name.clone())).collect();
@@ -1740,6 +1769,35 @@ mod tests {
         app.skins.shutdown();
         app.refresh_mods();
         (ctx, app, dir)
+    }
+
+    /// A Supreme Commander import's mod shows its words as this TA Reborn has them (an older
+    /// import's manifest said "four factions" whatever it held) and names the factions it holds,
+    /// in the game's order.
+    #[test]
+    fn an_imports_mod_shows_this_versions_words_and_its_factions() {
+        use clap::Parser;
+        let (id, name) = (crate::supcom_factions::MOD_ID, crate::supcom_factions::MOD_NAME);
+        let dir = std::env::temp_dir().join(format!("ta_mod_page_supcom_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let folder = dir.join("mods").join(id);
+        std::fs::create_dir_all(folder.join("gamedata")).unwrap();
+        std::fs::write(folder.join("mod.toml"), format!("id = \"{id}\"\nname = \"{name}\"\nversion = \"13\"\ndescription = \"Supreme Commander: Forged Alliance's four factions, their units and buildings, made from your own copy of the game.\"\n")).unwrap();
+        std::fs::write(folder.join("gamedata").join("sidedata_supcom.tdf"), "[SIDE0]\n\t{\n\tname=SERAPHIM;\n\t}\n[SIDE1]\n\t{\n\tname=UEF;\n\t}\n").unwrap();
+        let ctx = egui::Context::default();
+        let config = dir.join("config.toml");
+        let args = crate::Args::parse_from(["ta-launcher", "--offline", "--pretend-missing", "--page", "mods", "--config", config.to_str().unwrap()]);
+        let mut app = LauncherApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()), args);
+        app.skins.shutdown();
+        app.refresh_mods();
+        app.show_mod_details(id);
+        for _ in 0..3 { whole_frame(&ctx, &mut app, Vec::new()); }
+        let (shown, _) = whole_frame(&ctx, &mut app, Vec::new());
+        assert!(shown.iter().any(|(text, _)| text == crate::supcom_factions::MOD_DESCRIPTION), "this version's words: {shown:?}");
+        assert!(!shown.iter().any(|(text, _)| text.contains("four factions")), "{shown:?}");
+        assert!(shown.iter().any(|(text, _)| text == "Its factions: UEF and SERAPHIM"), "in the game's order: {shown:?}");
+        drop(app);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// One whole frame of the launcher (as eframe runs it) in a window 1280 × 900: what is shown,

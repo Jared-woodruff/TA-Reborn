@@ -38,6 +38,9 @@ const STRIP_PIPE: f32 = 3.0;
 #[derive(Clone)]
 pub struct PanelArt {
     pub pieces: [egui::TextureHandle; 9],
+    /// Its middle's colour (the mean of its texels, carried by their alpha): what a list over
+    /// the panel fades into at its ends.
+    pub middle: Color32,
 }
 
 impl PanelArt {
@@ -59,6 +62,11 @@ pub fn set_art(art: Option<PanelArt>) {
 
 fn art() -> Option<PanelArt> {
     PANEL_ART.with_borrow(Clone::clone)
+}
+
+/// The middle's colour of the art the panels are drawn round now, where they are.
+pub(crate) fn art_middle() -> Option<Color32> {
+    PANEL_ART.with_borrow(|art| art.as_ref().map(|art| art.middle))
 }
 
 /// How large the art is drawn round a panel, and round a strip: a share of its own size (Forged

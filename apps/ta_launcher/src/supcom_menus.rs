@@ -24,8 +24,7 @@ pub use menus::{MOD_ID, VERSION};
 
 /// The mod's name and words as its manifest keeps them (`menus`'), marked to be translated.
 pub const MOD_NAME: &str = n("Supreme Commander menus");
-#[cfg_attr(not(test), allow(dead_code))]
-const MOD_DESCRIPTION: &str = n("Supreme Commander: Forged Alliance's look for TA Reborn's menus: its colours, pictures, panel art, interface sounds and menu music, made from your own copy of the game.");
+pub(crate) const MOD_DESCRIPTION: &str = n("Supreme Commander: Forged Alliance's look for TA Reborn's menus: its colours, pictures, panel art, interface sounds and menu music, made from your own copy of the game.");
 /// The pictures' size in the tab (points wide; four to three).
 pub const PICTURE_WIDTH: f32 = 160.0;
 /// What the mod takes on the disk, about (bytes): its pictures, art, sounds and music.
@@ -101,8 +100,8 @@ impl Outcome {
         match (&self.error, self.went()) {
             (Some(why), _) => tf("The menus' look could not be imported: {why}", &[("why", why)]),
             (None, Went::Nothing) => t("Stopped: nothing was installed, and the menus' look is as it was.").to_string(),
-            (None, Went::Well) => t("Imported Forged Alliance's look for the menus. Its mod is on, and MENU THEME is now FORGED ALLIANCE: change that in the game's Options, Interface.").to_string(),
-            (None, _) => tf("Imported Forged Alliance's look for the menus, but {failed} of its parts could not be made. Its mod is on, and MENU THEME is now FORGED ALLIANCE: change that in the game's Options, Interface.", &[("failed", &self.skipped.len())]),
+            (None, Went::Well) => t("Imported Forged Alliance's look for the menus. Its mod is on, and MENU THEME is now FORGED ALLIANCE: change that in Settings, Interface.").to_string(),
+            (None, _) => tf("Imported Forged Alliance's look for the menus, but {failed} of its parts could not be made. Its mod is on, and MENU THEME is now FORGED ALLIANCE: change that in Settings, Interface.", &[("failed", &self.skipped.len())]),
         }
     }
 
@@ -110,7 +109,7 @@ impl Outcome {
         Some(match (&self.error, self.went()) {
             (Some(why), _) => tf("Supreme Commander's look for the menus could not be imported: {why}", &[("why", why)]),
             (None, Went::Nothing) => return None,
-            (None, _) => t("Imported Supreme Commander's look for the menus: MENU THEME is now FORGED ALLIANCE (the game's Options, Interface).").to_string(),
+            (None, _) => t("Imported Supreme Commander's look for the menus: MENU THEME is now FORGED ALLIANCE (Settings, Interface).").to_string(),
         })
     }
 }
@@ -163,7 +162,7 @@ impl Menus {
     pub fn rescan(&mut self, picked: Option<PathBuf>, roots: &Roots) {
         let folders = roots.folders.clone();
         self.look.start("supcom menus scan", move || {
-            let held = mod_place(&Roots { folders, mods_dir: PathBuf::new() }).copy.filter(|copy| !copy.archive).map(|copy| copy.path);
+            let held = mod_place(&Roots { folders, mods_dir: PathBuf::new() }).copy.filter(|copy| copy.ours && !copy.archive).map(|copy| copy.path);
             find(crate::supcom::copies_found(), picked.as_deref(), held.as_deref())
         });
     }

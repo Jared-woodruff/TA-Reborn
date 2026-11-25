@@ -296,6 +296,9 @@ pub struct LauncherApp {
     pub(crate) followed_mods: crate::supcom::Followed,
     /// Banners being made for the Supreme Commander imports' mods installed without one.
     pub(crate) supcom_banners: crate::supcom_banners::Banners,
+    /// The factions the factions' mod holds, as its page names them: its folder, its side
+    /// add-on's time, and the sides (read again when that changes).
+    pub(crate) held_factions: Option<(PathBuf, Option<std::time::SystemTime>, Vec<String>)>,
     pub(crate) skins: crate::skins::Library,
     pub(crate) game: GameState,
     /// The last folder picked with "Browse…" that is not a valid install, and what it lacks.
@@ -653,6 +656,7 @@ impl LauncherApp {
             supcom: crate::supcom::Import::new(supcom_choice),
             followed_mods,
             supcom_banners: Default::default(),
+            held_factions: None,
             game: GameState::Idle,
             browse_error: None,
             actions: match (args.autoplay, args.autobenchmark) {

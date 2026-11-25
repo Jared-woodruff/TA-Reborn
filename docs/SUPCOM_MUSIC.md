@@ -25,6 +25,8 @@ repository.
     - **TA**: Total Annihilation's, as before (the default).
     - **FORGED ALLIANCE**: Forged Alliance's in TA's place: its building themes while a battle is
       at peace, its battle themes in battle, and its menu theme and briefings' music in the menus.
+      (MENU THEME's FORGED ALLIANCE, the menus mod's, puts its menu theme first in the menus'
+      music, before the soundtrack's own for them, whichever SOUNDTRACK says.)
     - **BOTH**: the two together, a playlist each mood.
     - **BY SIDE**: Forged Alliance's while the battle's player commands one of its factions (UEF,
       CYBRAN, AEON or SERAPHIM: the factions' mod), TA's otherwise.

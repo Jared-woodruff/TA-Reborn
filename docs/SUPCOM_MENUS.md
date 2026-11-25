@@ -13,7 +13,7 @@ their widgets' shapes: only how they are coloured, framed, backed and heard chan
     page) has a MENUS tab. It finds the game as the other tabs do and shows what the copy has of
     the look: its colours, its pictures, its panel art, how many interface sounds, and its menu
     music. IMPORT MENUS makes the mod **Supreme Commander menus** (`supcom-menus`), turned on once
-    made, with MENU THEME set to show it (on GOG's Gold Edition, 12 pictures, the panel art, 11
+    made, with MENU THEME set to show it (on GOG's Gold Edition, 11 pictures, the panel art, 11
     sounds and the 81-second menu theme: about 19 MB, in a fraction of a second). STOP installs
     nothing. As with the other imports, the mod is made whole each time, replaces the one
     installed only once made, and is marked UPDATE on the Mods page when an older converter made
@@ -32,9 +32,16 @@ their widgets' shapes: only how they are coloured, framed, backed and heard chan
     - the panels and strips are framed in its panel border art in place of TA Reborn's pipes;
     - its interface sounds play for the menus' clicks: its big buttons', small buttons', tabs',
       the way back, errors;
-    - its menu theme is the menus' music, whatever SOUNDTRACK plays in battle.
-    The battle keeps its own look (its HUD, its pause menu and dialogs); a unit on show in the
-    units' viewer, and the credits' film, show over the battlefield as they do.
+    - its menu theme comes first in the menus' music, before the soundtrack's own for them
+      (SOUNDTRACK's; not twice where Forged Alliance's menu theme is among them, the same music
+      from the music's mod: `audio::with_theme_music`); the jukebox names it Menu theme;
+    - behind its pictures the menus' film waits, silent: nothing of it is drawn, simulated or
+      heard while they cover the window;
+    - a list over a panel fades at its ends into the panel art's middle colour (`PanelArt::middle`),
+      not into TA Reborn's plate.
+    The battle keeps its own look (its HUD, its pause menu and dialogs), and so do the loading
+    screens between the menus and a battle; a unit on show in the units' viewer, and the credits'
+    film, show over the battlefield as they do.
 - **Developers:** `cargo build --release -p ta_tools`, then `target/release/ta-tools supcom-menus
   <out> [--game <folder>]` makes the mod into `<out>` (mount it as a mod) and prints the palette
   it made of the game's colours. The launcher's dialog for captures: `--page mods --show
@@ -91,10 +98,11 @@ and white; pictures, map previews and portraits, drawn in textures of their own,
 ## The mod
 
 - **`mod.toml`:** id `supcom-menus`, name "Supreme Commander menus", `version` the converter's
-  (`menus::VERSION`, 2: version 1's, as the launcher installed it, lacked its `menus/` folder),
+  (`menus::VERSION`, 3: version 1's, as the launcher installed it, lacked its `menus/` folder; 2
+  showed the colossus's picture too, letterboxed in black bars of its own and painting_1 again),
   `requires_reborn`, a description, the tags `interface`, `theme` and `supreme commander`.
 - **`menus/supcom/pictures/<name>.dds`:** the pictures as the game has them (`space_1`…`space_5`,
-  `painting_1`…`painting_5`, `colossus`, `factions`).
+  `painting_1`…`painting_5`, `factions`; not the colossus, letterboxed in black bars of its own).
 - **`menus/supcom/panel/<place>.dds`:** the panel art's nine pieces, named for their places.
 - **`sounds/supcom-menus/<cue>.wav`:** each sound once, as WAV.
 - **`music/supcom-menus/menu.flac`:** the menu music, lossless.

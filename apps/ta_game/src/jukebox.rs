@@ -91,9 +91,10 @@ struct TrackMetadata {
 }
 
 /// A track of Forged Alliance's soundtrack by its part ("music/supcom/building_2.flac" →
-/// "Building theme 2"); none for a file of another.
+/// "Building theme 2"; the menus' theme's music, "music/supcom-menus/menu.flac", "Menu theme");
+/// none for a file of another.
 fn fa_track_name(path: &str) -> Option<String> {
-    let stem = path.strip_prefix("music/supcom/")?.rsplit_once('.')?.0;
+    let stem = path.strip_prefix("music/supcom/").or_else(|| path.strip_prefix("music/supcom-menus/"))?.rsplit_once('.')?.0;
     let numbered = stem.rsplit_once('_').and_then(|(part, n)| Some((part, n.parse::<usize>().ok()?)));
     Some(match numbered {
         Some(("building", n)) => tf("Building theme {n}", &[("n", &n)]),
@@ -281,7 +282,9 @@ impl Jukebox {
         let fa_list: Vec<&String> = ta_tracks.iter().filter(|p| p.starts_with("music/supcom/")).collect();
         let user_keys: Vec<String> = self.tracks.as_deref().unwrap_or_default().iter().map(|(p, _)| format!("file:{}", p.display())).collect();
         if self.tracks.is_some() {
-            self.read_metadata(ta_list.iter().chain(&fa_list).map(|p| (*p).clone()).chain(user_keys.iter().cloned()).collect(), source);
+            // (The track playing too, of none of the lists: the menus' theme's music.)
+            let playing = now.filter(|p| !p.starts_with("file:") && !ta_list.iter().chain(&fa_list).any(|t| t.as_str() == *p)).map(str::to_owned);
+            self.read_metadata(ta_list.iter().chain(&fa_list).map(|p| (*p).clone()).chain(user_keys.iter().cloned()).chain(playing).collect(), source);
         }
         // The record turns, and the spectrum moves, while the music plays (and settles after).
         let dt = ctx.input(|i| i.stable_dt).clamp(0.0, 0.1);
@@ -381,7 +384,7 @@ impl Jukebox {
                 let mut mode = audio.user_music;
                 ui.horizontal(|ui| {
                     ui.label(w::caption("PLAYS"));
-                    if w::segmented(ui, &mut mode, &[(UserMusic::Off, "TA'S MUSIC"), (UserMusic::Mixed, "BOTH"), (UserMusic::Only, "YOURS")]).changed() {
+                    if w::segmented(ui, &mut mode, &[(UserMusic::Off, "THE GAME'S"), (UserMusic::Mixed, "BOTH"), (UserMusic::Only, "YOURS")]).changed() {
                         out.push(JukeboxRequest::Mode(mode));
                     }
                 });
@@ -689,6 +692,7 @@ mod tests {
         assert_eq!(ta_track_name("music/17.ogg"), "Briefing");
         // Forged Alliance's soundtrack, by its parts.
         assert_eq!(ta_track_name("music/supcom/menu.flac"), "Menu theme");
+        assert_eq!(ta_track_name("music/supcom-menus/menu.flac"), "Menu theme", "the menus' theme's music, by its name");
         assert_eq!(ta_track_name("music/supcom/building_2.flac"), "Building theme 2");
         assert_eq!(ta_track_name("music/supcom/battle_4.flac"), "Battle theme 4");
         assert_eq!(ta_track_name("music/supcom/briefing_6.flac"), "Briefing 6");

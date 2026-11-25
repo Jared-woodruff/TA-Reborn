@@ -27,8 +27,7 @@ pub use soundtrack::{MOD_ID, VERSION};
 pub const MOD_NAME: &str = n("Supreme Commander music");
 // (The description is shown through the Mods page's own translation of a manifest's words: kept
 // here to be collected for translation, and held to `soundtrack`'s by a test.)
-#[cfg_attr(not(test), allow(dead_code))]
-const MOD_DESCRIPTION: &str = n("Supreme Commander: Forged Alliance's soundtrack, made from your own copy of the game.");
+pub(crate) const MOD_DESCRIPTION: &str = n("Supreme Commander: Forged Alliance's soundtrack, made from your own copy of the game.");
 /// What the music takes on the disk once made, about, as a share of its sound uncompressed (FLAC:
 /// 226 MB of the game's 443 MB).
 const FLAC_SHARE: f64 = 0.52;
@@ -125,10 +124,10 @@ impl Outcome {
         match (&self.error, self.went()) {
             (Some(why), _) => tf("The music could not be imported: {why}", &[("why", why)]),
             (None, Went::Nothing) => t("Stopped: nothing was installed, and the music is as it was.").to_string(),
-            (None, Went::Well) if self.switched => tf("Imported the soundtrack: {n} tracks. Its mod is on, and SOUNDTRACK is now FORGED ALLIANCE: change that in the game's Options, Sound.", &[("n", &self.tracks)]),
-            (None, Went::Well) => tf("Imported the soundtrack: {n} tracks. Its mod is on: choose SOUNDTRACK in the game's Options, Sound.", &[("n", &self.tracks)]),
-            (None, _) if self.switched => tf("Imported {n} tracks of the soundtrack, but {failed} could not be made. Its mod is on, and SOUNDTRACK is now FORGED ALLIANCE: change that in the game's Options, Sound.", &[("n", &self.tracks), ("failed", &self.skipped.len())]),
-            (None, _) => tf("Imported {n} tracks of the soundtrack, but {failed} could not be made. Its mod is on: choose SOUNDTRACK in the game's Options, Sound.", &[("n", &self.tracks), ("failed", &self.skipped.len())]),
+            (None, Went::Well) if self.switched => tf("Imported the soundtrack: {n} tracks. Its mod is on, and SOUNDTRACK is now FORGED ALLIANCE: change that in Settings, Sound.", &[("n", &self.tracks)]),
+            (None, Went::Well) => tf("Imported the soundtrack: {n} tracks. Its mod is on: choose SOUNDTRACK in Settings, Sound.", &[("n", &self.tracks)]),
+            (None, _) if self.switched => tf("Imported {n} tracks of the soundtrack, but {failed} could not be made. Its mod is on, and SOUNDTRACK is now FORGED ALLIANCE: change that in Settings, Sound.", &[("n", &self.tracks), ("failed", &self.skipped.len())]),
+            (None, _) => tf("Imported {n} tracks of the soundtrack, but {failed} could not be made. Its mod is on: choose SOUNDTRACK in Settings, Sound.", &[("n", &self.tracks), ("failed", &self.skipped.len())]),
         }
     }
 
@@ -137,8 +136,8 @@ impl Outcome {
         Some(match (&self.error, self.went()) {
             (Some(why), _) => tf("Supreme Commander's music could not be imported: {why}", &[("why", why)]),
             (None, Went::Nothing) => return None,
-            (None, Went::Well) if self.switched => t("Imported Supreme Commander's soundtrack: SOUNDTRACK is now FORGED ALLIANCE (the game's Options, Sound).").to_string(),
-            (None, Went::Well) => t("Imported Supreme Commander's soundtrack: choose SOUNDTRACK in the game's Options, Sound.").to_string(),
+            (None, Went::Well) if self.switched => t("Imported Supreme Commander's soundtrack: SOUNDTRACK is now FORGED ALLIANCE (Settings, Sound).").to_string(),
+            (None, Went::Well) => t("Imported Supreme Commander's soundtrack: choose SOUNDTRACK in Settings, Sound.").to_string(),
             (None, _) => tf("Imported Supreme Commander's soundtrack, but {failed} of its tracks could not be made: SUPREME COMMANDER… on the Mods page lists them.", &[("failed", &self.skipped.len())]),
         })
     }
@@ -215,7 +214,7 @@ impl Music {
     pub fn rescan(&mut self, picked: Option<PathBuf>, roots: &Roots) {
         let folders = roots.folders.clone();
         self.look.start("supcom music scan", move || {
-            let held = mod_place(&Roots { folders, mods_dir: PathBuf::new() }).copy.filter(|copy| !copy.archive).map(|copy| copy.path);
+            let held = mod_place(&Roots { folders, mods_dir: PathBuf::new() }).copy.filter(|copy| copy.ours && !copy.archive).map(|copy| copy.path);
             (find(crate::supcom::copies_found(), picked.as_deref(), held.as_deref()), BTreeMap::new())
         });
     }

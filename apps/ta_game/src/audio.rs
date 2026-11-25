@@ -102,6 +102,22 @@ pub fn fa_tracks(source: &dyn ta_audio::SoundSource) -> Vec<FaTrack> {
     }
 }
 
+/// Forged Alliance's menu theme as the music's mod has it: the menus' theme's own music is the
+/// same, and is not listed twice.
+pub const FA_MENU_THEME: &str = "music/supcom/menu.flac";
+
+/// The menus' playlist (`list`, the soundtrack's for them) with the menus' theme's music
+/// (`theme`) first: one track alone, played over and over, was too little. As it is where it has
+/// that music already, or Forged Alliance's menu theme (the same music, from the music's mod).
+pub fn with_theme_music(list: &mut Vec<ta_audio::music::TrackRef>, theme: Option<&str>) {
+    use ta_audio::music::TrackRef;
+    let Some(theme) = theme else { return };
+    let same = |track: &TrackRef| matches!(track, TrackRef::Path(path) if path.eq_ignore_ascii_case(theme) || path.eq_ignore_ascii_case(FA_MENU_THEME));
+    if !list.iter().any(same) {
+        list.insert(0, TrackRef::Path(theme.to_string()));
+    }
+}
+
 /// The playlists `soundtrack` asks for: TA's (`ta`), Forged Alliance's in their place (its
 /// building themes at peace, its battle themes in battle, its menu's theme and briefings' music in
 /// the menus; TA's victory and defeat kept), or both together. By side: Forged Alliance's where
@@ -737,10 +753,7 @@ impl GameAudio {
         let mut config = soundtrack_music(&self.ta_music, &self.fa_tracks, self.soundtrack, self.forged_alliance_side);
         // (The player's shuffle as it is now: the playlists change, not how they play.)
         config.shuffle = self.engine.music().shuffle();
-        // (The menus' theme's music, their playlist alone, whatever the soundtrack.)
-        if let Some(music) = &self.menu_music {
-            config.playlists.briefing = vec![ta_audio::music::TrackRef::Path(music.clone())];
-        }
+        with_theme_music(&mut config.playlists.briefing, self.menu_music.as_deref());
         self.engine.set_music_config(config);
         let music = self.engine.music();
         let stale = match (music.mood(), music.now_playing()) {
@@ -754,8 +767,8 @@ impl GameAudio {
 
     /// The menus' theme's sounds and music (MENU THEME): its sound for each of TA's interface
     /// events (`ta_ui::sound::UiSound::event`), played while the menus are shown
-    /// ([`GameAudio::set_in_menus`]), and its music, the menus' playlist (the track playing
-    /// changed at once where it is not the new one). None of either: TA's own.
+    /// ([`GameAudio::set_in_menus`]), and its music, first in the menus' playlist (before the
+    /// soundtrack's own for them). None of either: TA's own.
     pub fn set_menu_theme(&mut self, sounds: std::collections::BTreeMap<String, String>, music: Option<String>) {
         self.menu_sounds = sounds;
         if std::mem::replace(&mut self.menu_music, music) != self.menu_music {
@@ -911,6 +924,24 @@ mod tests {
         assert_eq!(soundtrack_music(&ta, &fa, S::BySide, false).playlists, ta.playlists, "a side of TA's");
         assert_eq!(soundtrack_music(&ta, &fa, S::BySide, true).playlists, only.playlists, "one of Forged Alliance's factions");
         assert_eq!(soundtrack_music(&ta, &[], S::ForgedAlliance, true).playlists, ta.playlists, "nothing installed: TA's");
+    }
+
+    /// The menus' theme's music first in the menus' list, the soundtrack's own for them after it;
+    /// not twice where Forged Alliance's menu theme, the same music, is there already.
+    #[test]
+    fn the_menus_themes_music_joins_their_list() {
+        use ta_audio::music::TrackRef;
+        let path = |p: &str| TrackRef::Path(p.into());
+        let theme = "music/supcom-menus/menu.flac";
+        let mut ta = vec![TrackRef::Number(17)];
+        with_theme_music(&mut ta, Some(theme));
+        assert_eq!(ta, [path(theme), TrackRef::Number(17)], "TA's soundtrack: the theme's first, TA's after it");
+        let mut fa = vec![path(FA_MENU_THEME), path("music/supcom/briefing_1.flac")];
+        with_theme_music(&mut fa, Some(theme));
+        assert_eq!(fa, [path(FA_MENU_THEME), path("music/supcom/briefing_1.flac")], "the same music not twice");
+        let mut none = vec![TrackRef::Number(17)];
+        with_theme_music(&mut none, None);
+        assert_eq!(none, [TrackRef::Number(17)]);
     }
 
     /// The music mod's list read from the game's files: each track's file (as the files name

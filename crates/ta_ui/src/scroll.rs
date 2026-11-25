@@ -644,10 +644,16 @@ fn paint_fades(ctx: &egui::Context, painter: &Painter, view: Rect, above: f32, b
             Behind::Fill(color) => {
                 painter.add(metal::vgrad(band, color.gamma_multiply(upper), color.gamma_multiply(lower)));
             }
-            Behind::Plate => {
-                painter.add(metal::vgrad(band, PANEL.gamma_multiply(upper), PANEL.gamma_multiply(lower)));
-                painter.add(grime_fade(ctx, band, upper, lower));
-            }
+            // (A theme's panel art: its middle's colour, without TA Reborn's grime.)
+            Behind::Plate => match crate::panel::art_middle() {
+                Some(middle) => {
+                    painter.add(metal::vgrad(band, middle.gamma_multiply(upper), middle.gamma_multiply(lower)));
+                }
+                None => {
+                    painter.add(metal::vgrad(band, PANEL.gamma_multiply(upper), PANEL.gamma_multiply(lower)));
+                    painter.add(grime_fade(ctx, band, upper, lower));
+                }
+            },
             Behind::Backdrop(base) => {
                 // The backdrop again over the band, in strips more opaque towards the edge.
                 const STRIPS: usize = 12;

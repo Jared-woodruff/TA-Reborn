@@ -28,8 +28,7 @@ pub use make::{MOD_ID, VERSION};
 pub const MOD_NAME: &str = n("Supreme Commander factions");
 // (The description is shown through the Mods page's own translation of a manifest's words: kept
 // here to be collected for translation, and held to `make`'s by a test.)
-#[cfg_attr(not(test), allow(dead_code))]
-const MOD_DESCRIPTION: &str = n("Supreme Commander: Forged Alliance's four factions, their units and buildings, made from your own copy of the game.");
+pub(crate) const MOD_DESCRIPTION: &str = n("Supreme Commander: Forged Alliance's factions, their units and buildings, made from your own copy of the game.");
 /// What a unit takes on the disk once made, about (its paint the most, as large as Forged Alliance
 /// paints it: since converter version 10): about 680 MB for the game's 364.
 const UNIT_BYTES: u64 = 1_910_000;
@@ -194,7 +193,7 @@ impl Factions {
     pub fn rescan(&mut self, picked: Option<PathBuf>, roots: &Roots) {
         let folders = roots.folders.clone();
         self.look.start("supcom factions scan", move || {
-            let held = mod_place(&Roots { folders, mods_dir: PathBuf::new() }).copy.filter(|copy| !copy.archive).map(|copy| copy.path);
+            let held = mod_place(&Roots { folders, mods_dir: PathBuf::new() }).copy.filter(|copy| copy.ours && !copy.archive).map(|copy| copy.path);
             find(crate::supcom::copies_found(), picked.as_deref(), held.as_deref())
         });
     }

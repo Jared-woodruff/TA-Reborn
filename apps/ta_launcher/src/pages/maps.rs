@@ -180,7 +180,7 @@ impl LauncherApp {
             }
             // (Open whatever else is under way: the dialog says why an import cannot start.)
             if ui.add(ActionButton::secondary("SUPREME COMMANDER…").height(height))
-                .hover_tip(t("Import the maps of Supreme Commander: Forged Alliance from your own copy of the game (GOG's or Steam's), to play in skirmish.")).clicked() {
+                .hover_tip(t(crate::supcom::BUTTON_TIP)).clicked() {
                 self.push(Action::SupcomOpen(crate::supcom::Tab::Maps));
             }
             let new_map_why = if !game { Some(t("Find your Total Annihilation install on the Play page first.")) } else { self.map_work_blocked() };
@@ -642,7 +642,7 @@ fn supcom_banner(ui: &mut Ui) {
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.label(RichText::new(t("SUPREME COMMANDER MAP")).font(strong(12.5)).color(SKY).extra_letter_spacing(ta_ui::i18n::tracking(1.4)));
-            super::wrapped(ui, t("Made from a map of Supreme Commander: Forged Alliance, from your own copy of the game: its land, cliffs, forests, rocks, mass points and starts."), TEXT);
+            super::wrapped(ui, t("Made from a map of Supreme Commander: Forged Alliance, from your own copy of the game: its land, cliffs, forests, rocks, metal deposits and starts."), TEXT);
         });
 }
 

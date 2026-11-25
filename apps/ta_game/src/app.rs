@@ -5565,7 +5565,9 @@ impl State {
                 self.draw_unit_picture();
             }
             Screen::Menu if self.menu_film.is_some() => {
-                if let Some(film) = self.menu_film.as_mut() {
+                // (Behind the menus' theme's pictures, over the whole window, the film's battle
+                // waits: nothing of it is seen, nor heard.)
+                if let Some(film) = self.menu_film.as_mut().filter(|_| !self.menu_pictures_shown) {
                     film.before_update(&mut self.game);
                     self.game.update(dt);
                     // The cut: the last scene's particles and sounds go too, and the next one's
@@ -5921,14 +5923,15 @@ impl State {
             self.audio.set_wind(self.game.sim.wind.to_f32(), &self.camera, dt);
         }
         // (The film's battle under the menu's music, quieter behind a page, fading out and in with
-        // each cut; silent while a briefing is read out, as the music is.)
+        // each cut; silent while a briefing is read out, as the music is, and behind the menus'
+        // theme's pictures, which hide it.)
         let on_title = self.menu.page == crate::menu::Page::Title && !self.options_open;
-        let briefing = self.audio.briefing_speaking();
+        let silent = self.audio.briefing_speaking() || self.menu_pictures_shown;
         let film_level = self
             .menu_film
             .as_ref()
             .filter(|_| self.screen == Screen::Menu && self.showroom.is_none())
-            .map(|f| if briefing { 0.0 } else { f.sound_level(&self.game, on_title) });
+            .map(|f| if silent { 0.0 } else { f.sound_level(&self.game, on_title) });
         // (Quiet while the EXPORT CLIP dialog's pictures are taken: the battle jumps about behind it.)
         let previews = self.clip_previews.is_some() && self.screen == Screen::Playing;
         self.audio.scene_level = if let Some(level) = self.credits_sound_level().filter(|_| self.screen == Screen::Menu) {

@@ -71,6 +71,10 @@ struct Footer {
     /// What is chosen is installed already, made by this TA Reborn: IMPORT would make it again
     /// for nothing (the factions' and the music's tabs).
     current: bool,
+    /// The tab's mod (its import's own) is installed but turned off: TURN ON is offered.
+    off: bool,
+    /// The tab's mod's id.
+    mod_id: &'static str,
 }
 
 /// Where the game is, as a tab's look found it.
@@ -225,6 +229,11 @@ impl LauncherApp {
         }
     }
 
+    /// Whether an import's mod (`id`, named `name` by its import) is installed but turned off.
+    fn supcom_mod_off(&self, id: &str, name: &str) -> bool {
+        supcom::Installed::listed(&self.mods, id, name).is_some_and(|copy| copy.ours) && !self.config.mods.enabled.iter().any(|on| on == id)
+    }
+
     /// What the footer of the tab shown shows.
     fn supcom_footer_state(&self) -> Footer {
         match self.supcom.tab {
@@ -232,6 +241,8 @@ impl LauncherApp {
                 let found = self.supcom.found();
                 Footer {
                     tab: Tab::Maps,
+                    off: self.supcom_mod_off(crate::supcom::PACK_ID, crate::supcom::PACK_NAME),
+                    mod_id: crate::supcom::PACK_ID,
                     importing: self.supcom.importing(),
                     stopping: self.supcom.stopping(),
                     progress: self.supcom.progress.lock().unwrap().clone(),
@@ -247,6 +258,8 @@ impl LauncherApp {
                 let found = factions.found();
                 Footer {
                     tab: Tab::Factions,
+                    off: self.supcom_mod_off(crate::supcom_factions::MOD_ID, crate::supcom_factions::MOD_NAME),
+                    mod_id: crate::supcom_factions::MOD_ID,
                     importing: factions.importing(),
                     stopping: factions.stopping(),
                     progress: factions.progress.lock().unwrap().clone(),
@@ -265,6 +278,8 @@ impl LauncherApp {
                 let found = music.found();
                 Footer {
                     tab: Tab::Music,
+                    off: self.supcom_mod_off(crate::supcom_music::MOD_ID, crate::supcom_music::MOD_NAME),
+                    mod_id: crate::supcom_music::MOD_ID,
                     importing: music.importing(),
                     stopping: music.stopping(),
                     progress: music.progress.lock().unwrap().clone(),
@@ -281,6 +296,8 @@ impl LauncherApp {
                 let found = menus.found();
                 Footer {
                     tab: Tab::Menus,
+                    off: self.supcom_mod_off(crate::supcom_menus::MOD_ID, crate::supcom_menus::MOD_NAME),
+                    mod_id: crate::supcom_menus::MOD_ID,
                     importing: menus.importing(),
                     stopping: menus.stopping(),
                     progress: menus.progress.lock().unwrap().clone(),
@@ -365,7 +382,8 @@ impl LauncherApp {
     /// The maps' tab: what it does, where the game is, and its maps to choose from.
     fn maps_body(&mut self, ui: &mut Ui, actions: &mut Vec<Action>) {
         let importing = self.supcom.importing();
-        ui.add(egui::Label::new(RichText::new(t("Supreme Commander: Forged Alliance's maps, made into TA Reborn maps from your own copy of the game to play in skirmish: their land and ground, forests and rocks, mass points and starting places come with them.")).color(TEXT)).wrap());
+        ui.add(egui::Label::new(RichText::new(t("Supreme Commander: Forged Alliance's maps, made into TA Reborn maps from your own copy of the game to play in skirmish: their land and ground, forests and rocks, metal deposits and starting places come with them.")).color(TEXT)).wrap());
+        ui.add(egui::Label::new(RichText::new(t("Once made, the pack is turned on. Online, a battle on one of its maps needs that map on every computer.")).color(STEEL)).wrap());
         ui.add_space(space::S);
         self.supcom_source(ui, actions);
         let Some(found) = self.supcom.found() else { return };
@@ -399,6 +417,10 @@ impl LauncherApp {
                 ui.label(RichText::new(held).color(AMBER));
             }
         });
+        // (An older TA Reborn's import, said in words, not only by its UPDATE mark.)
+        if found.maps.iter().any(|e| e.state == State::Outdated) {
+            ui.add(egui::Label::new(RichText::new(t(supcom::OUTDATED)).color(AMBER)).wrap());
+        }
         ui.add_space(space::XS);
         // The list in the room left, its rows sharing it (one at least: a short window's tab
         // scrolls, the buttons under it in sight).
@@ -433,6 +455,10 @@ impl LauncherApp {
                 ui.label(RichText::new(held).color(AMBER));
             }
         });
+        // (An older TA Reborn's import, said in words, not only by its UPDATE mark.)
+        if found.factions.iter().any(|e| e.state == State::Outdated) {
+            ui.add(egui::Label::new(RichText::new(t(supcom::OUTDATED)).color(AMBER)).wrap());
+        }
         ui.add_space(space::XS);
         // The factions, two to a row where they fit.
         let width = ui.available_width();
@@ -513,6 +539,10 @@ impl LauncherApp {
                 widgets::tag(ui, label, if found.state == State::Imported { GREEN } else { AMBER });
             }
         });
+        // (An older TA Reborn's import, said in words, not only by its UPDATE mark.)
+        if found.state == State::Outdated {
+            ui.add(egui::Label::new(RichText::new(t(supcom::OUTDATED)).color(AMBER)).wrap());
+        }
         // The tracks by their parts: a heading each, the tracks under it, up to three in a row.
         let width = ui.available_width();
         let columns = (((width + TRACK_GAP) / (TRACK + TRACK_GAP)).floor() as usize).clamp(1, 3);
@@ -537,14 +567,14 @@ impl LauncherApp {
         }
         ui.add_space(space::S);
         // (Made, the mod is on, and the game's SOUNDTRACK chooses whose music plays.)
-        ui.add(egui::Label::new(RichText::new(t("Once made, the music's mod is on, and SOUNDTRACK goes from TA to FORGED ALLIANCE (back to TA once the mod is turned off): in the game's Options, Sound, it plays Total Annihilation's music, Forged Alliance's, both, or by side (Forged Alliance's while you command one of its factions). The jukebox lists its tracks. Online, the other players need not have it.")).color(STEEL)).wrap());
+        ui.add(egui::Label::new(RichText::new(t("Once made, the music's mod is on, and SOUNDTRACK goes from TA to FORGED ALLIANCE (back to TA once the mod is turned off): in Settings, Sound, it plays Total Annihilation's music, Forged Alliance's, both, or by side (Forged Alliance's while you command one of its factions). The jukebox lists its tracks. Online, the other players need not have it.")).color(STEEL)).wrap());
     }
 
     /// The menus' tab: what it does, where the game is, and what the copy has of the look: its
     /// pictures (the first few), its colours as swatches, its sounds and its menu music (it is
     /// made whole: nothing to choose).
     fn menus_body(&mut self, ui: &mut Ui, actions: &mut Vec<Action>) {
-        ui.add(egui::Label::new(RichText::new(t("Supreme Commander: Forged Alliance's look for TA Reborn's menus, made from your own copy of the game: its colours, its pictures behind the menus, its panels' border art, its interface sounds and its menu music. The menus keep their layout.")).color(TEXT)).wrap());
+        ui.add(egui::Label::new(RichText::new(t("Supreme Commander: Forged Alliance's look for the menus in the game (this launcher keeps its own), made from your own copy of the game: its colours, its pictures behind the menus, its panels' border art, its interface sounds and its menu music. The menus keep their layout.")).color(TEXT)).wrap());
         ui.add_space(space::S);
         self.supcom_source(ui, actions);
         let Some(found) = self.supcom.menus.found() else { return };
@@ -559,6 +589,10 @@ impl LauncherApp {
                 widgets::tag(ui, label, if found.state == State::Imported { GREEN } else { AMBER });
             }
         });
+        // (An older TA Reborn's import, said in words, not only by its UPDATE mark.)
+        if found.state == State::Outdated {
+            ui.add(egui::Label::new(RichText::new(t(supcom::OUTDATED)).color(AMBER)).wrap());
+        }
         // The pictures: as many as fit in a row.
         ui.add_space(space::XS);
         ui.label(widgets::caption("PICTURES"));
@@ -609,10 +643,10 @@ impl LauncherApp {
         // Its sounds and music.
         ui.add_space(space::XS);
         let music = contents.music_seconds.map_or_else(|| t("none").to_string(), clock);
-        ui.add(egui::Label::new(RichText::new(tf("Panel art: {panel} · Interface sounds: {sounds} · Menu music: {music}", &[("panel", &if contents.panel { t("yes") } else { t("none") }), ("sounds", &contents.sounds.len()), ("music", &music)])).color(STEEL)).wrap());
+        ui.add(egui::Label::new(RichText::new(tf("Panel art: {panel} · Menu music: {music}", &[("panel", &if contents.panel { t("yes") } else { t("none") }), ("music", &music)])).color(STEEL)).wrap());
         ui.add_space(space::S);
         // (Made, the mod is on, and the game's MENU THEME chooses it.)
-        ui.add(egui::Label::new(RichText::new(t("Once made, the mod is on, and MENU THEME goes to FORGED ALLIANCE (back to TA REBORN once the mod is turned off): change that in the game's Options, Interface. The battle keeps its own look. Online, the other players need not have it.")).color(STEEL)).wrap());
+        ui.add(egui::Label::new(RichText::new(t("Once made, the mod is on, and MENU THEME goes to FORGED ALLIANCE (back to TA REBORN once the mod is turned off): change that in Settings, Interface. The battle keeps its own look. Online, the other players need not have it.")).color(STEEL)).wrap());
     }
 
     /// Where the game is (or that it was not found, or could not be looked for) as the tab shown
@@ -1026,12 +1060,20 @@ fn supcom_footer(ui: &mut Ui, footer: &Footer, asked: &mut Asked) {
                 Tab::Menus => (n("IMPORT MENUS"), t("Makes Forged Alliance's look for the menus into a mod of its own, turned on once made: in a moment on a fast computer."), t("Nothing of the look was found to import.")),
             };
             let why = footer.blocked.or((footer.chosen == 0).then_some(none));
+            // (Its mod installed but off: turned on again here, as the Mods page's switch does,
+            // not made again.)
+            if footer.off && !footer.importing
+                && ui.add(ActionButton::primary("TURN ON")).hover_tip(t("Turns its mod on again, as its switch on the Mods page does.")).clicked()
+            {
+                asked.actions.push(Action::EnableMod(footer.mod_id.into()));
+            }
             // (Everything chosen made already, by this TA Reborn: the button makes it again, no
             // longer the way on.)
             let (button, tip) = match (footer.current, footer.tab) {
                 (true, Tab::Music) => (ActionButton::secondary("MAKE AGAIN"), t("The soundtrack is imported already, made by this version of TA Reborn: makes its mod again all the same.")),
                 (true, Tab::Menus) => (ActionButton::secondary("MAKE AGAIN"), t("The menus' look is imported already, made by this version of TA Reborn: makes its mod again all the same.")),
                 (true, _) => (ActionButton::secondary("MAKE AGAIN"), t("The factions chosen are imported already, made by this version of TA Reborn: makes their mod again all the same.")),
+                (false, _) if footer.off => (ActionButton::secondary(label), tip),
                 (false, _) => (ActionButton::primary(label), tip),
             };
             if ui.add_enabled(why.is_none(), button).hover_tip(tip).disabled_tip(why.unwrap_or_default()).clicked() {
@@ -1046,7 +1088,9 @@ fn supcom_footer(ui: &mut Ui, footer: &Footer, asked: &mut Asked) {
                 asked.close = true;
             }
             // (Why IMPORT cannot be pressed, in words: a greyed button takes no keys to say it.)
-            if let Some(why) = why {
+            if footer.off && !footer.importing {
+                ui.add(egui::Label::new(RichText::new(t("Imported, but turned off on the Mods page.")).color(AMBER)).wrap());
+            } else if let Some(why) = why {
                 ui.add(egui::Label::new(RichText::new(why).color(if footer.blocked.is_some() { AMBER } else { STEEL })).wrap());
             } else if footer.current {
                 ui.add(egui::Label::new(RichText::new(t("Imported and up to date.")).color(GREEN)).wrap());
@@ -1411,7 +1455,7 @@ mod tests {
         for _ in 0..4 { frame(&ctx, &mut app, size, Vec::new()); }
         let (_, texts) = frame(&ctx, &mut app, size, Vec::new());
         // (The mod holds the UEF and the Aeon: those are chosen at first.)
-        assert!(texts.iter().any(|(text, _, _)| text == "2 of 4 factions chosen, 178 units, about 0.3 GB on the disk"), "{:?}", texts_of(&texts));
+        assert!(texts.iter().any(|(text, _, _)| text == "2 of 4 factions chosen, 178 units, about 340 MB on the disk"), "{:?}", texts_of(&texts));
         assert!(texts.iter().any(|(text, _, _)| text.starts_with("Not played yet: Forged Alliance's own sounds")), "{:?}", texts_of(&texts));
         assert!(texts.iter().any(|(text, _, _)| text.contains("Online, everyone in a battle needs it")), "online play said: {:?}", texts_of(&texts));
         // The keys stop at each faction's box once.
@@ -1447,6 +1491,37 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
+    /// A tab whose mod is installed but turned off says so and offers TURN ON (not only MAKE
+    /// AGAIN), which turns it on as the Mods page's switch does.
+    #[test]
+    fn a_tab_whose_mod_is_off_offers_to_turn_it_on() {
+        let (root, ctx, mut app) = launcher("off");
+        let folder = root.join("mods").join(supcom_music::MOD_ID);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("mod.toml"), format!("id = \"{}\"\nname = \"{}\"\nversion = \"{}\"\n", supcom_music::MOD_ID, supcom_music::MOD_NAME, supcom_music::VERSION)).unwrap();
+        app.refresh_mods();
+        app.config.mods.enabled.retain(|id| id != supcom_music::MOD_ID);
+        app.supcom.open = true;
+        app.supcom.tab = Tab::Music;
+        app.supcom.music.pretend_found(music_found(State::Imported));
+        let size = egui::vec2(900.0, 900.0);
+        for _ in 0..4 { frame(&ctx, &mut app, size, Vec::new()); }
+        let (_, texts) = frame(&ctx, &mut app, size, Vec::new());
+        assert!(texts.iter().any(|(text, _, _)| text == "Imported, but turned off on the Mods page."), "{:?}", texts_of(&texts));
+        assert!(!texts.iter().any(|(text, _, _)| text == "Imported and up to date."), "{:?}", texts_of(&texts));
+        let at = texts.iter().find(|(text, _, _)| text == "TURN ON").map(|(_, rect, _)| rect.center()).expect("TURN ON");
+        let press = |pressed: bool| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() };
+        frame(&ctx, &mut app, size, vec![egui::Event::PointerMoved(at), press(true)]);
+        frame(&ctx, &mut app, size, vec![press(false)]);
+        assert!(app.actions.iter().any(|a| matches!(a, Action::EnableMod(id) if id == supcom_music::MOD_ID)), "turned on as the Mods page's switch does");
+        // (On, the tab is as it was: no TURN ON.)
+        app.config.mods.enabled.push(supcom_music::MOD_ID.into());
+        let (_, texts) = frame(&ctx, &mut app, size, Vec::new());
+        assert!(!texts.iter().any(|(text, _, _)| text == "TURN ON"), "{:?}", texts_of(&texts));
+        drop(app);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
     /// The music's tab: the soundtrack's tracks by their parts, each with how long it plays, how
     /// many, how long and what they take, and IMPORT MUSIC (nothing to choose: it is made whole);
     /// made by this version, MAKE AGAIN and up to date; while the factions are made, why it waits,
@@ -1463,7 +1538,7 @@ mod tests {
         for words in ["THE MENUS", "BUILDING", "BATTLE", "BRIEFINGS", "FILMS", "Menu theme", "Building theme 2", "Battle theme 1", "Briefing 1", "Credits", "1:21", "4:02", "3:00", "IMPORT MUSIC"] {
             assert!(texts.iter().any(|(text, _, _)| text == words), "{words}: {:?}", texts_of(&texts));
         }
-        assert!(texts.iter().any(|(text, _, _)| text == "7 tracks, 17 minutes: about 0.1 GB on the disk"), "{:?}", texts_of(&texts));
+        assert!(texts.iter().any(|(text, _, _)| text == "7 tracks, 17 minutes: about 146 MB on the disk"), "{:?}", texts_of(&texts));
         assert!(texts.iter().any(|(text, _, _)| text.contains("SOUNDTRACK goes from TA to FORGED ALLIANCE")), "{:?}", texts_of(&texts));
         assert!(texts.iter().any(|(text, _, _)| text.contains("Online, the other players need not have it")), "{:?}", texts_of(&texts));
         assert!(!texts.iter().any(|(text, _, _)| text == "IMPORTED"), "not in yet: {:?}", texts_of(&texts));
@@ -1502,7 +1577,7 @@ mod tests {
             assert!(texts.iter().any(|(text, _, _)| text == words), "{words}: {:?}", texts_of(&texts));
         }
         assert!(texts.iter().any(|(text, _, _)| text.starts_with("3 pictures, 2 interface sounds, the menu music")), "{:?}", texts_of(&texts));
-        assert!(texts.iter().any(|(text, _, _)| text == "Panel art: yes · Interface sounds: 2 · Menu music: 1:21"), "{:?}", texts_of(&texts));
+        assert!(texts.iter().any(|(text, _, _)| text == "Panel art: yes · Menu music: 1:21"), "{:?}", texts_of(&texts));
         assert!(texts.iter().any(|(text, _, _)| text.contains("MENU THEME goes to FORGED ALLIANCE")), "{:?}", texts_of(&texts));
         assert_eq!(app.supcom.menus.look.held().1, 3, "the three pictures shown, as textures");
         let (found, pictures) = menus_found(State::Imported);

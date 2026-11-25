@@ -14,7 +14,8 @@ The import was an experimental feature (Settings, LAUNCHER: ENABLE EXPERIMENTAL 
   `supcom.toml`), lists its skirmish maps and the player's own (downloaded maps and Forged
   Alliance Forever's vault) with the game's own pictures of them, and makes the chosen ones, one
   after another (at first, where the pack holds maps an older converter made, those alone are
-  chosen, listed first, to be made again: its update; else the game's own maps not imported yet;
+  chosen, listed first, to be made again: its update; else, while the pack holds none of them,
+  the game's own maps; once it holds some, none (twenty minutes of work is never one button away);
   the player's own never are; after an import, only those not made stay chosen, to try again;
   once the pack is removed, they are chosen afresh): most in seconds, the largest in about a
   minute; all 54 of the game's take about 20 minutes and 1.2 GB on disk (the dialog says both
@@ -33,7 +34,11 @@ The import was an experimental feature (Settings, LAUNCHER: ENABLE EXPERIMENTAL 
   Reborn's program folder), and in place of another mod of that id only once the player agrees.
   Importing again makes the maps chosen again and keeps the others; REMOVE MAP PACK removes them
   all. The pack's `version` is that of the converter that made its oldest map: older than this TA
-  Reborn's (`convert::VERSION`), the Mods page marks it UPDATE, as the dialog marks each map.
+  Reborn's (`convert::VERSION`), the Mods page marks it UPDATE, as the dialog marks each map (and
+  says how to update it); it needs the TA Reborn that made it (`requires_reborn`).
+  On every tab, a mod of an import's that is installed but turned off is said to be so, with TURN
+  ON (as its switch on the Mods page); on the Mods page an import's card shows its kind (MAPS,
+  FACTIONS, MUSIC, MENUS) on its banner, the word its name is cut before there.
 - **Developers:** `cargo build --release -p ta_tools`, then `target/release/ta-tools supcom
   <out> [--only scmp_009,x1mp_001] [--preview <dir>] [--game <folder>] [--budget n]
   [--max-cells n]` makes the maps into `<out>/maps` (mount it as a mod to play them), with

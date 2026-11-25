@@ -51,6 +51,26 @@
   menu theme's loudest moments as a row of bars over one of the game's paintings, and the game's
   logo and a panel of its menus over their space. Mods imported before get theirs when the
   launcher starts, without being made again ([SUPCOM_MAPS.md](docs/SUPCOM_MAPS.md), "Banners").
+- The Supreme Commander import, from a review of it all:
+  - With the menus' Forged Alliance look, the menus' film no longer plays on, heard, behind its
+    pictures; its menu music comes first in the menus' music rather than one track over and over,
+    the briefings' and the soundtrack's own after it, and the jukebox names it; lists fade into
+    its panels at their ends rather than ending in a light band; and its letterboxed picture of
+    the colossus is left out (UPDATE… on the Mods page makes the menus again).
+  - On the Mods page an import's card shows its kind on its banner (MAPS, FACTIONS, MUSIC, MENUS),
+    as its name is cut short there; the factions' page names the factions the mod holds, and no
+    longer says four whatever it holds; MOD INFO calls the files its checks read FILES CHECKED (a
+    music mod's tracks are none of them).
+  - In the Supreme Commander dialog, a mod turned off says so and has TURN ON; one made by an older
+    TA Reborn says how to update it; sizes under a gigabyte are in MB; once the map pack holds maps,
+    the others are no longer chosen for you (about twenty minutes of work); the words send you to
+    Settings, Sound or Interface, which the launcher has too.
+  - The engineering stations of the factions are the T2 Kennel and the T3 Kennel, not "T2 The
+    Kennel" (UPDATE… makes the factions again).
+  - Settings, SOUND: YOUR MUSIC plays with the game's soundtrack or in its place, whichever it is,
+    and the jukebox's PLAYS row says THE GAME'S rather than TA'S MUSIC.
+  - The mod check no longer notes a building that upgrades itself in place (Forged Alliance's
+    extractors and radars) for a missing nano-lathe in its script.
 
 ### Changed
 - The enemy Commanders' transmissions (their greetings, taunts and answers coming in at the top
