@@ -52,8 +52,9 @@ mod abilities;
 /// `alerts`, a weapon's `soundloop`, `soundstop` and `soundstartwater`, and Ogg and FLAC sounds in
 /// `sounds/`; 25: a mod's particle effects (`effects/*.tdf`: `effect.*`), the weapons' and units'
 /// keys naming them and their muzzle flash and trail animations, their colours and thickness
-/// (`weapon.look`, `unit.look`)).
-pub const SCHEMA_VERSION: u32 = 25;
+/// (`weapon.look`, `unit.look`); 26: shields, shield keys without hit points (`unit.shield`)
+/// and what the mod uses of them (`engine.shields`)).
+pub const SCHEMA_VERSION: u32 = 26;
 
 /// The keys of the sound tables' categories the game plays (`ta_audio`'s sound events: TA's, then
 /// TA Reborn's own), each with or without a variant number (`select1`, `select2`…), with
@@ -2031,6 +2032,9 @@ impl<'a> Scan<'a> {
         if let Some((words, how)) = Self::ability_uses(&facts.abilities) {
             add("engine.abilities", Support::Played, words, how);
         }
+        if let Some((words, how)) = Self::shield_uses(&facts.abilities) {
+            add("engine.shields", Support::Played, words, how);
+        }
         if !facts.sides.is_empty() {
             add("engine.sides", Support::Played,
                 enf("Sides of its own: {names}.", [("names", named(&facts.sides))]),
@@ -2553,6 +2557,26 @@ mod tests {
         assert!(stuns.iter().any(|m| m.starts_with("EMP")) && stuns.iter().any(|m| m.starts_with("STUN")) && stuns.len() == 2, "{stuns:?}");
         let uses = report.engine.iter().find(|u| u.code == "engine.abilities").expect("told how it plays");
         assert!(uses.message.contains("minimum range: 2; with a stun: 1") && uses.message.contains("toggle: 1; a stealth field: 2; remote viewing: 1; a regeneration aura: 3"), "{}", uses.message);
+        assert!(!report.engine.iter().any(|u| u.code == "engine.shields"), "no shields, none told");
+        assert_words(&report);
+    }
+
+    /// Shields: keys without hit points (a unit's, an enhancement's) give none, and are told; what the
+    /// mod uses of them is told with how it plays.
+    #[test]
+    fn shields_are_checked_and_told() {
+        let f = Fixture::new(); f.valid("base");
+        f.put("mod", "units/dome.fbi", b"[UNITINFO]{UnitName=DOME;ObjectName=example;Side=ARM;ShieldHealth=9000;ShieldRadius=400;ShieldEnergyUse=200;}");
+        f.put("mod", "units/bot.fbi", b"[UNITINFO]{UnitName=BOT;ObjectName=example;Side=ARM;ShieldHealth=1300;}");
+        f.put("mod", "units/empty.fbi", b"[UNITINFO]{UnitName=EMPTY;ObjectName=example;Side=ARM;ShieldRadius=400;}");
+        f.put("mod", "units/acu.fbi", b"[UNITINFO]{UnitName=ACU;ObjectName=example;Side=ARM;[ENHANCEMENTS]{[Shield]{Name=Shield;Slot=Back;ShieldHealth=20000;}[Field]{Name=Field;Slot=Back;ShieldRadius=300;}}}");
+        let options = Options { target_layer: Some("mod".into()), ..Default::default() };
+        let report = validate(&f.vfs(&["base", "mod"]), &options, |_| true);
+        let text = report.to_text();
+        let told: Vec<&str> = report.issues.iter().filter(|i| i.code == "unit.shield").map(|i| i.message.as_str()).collect();
+        assert!(told.len() == 2 && told.iter().any(|m| m.starts_with("EMPTY")) && told.iter().any(|m| m.contains("Field")), "{text}");
+        let uses = report.engine.iter().find(|u| u.code == "engine.shields").expect("told how it plays");
+        assert!(uses.message.contains("personal shield: 2; with a bubble: 1"), "{}", uses.message);
         assert_words(&report);
     }
 

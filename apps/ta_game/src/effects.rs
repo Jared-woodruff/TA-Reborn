@@ -462,6 +462,8 @@ pub struct Effects {
     shells: Vec<fireworks::Shell>,
     firework_due: rustc_hash::FxHashMap<usize, f32>,
     volley: Option<(Vec3, f32, f32)>,
+    /// The shields' looks (`shields.rs`): their hits' ripples, their collapses and comings up.
+    pub shields: crate::shields::ShieldFx,
 }
 
 impl Effects {
@@ -516,6 +518,7 @@ impl Effects {
         self.pops.clear();
         self.due_blasts.clear();
         self.mods.clear();
+        self.shields.clear();
     }
 }
 
@@ -735,6 +738,7 @@ impl Effects {
             death_weapons,
             lava_world: false,
             remains: Vec::new(),
+            shields: Default::default(),
             posed: Default::default(),
             clip_scratch: Default::default(),
             pops: Vec::new(),
@@ -1311,6 +1315,8 @@ impl Effects {
 
     /// Reacts to simulation events.
     pub fn on_event(&mut self, e: &SimEvent, sim: &Sim, now: f32) {
+        // (The shields' hits, collapses and comings up: `shields.rs`.)
+        self.shields.on_event(e, sim, now);
         // A projectile's blast goes off as the projectile drawn gets to where it hit: the world
         // is drawn a tick behind the game (between the last tick and this one), and the
         // projectile `when` of the way through this tick's flight.

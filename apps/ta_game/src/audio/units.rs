@@ -471,9 +471,8 @@ impl GameAudio {
         self.units.weapons.clear();
     }
 
-    /// A unit's shield came up (`on`) or went down: its `shieldon` or `shieldoff` where it is.
-    /// (TA Reborn plays no shields yet: the hook for when it does.)
-    #[cfg_attr(not(test), allow(dead_code))]
+    /// A unit's shield came up (`on`) or went down (`SimEvent::ShieldChanged`, `sim/shield.rs`): its
+    /// `shieldon` or `shieldoff` where it is.
     pub fn shield_changed(&mut self, sim: &Sim, unit: UnitId, on: bool) {
         if let Some(u) = sim.unit(unit) {
             let (type_id, pos) = (u.type_id, u.pos.to_f32());

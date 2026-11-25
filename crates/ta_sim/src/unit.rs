@@ -552,6 +552,9 @@ pub struct Unit {
     pub toggled: bool,
     /// The place it views from afar this tick (`Order::RemoteView`, paid for: `sim/remote_view.rs`).
     pub remote_view: Option<FxVec3>,
+    /// Its shield as it stands (`sim/shield.rs`): none for a unit without one (every unit of TA's),
+    /// or before it is first powered.
+    pub shield: Option<crate::sim::shield::ShieldState>,
 }
 
 /// A unit's own random numbers: from the game's `seed` and its id.
@@ -688,6 +691,7 @@ impl Unit {
             face: None,
             toggled: false,
             remote_view: None,
+            shield: None,
         }
     }
 }

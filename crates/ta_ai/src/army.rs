@@ -608,7 +608,7 @@ impl SkirmishAi {
     }
 
     /// Enemy firepower (cost) guarding a point: towers we have seen, and enemy units in
-    /// sight now.
+    /// sight now; and the domes of their shields over it (`shields.rs`).
     pub(crate) fn defence_at(&self, pos: FxVec3) -> i64 {
         let towers: i64 = self
             .enemy_buildings
@@ -616,7 +616,7 @@ impl SkirmishAi {
             .filter(|(_, p, t)| self.info[*t].role == Role::Defense && self.info[*t].guards(*p, pos))
             .map(|(_, _, t)| self.info[*t].cost)
             .sum();
-        towers + self.threat.at(pos)
+        towers + self.threat.at(pos) + self.dome_guard(pos)
     }
 
     /// What a tactical missile's strike on an enemy building of type `t` is worth: its defences
@@ -1201,6 +1201,11 @@ impl SkirmishAi {
         let mut best_ok: Option<(i64, FxVec3, u32)> = None;
         let mut best_any: Option<(u32, i64, FxVec3)> = None;
         for &c in candidates.iter().step_by(step) {
+            // (A tactical missile bursts on a shield's dome: not where one stands over it. A
+            // strategic one goes through.)
+            if !strategic && self.under_enemy_dome(c) {
+                continue;
+            }
             let mut score: i64 = enemies.iter().filter(|e| e.0.within_xz(c, hit)).map(|e| e.1).sum();
             score -= 2 * ours.iter().filter(|o| o.pos.within_xz(c, aoe * 13 / 10)).map(|o| value(o)).sum::<i64>();
             if score <= 0 || score < worth || ours.iter().any(|o| self.info[o.type_id].commander && o.pos.within_xz(c, aoe * 3 / 2)) {

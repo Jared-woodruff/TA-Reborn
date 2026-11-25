@@ -663,3 +663,18 @@ in ; takes no 。 after it.
 | three numbers from 0 to 1 | 0 到 1 之间的三个数 |
 | beam (an adjacency beam between buildings) | 光束 |
 | an effect costs every frame it plays | 播放期间每一帧都有开销 (as 开销) |
+
+## Shields (`hud/shield.rs`, `hud/deck.rs`, `hud/abilities.rs`, `validation/abilities.rs`)
+
+One word each everywhere (the card's gauge, the information page, the enhancements, the mod check):
+护盾 (as above), a bubble 护盾罩, a collapse 破碎 (not 崩溃: that is the launcher's crash). A shield's
+hit points are 生命值, as a unit's.
+
+| English | 简体中文 |
+|---|---|
+| shield / Shield {now} / {most} (the card's gauge, as 生命值 {now} / {max}) | 护盾 / 护盾 {now} / {most} |
+| shield bubble, bubble (a dome round its unit that stops shots from outside) | 护盾罩 |
+| personal shield (takes the damage before the unit's health) | 个人护盾 |
+| collapse, collapsed / back (after a collapse) / coming up | 破碎 / 恢复 / 启动 |
+| Shield off (switched off) / Shield down: short of energy | 护盾已关闭 / 护盾失效：能量不足 |
+| shield keys (a unit's ShieldHealth...) | 护盾相关的键 |

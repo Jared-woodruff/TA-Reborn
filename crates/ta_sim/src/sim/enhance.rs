@@ -113,6 +113,17 @@ impl Sim {
         self.work_on_self(id, rate, owner, id);
     }
 
+    /// Set-up helper (staged scenes): a finished unit's enhancement `index` installed at once, as
+    /// though built (what it needs first installed before it).
+    pub fn install_enhancement(&mut self, id: UnitId, index: u16) {
+        let Some(u) = self.unit(id).filter(|u| u.is_complete() && !u.dead) else { return };
+        let Some(e) = self.types.get(u.type_id).enhancements.get(index as usize) else { return };
+        if let Some(p) = e.prerequisite.filter(|p| !u.enhancements.contains(p)) {
+            self.set_enhancement(id, p, true);
+        }
+        self.set_enhancement(id, index, true);
+    }
+
     /// The install done: in its slot in place of what was there; its order off the front.
     pub(super) fn finish_enhancement(&mut self, id: UnitId, index: u16) {
         if let Some(u) = self.unit_mut(id) {
@@ -170,6 +181,7 @@ impl Sim {
         let Some(u) = self.unit(id) else { return };
         let t = types.get(u.type_id);
         let before = u.max_health(t);
+        let shield_before = u.abilities(t).shield;
         let boost = boost(t, &installed, toggled);
         let slots_before = *u.weapon_slots(t);
         // The weapon that builds its missiles (`stockpile`), before and after: another one (or
@@ -202,6 +214,10 @@ impl Sim {
             // (A cloak it no longer has is off.)
             if u.cloak_costs(t).is_none() {
                 u.cloak_on = false;
+            }
+            // (A shield of another make starts afresh, whole: `sim/shield.rs`.)
+            if u.abilities(t).shield != shield_before {
+                u.shield = None;
             }
             if restock {
                 u.stockpile = 0;
@@ -241,6 +257,8 @@ pub(crate) fn boost(t: &UnitType, installed: &[u16], toggled: bool) -> Option<Bo
     // Mending: its own (100 hit points every `HealTime` seconds) and theirs, in hit points a second.
     let own = if t.heal_ticks > 0 { Fx::from_int(100 * 30) / t.heal_ticks as i64 } else { Fx::ZERO };
     let mut mend = own;
+    // (A shield an enhancement gives takes the place of the unit's own: of several, the strongest.)
+    let mut shield = None;
     for e in installed.iter().filter_map(|&i| t.enhancements.get(i as usize)) {
         b.max_health += e.max_health;
         mend += e.heal_rate;
@@ -279,10 +297,12 @@ pub(crate) fn boost(t: &UnitType, installed: &[u16], toggled: bool) -> Option<Bo
             (x, y) => x.or(y),
         };
         a.aura = crate::defs::Aura::stronger(a.aura, e_a.aura, t.max_health);
+        shield = crate::defs::Shield::stronger(shield, e_a.shield);
         b.metal_make += e.metal_make;
         b.energy_make += e.energy_make;
         b.upkeep += e.upkeep;
     }
+    b.abilities.shield = shield.or(b.abilities.shield);
     // (With none installed, its own mending as it is: toggled alone, nothing else changes.)
     if !installed.is_empty() {
         b.heal_ticks = if mend > Fx::ZERO { (Fx::from_int(100 * 30) / mend).to_int().max(1) as u64 } else { 0 };

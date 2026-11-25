@@ -105,6 +105,9 @@ pub struct EnhancementDef {
     pub metal_make: f64,
     pub energy_make: f64,
     pub energy_use: f64,
+    /// A shield it gives the unit (the shield keys, as a unit's own: [`crate::ShieldDef`]), in place
+    /// of the unit's own while it is installed (of several, the one of the most hit points).
+    pub shield: Option<crate::ShieldDef>,
 }
 
 impl EnhancementDef {
@@ -151,6 +154,7 @@ impl EnhancementDef {
             metal_make: f("MetalMake"),
             energy_make: f("EnergyMake"),
             energy_use: f("EnergyUse"),
+            shield: crate::ShieldDef::of(s),
             id,
         })
     }

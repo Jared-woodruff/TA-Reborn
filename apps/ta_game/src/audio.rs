@@ -544,6 +544,7 @@ impl GameAudio {
                     self.engine.play_at(name, t.pos.to_f32(), 0.8);
                 }
             }
+            SimEvent::ShieldChanged { unit, up, .. } if unit_seen(*unit) => self.shield_changed(sim, *unit, *up),
             SimEvent::UnderAttack { player, unit, .. }
                 // A global alert (not placed in the world), in the attacked unit's voice (one of
                 // its variants), or the side's announcer for its commander.

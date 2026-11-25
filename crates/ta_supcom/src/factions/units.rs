@@ -847,26 +847,28 @@ pub fn yard_map(fx: i64, fz: i64) -> String {
     s
 }
 
-/// What its upkeep (`MaintenanceConsumptionPerSecondEnergy`) pays for that TA Reborn plays: an
-/// extractor's or a fabricator's work, or an intelligence unit's radar, sonar or omni (radar and
-/// sonar stations, sonar platforms). Shields, stealth fields, a unit's own stealth and cloak (TA's
-/// stealth costs nothing), jamming and remote viewing are not in TA Reborn yet: their upkeep is
-/// left out with them (the Fatboy's shield, the Monkeylord's stealth, a frigate's jamming: a
-/// counter-intelligence unit's upkeep is for those, its radar free).
+/// What its upkeep (`MaintenanceConsumptionPerSecondEnergy`) pays for that TA Reborn plays as the
+/// unit's own (`EnergyUse`): an extractor's or a fabricator's work, or an intelligence unit's radar,
+/// sonar or omni (radar and sonar stations, sonar platforms), a jammer's and a stealth field's
+/// (`factions::abilities`). A unit's own stealth and cloak (TA's stealth costs nothing) are left out
+/// (the Monkeylord's stealth: a counter-intelligence unit's upkeep is for those, its radar free); a
+/// shield's is its own (`ShieldEnergyUse`, `factions::shields`), and remote viewing's
+/// (`RemoteViewEnergy`).
 fn upkeep_pays(u: &UnitBlueprint) -> bool {
     let watches = (u.intel.radar > 0.0 && !u.birth.intel_off("Radar")) || (u.intel.sonar > 0.0 && !u.birth.intel_off("Sonar"));
     u.is("MASSEXTRACTION") || u.production_mass > 0.0 || watches && u.is("INTELLIGENCE") && (u.is("RADAR") || u.is("SONAR") || u.is("OMNI")) && !u.is("COUNTERINTELLIGENCE")
         // (A jammer's, a stealth field generator's: `factions::abilities`.)
-        || super::abilities::upkeep_pays(u)
+        || super::abilities::upkeep_pays(u) && super::shields::of_unit(u).is_none()
 }
 
 /// Whether its file has it switched on once built (`ActivateWhenBuilt`: TA's engine runs its
 /// script's `Activate` then), as [`unit_file`] writes it: an extractor, a fabricator, what pays an
-/// upkeep for its radar or sonar, an air staging platform. (Its `Deactivate` runs as its player
-/// switches it off, where it has a switch.)
+/// upkeep for its radar or sonar, an air staging platform, a shield with a switch
+/// (`factions::shields`). (Its `Deactivate` runs as its player switches it off, where it has a
+/// switch.)
 pub fn activated_when_built(u: &UnitBlueprint) -> bool {
     let upkeep = if upkeep_pays(u) { u.upkeep_energy } else { 0.0 };
-    u.is("MASSEXTRACTION") || upkeep > 0.0 || u.is("AIRSTAGINGPLATFORM") && builds(u) == Builds::No && u.motion == Motion::None
+    u.is("MASSEXTRACTION") || upkeep > 0.0 || u.is("AIRSTAGINGPLATFORM") && builds(u) == Builds::No && u.motion == Motion::None || super::shields::switchable(u)
 }
 
 /// An aircraft's movement (`Air`): its top speed (px a tick), its acceleration and braking (px a
@@ -1134,6 +1136,10 @@ pub fn unit_file(u: &UnitBlueprint, weapons: &Weapons, carries: Option<(u32, u32
     for (k, v) in super::abilities::unit_keys(u) {
         put(k, v);
     }
+    // Its shield, personal or a bubble, at its upkeep while switched on (`factions::shields`).
+    for (k, v) in super::shields::unit_keys(u) {
+        put(k, v);
+    }
     // (Self-repair: TA Reborn mends 100 hit points every `HealTime` seconds.)
     if u.regen > 0.0 {
         put("HealTime", format!("{:.2}", 100.0 / u.regen));
@@ -1173,9 +1179,9 @@ pub fn unit_file(u: &UnitBlueprint, weapons: &Weapons, carries: Option<(u32, u32
         } else {
             put("MetalMake", format!("{}", u.production_mass));
         }
-    } else if upkeep > 0.0 {
-        // Kept working at an energy cost (radar, sonar): as TA's, on once built and switchable,
-        // the upkeep paid while on.
+    } else if upkeep > 0.0 || super::shields::switchable(u) {
+        // Kept working at an energy cost (radar, sonar, a shield with its switch): as TA's, on once
+        // built and switchable, the upkeep paid while on.
         put("ActivateWhenBuilt", "1".into());
         put("OnOffable", "1".into());
     }
@@ -1939,8 +1945,9 @@ mod tests {
     }
 
     /// What the scripts take a unit's `Activate` to come with (`activated_when_built`) is what its
-    /// file says: an extractor, a radar paying its upkeep, a fabricator and a staging platform are
-    /// switched on once built; a power plant, a shield (its upkeep left out) and a factory are not.
+    /// file says: an extractor, a radar paying its upkeep, a fabricator, a staging platform and a
+    /// shield with its switch are switched on once built; a power plant, a building called a shield
+    /// that makes none and a factory are not.
     #[test]
     fn switched_on_once_built_as_the_file_says() {
         let none = Weapons { slots: Vec::new(), death: None, dgun: None, kamikaze: None };
@@ -1971,6 +1978,17 @@ mod tests {
             let file = unit_file(&u, &none, None, &Extra::default());
             assert_eq!((activated_when_built(&u), file.contains("ActivateWhenBuilt=1;")), (on, on), "{}: {file}", u.id);
         }
+        // A shield generator: its upkeep its shield's, switched on once built and switchable.
+        let mut shield = crate::unit::parse(
+            "UEB4202",
+            "UnitBlueprint { Categories = { 'UEF', 'STRUCTURE', 'SHIELD' }, General = { ToggleCaps = { RULEUTC_ShieldToggle = true } }, Defense = { Health = 2000, MaxHealth = 2000, Shield = { ShieldMaxHealth = 9000, ShieldSize = 26, ShieldVerticalOffset = -3 } } }",
+        )
+        .unwrap();
+        shield.upkeep_energy = 200.0;
+        let file = unit_file(&shield, &none, None, &Extra::default());
+        assert!(activated_when_built(&shield) && file.contains("ActivateWhenBuilt=1;") && file.contains("OnOffable=1;"), "{file}");
+        assert!(file.contains("	ShieldEnergyUse=200;") && !file.contains("	EnergyUse="), "its upkeep its shield's: {file}");
+        assert!(file.contains("	ShieldHealth=9000;") && file.contains("	ShieldRadius=405;") && file.contains("	ShieldHeight=320;"), "{file}");
     }
 
     /// What a unit's script switches off as it is made is not given it: the Cybran commander's

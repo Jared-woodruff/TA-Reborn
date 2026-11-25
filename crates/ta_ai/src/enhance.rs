@@ -20,7 +20,8 @@ enum Want {
     Gun,
     /// It makes metal or energy of its own (Supreme Commander's resource allocation).
     Economy,
-    /// It adds health or mending, or an aura mending the units round it, and nothing else wanted.
+    /// It adds health or mending, a shield, or an aura mending the units round it, and nothing else
+    /// wanted.
     Armour,
 }
 
@@ -48,7 +49,7 @@ impl SkirmishAi {
         if e.metal_make > Fx::ZERO || e.energy_make > Fx::ZERO {
             return Some(Want::Economy);
         }
-        (e.max_health > Fx::ZERO || e.heal_rate > Fx::ZERO || e.abilities.aura.is_some()).then_some(Want::Armour)
+        (e.max_health > Fx::ZERO || e.heal_rate > Fx::ZERO || e.abilities.aura.is_some() || e.abilities.shield.is_some()).then_some(Want::Armour)
     }
 
     /// This think's enhancement for our commander, if one is due: standing at home, nothing else
@@ -88,7 +89,9 @@ impl SkirmishAi {
             };
             // Something to pay with: a part of its price banked, or an income for it (its energy
             // within a minute's).
-            let affordable = (s.metal * 2 >= e.cost_metal || s.m_inc >= fx(self.p.tech_income * 2)) && (s.energy * 2 >= e.cost_energy || s.e_inc * 60 >= e.cost_energy);
+            // (A shield's upkeep a quarter of our energy income at most.)
+            let upkeep = e.abilities.shield.map_or(Fx::ZERO, |sh| sh.energy * 30);
+            let affordable = (s.metal * 2 >= e.cost_metal || s.m_inc >= fx(self.p.tech_income * 2)) && (s.energy * 2 >= e.cost_energy || s.e_inc * 60 >= e.cost_energy) && upkeep * 4 <= s.e_inc;
             if !due || !affordable {
                 continue;
             }

@@ -286,6 +286,7 @@ impl View {
         renderer.prepare_sprites(&self.decals, &self.billboards, &[], &[], &self.lying);
         renderer.prepare_beams(&[]);
         renderer.prepare_rings(&[]);
+        renderer.prepare_shields(&[]);
         renderer.prepare_wakes(&[], &[]);
         renderer.set_lights(&[]);
     }

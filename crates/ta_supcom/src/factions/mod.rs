@@ -9,6 +9,7 @@
 //! - [`enhance`]: a commander's enhancements;
 //! - [`abilities`]: TA Reborn's abilities (minimum ranges, stuns, jamming and stealth fields,
 //!   remote viewing, weapon toggles) in its files;
+//! - [`shields`]: its shield, a personal one or a bubble, and the commanders' shield enhancements;
 //! - [`faction`]: its faction's side, build menus, wrecks and weapons;
 //! - [`emblem`]: its faction's emblem in the classic interface;
 //! - [`anims`], [`work`]: its walk and deaths, and what it does as it works;
@@ -28,6 +29,7 @@ pub mod make;
 pub mod model;
 pub mod pictures;
 pub mod script;
+pub mod shields;
 pub mod sounds;
 pub mod textures;
 pub mod units;

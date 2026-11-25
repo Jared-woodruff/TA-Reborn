@@ -700,3 +700,19 @@ stay as written; a key with its value is "{name} silahındaki {key}={value}" (th
 | its kind's own (colours, width, value: its kind's defaults) | türünün kendi …: "türünün kendi renkleriyle", "türünün kendi değeri kullanılır" |
 | beam (Supreme Commander's adjacency beam) | ışın |
 | an effect costs every frame it plays | bir efekt, oynatıldığı her karede işlem yükü getirir |
+
+## Kalkanlar (`hud/shield.rs`, `hud/deck.rs`, `hud/abilities.rs`, `validation/abilities.rs`)
+
+A shield is a kalkan (as "her kalkan" in the archives); a shield bubble is a kalkan kubbesi, kubbe for
+short; a shield whose hit points run out çöker (as "Ekonomin çöküyor") and geri gelir. Its hit points are
+can puanı, as a unit's. A shield's mod keys are kalkan anahtarları ("{unit} biriminde kalkan anahtarları
+var ama ShieldHealth yok").
+
+| English | Türkçe |
+|---|---|
+| shield / Shield {now} / {most} (the card's gauge) | kalkan / Kalkan {now} / {most} (as "Can {now} / {max}") |
+| shield bubble / bubble / with a bubble | kalkan kubbesi / kubbe / kubbeli |
+| personal shield | kişisel kalkan |
+| collapse / collapsed / after collapsing | çökmek / çöktü / çöktükten sonra |
+| Shield off / Shield down: short of energy / coming up in {secs} s / back in {secs} s | Kalkan kapalı / Kalkan devre dışı: enerji yetmiyor / Kalkan {secs} sn sonra devrede / {secs} sn sonra geri gelir |
+| shield keys (a mod's) | kalkan anahtarları |

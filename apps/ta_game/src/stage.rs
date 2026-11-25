@@ -96,6 +96,8 @@
 //! altitude = 70              # an aircraft's flying height over the ground, its own (default its
 //!                            #   type's: a Thunder's 200): low passes, close to the lens
 //! health = 0.4               # a finished unit worn to that share of its most health (one to mend)
+//! enhancements = ["Shield"]  # a finished unit's enhancements installed from the start, by id or
+//!                            #   name (what each needs first before it), as though built
 //!
 //! [[order]]
 //! t = 1.5                    # seconds after the scene starts
@@ -500,6 +502,18 @@ impl Names {
     }
 }
 
+/// A finished unit's enhancements installed at once, by id or name (`Sim::install_enhancement`).
+fn install(sim: &mut Sim, id: UnitId, names: &[String]) {
+    for name in names {
+        let Some(u) = sim.unit(id) else { return };
+        let ty = sim.unit_type(u);
+        match ty.def.enhancements.iter().position(|e| e.id.eq_ignore_ascii_case(name) || e.name.eq_ignore_ascii_case(name)) {
+            Some(index) => sim.install_enhancement(id, index as u16),
+            None => log::warn!("stage: {} has no enhancement {name}", ty.name),
+        }
+    }
+}
+
 /// Space between units placed together: the same each way, or [across, back].
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(untagged)]
@@ -548,6 +562,9 @@ pub struct UnitSpec {
     /// What share of its most health it has (finished units: one worn, for a repair to show).
     #[serde(default)]
     pub health: Option<f32>,
+    /// Its enhancements installed from the start (finished units), by id or name.
+    #[serde(default)]
+    pub enhancements: Vec<String>,
 }
 
 /// What an order tells units to do.
@@ -1857,6 +1874,9 @@ impl StageRun {
                 run.cast.push(Member { id, label: spec.label.clone(), kind: kind.clone() });
                 if spec.stockpile > 0 {
                     sim.grant_stockpile(id, spec.stockpile);
+                }
+                if complete {
+                    install(sim, id, &spec.enhancements);
                 }
                 if let Some(share) = spec.health.filter(|_| complete) {
                     let most = sim.types.get(type_id).max_health;

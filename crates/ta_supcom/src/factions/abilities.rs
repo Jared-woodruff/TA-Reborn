@@ -18,9 +18,10 @@
 //! - **Weapon toggles** (`[TOGGLE]`): the weapons its script's weapon toggle switches on, in slots
 //!   of their own after the unit's and its enhancements', those it switches off emptied.
 //! - **What enhancements bring**: a jammer (`NewJammerRadius`, at the enhancement's upkeep), a
-//!   resource allocation system (`ProductionPerSecondMass`, `ProductionPerSecondEnergy`) and a
+//!   resource allocation system (`ProductionPerSecondMass`, `ProductionPerSecondEnergy`), a
 //!   regeneration aura (`Radius`, `RegenPerSecond` a share of each unit's most health a second,
-//!   `RegenCeiling` the most a second).
+//!   `RegenCeiling` the most a second) and a shield (`ShieldMaxHealth` and the rest, at the
+//!   enhancement's upkeep: `factions::shields`).
 
 use std::fmt::Write as _;
 
@@ -292,6 +293,10 @@ pub struct EnhancementAbilities {
     /// A regeneration aura: its radius (px), the most it mends a second, its share of each unit's
     /// most health a second.
     pub aura: Option<(i64, f64, f64)>,
+    /// A shield (`factions::shields`), and its upkeep (energy a second, the enhancement's
+    /// `MaintenanceConsumptionPerSecondEnergy`), taken while it is switched on.
+    pub shield: Option<super::shields::ShieldBlueprint>,
+    pub shield_energy: f64,
 }
 
 impl EnhancementAbilities {
@@ -305,13 +310,17 @@ pub fn enhancement_abilities(t: &Table) -> EnhancementAbilities {
     let num = |k: &str| t.get_ci(k).and_then(Value::num).unwrap_or(0.0);
     let jam = num("NewJammerRadius");
     let aura = (t.get_ci("RegenPerSecond").is_some() && num("Radius") > 0.0).then(|| (px(num("Radius")), num("RegenCeiling").max(0.0), num("RegenPerSecond").max(0.0)));
+    let shield = super::shields::of_enhancement(t);
+    let upkeep = num("MaintenanceConsumptionPerSecondEnergy").max(0.0);
     EnhancementAbilities {
         radar_jam: if jam > 0.0 { px(jam) } else { 0 },
-        // (Its upkeep, where it pays for the jammer TA Reborn plays: a shield's is left out with it.)
-        energy_use: if jam > 0.0 { num("MaintenanceConsumptionPerSecondEnergy").max(0.0) } else { 0.0 },
+        // (Its upkeep, where it pays for the jammer TA Reborn plays; a shield's is the shield's.)
+        energy_use: if jam > 0.0 && shield.is_none() { upkeep } else { 0.0 },
         metal_make: num("ProductionPerSecondMass").max(0.0),
         energy_make: num("ProductionPerSecondEnergy").max(0.0),
         aura: aura.filter(|&(_, rate, share)| rate > 0.0 || share > 0.0),
+        shield_energy: if shield.is_some() { upkeep } else { 0.0 },
+        shield,
     }
 }
 
@@ -338,6 +347,9 @@ pub fn enhancement_keys(a: &EnhancementAbilities) -> Vec<(&'static str, String)>
         if share > 0.0 {
             out.push(("RegenAuraShare", format!("{share:.5}")));
         }
+    }
+    if let Some(shield) = &a.shield {
+        out.extend(shield.keys(a.shield_energy));
     }
     out
 }
@@ -408,6 +420,10 @@ mod tests {
         assert_eq!(aura.aura, Some((384, 40.0, 0.0043333333)));
         let keys = enhancement_keys(&aura);
         assert_eq!(keys, [("RegenAuraRadius", "384".to_string()), ("RegenAuraRate", "40".to_string()), ("RegenAuraShare", "0.00433".to_string())]);
-        assert!(enhancement_abilities(&table("ShieldMaxHealth = 2500, MaintenanceConsumptionPerSecondEnergy = 300")).is_empty(), "a shield's upkeep left out with it");
+        // A shield, at its upkeep: a personal one where it names no size.
+        let shield = enhancement_abilities(&table("ShieldMaxHealth = 2500, ShieldRegenRate = 20, ShieldRechargeTime = 150, MaintenanceConsumptionPerSecondEnergy = 300"));
+        assert!(!shield.is_empty() && shield.energy_use == 0.0 && shield.shield_energy == 300.0);
+        let keys = enhancement_keys(&shield);
+        assert!(keys.contains(&("ShieldHealth", "2500".to_string())) && keys.contains(&("ShieldEnergyUse", "300".to_string())) && !keys.iter().any(|(k, _)| *k == "ShieldRadius"), "{keys:?}");
     }
 }

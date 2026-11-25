@@ -78,4 +78,9 @@ pub enum SimEvent {
     /// COB `play-sound`: the unit's script plays its sound `sound` (the number of one of its
     /// script's sounds, `CobScript::sounds`). Display only.
     ScriptSound { unit: UnitId, sound: i32 },
+    /// A unit's shield took `damage` (a bubble on its dome at `pos`, a personal shield at the unit).
+    ShieldHit { unit: UnitId, pos: FxVec3, damage: Fx },
+    /// A unit's shield came up (`up`), or went down: `collapsed`, its hit points gone (it comes back
+    /// whole once recharged); else switched off, carried or short of energy.
+    ShieldChanged { unit: UnitId, up: bool, collapsed: bool },
 }

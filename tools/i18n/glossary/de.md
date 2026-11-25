@@ -812,3 +812,20 @@ Spring (the engine) is a name: "wie Spring".
 | its kind's own (colours, width, value: its kind's defaults) | "in den Farben ihrer Art", "in der Breite ihrer Art" (a weapon); "Es gilt der Wert seiner Art" (a burst) |
 | beam (Supreme Commander's adjacency beam) | Strahl |
 | an effect costs every frame it plays | Ein Effekt kostet in jedem Bild Rechenzeit, solange er läuft |
+
+## Shields (`hud/shield.rs`, `hud/deck.rs`, `hud/abilities.rs`, `validation/abilities.rs`)
+
+A shield is der Schild (pl. Schilde, as "jeder Schild" in the archives); a shield bubble is a
+Schildkuppel, Kuppel for short (die); a shield whose hit points run out bricht zusammen (der
+Zusammenbruch) and kehrt zurück. Its hit points are Lebenspunkte, as a unit's. The mod check's hint
+serves a unit and an enhancement alike, so it says "Ergänze ShieldHealth" rather than "Gib ihm"; a
+shield's mod keys are Schildeinträge.
+
+| English | Deutsch |
+|---|---|
+| shield / Shield {now} / {most} (the card's gauge) | Schild / Schild {now} / {most} (as "Leben {now} / {max}") |
+| shield bubble / bubble | Schildkuppel / Kuppel |
+| personal shield | persönlicher Schild |
+| collapse / collapsed / after collapsing | zusammenbrechen / zusammengebrochen / nach dem Zusammenbruch |
+| Shield off / Shield down: short of energy / coming up in {secs} s / back in {secs} s | Schild aus / Schild ausgefallen: zu wenig Energie / Schild aktiv in {secs} s / zurück in {secs} s |
+| shield keys (a mod's) | Schildeinträge |

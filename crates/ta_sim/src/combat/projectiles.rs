@@ -48,6 +48,8 @@ struct Impact {
     pos: FxVec3,
     direct: Option<UnitId>,
     water: bool,
+    /// The shield whose dome it burst on (`sim/shield.rs`).
+    shield: Option<UnitId>,
 }
 
 impl Sim {
@@ -103,6 +105,10 @@ impl Sim {
         }
         let end = match (landing, exit) { (Some(a), Some(b)) => Some(a.min(b)), (a, b) => a.or(b) };
         let hit = first.filter(|&(when, _)| end.is_none_or(|end| when <= end));
+        // (A shield's dome it comes into from outside first stops it there: `sim/shield.rs`.)
+        if let Some((when, shield)) = self.bubble_entry(p, w).filter(|&(when, _)| end.is_none_or(|end| when <= end) && hit.is_none_or(|(before, _)| when <= before)) {
+            return Some(Impact { when, pos: a + (b - a).scale(when), direct: None, water: false, shield: Some(shield) });
+        }
         if hit.is_none() && end.is_none() && p.age < p.ttl {
             return None;
         }
@@ -117,7 +123,7 @@ impl Sim {
             (None, Some(_)) => FxVec3::new(at.x, sea, at.z),
             _ => at,
         };
-        Some(Impact { when, pos, direct, water: pos.y <= sea && self.world.depth_at(pos.x, pos.z) > Fx::ZERO })
+        Some(Impact { when, pos, direct, water: pos.y <= sea && self.world.depth_at(pos.x, pos.z) > Fx::ZERO, shield: None })
     }
 
     /// Plan every flight from the same snapshot, then resolve swept interceptions before
@@ -243,26 +249,35 @@ impl Sim {
                 // it never reaches back over the unit that fired it and those beside it.
                 let flown = p.vel.length() * i64::from(p.age.saturating_sub(1));
                 let area = if flown >= w.aoe_radius { w.aoe_radius } else { Fx::ZERO };
+                // (Not past a shield's dome it comes into: it stops there, `sim/shield.rs`.)
+                let stop = self.bubble_entry(p, w).map_or(p.pos, |(when, _)| p.prev_pos + (p.pos - p.prev_pos).scale(when));
                 self.grid.query(p.pos, p.vel.length() + self.types.collision_reach + area, &mut near);
                 for &slot in &near {
                     let Some(u) = self.units.get(slot as usize).and_then(|u| u.as_ref()) else { continue };
                     if !self.projectile_hits_unit(p, w, u) { continue; }
                     let (centre, radius) = hit_sphere(u, self);
-                    if segment_distance(p.prev_pos, p.pos, centre) <= radius + area {
+                    // (Nor what stands under an enemy's dome it came at from outside: its sweep,
+                    // stopped at the dome, reaches no further in.)
+                    if segment_distance(p.prev_pos, stop, centre) <= radius + area && !self.shielded_from(centre, p.prev_pos, Some(p.owner_player)) {
                         p.hits.push(u.id);
                         if !self.ceasefire_spares_side(p.owner_player, u.owner) {
                             self.damage_unit(u.id, w.damage_to(u.type_id), p.owner, p.vel);
                         }
                     }
                 }
-                self.sweep_features(p.prev_pos, p.pos, w);
+                self.sweep_features(p.prev_pos, stop, w);
             }
-            let impact = if intercepting && (w.def.interceptor || w.def.targetable) { impacts[index] }
-                else { self.projectile_impact(p, w, &mut near) };
+            let planned = intercepting && (w.def.interceptor || w.def.targetable);
+            let mut impact = if planned { impacts[index] } else { self.projectile_impact(p, w, &mut near) };
+            // (Its flight planned with the others' as the tick began: a dome it was to burst on,
+            // collapsed since by another shot, is no longer there, and it flies on.)
+            if planned && impact.is_some_and(|i| i.shield.is_some_and(|s| !self.bubble_up(s))) {
+                impact = self.projectile_impact(p, w, &mut near);
+            }
             if let Some(impact) = impact {
-                if !(p.age >= p.ttl && w.no_explode) || impact.direct.is_some() {
+                if !(p.age >= p.ttl && w.no_explode) || impact.direct.is_some() || impact.shield.is_some() {
                     let flame = w.def.render_type == RenderType::Flame;
-                    self.explode_at(w, impact.pos, p.owner, Some(p.owner_player), impact.direct, impact.water, false, flame.then_some(p.owner_player), impact.when);
+                    self.blast(w, impact.pos, p.owner, Some(p.owner_player), impact.direct, impact.water, false, flame.then_some(p.owner_player), impact.when, impact.shield);
                 }
                 p.dead = true;
                 self.spent.push((p.clone(), impact.when));

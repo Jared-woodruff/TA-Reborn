@@ -333,6 +333,60 @@ pub struct Abilities {
     pub remote_view: Option<RemoteView>,
     /// Its regeneration aura.
     pub aura: Option<Aura>,
+    /// Its shield, a personal one or a bubble (`sim/shield.rs`).
+    pub shield: Option<Shield>,
+}
+
+/// A shield (`ta_data::ShieldDef`: `ShieldHealth` and the other shield keys), compiled: its hit
+/// points, what it regains a tick from so long after a hit, how long a collapse keeps it down, a
+/// bubble's dome (none: a personal shield) and its upkeep (`sim/shield.rs`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Shield {
+    pub health: Fx,
+    /// Hit points a tick it regains while up, from `regen_delay` ticks after its last hit.
+    pub regen: Fx,
+    pub regen_delay: u64,
+    /// Ticks a collapse keeps it down before it comes back whole (one at least).
+    pub recharge: u64,
+    /// A bubble's radius across and height over the unit (px); a radius of none, a personal shield.
+    pub radius: Fx,
+    pub height: Fx,
+    /// Energy a tick it takes while switched on.
+    pub energy: Fx,
+}
+
+impl Shield {
+    /// The shield `def` gives, if it is one (it has hit points).
+    pub fn of(def: Option<&ta_data::ShieldDef>) -> Option<Shield> {
+        let def = def.filter(|d| d.works())?;
+        // (Seconds as whole ticks; mods' outlandish numbers held to a day.)
+        let ticks = |seconds: f64| (seconds.clamp(0.0, 86_400.0) * TICKS_PER_SECOND as f64).round() as u64;
+        let px = |v: f64| Fx::from_f64(v.clamp(0.0, 1.0e6));
+        let radius = if def.is_bubble() { px(def.radius) } else { Fx::ZERO };
+        Some(Shield {
+            health: Fx::from_f64(def.health.min(1.0e12)),
+            regen: per_tick(def.regen.min(1.0e12)),
+            regen_delay: ticks(def.regen_delay),
+            recharge: ticks(def.recharge_time).max(1),
+            radius,
+            height: if radius > Fx::ZERO { px(def.dome_height()).max(Fx::ONE) } else { Fx::ZERO },
+            energy: per_tick(def.energy_use.min(1.0e12)),
+        })
+    }
+
+    /// Whether it is a bubble (else a personal shield).
+    #[inline]
+    pub fn bubble(&self) -> bool {
+        self.radius > Fx::ZERO
+    }
+
+    /// The stronger of two (the one of the more hit points; a bubble of equals, the wider).
+    pub fn stronger(a: Option<Shield>, b: Option<Shield>) -> Option<Shield> {
+        match (a, b) {
+            (Some(a), Some(b)) => Some(if (b.health, b.radius) > (a.health, a.radius) { b } else { a }),
+            (a, b) => a.or(b),
+        }
+    }
 }
 
 /// A weapon toggle (`ta_data::ToggleDef`), compiled: each slot while it is on (none: the unit's
@@ -417,6 +471,7 @@ impl Abilities {
             sonar_field: u.sonar_stealth_field as i64,
             remote_view: (u.remote_view_radius > 0.0).then(|| RemoteView { radius: Fx::from_f64(u.remote_view_radius), energy: per_tick(u.remote_view_energy) }),
             aura: Aura::of(u.regen_aura_radius, u.regen_aura_rate, u.regen_aura_share),
+            shield: Shield::of(u.shield.as_ref()),
         }
     }
 }
@@ -539,6 +594,7 @@ fn compile_enhancements(u: &UnitDef, data: &GameData) -> (Vec<Enhancement>, Vec<
                     sonar_field: e.sonar_stealth_field as i64,
                     remote_view: (e.remote_view_radius > 0.0).then(|| RemoteView { radius: Fx::from_f64(e.remote_view_radius), energy: per_tick(e.remote_view_energy) }),
                     aura: Aura::of(e.regen_aura_radius, e.regen_aura_rate, e.regen_aura_share),
+                    shield: Shield::of(e.shield.as_ref()),
                 },
                 metal_make: per_tick(e.metal_make),
                 energy_make: per_tick(e.energy_make),
@@ -641,6 +697,9 @@ pub struct UnitTypes {
     /// Whether any type (or enhancement) has a regeneration aura ([`Abilities::aura`]): without,
     /// none is looked for (TA's own games).
     pub(crate) auras: bool,
+    /// Whether any type (or enhancement) has a shield ([`Abilities::shield`]): without, nothing of
+    /// shields runs (TA's own games).
+    pub shields: bool,
     by_name: FxHashMap<String, usize>,
     /// Upper-case `Category` token → its number in a [`CategorySet`].
     categories: FxHashMap<String, usize>,
@@ -812,7 +871,9 @@ impl UnitTypes {
         let adjacency = types.iter().any(|t| !t.adjacency.is_empty());
         // (A regeneration aura, a unit's or an enhancement's: without, none is looked for.)
         let auras = types.iter().any(|t| t.abilities.aura.is_some() || t.enhancements.iter().any(|e| e.abilities.aura.is_some()));
-        UnitTypes { types, by_name, categories, airbase_reach, collision_reach, target_reach, heals, adjacency, auras }
+        // (A shield, a unit's or an enhancement's: without, nothing of shields runs.)
+        let shields = types.iter().any(|t| t.abilities.shield.is_some() || t.enhancements.iter().any(|e| e.abilities.shield.is_some()));
+        UnitTypes { types, by_name, categories, airbase_reach, collision_reach, target_reach, heals, adjacency, auras, shields }
     }
 
     pub fn get(&self, id: usize) -> &UnitType {

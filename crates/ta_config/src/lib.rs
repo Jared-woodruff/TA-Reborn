@@ -242,8 +242,13 @@ pub const RECORD_VERSION: u32 = 47;
 /// `SonarStealthField`) and jamming granted by enhancements, remote viewing (`RemoteViewRadius`,
 /// `Order::RemoteView`), stuns beside a weapon's damage (`paralyzetime`), regeneration auras
 /// (`RegenAuraRadius`), an enhancement's own production and upkeep; the computer players' toggles,
-/// resource allocation, and their defences, missiles and long guns held past minimum ranges.
-pub const SIMULATION_VERSION: u32 = 115;
+/// resource allocation, and their defences, missiles and long guns held past minimum ranges. 116:
+/// shields for mods (docs/MODDING.md, "Shields": `ShieldHealth` and the other shield keys, a unit's
+/// or an enhancement's): personal shields taking the damage first, bubbles stopping their enemies'
+/// shots from outside and sparing what is under them from blasts outside, their hit points, regaining,
+/// collapse and recharge, and their upkeep; the computer players count them in threat and cover, and
+/// put shield generators up by their factories and defences.
+pub const SIMULATION_VERSION: u32 = 116;
 /// Records shorter than one year of simulated time are supported. Shared with the
 /// launcher's metadata reader so impossible durations cannot start endless save catch-up.
 pub const MAX_RECORD_TICKS: u64 = 30 * 3600 * 24 * 365;

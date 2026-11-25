@@ -673,3 +673,18 @@ what names an effect read as {name}の…エフェクト, as {name}の発射音.
 | three numbers from 0 to 1 | 0～1の3つの数値 |
 | beam (an adjacency beam between buildings) | ビーム |
 | an effect costs every frame it plays | 再生中、毎フレーム負荷がかかります (as 負荷) |
+
+## Shields (`hud/shield.rs`, `hud/deck.rs`, `hud/abilities.rs`, `validation/abilities.rs`)
+
+One word each everywhere (the card's gauge, the information page, the enhancements, the mod check):
+シールド (as the lore's and the launcher's), a bubble シールドドーム, a collapse 崩壊. The information
+page's lines start with シールド where they can (シールド：HP {health}、毎秒{regen}回復).
+
+| English | 日本語 |
+|---|---|
+| shield / Shield {now} / {most} (the card's gauge, as HP {now} / {max}) | シールド / シールド {now} / {most} |
+| shield bubble, bubble (a dome round its unit that stops shots from outside) | シールドドーム |
+| personal shield (takes the damage before the unit's health) | パーソナルシールド |
+| collapse, collapsed / back (after a collapse) / coming up | 崩壊 / 復帰 / 展開 |
+| Shield off (switched off) / Shield down: short of energy | シールドオフ / シールド停止：エネルギー不足 |
+| shield keys (a unit's ShieldHealth...) | シールドのキー |

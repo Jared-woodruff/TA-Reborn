@@ -27,9 +27,10 @@ impl Sim {
                 continue;
             }
             if Some(u.id) != direct {
-                // (As a blast reaches: to the edge of what it meets.)
+                // (As a blast reaches: to the edge of what it meets; not under a shield's dome it
+                // goes off outside, `sim/shield.rs`.)
                 let (c, ur) = hit_sphere(u, self);
-                if (c.distance(pos) - ur).max(Fx::ZERO) >= r {
+                if (c.distance(pos) - ur).max(Fx::ZERO) >= r || self.shielded_from(c, pos, Some(player)) {
                     continue;
                 }
             }

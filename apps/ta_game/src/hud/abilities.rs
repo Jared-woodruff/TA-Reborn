@@ -39,6 +39,10 @@ pub(crate) fn lines(abilities: &Abilities, with_jamming: bool) -> Vec<String> {
         };
         out.push(tf("Mends its side's units within {range}: {rate}", &[("range", &whole(aura.radius)), ("rate", &rate)]));
     }
+    // (Its shield, a bubble or a personal one: `shield.rs`.)
+    if let Some(shield) = &abilities.shield {
+        out.extend(super::shield::lines(shield));
+    }
     out
 }
 

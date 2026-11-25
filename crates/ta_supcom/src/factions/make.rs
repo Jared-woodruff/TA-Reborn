@@ -47,8 +47,10 @@ pub const TAGS: [&str; 3] = ["units", "factions", "supreme commander"];
 /// looks, Forged Alliance's muzzle flashes, trails and impacts made TA Reborn's particle effects
 /// (`effects/supcom_<side>.tdf`), their shots' and beams' true colours and widths, their
 /// projectiles' own models where TA Reborn draws them as models, and the structures' adjacency
-/// beams: `effects`).
-pub const VERSION: u32 = 18;
+/// beams: `effects`; 19: shields, `factions::shields`: the shield generators, the units with
+/// shields of their own and the Fatboy's, at their upkeep and with their switches, and the
+/// commanders' shield enhancements).
+pub const VERSION: u32 = 19;
 
 /// What [`make`]'s watch is told it makes once the units are made: their sounds.
 pub const SOUNDS: &str = "sounds";
@@ -734,11 +736,14 @@ mod tests {
             assert_eq!(ta_formats::tdf::parse(&texts[&format!("units/{id}.fbi")]).sections[0].get("AdjacencySize"), Some(size), "{id}");
         }
         assert!(station("xeb0104").get("AdjacencySize").is_none(), "a station has no size class: it takes nothing");
-        // The commander's enhancements, each as the engine plays it; the shield left out.
+        // The commander's enhancements, each as the engine plays it, its personal shield among them;
+        // the removal left out.
         let acu = ta_formats::tdf::parse(&texts["units/uel0001.fbi"]);
         let list = acu.section("UNITINFO").and_then(|u| u.sections.iter().find(|s| s.name == "ENHANCEMENTS")).expect("its enhancements");
         let names: Vec<&str> = list.sections.iter().map(|s| s.name.as_str()).collect();
-        assert_eq!(names, ["AdvancedEngineering", "HeavyAntiMatterCannon", "Missile"], "the shield and the removal left out");
+        assert_eq!(names, ["AdvancedEngineering", "HeavyAntiMatterCannon", "Missile", "Shield"], "the removal left out");
+        let shield = &list.sections[3];
+        assert_eq!((shield.get("ShieldHealth"), shield.get("ShieldRadius"), shield.get("Slot")), (Some("24000"), None, Some("Back")), "a personal shield");
         let suite = &list.sections[0];
         assert_eq!((suite.get("Name"), suite.get("Slot"), suite.get("BuildTime"), suite.get("WorkerTime")), (Some("Tech 2 Engineering Suite"), Some("LCH"), Some("9000"), Some("200")));
         assert_eq!((suite.get("MaxDamage"), suite.get("HealRate"), suite.get("BuildOptions"), suite.get("Picture")), (Some("3000"), Some("20"), Some("UEB0104"), Some("uel0001_advancedengineering")));
@@ -907,7 +912,7 @@ mod tests {
     }
 
     /// The hash of the test faction's mod (see the test above).
-    const EXPECTED: &str = "1d3ce9c1c8efa3c41e19a32a77a2d21cf8dd4241cc6133a1627dedcaeeb450bd";
+    const EXPECTED: &str = "a8d03f5d60059df80fa74a511431d9768aa764b1d387042618e29ef018c305e6";
 
     /// A unit whose mesh does not read is left out, with its reason; the rest are made.
     #[test]

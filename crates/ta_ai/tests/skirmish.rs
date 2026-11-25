@@ -317,6 +317,9 @@ fn ai_vs_ai_plays_a_game() {
     let mut ai_time = 0.0;
     let (mut shots, mut deaths, mut built) = (0u32, 0u32, vec![0u32; n]);
     let (mut launches, mut interceptions) = (0u32, 0u32);
+    // TA Reborn's shields (a mod's: none of TA's), per player whose shields they are: hits, the damage
+    // they took, collapses.
+    let (mut shield_hits, mut shield_taken, mut shield_collapses) = (vec![0u32; n], vec![0i64; n], vec![0u32; n]);
     // The tech tree audit: per player, what was made of each kind (`audit_kind`) and the minute
     // of the first; strategic launches, long-range gun shots and missiles shot down.
     let mut made: Vec<BTreeMap<&'static str, (u32, u64)>> = vec![Default::default(); n];
@@ -426,6 +429,17 @@ fn ai_vs_ai_plays_a_game() {
                         }
                     } else if w.range >= Fx::from_int(2000) && !w.def.interceptor && let Some(p) = by {
                         long_shots[p] += 1;
+                    }
+                }
+                SimEvent::ShieldHit { unit, damage, .. } => {
+                    if let Some(p) = sim.unit(unit).map(|u| u.owner as usize).filter(|&p| p < n) {
+                        shield_hits[p] += 1;
+                        shield_taken[p] += damage.to_int();
+                    }
+                }
+                SimEvent::ShieldChanged { unit, collapsed: true, .. } => {
+                    if let Some(p) = sim.unit(unit).map(|u| u.owner as usize).filter(|&p| p < n) {
+                        shield_collapses[p] += 1;
                     }
                 }
                 SimEvent::Intercepted { defender, pos, .. } => {
@@ -717,6 +731,10 @@ fn ai_vs_ai_plays_a_game() {
         println!("units killed by an ally {ally_kills}");
     }
     println!("missile launches {launches} (strategic {}, tactical {}), interceptions {interceptions} (strategic {})", launched.iter().sum::<u32>(), tactical.iter().sum::<u32>(), strategic_down.iter().sum::<u32>());
+    if sim.types.shields {
+        let each: Vec<String> = (0..n).map(|p| format!("P{p} hits {} ({} damage taken), collapses {}", shield_hits[p], shield_taken[p], shield_collapses[p])).collect();
+        println!("shields: {}", each.join("; "));
+    }
     for p in 0..n {
         let kinds: Vec<String> = made[p].iter().map(|(k, (count, first))| format!("{k} {count} (min {first})")).collect();
         println!("P{p} tech: {}; strategic launches {}, tactical launches {}, long-range shots {}, missiles shot down {} (strategic {})", kinds.join(", "), launched[p], tactical[p], long_shots[p], shot_down[p], strategic_down[p]);

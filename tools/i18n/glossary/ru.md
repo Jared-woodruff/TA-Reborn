@@ -692,3 +692,19 @@ engine) is a name: "как в Spring".
 | its kind's own (colours, width, value: its kind's defaults) | принятый для его типа: "цветами, принятыми для его типа", "берётся значение, принятое для его типа" |
 | beam (Supreme Commander's adjacency beam) | луч |
 | an effect costs every frame it plays | эффект отнимает время в каждом кадре, пока воспроизводится |
+
+## Щиты (`hud/shield.rs`, `hud/deck.rs`, `hud/abilities.rs`, `validation/abilities.rs`)
+
+A shield is щит (as "каждый щит" in the archives); a shield bubble is купол щита, купол for short; a
+shield whose hit points run out is разрушен (после разрушения) and восстанавливается. Its hit points are
+ед. здоровья, as a unit's ("запас здоровья щита" in the mod check's hint). A shield's mod keys are ключи
+щита; the overview counts "Юнитов с личным щитом", as its abilities' line.
+
+| English | Русский |
+|---|---|
+| shield / Shield {now} / {most} (the card's gauge) | щит / Щит {now} / {most} (as "Здоровье {now} / {max}") |
+| shield bubble / bubble | купол щита / купол |
+| personal shield | личный щит |
+| collapse / collapsed / after collapsing / back in {secs} s | разрушиться / разрушен / после разрушения / восстановится через {secs} с |
+| Shield off / Shield down: short of energy / coming up in {secs} s | Щит выключен / Щит неактивен: не хватает энергии / Щит поднимется через {secs} с |
+| shield keys (a mod's) | ключи щита |

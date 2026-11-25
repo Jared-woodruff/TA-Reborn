@@ -43,6 +43,7 @@
 
 pub mod beams;
 pub mod rings;
+pub mod shields;
 pub mod camera;
 pub mod clouds;
 pub mod cockpit;
@@ -220,6 +221,7 @@ pub use lights::{MAX_LIGHTS, PointLight};
 pub use model::{DrawInstance, ModelId, ModelRenderer, TextureLibrary};
 pub use beams::{BeamInstance, BeamRenderer};
 pub use rings::RingInstance;
+pub use shields::ShieldInstance;
 pub use world_text::{GlyphInstance, WorldTextRenderer};
 pub use reflection::WaterReflections;
 pub use sky::{Beyond, SkySettings};
@@ -765,6 +767,8 @@ pub struct Renderer {
     pub beams: BeamRenderer,
     /// Rings on the ground round selected units (see [`rings`]).
     rings: rings::RingRenderer,
+    /// Shields' domes and shells, over the scene after the water (see [`shields`]).
+    shields: shields::ShieldRenderer,
     /// Text and signs in the world, drawn over the ground under the decals (see [`world_text`]).
     pub world_text: WorldTextRenderer,
     /// The wakes of ships and hovercraft, drawn into the water's wake map (see [`wakes`]).
@@ -1065,6 +1069,7 @@ impl Renderer {
         let foliage = building.step("the trees' and rocks' pipelines", || foliage::FoliageRenderer::new(device, &gpu.queue, &frame_layout, util::HDR_FORMAT, samples).map_err(|e| log::error!("foliage: {e:#}")).ok());
         let beams = building.step("the beams' pipelines", || BeamRenderer::new(device, &frame_layout, util::HDR_FORMAT, samples));
         let rings = building.step("the rings' pipelines", || rings::RingRenderer::new(device, &frame_layout, util::HDR_FORMAT, samples));
+        let shields = building.step("the shields' pipelines", || shields::ShieldRenderer::new(device, &frame_layout, util::HDR_FORMAT, samples));
         let world_text = building.step("the world text's pipelines", || WorldTextRenderer::new(device, &gpu.queue, &frame_layout, util::HDR_FORMAT, samples));
         let wakes = building.step("the wakes' pipelines", || wakes::WakeRenderer::new(device, &frame_layout));
         let icons = building.step("the icons' pipelines", || icons::IconRenderer::new(device, gpu.view_format));
@@ -1122,6 +1127,7 @@ impl Renderer {
             sprites,
             beams,
             rings,
+            shields,
             world_text,
             wakes,
             icons,
@@ -1634,6 +1640,11 @@ impl Renderer {
     /// This frame's rings on the ground round selected units (see [`rings`]).
     pub fn prepare_rings(&mut self, rings: &[RingInstance]) {
         self.rings.prepare(&self.gpu.device, &self.gpu.queue, rings);
+    }
+
+    /// This frame's shields, their domes and shells (see [`shields`]).
+    pub fn prepare_shields(&mut self, shields: &[ShieldInstance]) {
+        self.shields.prepare(&self.gpu.device, &self.gpu.queue, shields);
     }
 
     /// This frame's text and signs in the world (see [`world_text`]).
@@ -2883,6 +2894,8 @@ impl Renderer {
             }
         };
         water(pass, &self.water_pipeline.pipeline, &self.water_pipeline.outer);
+        // Shields' domes over the water (a fleet's), under the smoke and the blasts on them.
+        self.shields.draw(pass);
         self.sprites.draw(pass, SpriteLayer::Smoke);
         self.particles.draw(pass, ParticleLayer::Alpha);
         self.sprites.draw(pass, SpriteLayer::Effect);
@@ -3386,6 +3399,7 @@ mod tests {
         validated("foliage", include_str!("shaders/foliage.wgsl"));
         validated("beams", include_str!("shaders/beam.wgsl"));
         validated("rings", include_str!("shaders/ring.wgsl"));
+        validated("shields", include_str!("shaders/shield.wgsl"));
         validated("world text", include_str!("shaders/world_text.wgsl"));
         validated("world text (no antialiasing)", &world_text::scene_source(1));
         validated("wakes", &wakes::shader_source());

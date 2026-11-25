@@ -25,6 +25,7 @@ mod blockers;
 pub mod enhance;
 pub mod remote_view;
 mod repair_round;
+pub mod shield;
 mod toggle;
 mod upgrade;
 
@@ -621,6 +622,8 @@ pub struct Sim {
     tidal: Fx,
     /// Acid seas (TA's `waterdoesdamage`): health a second lost by what is in the water.
     pub water_damage: Fx,
+    /// The shields' domes up this tick (`sim/shield.rs`), listed before the projectiles fly.
+    pub(crate) bubbles: Vec<shield::Bubble>,
 }
 
 impl Sim {
@@ -805,6 +808,7 @@ impl Sim {
             next_formation: 1,
             paces: Vec::new(),
             alone: Default::default(),
+            bubbles: Vec::new(),
         };
         sim.change_wind();
         sim
@@ -2305,6 +2309,8 @@ impl Sim {
         let t1 = std::time::Instant::now();
         self.resolve_collisions();
         let t2 = std::time::Instant::now();
+        // (Shields up or down, and the domes listed, before the shots fly: `sim/shield.rs`.)
+        self.update_shields();
         self.update_interceptors();
         self.update_projectiles();
         self.update_fires();
@@ -5756,6 +5762,10 @@ impl Sim {
             }
             // (What its enhancements take, paid while they are installed: a jammer's.)
             upkeep += u.enhancement_upkeep();
+            // (Its shield's, while switched on: `sim/shield.rs`.)
+            if active {
+                upkeep += shield::upkeep(u, t);
+            }
             let paid = upkeep.is_zero() || e.energy >= upkeep;
             e.tick_energy_wanted += upkeep;
             // (For the figures the interface shows: `Sim::unit_flows`.)
@@ -6318,6 +6328,14 @@ impl Sim {
             if let Some(p) = u.remote_view {
                 mix(-29);
                 target(&mut mix, Some(Target::Ground(p)));
+            }
+            // (A shield, only where there is one: TA's games sum as before.)
+            if let Some(s) = u.shield {
+                mix(-30);
+                mix(s.health.0);
+                mix(s.up as i64 | (s.collapsed as i64) << 1);
+                mix(s.charge as i64);
+                mix(s.hit_at as i64);
             }
             mix(u.orders.len() as i64);
             for o in &u.orders { order(&mut mix, o); }
