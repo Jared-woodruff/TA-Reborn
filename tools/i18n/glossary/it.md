@@ -673,3 +673,24 @@ livello sul posto" of the retired launcher line.
 | MENUS (the Supreme Commander dialog's tab) | MENU |
 | Supreme Commander menus (the mod) | Menu di Supreme Commander |
 | Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | Testo / Etichette / Accento / Pannelli / Linee / Pulsanti |
+
+## L'importazione guidata di Supreme Commander e AGGIORNA TUTTE (`pages/supcom_wizard.rs`, `supcom_wizard.rs`, `supcom.rs`)
+
+A part (one of the four imports) is una parte (f.), ticked is selezionata; "in turn" is una dopo l'altra (a
+turno reads as taking turns). `{parts}` may hold one part or several of either gender, so the sentences
+around it put a feminine plural noun before the colon: "Parti create da una versione precedente di TA
+Reborn: {parts}.", "Parti non ancora importate: {parts}.", "Importazioni di Supreme Commander create da …:
+{parts}." (hence AGGIORNA TUTTE, IMPORTA TUTTE…). A part's status line: "Non è stato creato nulla: …".
+Straight apostrophes.
+
+| English | Italiano |
+|---|---|
+| part / ticked / Tick a part to make | parte / selezionata / Seleziona una parte da creare |
+| the maps / the factions / the music / the menus' look (`{parts}`) | le mappe / le fazioni / la musica / l'aspetto dei menu |
+| the wizard's steps THE GAME / WHAT TO MAKE / IMPORTING / DONE | LA PARTITA (shared with the cheats' panel) / COSA CREARE (as COSA CORREGGERE) / IMPORTAZIONE / FATTO |
+| UPDATE ALL / IMPORT IN ONE GO… / CHOOSE IN DETAIL… | AGGIORNA TUTTE (as UPDATE ALL · {n}) / IMPORTA TUTTE… / SCEGLI NEL DETTAGLIO… |
+| NOT NOW / PLAY A SKIRMISH | NON ORA (as "Non ora: …") / AVVIA SCHERMAGLIA (PLAY is AVVIA, as START A SKIRMISH) |
+| the Supreme Commander imports (the four together) | le importazioni di Supreme Commander |
+| the dialog's tabs / the MAPS tab | le schede della finestra / la scheda MAPPE |
+| {time} to make (a card) / and {time} to make (the total) | {time} per la creazione / e {time} per creare tutto |
+| on the Mods and Maps pages | nelle pagine Mod e MAPPE (as "nella pagina Mod", "nella pagina MAPPE") |

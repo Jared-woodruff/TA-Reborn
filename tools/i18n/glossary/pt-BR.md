@@ -633,3 +633,23 @@ aprimorar is only the building's upgrade, melhoria only the commander's enhancem
 | MENUS (the Supreme Commander dialog's tab) | MENUS |
 | Supreme Commander menus (the mod) | Menus do Supreme Commander |
 | Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | Texto / Rótulos / Destaque / Painéis / Linhas / Botões |
+
+## The Supreme Commander import's wizard (`pages/supcom_wizard.rs`, `supcom_wizard.rs`, `supcom.rs`)
+
+The four imports are "partes" (feminine: marcadas, criadas). {parts} is a lowercase list after a
+colon; what comes before it has a noun of its own or needs no agreement ("Partes criadas por…:
+{parts}", "Falta importar: {parts}"). {time} ("menos de um minuto", "cerca de {n} minutos") is a noun
+phrase: "{time} para criar"; the size takes "aproximadamente", so "cerca de" is not said twice.
+
+| English | pt-BR |
+|---|---|
+| part (one of the four imports) | parte ("As partes marcadas", "uma parte após a outra") |
+| the maps / the factions / the music / the menus' look | os mapas / as facções / a música / o visual dos menus |
+| tick (a part) / ticked | marcar / marcadas |
+| steps THE GAME / WHAT TO MAKE / IMPORTING / DONE | O JOGO / O QUE CRIAR / IMPORTAÇÃO / CONCLUÍDO |
+| UPDATE ALL / IMPORT IN ONE GO… / CHOOSE IN DETAIL… | ATUALIZAR TUDO (neutral beside "Partes" and "importações"; the Mods page's ATUALIZAR TODOS · {n} counts mods) / IMPORTAR DE UMA VEZ… / ESCOLHER EM DETALHES… |
+| NOT NOW / PLAY A SKIRMISH | AGORA NÃO / JOGAR ESCARAMUÇA |
+| about {size} on the disk, {time} to make | aproximadamente {size} no disco, {time} para criar |
+| the Supreme Commander imports / Not made: (a part's line) | as importações do Supreme Commander / Nada foi criado: (no gender to agree with) |
+| another mod of its id | outro mod com o mesmo identificador |
+| the dialog / a skirmish's setup | a janela / a preparação de uma escaramuça |

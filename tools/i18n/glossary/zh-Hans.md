@@ -595,3 +595,19 @@ characters, none against full-width punctuation.
 | MENUS (the Supreme Commander dialog's tab) | 菜单 |
 | Supreme Commander menus (the mod) | Supreme Commander 菜单外观 |
 | Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | 文字 / 标签 / 强调色 / 面板 / 线条 / 按钮 |
+
+## The Supreme Commander import's wizard and UPDATE ALL (`pages/supcom_wizard.rs`, `supcom_wizard.rs`, `supcom.rs`)
+
+A part of the import (the maps, the factions, the music, the menus' look) is 部分 (each one 每一项);
+ticking its card is 勾选. In {parts} the parts are bare nouns joined by the file's 、 and 和
+(阵营、菜单外观和地图). The imports in a notice are 各项导入. {time} (约一分钟, 不到一分钟) holds Chinese
+words: no space before it (制作需{time}).
+
+| English | 简体中文 |
+|---|---|
+| the wizard's steps THE GAME / WHAT TO MAKE / IMPORTING / DONE | 游戏 / 制作内容 / 导入 / 完成 |
+| UPDATE ALL / IMPORT IN ONE GO… / NOT NOW (the offer put away for good) | 全部更新 / 一次性导入… / 暂不导入 |
+| CHOOSE IN DETAIL… (the dialog's tabs instead) / PLAY A SKIRMISH | 逐项选择… / 开始遭遇战 |
+| the maps / the factions / the music / the menus' look (in {parts}) | 地图 / 阵营 / 音乐 / 菜单外观 |
+| the dialog's tabs / the MAPS tab | 对话框的各个标签页 / “地图”标签页 |
+| Waiting for your answer / Not made (a part's line) | 等待你的答复 / 未制作 |

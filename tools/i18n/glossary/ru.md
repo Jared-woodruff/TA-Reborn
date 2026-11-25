@@ -630,3 +630,18 @@ Commander installs enhancements on itself, one a slot. Widths measured in Bahnsc
 | MENUS (the Supreme Commander dialog's tab) | МЕНЮ |
 | Supreme Commander menus (the mod) | Меню Supreme Commander |
 | Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | Текст / Подписи / Акцент / Панели / Линии / Кнопки |
+
+## The Supreme Commander import's wizard and UPDATE ALL (`pages/supcom_wizard.rs`, `supcom_wizard.rs`, `supcom.rs`)
+
+| English | Русский |
+|---|---|
+| a part (one of the four imports) / {parts} (after a colon) | часть ("каждая отмеченная часть", "итог по каждой части") / nominative, lower case: карты, фракции, музыка, оформление меню ("Создано более старой версией TA Reborn: фракции и музыка") |
+| the wizard's steps THE GAME › WHAT TO MAKE › IMPORTING › DONE | ИГРА › ЧТО СОЗДАТЬ › ИМПОРТ › ГОТОВО |
+| tick / ticked (a part's card) | отметить / отмеченная ("Отметьте часть, которую нужно создать") |
+| UPDATE ALL / IMPORT IN ONE GO… / CHOOSE IN DETAIL… (the link to the tabs) | ОБНОВИТЬ ВСЕ (as ВЫБРАТЬ ВСЕ, УДАЛИТЬ ВСЕ) / ИМПОРТ ЗА ОДИН РАЗ… / ПОДРОБНЫЙ ВЫБОР… |
+| NOT NOW (the Mods page's offer, never made again) / PLAY A SKIRMISH | НЕ СЕЙЧАС (not ПОЗЖЕ, which promises it back) / СЫГРАТЬ СХВАТКУ |
+| the Supreme Commander imports (the whole run, its notices) / those an older TA Reborn made | импорт Supreme Commander ("Импорт Supreme Commander завершён…", "Дождитесь окончания импорта Supreme Commander…") / части Supreme Commander, созданные более старой версией TA Reborn |
+| each into a mod of its own, turned on once made / in turn | каждая часть — отдельным модом, который включается после создания / по очереди |
+| What each part came to / Not made: … (a part's line under its name) | Итог по каждой части / Не создано: … (neuter: no gender to agree with КАРТЫ, МУЗЫКА…) |
+| Waiting for … to be found / for your answer | Ожидание, пока будет найдена … / Ожидание вашего ответа |
+| a card's estimate ("About {size} on the disk, {time} to make") | "Около {size} на диске, {time} на создание", as the maps tab's "{time} на создание" |

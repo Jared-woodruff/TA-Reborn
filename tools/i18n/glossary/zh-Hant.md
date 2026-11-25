@@ -572,3 +572,19 @@ print them (Alt, Ctrl, Shift, Cmd, Option, Enter, Esc, Tab, Home, End).
 | MENUS (the Supreme Commander dialog's tab) | 選單 |
 | Supreme Commander menus (the mod) | Supreme Commander 選單外觀 |
 | Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | 文字 / 標籤 / 強調色 / 面板 / 線條 / 按鈕 |
+
+## The Supreme Commander import's wizard and UPDATE ALL (`pages/supcom_wizard.rs`, `supcom_wizard.rs`, `supcom.rs`)
+
+A part of the import (the maps, the factions, the music, the menus' look) is 部分 (each one 每一項);
+ticking its card is 勾選. In {parts} the parts are bare nouns joined by the file's 、 and 和
+(陣營、選單外觀和地圖). The imports in a notice are 各項匯入. {time} (約一分鐘, 不到一分鐘) holds Chinese
+words: no space before it (製作需{time}). 一次性 reads as "disposable" in Taiwan, so IMPORT IN ONE GO… is 一併匯入….
+
+| English | 繁體中文 |
+|---|---|
+| the wizard's steps THE GAME / WHAT TO MAKE / IMPORTING / DONE | 本局遊戲 (the cheats panel's key, shared) / 製作內容 / 匯入 / 完成 |
+| UPDATE ALL / IMPORT IN ONE GO… / NOT NOW (the offer put away for good) | 全部更新 / 一併匯入… / 暫不匯入 |
+| CHOOSE IN DETAIL… (the dialog's tabs instead) / PLAY A SKIRMISH | 逐項選擇… / 開始遭遇戰 |
+| the maps / the factions / the music / the menus' look (in {parts}) | 地圖 / 陣營 / 音樂 / 選單外觀 |
+| the dialog's tabs / the MAPS tab | 對話方塊的各個分頁 / 「地圖」分頁 |
+| Waiting for your answer / Not made (a part's line) | 等待你的回覆 / 未製作 |

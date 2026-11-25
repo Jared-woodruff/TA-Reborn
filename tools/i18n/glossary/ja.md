@@ -606,3 +606,19 @@ clauses without 。. Effect lines are terse nouns (建設力 +{n}, 視界 +{n}).
 | MENUS (the Supreme Commander dialog's tab) | メニュー |
 | Supreme Commander menus (the mod) | Supreme Commander のメニュー |
 | Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | 文字 / ラベル / アクセント / パネル / 線 / ボタン |
+
+## The Supreme Commander import's wizard and UPDATE ALL (`pages/supcom_wizard.rs`, `supcom_wizard.rs`, `supcom.rs`)
+
+A part of the import (the maps, the factions, the music, the menus' look) is 項目; ticking its card is
+チェックを入れる. In {parts} the parts are bare nouns joined by the file's 、 and と (陣営、メニューの見た目とマップ).
+Pages and tabs in sentences: 「MOD」ページ, 「マップ」ページ, the dialog's 「マップ」タブ. TA Reborn without spaces
+(古いバージョンのTA Reborn, TA Reborn用に変換), Supreme Commander with them.
+
+| English | 日本語 |
+|---|---|
+| the wizard's steps THE GAME / WHAT TO MAKE / IMPORTING / DONE | ゲーム / 作成内容 / インポート / 完了 |
+| UPDATE ALL / IMPORT IN ONE GO… / NOT NOW (the offer put away for good) | すべて更新 / まとめてインポート… / 今はしない |
+| CHOOSE IN DETAIL… (the dialog's tabs instead) / PLAY A SKIRMISH | 個別に選択… / スカーミッシュ開始 |
+| the maps / the factions / the music / the menus' look (in {parts}) | マップ / 陣営 / 音楽 / メニューの見た目 |
+| About {size} on the disk, {time} to make (a card's line) | ディスク使用量：約{size}、作成時間：{time} |
+| Waiting for your answer / Not made (a part's line) | 回答待ち / 未作成 |

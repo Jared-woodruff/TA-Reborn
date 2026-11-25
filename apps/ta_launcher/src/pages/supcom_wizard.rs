@@ -941,7 +941,7 @@ fn wizard_footer(ui: &mut Ui, footer: &Footer, asked: &mut Asked) {
         let why = footer.why.clone().unwrap_or_default();
         match footer.step {
             Step::Game => {
-                if ui.add_enabled(footer.why.is_none(), ActionButton::primary("NEXT")).disabled_tip(why.as_str()).clicked() {
+                if ui.add_enabled(footer.why.is_none(), ActionButton::primary("NEXT ›")).disabled_tip(why.as_str()).clicked() {
                     asked.actions.push(Action::SupcomWizardStep(Step::Choose));
                 }
                 if ui.add(ActionButton::secondary("CLOSE")).clicked() {
@@ -1243,11 +1243,11 @@ mod tests {
         assert_eq!(app.supcom.tab, Tab::Factions, "the tab CHOOSE IN DETAIL… shows");
         // The game's step: the copy found.
         let texts = settled(&ctx, &mut app, size);
-        for words in ["1  THE GAME", "2  WHAT TO MAKE", "3  IMPORTING", "4  DONE", "FORGED ALLIANCE", "GOG", "CHANGE FOLDER…", "NEXT", "CLOSE"] {
+        for words in ["1  FORGED ALLIANCE", "2  WHAT TO MAKE", "3  IMPORTING", "4  DONE", "FORGED ALLIANCE", "GOG", "CHANGE FOLDER…", "NEXT ›", "CLOSE"] {
             assert!(has(&texts, words), "{words}: {:?}", self::words(&texts));
         }
         assert!(!has(&texts, "IMPORT FACTIONS"), "not the tabs: {:?}", self::words(&texts));
-        click(&ctx, &mut app, size, &texts, "NEXT");
+        click(&ctx, &mut app, size, &texts, "NEXT ›");
         assert_eq!(app.supcom.wizard.step, Step::Choose);
         // What to make: the four, in the order they are made, each ticked.
         let texts = settled(&ctx, &mut app, size);
@@ -1311,10 +1311,10 @@ mod tests {
         let size = vec2(1120.0, 720.0);
         app.apply(Action::SupcomOpen(Tab::Maps), &eframe::Frame::_new_kittest());
         let texts = settled(&ctx, &mut app, size);
-        for words in ["SUPREME COMMANDER: FORGED ALLIANCE NEEDED", "GET IT ON GOG", "GET IT ON STEAM", "CHOOSE FOLDER…", "LOOK AGAIN", "NEXT", "Waiting for Supreme Commander: Forged Alliance to be found."] {
+        for words in ["SUPREME COMMANDER: FORGED ALLIANCE NEEDED", "GET IT ON GOG", "GET IT ON STEAM", "CHOOSE FOLDER…", "LOOK AGAIN", "NEXT ›", "Waiting for Supreme Commander: Forged Alliance to be found."] {
             assert!(has(&texts, words), "{words}: {:?}", self::words(&texts));
         }
-        click(&ctx, &mut app, size, &texts, "NEXT");
+        click(&ctx, &mut app, size, &texts, "NEXT ›");
         assert_eq!(app.supcom.wizard.step, Step::Game, "NEXT waits for the game");
         assert!(Tab::ALL.iter().all(|tab| !app.supcom.scanning_at(*tab)));
         app.apply(Action::SupcomLookAgain, &eframe::Frame::_new_kittest());
@@ -1558,7 +1558,7 @@ mod tests {
             assert!(screen.contains_rect(*rect) && clip.contains_rect(*rect), "{words} in sight: {rect:?}, clipped to {clip:?}");
         };
         let texts = settled(&ctx, &mut app, size);
-        for words in ["NEXT", "CLOSE", "1  THE GAME"] {
+        for words in ["NEXT ›", "CLOSE", "1  FORGED ALLIANCE"] {
             seen(&texts, words);
         }
         app.apply(Action::SupcomWizardStep(Step::Choose), &eframe::Frame::_new_kittest());

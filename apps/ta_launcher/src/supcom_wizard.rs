@@ -59,7 +59,8 @@ impl Step {
     /// Its name in the row of steps (marked for translation).
     pub fn label(self) -> &'static str {
         match self {
-            Step::Game => n("THE GAME"),
+            // (The game's own name: "THE GAME" is a battle's in some languages, the cheats'.)
+            Step::Game => n("FORGED ALLIANCE"),
             Step::Choose => n("WHAT TO MAKE"),
             Step::Import => n("IMPORTING"),
             Step::Done => n("DONE"),

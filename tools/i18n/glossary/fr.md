@@ -705,3 +705,24 @@ Straight apostrophes and no-break spaces, as the HUD's other strings.
 | MENUS (the Supreme Commander dialog's tab) | MENUS |
 | Supreme Commander menus (the mod) | Menus de Supreme Commander |
 | Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | Texte / Libellés / Accentuation / Panneaux / Lignes / Boutons |
+
+## L'assistant d'importation de Supreme Commander et TOUT METTRE À JOUR (`pages/supcom_wizard.rs`, `supcom_wizard.rs`, `supcom.rs`)
+
+A part (one of the four imports) is un élément (m.), never une partie: the wizard's first step is LA PARTIE
+(THE GAME, a key shared with the cheats' panel). The four names are all feminine and `{parts}` may hold one
+or several, so the sentences around it put a noun before the colon that carries the agreement: "Éléments
+créés par une ancienne version de TA Reborn : {parts}.", "Éléments pas encore importés : {parts}.",
+"Importations de Supreme Commander créées par … : {parts}.". A part's status line has no participle to agree
+with its name: "Rien n'a été créé : …". Straight apostrophes and no-break spaces, as the dialog's other strings.
+
+| English | Français |
+|---|---|
+| part / ticked / Tick a part to make | élément / coché / Cochez un élément à créer |
+| the maps / the factions / the music / the menus' look (`{parts}`) | les cartes / les factions / la musique / l'apparence des menus |
+| the wizard's steps THE GAME / WHAT TO MAKE / IMPORTING / DONE | LA PARTIE (shared) / SÉLECTION / IMPORTATION / TERMINÉ |
+| UPDATE ALL / IMPORT IN ONE GO… / CHOOSE IN DETAIL… | TOUT METTRE À JOUR (as UPDATE ALL · {n}) / TOUT IMPORTER… / CHOISIR EN DÉTAIL… |
+| NOT NOW / PLAY A SKIRMISH | PAS MAINTENANT (as "Pas maintenant : …") / JOUER UNE ESCARMOUCHE (as START A SKIRMISH) |
+| the Supreme Commander imports (the four together) | les importations de Supreme Commander |
+| the dialog's tabs / the MAPS tab | les onglets de la fenêtre / l'onglet CARTES |
+| {time} to make (a card) / and {time} to make (the total) | {time} de création / et {time} pour tout créer |
+| on the Mods and Maps pages | sur les pages MODS et CARTES |

@@ -666,3 +666,18 @@ Forged Alliance's two features, in the terms the launcher's "Ще в плана�
 | MENUS (the Supreme Commander dialog's tab) | МЕНЮ |
 | Supreme Commander menus (the mod) | Меню Supreme Commander |
 | Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | Текст / Підписи / Акцент / Панелі / Лінії / Кнопки |
+
+## The Supreme Commander import's wizard and UPDATE ALL (`pages/supcom_wizard.rs`, `supcom_wizard.rs`, `supcom.rs`)
+
+| English | Українська |
+|---|---|
+| a part (one of the four imports) / {parts} (after a colon) | частина ("кожна позначена частина", "підсумок для кожної частини") / nominative, lower case: карти, фракції, музика, оформлення меню ("Створено старішою версією TA Reborn: фракції і музика") |
+| the wizard's steps THE GAME › WHAT TO MAKE › IMPORTING › DONE | ГРА › ЩО СТВОРИТИ › ІМПОРТ › ГОТОВО |
+| tick / ticked (a part's card) | позначити / позначена ("Позначте частину, яку потрібно створити") |
+| UPDATE ALL / IMPORT IN ONE GO… / CHOOSE IN DETAIL… (the link to the tabs) | ОНОВИТИ ВСІ (as ВИБРАТИ ВСІ, ВИДАЛИТИ ВСІ) / ІМПОРТ ЗА ОДИН РАЗ… / ДОКЛАДНИЙ ВИБІР… |
+| NOT NOW (the Mods page's offer, never made again) / PLAY A SKIRMISH | НЕ ЗАРАЗ (not ПІЗНІШЕ, which promises it back) / ЗІГРАТИ СУТИЧКУ |
+| the Supreme Commander imports (the whole run, its notices) / those an older TA Reborn made | імпорт Supreme Commander ("Імпорт Supreme Commander завершено…", "Дочекайтеся завершення імпорту Supreme Commander…") / частини Supreme Commander, створені старішою версією TA Reborn |
+| each into a mod of its own, turned on once made / in turn | кожна частина — окремим модом, який вмикається, щойно буде готовий / по черзі |
+| What each part came to / Not made: … (a part's line under its name) | Підсумок для кожної частини / Не створено: … (impersonal: no gender to agree with КАРТИ, МУЗИКА…) |
+| Waiting for … to be found / for your answer | Очікування, доки буде знайдено … (impersonal, as Supreme Commander's gender varies in the file) / Очікування вашої відповіді |
+| a card's estimate ("About {size} on the disk, {time} to make") | "Близько {size} на диску, {time} на створення", as the maps tab's "{time} на створення" |
