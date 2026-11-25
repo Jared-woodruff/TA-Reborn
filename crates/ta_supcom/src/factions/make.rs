@@ -828,7 +828,7 @@ mod tests {
     }
 
     /// The hash of the test faction's mod (see the test above).
-    const EXPECTED: &str = "61ca772c7c8fa12219bfac2e00392340f81971d961b65922dec7b4b491a22c49";
+    const EXPECTED: &str = "0ef31848766e57ac695a76b421640a6c88567ff49b9d67c8580dd4035ee37bfa";
 
     /// A unit whose mesh does not read is left out, with its reason; the rest are made.
     #[test]

@@ -783,3 +783,15 @@ finding names it "die Waffe" after the colon and its hint says "Gib ihr" (a unit
 | minimum range / Fires no nearer than {range} | Mindestreichweite / Mindestreichweite {range} (as "Reichweite {range}") |
 | stun / Stuns for {secs} s / TA's paralyzers (paralyzer=1) | Lähmung / Lähmt für {secs} s / lähmende Waffe nach Art von TA |
 | the mod keys in findings | bare, or feminine where an article is needed: eine minrange, eine paralyzetime |
+
+## Mods' sounds (`validation.rs`: sound add-ons, sound sets, weapon and side sounds; `supcom_factions.rs`)
+
+| English | Deutsch |
+|---|---|
+| sound add-on (`gamedata/sound_<name>.tdf`) | Sound-Add-on |
+| sound set (a section of `[SOUNDSETS]`) | Soundset (das Soundset, des Soundsets): "Soundset {name}", "Soundset {set} {key}" |
+| firing sound under the water / firing loop / its end | {name}-Abfeuersound unter Wasser / {name}-Abfeuer-Loop / Ende des {name}-Abfeuer-Loops |
+| a category's base (its `base` key) | {category}-Basis |
+| a side's alerts (its announcer, `alerts`) | {name}-Warnungen (alerts = Warnungen, as UNIT REPLIES' help) |
+| stream information (a FLAC file's) | Stream-Informationen |
+| the units' sounds (a step of "{unit} wird erstellt") | Die Vertonung der Einheiten (singular, for wird) |

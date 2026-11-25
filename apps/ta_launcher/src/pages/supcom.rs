@@ -499,7 +499,7 @@ impl LauncherApp {
         ui.add_space(space::XS);
         // (A footnote: at the foot of the room where the tab leaves some, under the cards where it
         // does not.)
-        let note = RichText::new(t("Not played yet: Forged Alliance's weapon effects (TA's of their kinds play in their place), shields, stealth fields and teleporting.")).color(STEEL);
+        let note = RichText::new(t("Not played yet: Forged Alliance's weapon effects (TA's of their kinds play in their place), shields and teleporting.")).color(STEEL);
         let tall = widgets::wrapped_galley(ui, note.clone(), ui.available_width()).size().y;
         let spare = ui.available_height() - tall - ui.spacing().item_spacing.y - 2.0;
         if spare > 0.0 {

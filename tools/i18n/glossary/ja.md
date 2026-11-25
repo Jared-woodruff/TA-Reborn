@@ -638,3 +638,18 @@ own side round it, on any unit's information page, is 味方ユニット (自軍
 | {rate} hit points a second / {share}% of their health a second, {rate} at most | 毎秒{rate}HP / 毎秒最大HPの{share}%（上限{rate}） |
 | minimum range / Fires no nearer than {range} | 最小射程 / 最小射程 {range} |
 | stun, stunned / Stuns for {secs} s / TA's paralyzers (paralyzer=1) | 麻痺 (as Paralyzed 麻痺) / {secs}秒間麻痺させる / TAの麻痺武器 |
+
+## Sounds a mod shapes: sound sets, sound add-ons, a side's alerts (`validation.rs`, `supcom_factions.rs`)
+
+Keys stay as written (sound1=, sound2=, volume=, pitch=, radius=, maxplaying=, fadeout=, priority= with
+low, normal, high). What names a file reads as 「{name}の発射音」 does; a key's values are 指定します.
+
+| English | 日本語 |
+|---|---|
+| sound set / sound category / sound add-on (gamedata/sound_<name>.tdf) | サウンドセット / サウンドカテゴリ / サウンド追加ファイル (as add-on race 追加勢力) |
+| sound set {set} {key} / weight (a variant's) | サウンドセット{set}の{key} / 重み |
+| {name} firing sound under the water / firing loop / firing loop's end | {name}の水中での発射音 / {name}の発射ループ音 / {name}の発射ループ終了音 |
+| {category} base (the category it takes the sounds it lacks from) | {category}の基底カテゴリ |
+| {name} alerts (a side's announcer) | {name}の警告音声 (as alerts 警告 in the UNIT REPLIES help; 警告 alone is the check's WARNING) |
+| FLAC stream information | ストリーム情報 |
+| the units' sounds (a step of the factions import, in 「{unit}を作成中」) | ユニットのサウンド |

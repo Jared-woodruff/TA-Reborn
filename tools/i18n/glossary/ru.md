@@ -663,3 +663,15 @@ Commander installs enhancements on itself, one a slot. Widths measured in Bahnsc
 | one of TA's paralyzers (paralyzer=1) | парализатор, как в TA |
 | a weapon's {name} in the mod check | anchored as "Оружие {name}" (neuter: его, оно) |
 | (px) after a mod key | (в пикселях) |
+
+## Звуки модов (`validation.rs`: звуковые дополнения, наборы звуков; `supcom_factions.rs`)
+
+| English | Русский |
+|---|---|
+| sound add-on (`gamedata/sound_<name>.tdf`) | звуковое дополнение |
+| sound set (a section of `[SOUNDSETS]`) | набор звуков ("набор звуков {name}", "{key} набора звуков {set}") |
+| firing sound under the water / firing loop / its end | звук выстрела {name} под водой / зацикленный звук стрельбы {name} / конец зацикленного звука стрельбы {name} |
+| a category's base (its `base` key) | база категории {category} (as "звук {key} категории {category}") |
+| a side's alerts (its announcer) | тревоги (as UNIT REPLIES' help) |
+| stream information (FLAC) | информация о потоке |
+| the units' sounds (after "Создаётся {unit}") | озвучка юнитов (singular, for создаётся) |

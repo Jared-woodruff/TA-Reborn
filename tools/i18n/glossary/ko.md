@@ -737,3 +737,19 @@ takes a noun before its particle ({name} 무기는, {name} 무기에).
 | {rate} hit points a second / {share}% of their health a second, {rate} at most | 초당 체력 {rate} / 초당 최대 체력의 {share}% ({rate}까지) |
 | minimum range / Fires no nearer than {range} | 최소 사거리 / 최소 사거리 {range} |
 | stun, stunned / Stuns for {secs} s / TA's paralyzers (paralyzer=1) | 마비 (as Paralyzed 마비됨) / {secs}초간 마비 / TA의 마비 무기 |
+
+## Sounds a mod shapes: sound sets, sound add-ons, a side's alerts (`validation.rs`, `supcom_factions.rs`)
+
+Keys stay as written (sound1=, sound2=, volume=, pitch=, radius=, maxplaying=, fadeout=, priority= with
+low, normal, high) and take 항목 before a particle (volume=, pitch= 항목은 …를 받습니다); a value is {value} 값은.
+A sound in the mod check is 효과음, as 효과음 범주.
+
+| English | 한국어 |
+|---|---|
+| sound set / sound category / sound add-on (gamedata/sound_<name>.tdf) | 효과음 세트 / 효과음 범주 / 효과음 추가 파일 (as add-on race 추가 종족) |
+| sound set {set} {key} / weight (a variant's) | 효과음 세트 {set}의 {key} / 가중치 |
+| {name} firing sound under the water / firing loop / firing loop's end | {name} 수중 발사음 / {name} 발사 루프음 / {name} 발사 루프 종료음 |
+| {category} base (the category it takes the sounds it lacks from) | {category} 기본 범주 (not 기반: "X 기반" reads "based on X") |
+| {name} alerts (a side's announcer) | {name} 경고 음성 (as alerts 경고 in the UNIT REPLIES help) |
+| FLAC stream information | 스트림 정보 |
+| the units' sounds (a step of the factions import, in {unit} 만드는 중) | 유닛 효과음 |

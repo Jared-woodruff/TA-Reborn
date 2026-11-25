@@ -715,3 +715,15 @@ apostrophes.
 | regeneration aura / mends (other units) / {rate} hit points a second | aura di rigenerazione / rigenera / {rate} di salute al secondo |
 | minimum range / Fires no nearer than {range} | gittata minima / Gittata minima {range} (as "Gittata {range}") |
 | stun / Stuns for {secs} s / TA's paralyzers (paralyzer=1) | paralisi / Paralizza per {secs} s / arma paralizzante alla maniera di TA |
+
+## I suoni delle mod (`validation.rs`: add-on sonori, set di suoni; `supcom_factions.rs`)
+
+| English | Italiano |
+|---|---|
+| sound add-on (`gamedata/sound_<name>.tdf`) | add-on sonoro |
+| sound set (a section of `[SOUNDSETS]`) | set di suoni (as set di tessere): "il set di suoni {name}", "{key} del set di suoni {set}" |
+| firing sound under the water / firing loop / its end | suono di sparo sott'acqua / loop di sparo / fine del loop di sparo (di {name}) |
+| a category's base (its `base` key) | base di {category} |
+| a side's alerts (its announcer) | allarmi (as UNIT REPLIES' help) |
+| stream information (FLAC) | informazioni di flusso |
+| the units' sounds (after "Creazione di {unit}") | suoni per le unità (no article: "di" would need "dei") |

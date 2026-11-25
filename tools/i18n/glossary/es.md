@@ -740,3 +740,14 @@ armas es "{name} [TOGGLE] {key}" (como "{name} {key}").
 | minimum range / Fires no nearer than {range} | alcance mínimo / No dispara a menos de {range} |
 | stun / Stuns for {secs} s | parálisis, paralizar (como "Parálisis {secs} s") / Paraliza durante {secs} s |
 | (a mod's key) is not played | no se aplica |
+
+## Sonidos de los mods (`validation.rs`: complementos de sonido, conjuntos de sonidos; `supcom_factions.rs`)
+
+| English | Español |
+|---|---|
+| sound add-on (`gamedata/sound_<name>.tdf`) | complemento de sonido |
+| sound set (a section of `[SOUNDSETS]`) | conjunto de sonidos ("el conjunto de sonidos {name}", "{key} del conjunto de sonidos {set}") |
+| firing sound under the water / firing loop / its end | sonido de disparo bajo el agua / bucle de disparo / fin del bucle de disparo (de {name}) |
+| a category's base (its `base` key) | base de {category} |
+| a side's alerts (its announcer) | alertas (como en la ayuda de UNIT REPLIES) |
+| stream information (FLAC) | información de flujo |

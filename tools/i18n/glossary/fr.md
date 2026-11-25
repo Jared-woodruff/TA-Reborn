@@ -748,3 +748,15 @@ check's curly ’; all put a no-break space before : ; and %.
 | regeneration aura / mends (other units) / {rate} hit points a second | aura de régénération / régénère / {rate} de santé par seconde |
 | minimum range / Fires no nearer than {range} | portée minimale / Portée minimale {range} (as "Portée {range}") |
 | stun / Stuns for {secs} s / TA's paralyzers (paralyzer=1) | paralysie / Paralyse pendant {secs} s / arme paralysante au sens de TA |
+
+## Les sons des mods (`validation.rs` : modules sonores, jeux de sons ; `supcom_factions.rs`)
+
+| English | Français |
+|---|---|
+| sound add-on (`gamedata/sound_<name>.tdf`) | module sonore |
+| sound set (a section of `[SOUNDSETS]`) | jeu de sons (as jeu de tuiles): "le jeu de sons {name}", "{key} du jeu de sons {set}" |
+| firing sound under the water / firing loop / its end | son de tir sous l’eau / boucle de tir / fin de la boucle de tir (de {name}) |
+| a category's base (its `base` key) | base de la catégorie {category} |
+| a side's alerts (its announcer) | alertes (as UNIT REPLIES' help) |
+| stream information (FLAC) | informations de flux |
+| the units' sounds (after "Création de {unit}") | l'ensemble des sons des unités (an article after "de" would read "de les") |
