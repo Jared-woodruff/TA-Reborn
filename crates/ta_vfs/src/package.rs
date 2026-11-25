@@ -370,6 +370,17 @@ pub const TA_FOLDERS: &[&str] = &[
     "scripts", "sounds", "textures", "unitpics", "units", "weapons", "music",
 ];
 
+/// Folders TA Reborn reads that TA did not: `menus/`, a menu theme's pictures, panel art and list
+/// (`menus/<theme>/theme.toml`: Supreme Commander's, which the launcher makes of the player's own
+/// copy). An install keeps them whole, as it does TA's ([`TA_FOLDERS`]).
+pub const REBORN_FOLDERS: &[&str] = &["menus"];
+
+/// Whether a folder of this name (in lower case) at a mod's top holds what the game reads: one of
+/// TA's, or one of TA Reborn's own.
+pub fn game_folder(name: &str) -> bool {
+    TA_FOLDERS.contains(&name) || REBORN_FOLDERS.contains(&name)
+}
+
 /// What of a package goes into the mod.
 #[derive(Clone, Debug, Default)]
 pub struct Plan {
@@ -488,17 +499,24 @@ pub fn is_placeholder(path: &Path) -> bool {
 /// Chooses the TA content of an unpacked package; see the module documentation.
 pub fn plan(unpacked: &Path) -> Result<Plan, PackageError> {
     check_tree(unpacked)?;
-    // Every TA archive in the package (a few levels down), and every TA folder.
+    // Every TA archive in the package (a few levels down), and every TA folder; TA Reborn's own
+    // folders apart: they tell a manifest's folder holds data, but never where a package without
+    // one has its content (a `Menus/` of an old package's own is not the mod).
     let mut archives: Vec<(PathBuf, u64)> = Vec::new();
     let mut folder_parents: Vec<PathBuf> = Vec::new();
+    let mut reborn_parents: Vec<PathBuf> = Vec::new();
     let mut stubs: Vec<PathBuf> = Vec::new();
     let mut unreadable: Vec<(PathBuf, String)> = Vec::new();
     let mut manifests = Vec::new();
     walk(unpacked, 0, &mut |path, is_dir| {
         if is_dir {
             let name = path.file_name().map_or(String::new(), |n| n.to_string_lossy().to_ascii_lowercase());
-            if TA_FOLDERS.contains(&name.as_str()) && let Some(parent) = path.parent() {
-                folder_parents.push(parent.to_path_buf());
+            if let Some(parent) = path.parent() {
+                if TA_FOLDERS.contains(&name.as_str()) {
+                    folder_parents.push(parent.to_path_buf());
+                } else if REBORN_FOLDERS.contains(&name.as_str()) {
+                    reborn_parents.push(parent.to_path_buf());
+                }
             }
             return;
         }
@@ -527,7 +545,7 @@ pub fn plan(unpacked: &Path) -> Result<Plan, PackageError> {
         // Probe candidates without letting skipped examples or extras invalidate the
         // package. The selected root's metadata is read and validated below.
         let Ok(Some(own)) = crate::mods::read_mod(&dir) else { continue };
-        if folder_parents.contains(&dir) || archives.iter().any(|(path, _)| path.parent() == Some(dir.as_path()))
+        if folder_parents.contains(&dir) || reborn_parents.contains(&dir) || archives.iter().any(|(path, _)| path.parent() == Some(dir.as_path()))
             || renamed_folders(&own.manifest.rename).is_ok_and(|renamed| renamed.iter().any(|name| crate::install::find_dir_ci(&dir, name).is_some())) {
             authored = Some(dir);
             break;
@@ -603,7 +621,7 @@ pub fn plan(unpacked: &Path) -> Result<Plan, PackageError> {
         let name = path.file_name().map_or(String::new(), |n| n.to_string_lossy().to_ascii_lowercase());
         if path.is_dir() {
             // (A folder with a name of the mod's own stays only if it proves to be one.)
-            if TA_FOLDERS.contains(&name.as_str()) || declared.contains(&name) || rename_candidate(&name).is_some() {
+            if game_folder(&name) || declared.contains(&name) || rename_candidate(&name).is_some() {
                 plan.folders.push(path);
             } else if DOCUMENT_FOLDERS.contains(&name.as_str()) {
                 document_folders.push(path);
@@ -663,11 +681,11 @@ pub fn plan(unpacked: &Path) -> Result<Plan, PackageError> {
     let (rename, unpacked_root) = (plan.rename.clone(), unpacked.to_path_buf());
     plan.folders.retain(|f| {
         let name = f.file_name().map_or(String::new(), |n| n.to_string_lossy().to_ascii_lowercase());
-        TA_FOLDERS.contains(&name.as_str()) || declared.contains(&name) || rename.contains_key(&name)
+        game_folder(&name) || declared.contains(&name) || rename.contains_key(&name)
     });
     for f in std::fs::read_dir(&root).map_err(io(&root))?.flatten().map(|e| e.path()) {
         let name = f.file_name().map_or(String::new(), |n| n.to_string_lossy().to_ascii_lowercase());
-        if f.is_dir() && !TA_FOLDERS.contains(&name.as_str()) && !declared.contains(&name) && rename_candidate(&name).is_some() && !rename.contains_key(&name) {
+        if f.is_dir() && !game_folder(&name) && !declared.contains(&name) && rename_candidate(&name).is_some() && !rename.contains_key(&name) {
             plan.skipped.push(format!("{}/", f.strip_prefix(&unpacked_root).unwrap_or(&f).to_string_lossy().replace('\\', "/")));
         }
     }
@@ -805,7 +823,7 @@ const RENAMABLE: &[(&str, &str, &str)] = &[
 /// show it does (`unittal` → units, `.fbi`). TA's own folders stand for themselves.
 fn rename_candidate(name: &str) -> Option<(&'static str, &'static str)> {
     let name = name.to_ascii_lowercase();
-    if TA_FOLDERS.contains(&name.as_str()) {
+    if game_folder(&name) {
         return None;
     }
     RENAMABLE.iter().find(|(_, stem, _)| name.starts_with(stem)).map(|&(folder, _, kind)| (folder, kind))
@@ -2357,6 +2375,44 @@ banner = \"docs/banner.png\"
         write(wrapped.join("Main/units/NEW.FBI"), b"[UNITINFO]{UnitName=NEW;}");
         let planned = plan(&wrapped).unwrap();
         assert_eq!((planned.root.clone(), planned.units), (wrapped.join("Main"), 1), "the content's folder, as before");
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    /// TA Reborn's own folders (`menus/`: a menu theme's pictures, art and list) are kept whole as
+    /// TA's are: the launcher's import of Supreme Commander's look for the menus installs its
+    /// theme, not only its sounds and music.
+    #[test]
+    fn reborns_own_folders_are_installed_whole() {
+        let base = fresh("reborn_folders");
+        let package = base.join("payload");
+        write(package.join("mod.toml"), b"id = \"supcom-menus\"\nname = \"Supreme Commander menus\"\nversion = \"2\"\n");
+        write(package.join("menus/supcom/theme.toml"), b"pictures = [\"menus/supcom/pictures/space_1.dds\"]\n");
+        write(package.join("menus/supcom/pictures/space_1.dds"), b"DDS picture");
+        write(package.join("sounds/supcom-menus/ui_menu_mousedown.wav"), b"RIFF");
+        let planned = plan(&package).unwrap();
+        assert_eq!(planned.root, package);
+        assert!(planned.skipped.is_empty(), "nothing left out: {:?}", planned.skipped);
+        let dir = install(&planned, &manifest("supcom-menus", "2"), &base.join("mods")).unwrap();
+        assert!(dir.join("menus/supcom/theme.toml").is_file() && dir.join("menus/supcom/pictures/space_1.dds").is_file(), "the theme installed");
+        assert!(dir.join("sounds/supcom-menus/ui_menu_mousedown.wav").is_file());
+        assert!(game_folder("menus") && game_folder("units") && !game_folder("extras"));
+
+        // A theme alone beside its manifest is a mod of its own.
+        let theme_only = base.join("theme_only");
+        write(theme_only.join("Theme/mod.toml"), b"id = \"menu-look\"\nname = \"Menu look\"\nversion = \"1\"\n");
+        write(theme_only.join("Theme/menus/look/theme.toml"), b"pictures = []\n");
+        let planned = plan(&theme_only).unwrap();
+        assert_eq!(planned.root, theme_only.join("Theme"));
+        assert_eq!(planned.folders, vec![theme_only.join("Theme/menus")]);
+
+        // Without a manifest, the content is still found by TA's folders alone: a `Menus/` of the
+        // package's own, nearer its top, does not take the mod's place.
+        let old = base.join("old");
+        write(old.join("Pack/Menus/picture.dds"), b"DDS picture");
+        write(old.join("Pack/Mod/units/tank.fbi"), b"[UNITINFO]{UnitName=TANK;}");
+        let planned = plan(&old).unwrap();
+        assert_eq!(planned.root, old.join("Pack/Mod"));
+        assert_eq!(planned.folders, vec![old.join("Pack/Mod/units")]);
         std::fs::remove_dir_all(base).unwrap();
     }
 

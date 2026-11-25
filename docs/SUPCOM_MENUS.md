@@ -87,8 +87,8 @@ and white; pictures, map previews and portraits, drawn in textures of their own,
 ## The mod
 
 - **`mod.toml`:** id `supcom-menus`, name "Supreme Commander menus", `version` the converter's
-  (`menus::VERSION`, 1), `requires_reborn`, a description, the tags `interface`, `theme` and
-  `supreme commander`.
+  (`menus::VERSION`, 2: version 1's, as the launcher installed it, lacked its `menus/` folder),
+  `requires_reborn`, a description, the tags `interface`, `theme` and `supreme commander`.
 - **`menus/supcom/pictures/<name>.dds`:** the pictures as the game has them (`space_1`…`space_5`,
   `painting_1`…`painting_5`, `colossus`, `factions`).
 - **`menus/supcom/panel/<place>.dds`:** the panel art's nine pieces, named for their places.
