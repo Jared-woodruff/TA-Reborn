@@ -540,10 +540,13 @@ https://github.com/user-attachments/assets/0c29747c-1139-4f19-877a-3661836a55c5
   and building with the game's own model, paint and numbers, a side each in skirmish
   ([SUPCOM_UNITS.md](docs/SUPCOM_UNITS.md)). Its MUSIC tab makes the soundtrack into lossless
   tracks of TA Reborn's own, which the SOUNDTRACK setting plays in the menus and battles, in TA's
-  place, beside it or by side, and the jukebox lists ([SUPCOM_MUSIC.md](docs/SUPCOM_MUSIC.md)).
+  place, beside it or by side, and the jukebox lists ([SUPCOM_MUSIC.md](docs/SUPCOM_MUSIC.md)); its
+  MENUS tab makes the game's look for the menus, its colours, pictures, panel art, clicks and menu
+  music, which MENU THEME dresses TA Reborn's menus in ([SUPCOM_MENUS.md](docs/SUPCOM_MENUS.md)).
 - **`ta-tools`** inspects, converts and validates TA's data files (`validate`, `map`, `gaf`, `model`,
   `cob`, `cat`, `find`…), grows TA Reborn's maps (`mapgen`; [MAPS.md](docs/MAPS.md)), and makes
-  Supreme Commander's maps, units and music into TA's (`supcom`, `supcom-units`, `supcom-music`).
+  Supreme Commander's maps, units, music and menus' look into TA's (`supcom`, `supcom-units`,
+  `supcom-music`, `supcom-menus`).
 
 </details>
 

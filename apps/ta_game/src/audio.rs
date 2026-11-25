@@ -60,6 +60,12 @@ pub struct GameAudio {
     forged_alliance_side: bool,
     ta_music: ta_audio::MusicConfig,
     fa_tracks: Vec<FaTrack>,
+    /// The menus' theme (MENU THEME, `menu_theme`): its sound for each of TA's interface events,
+    /// played while the menus are shown (`in_menus`), and its music, the menus' playlist. None:
+    /// TA's.
+    menu_sounds: std::collections::BTreeMap<String, String>,
+    menu_music: Option<String>,
+    in_menus: bool,
 }
 
 /// The sides of Supreme Commander's factions (their mod, made from the player's own copy): the
@@ -297,6 +303,9 @@ impl GameAudio {
             forged_alliance_side: false,
             ta_music: ta_audio::MusicConfig::default(),
             fa_tracks: Vec::new(),
+            menu_sounds: std::collections::BTreeMap::new(),
+            menu_music: None,
+            in_menus: false,
         };
         audio.ta_music = audio.engine.music().config().clone();
         audio.fa_tracks = fa_tracks(vfs.as_ref());
@@ -728,6 +737,10 @@ impl GameAudio {
         let mut config = soundtrack_music(&self.ta_music, &self.fa_tracks, self.soundtrack, self.forged_alliance_side);
         // (The player's shuffle as it is now: the playlists change, not how they play.)
         config.shuffle = self.engine.music().shuffle();
+        // (The menus' theme's music, their playlist alone, whatever the soundtrack.)
+        if let Some(music) = &self.menu_music {
+            config.playlists.briefing = vec![ta_audio::music::TrackRef::Path(music.clone())];
+        }
         self.engine.set_music_config(config);
         let music = self.engine.music();
         let stale = match (music.mood(), music.now_playing()) {
@@ -737,6 +750,22 @@ impl GameAudio {
         if stale && music.playing() {
             self.engine.music_mut().skip();
         }
+    }
+
+    /// The menus' theme's sounds and music (MENU THEME): its sound for each of TA's interface
+    /// events (`ta_ui::sound::UiSound::event`), played while the menus are shown
+    /// ([`GameAudio::set_in_menus`]), and its music, the menus' playlist (the track playing
+    /// changed at once where it is not the new one). None of either: TA's own.
+    pub fn set_menu_theme(&mut self, sounds: std::collections::BTreeMap<String, String>, music: Option<String>) {
+        self.menu_sounds = sounds;
+        if std::mem::replace(&mut self.menu_music, music) != self.menu_music {
+            self.apply_soundtrack();
+        }
+    }
+
+    /// Whether the menus are shown: their theme's interface sounds play then.
+    pub fn set_in_menus(&mut self, in_menus: bool) {
+        self.in_menus = in_menus;
     }
 
     /// Forged Alliance's soundtrack is installed (its music mod on).
@@ -843,7 +872,9 @@ impl GameAudio {
 
     /// The interface sound TA plays for an event of `gamedata/allsound.tdf` ("BIGBUTTON").
     pub fn play_interface(&mut self, event: &str) {
-        if let Some(name) = self.interface.get(event).map(str::to_owned) {
+        // (In the menus, their theme's sound for it where it has one.)
+        let themed = self.in_menus.then(|| self.menu_sounds.get(event).cloned()).flatten();
+        if let Some(name) = themed.or_else(|| self.interface.get(event).map(str::to_owned)) {
             self.engine.play_ui(&name, 0.8);
         }
     }

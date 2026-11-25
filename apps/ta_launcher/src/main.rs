@@ -35,6 +35,7 @@ mod pad;
 mod pages;
 mod supcom;
 mod supcom_factions;
+mod supcom_menus;
 mod supcom_music;
 mod persist;
 mod theme;

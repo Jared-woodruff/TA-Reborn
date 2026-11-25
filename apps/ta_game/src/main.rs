@@ -62,6 +62,7 @@ mod macos;
 mod map_list;
 mod map_preview;
 mod menu;
+mod menu_theme;
 mod minimap;
 mod mod_theme;
 mod night;

@@ -568,3 +568,7 @@ print them (Alt, Ctrl, Shift, Cmd, Option, Enter, Esc, Tab, Home, End).
 | Building theme {n} | 建造主題曲 {n} |
 | Briefing {n} | 簡報 {n} |
 | THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | 選單 / 簡報 / 影片 |
+| MENU THEME (Options, Interface) | 選單主題 |
+| MENUS (the Supreme Commander dialog's tab) | 選單 |
+| Supreme Commander menus (the mod) | Supreme Commander 選單外觀 |
+| Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | 文字 / 標籤 / 強調色 / 面板 / 線條 / 按鈕 |

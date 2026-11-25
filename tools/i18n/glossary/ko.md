@@ -700,3 +700,7 @@ Slot names (LCH, RCH, Back) come from the data as they are.
 | Building theme {n} | 건설 테마 {n} |
 | Briefing {n} | 브리핑 {n} |
 | THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | 메뉴 / 브리핑 / 동영상 |
+| MENU THEME (Options, Interface) | 메뉴 테마 |
+| MENUS (the Supreme Commander dialog's tab) | 메뉴 |
+| Supreme Commander menus (the mod) | Supreme Commander 메뉴 |
+| Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | 글자 / 레이블 / 강조 색 / 패널 / 선 / 버튼 |

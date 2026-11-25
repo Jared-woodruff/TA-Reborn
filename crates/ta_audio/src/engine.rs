@@ -866,11 +866,13 @@ impl Drop for AudioEngine {
     }
 }
 
-/// The music files a playlist may name: TA's in `music/`, and Forged Alliance's soundtrack made
-/// from the player's own copy in `music/supcom/` (`ta_supcom::soundtrack`).
+/// The music files a playlist may name: TA's in `music/`, Forged Alliance's soundtrack made from
+/// the player's own copy in `music/supcom/` (`ta_supcom::soundtrack`), and its menu music with its
+/// look for the menus in `music/supcom-menus/` (`ta_supcom::menus`).
 fn music_files(source: &dyn crate::SoundSource) -> Vec<String> {
     let mut files = source.list("music");
     files.extend(source.list("music/supcom"));
+    files.extend(source.list("music/supcom-menus"));
     files
 }
 

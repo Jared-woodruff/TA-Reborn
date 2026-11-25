@@ -160,6 +160,10 @@ pub enum Action {
     SupcomMusicImport,
     /// Stops the music's import: nothing is installed.
     SupcomMusicStop,
+    /// Makes the game's look for the menus into the mod `supcom-menus`.
+    SupcomMenusImport,
+    /// Stops the menus' import: nothing is installed.
+    SupcomMenusStop,
     /// The import asked about goes ahead over another mod of its id (REPLACE AND IMPORT).
     SupcomReplace,
     Rescan,
@@ -763,6 +767,14 @@ impl LauncherApp {
                     if let Some(capture) = &mut self.capture { capture.wait_for_validation(); }
                 }
             }
+            // (The same dialog at the game's look for the menus; imported once listed with `:all`.)
+            ("supcom-menus", all) => {
+                self.open_supcom(crate::supcom::Tab::Menus);
+                if all.eq_ignore_ascii_case("all") {
+                    self.supcom.menus.auto_start = true;
+                    if let Some(capture) = &mut self.capture { capture.wait_for_validation(); }
+                }
+            }
             // (The same dialog at the game's music; imported once listed with `:all`.)
             ("supcom-music", all) => {
                 self.open_supcom(crate::supcom::Tab::Music);
@@ -1099,6 +1111,8 @@ impl LauncherApp {
             Action::SupcomFactionsStop => self.supcom.factions.stop(),
             Action::SupcomMusicImport => self.start_supcom_import(crate::supcom::Tab::Music, false),
             Action::SupcomMusicStop => self.supcom.music.stop(),
+            Action::SupcomMenusImport => self.start_supcom_import(crate::supcom::Tab::Menus, false),
+            Action::SupcomMenusStop => self.supcom.menus.stop(),
             Action::SupcomReplace => {
                 if let Some((tab, _)) = self.supcom.confirm_replace.take() {
                     self.start_supcom_import(tab, true);
@@ -1421,11 +1435,13 @@ impl LauncherApp {
             Tab::Maps => crate::supcom::pack_place(&roots),
             Tab::Factions => crate::supcom_factions::mod_place(&roots),
             Tab::Music => crate::supcom_music::mod_place(&roots),
+            Tab::Menus => crate::supcom_menus::mod_place(&roots),
         };
         let blocked = match tab {
             Tab::Maps => self.supcom_blocked(),
             Tab::Factions => self.factions_blocked(),
             Tab::Music => self.music_blocked(),
+            Tab::Menus => self.menus_blocked(),
         }.or_else(|| place.copy.as_ref().and_then(|copy| copy.blocks()));
         if let Some(why) = blocked {
             if !self.supcom.open {
@@ -1436,6 +1452,7 @@ impl LauncherApp {
                     Tab::Maps => self.supcom.outcome = Some(crate::supcom::Outcome { error, ..Default::default() }),
                     Tab::Factions => self.supcom.factions.outcome = Some(crate::supcom_factions::Outcome { error, ..Default::default() }),
                     Tab::Music => self.supcom.music.outcome = Some(crate::supcom_music::Outcome { error, ..Default::default() }),
+                    Tab::Menus => self.supcom.menus.outcome = Some(crate::supcom_menus::Outcome { error, ..Default::default() }),
                 }
             }
             return;
@@ -1452,6 +1469,7 @@ impl LauncherApp {
             }
             Tab::Factions => self.supcom.factions.start(self.store.dir(), place),
             Tab::Music => self.supcom.music.start(self.store.dir(), place),
+            Tab::Menus => self.supcom.menus.start(self.store.dir(), place),
         }
     }
 
@@ -1568,6 +1586,10 @@ impl LauncherApp {
         }
         if self.supcom.music.importing() {
             self.notify("Wait for the Supreme Commander music being made, then start the game.", AMBER);
+            return;
+        }
+        if self.supcom.menus.importing() {
+            self.notify("Wait for the Supreme Commander menus being made, then start the game.", AMBER);
             return;
         }
         // The game reads config.toml when it starts, so write pending edits first.
@@ -1960,6 +1982,13 @@ impl LauncherApp {
                 risks.push(n("Supreme Commander's music is still being made: closing stops it, and the music stays as it was."));
             }
         }
+        if self.supcom.menus.importing() {
+            if self.supcom.menus.progress.lock().unwrap().phase == crate::supcom::Phase::Installing {
+                risks.push(n("Supreme Commander's look for the menus is being installed: closing waits a moment for that to finish."));
+            } else {
+                risks.push(n("Supreme Commander's look for the menus is still being made: closing stops it, and the menus stay as they were."));
+            }
+        }
         if self.pretend_at_risk && risks.is_empty() {
             risks.push(n("A mod is still downloading or installing: it would start over."));
         }
@@ -2043,8 +2072,14 @@ impl LauncherApp {
             self.supcom.abandon();
             self.supcom.factions.stop();
             self.supcom.music.stop();
+            self.supcom.menus.stop();
             self.close_after_import = true;
             self.notify("Closing once the Supreme Commander maps made so far are installed.", AMBER);
+        } else if self.supcom.menus.importing() {
+            let installing = self.supcom.menus.progress.lock().unwrap().phase == crate::supcom::Phase::Installing;
+            self.supcom.menus.stop();
+            self.close_after_import = true;
+            self.notify(if installing { ta_ui::i18n::n("Closing once Supreme Commander's look for the menus is installed.") } else { ta_ui::i18n::n("Closing once Supreme Commander's look for the menus has stopped.") }, AMBER);
         } else if self.supcom.music.importing() {
             let installing = self.supcom.music.progress.lock().unwrap().phase == crate::supcom::Phase::Installing;
             self.supcom.music.stop();
@@ -2891,6 +2926,21 @@ impl eframe::App for LauncherApp {
                 }
             }
         }
+        if let Some(outcome) = self.supcom.menus.poll(ctx, self.supcom.open) {
+            if outcome.made {
+                modlist::set_enabled(&mut self.config.mods.enabled, crate::supcom_menus::MOD_ID, true);
+                self.refresh_mods();
+            }
+            if self.supcom.open {
+                self.supcom.menus.rescan(self.supcom.picked.clone(), &self.supcom.roots);
+                self.supcom.menus.unseen = self.supcom.tab != crate::supcom::Tab::Menus;
+            } else {
+                self.supcom.menus.look.outdate();
+                if let Some(text) = outcome.notice() {
+                    self.notify(text, outcome.went().colour());
+                }
+            }
+        }
         if let Some(outcome) = self.supcom.music.poll(ctx, self.supcom.open) {
             if outcome.tracks > 0 {
                 modlist::set_enabled(&mut self.config.mods.enabled, crate::supcom_music::MOD_ID, true);
@@ -2926,6 +2976,9 @@ impl eframe::App for LauncherApp {
         }
         if self.music_blocked().is_none() && self.supcom.music.take_auto_start() {
             self.actions.push(Action::SupcomMusicImport);
+        }
+        if self.menus_blocked().is_none() && self.supcom.menus.take_auto_start() {
+            self.actions.push(Action::SupcomMenusImport);
         }
         if self.skins.poll() {
             if let Some((side, id)) = self.skins.take_selected() {
@@ -3122,6 +3175,9 @@ impl eframe::App for LauncherApp {
         // (The music's likewise, at the track in hand.)
         if self.supcom.music.finish_on_exit().is_some_and(|outcome| outcome.tracks > 0) {
             modlist::set_enabled(&mut self.config.mods.enabled, crate::supcom_music::MOD_ID, true);
+        }
+        if self.supcom.menus.finish_on_exit().is_some_and(|outcome| outcome.made) {
+            modlist::set_enabled(&mut self.config.mods.enabled, crate::supcom_menus::MOD_ID, true);
         }
         self.installer.shutdown();
         // A publication may finish after the final UI frame or while shutdown waits.
@@ -4605,6 +4661,7 @@ name = \"{}\"
                 crate::supcom::Tab::Maps => { app.supcom.pretend_importing(&[]); UpdateWait::SupcomMaps }
                 crate::supcom::Tab::Factions => { app.supcom.factions.pretend_importing(); UpdateWait::SupcomFactions }
                 crate::supcom::Tab::Music => { app.supcom.music.pretend_importing(); UpdateWait::SupcomMusic }
+                crate::supcom::Tab::Menus => { app.supcom.menus.pretend_importing(); UpdateWait::SupcomMenus }
             };
             assert_eq!(app.update_blocked(), Some(waits));
             assert!(waits.why().contains("Supreme Commander") && waits.queued().contains("SUPREME COMMANDER"));
@@ -4615,11 +4672,13 @@ name = \"{}\"
             app.supcom.stop();
             app.supcom.factions.stop();
             app.supcom.music.stop();
+            app.supcom.menus.stop();
             let until = Instant::now() + Duration::from_secs(10);
             while app.supcom.any_importing() && Instant::now() < until {
                 app.supcom.poll(&ctx);
                 app.supcom.factions.poll(&ctx, false);
                 app.supcom.music.poll(&ctx, false);
+                app.supcom.menus.poll(&ctx, false);
                 std::thread::sleep(Duration::from_millis(2));
             }
         }

@@ -32,6 +32,67 @@ use crate::widgets::{Glyph, focus_ring, galley, icon_button, reveal_focus};
 const PANEL_PIPE: f32 = 5.0;
 const STRIP_PIPE: f32 = 3.0;
 
+/// A theme's art round the menus' panels in place of their plates and pipes (the game's MENU
+/// THEME: Supreme Commander: Forged Alliance's, from the player's own copy): its border's nine
+/// pieces as textures, in [`PanelArt::PLACES`]'s order. The panels keep their size and layout.
+#[derive(Clone)]
+pub struct PanelArt {
+    pub pieces: [egui::TextureHandle; 9],
+}
+
+impl PanelArt {
+    /// The pieces' places: the corners, the edges between them and the middle.
+    pub const PLACES: [&'static str; 9] = ["top_left", "top", "top_right", "left", "middle", "right", "bottom_left", "bottom", "bottom_right"];
+}
+
+thread_local! {
+    /// The art the panels are drawn round in now ([`set_art`]): none, TA Reborn's pipes.
+    static PANEL_ART: std::cell::RefCell<Option<PanelArt>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Draws the panels and strips in `art` from now on, or (none) in TA Reborn's own metal again.
+/// The game sets it while it draws its menus in a theme with panel art, and takes it away for
+/// everything else.
+pub fn set_art(art: Option<PanelArt>) {
+    PANEL_ART.with_borrow_mut(|held| *held = art);
+}
+
+fn art() -> Option<PanelArt> {
+    PANEL_ART.with_borrow(Clone::clone)
+}
+
+/// How large the art is drawn round a panel, and round a strip: a share of its own size (Forged
+/// Alliance's is drawn for its own screens; its rims a dozen points deep at half size).
+const PANEL_ART_SCALE: f32 = 0.5;
+const STRIP_ART_SCALE: f32 = 0.34;
+
+/// `art` round `rect`, at `scale` of its own size (less, for a rect too small for its corners):
+/// its middle stretched over the inside, its sides along the sides, and its bottom corners and
+/// edge at the bottom and, upside down, at the top (its own top is a title bar, which the panels
+/// lay out otherwise).
+fn art_shapes(rect: Rect, art: &PanelArt, scale: f32) -> Shape {
+    let size = |i: usize| art.pieces[i].size_vec2();
+    let (corner, side, edge) = (size(6), size(3), size(7));
+    let scale = scale.min(rect.width() / (2.0 * corner.x)).min(rect.height() / (2.0 * corner.y)).max(0.0);
+    let (cw, ch) = (corner.x * scale, corner.y * scale);
+    let (sw, eh) = (side.x * scale, edge.y * scale);
+    let up = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
+    let down = Rect::from_min_max(pos2(0.0, 1.0), pos2(1.0, 0.0));
+    let piece = |i: usize, at: Rect, uv: Rect| Shape::image(art.pieces[i].id(), at, uv, Color32::WHITE);
+    let (l, r, t, b) = (rect.left(), rect.right(), rect.top(), rect.bottom());
+    Shape::Vec(vec![
+        piece(4, Rect::from_min_max(pos2(l + sw * 0.5, t + eh * 0.5), pos2(r - sw * 0.5, b - eh * 0.5)), up),
+        piece(7, Rect::from_min_max(pos2(l + cw, t), pos2(r - cw, t + eh)), down),
+        piece(7, Rect::from_min_max(pos2(l + cw, b - eh), pos2(r - cw, b)), up),
+        piece(3, Rect::from_min_max(pos2(l, t + ch), pos2(l + sw, b - ch)), up),
+        piece(5, Rect::from_min_max(pos2(r - sw, t + ch), pos2(r, b - ch)), up),
+        piece(6, Rect::from_min_max(pos2(l, t), pos2(l + cw, t + ch)), down),
+        piece(8, Rect::from_min_max(pos2(r - cw, t), pos2(r, t + ch)), down),
+        piece(6, Rect::from_min_max(pos2(l, b - ch), pos2(l + cw, b)), up),
+        piece(8, Rect::from_min_max(pos2(r - cw, b - ch), pos2(r, b)), up),
+    ])
+}
+
 /// What closes a panel from its header.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Exit {
@@ -546,9 +607,13 @@ fn paint_going(ctx: &Context, going: &Going, moved: TSTransform, alpha: f32) {
     }
 }
 
-/// The shapes behind a panel: its shadow, the plate and the pipe frame.
+/// The shapes behind a panel: its shadow, the plate and the pipe frame (or a theme's art,
+/// [`set_art`]).
 fn panel_shapes(ctx: &Context, rect: Rect) -> Shape {
     let shadow = Shadow { offset: [0, 12], blur: 36, spread: 4, color: Color32::from_black_alpha(170) };
+    if let Some(art) = art() {
+        return Shape::Vec(vec![Shape::Rect(shadow.as_shape(rect, CornerRadius::same(3))), art_shapes(rect, &art, PANEL_ART_SCALE)]);
+    }
     Shape::Vec(vec![
         Shape::Rect(shadow.as_shape(rect, CornerRadius::same(3))),
         Shape::rect_filled(rect.expand(1.0), CornerRadius::same(3), metal::STEEL_EDGE),
@@ -723,12 +788,16 @@ fn strip_area<R>(area: Area, ctx: &egui::Context, t: f32, add_contents: impl FnO
                 let background = ui.painter().add(Shape::Noop);
                 let inner = Frame::new().inner_margin(strip_margin()).show(ui, add_contents);
                 let rect = inner.response.rect;
-                let shapes = vec![
-                    Shape::Rect(Shadow { offset: [0, 6], blur: 18, spread: 0, color: Color32::from_black_alpha(140) }.as_shape(rect, CornerRadius::same(2))),
-                    Shape::rect_filled(rect.expand(1.0), CornerRadius::same(3), metal::STEEL_EDGE),
-                    metal::plate(ui.ctx(), rect, pal().panel),
-                    metal::pipe_frame(rect, STRIP_PIPE),
-                ];
+                let shadow = Shape::Rect(Shadow { offset: [0, 6], blur: 18, spread: 0, color: Color32::from_black_alpha(140) }.as_shape(rect, CornerRadius::same(2)));
+                let shapes = match art() {
+                    Some(art) => vec![shadow, art_shapes(rect, &art, STRIP_ART_SCALE)],
+                    None => vec![
+                        shadow,
+                        Shape::rect_filled(rect.expand(1.0), CornerRadius::same(3), metal::STEEL_EDGE),
+                        metal::plate(ui.ctx(), rect, pal().panel),
+                        metal::pipe_frame(rect, STRIP_PIPE),
+                    ],
+                };
                 ui.painter().set(background, Shape::Vec(shapes));
                 inner.inner
             })

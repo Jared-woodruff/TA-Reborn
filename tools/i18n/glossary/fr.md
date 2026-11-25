@@ -701,3 +701,7 @@ Straight apostrophes and no-break spaces, as the HUD's other strings.
 | Building theme {n} | Thème de construction {n} |
 | Briefing {n} | Briefing {n} |
 | THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | MENUS / BRIEFINGS / CINÉMATIQUES |
+| MENU THEME (Options, Interface) | THÈME DES MENUS |
+| MENUS (the Supreme Commander dialog's tab) | MENUS |
+| Supreme Commander menus (the mod) | Menus de Supreme Commander |
+| Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | Texte / Libellés / Accentuation / Panneaux / Lignes / Boutons |

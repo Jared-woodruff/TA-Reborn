@@ -15,7 +15,8 @@
 //! - [`scm`], [`sca`]: their meshes and animations.
 //!
 //! Its soundtrack too ([`soundtrack`], read from its sound banks: [`xact`]), made into TA Reborn's
-//! music.
+//! music; and its interface's look ([`menus`]: its colours, pictures, panel art, sounds and menu
+//! music), for TA Reborn's menus.
 
 pub mod adjacency;
 pub mod behaviour;
@@ -27,6 +28,7 @@ pub mod files;
 pub mod install;
 pub mod lua;
 pub mod map;
+pub mod menus;
 pub mod motions;
 pub mod projectile;
 pub mod sca;

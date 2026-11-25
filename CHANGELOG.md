@@ -35,6 +35,13 @@
   the menus), both together, or by side (Forged Alliance's while you command one of its factions);
   TA's victory and defeat stay. The jukebox lists the tracks under SUPREME COMMANDER. Nothing of it
   is shipped, and online the other players need not have it ([SUPCOM_MUSIC.md](docs/SUPCOM_MUSIC.md)).
+- The game's menus in Supreme Commander: Forged Alliance's look: the Supreme Commander dialog's
+  MENUS tab makes, from your own copy of the game, its interface's colours, its menus' pictures,
+  its panels' border art, its interface sounds and its menu music into a mod, turned on once made.
+  Options, INTERFACE: MENU THEME then dresses the menus in it: Forged Alliance's pale cyan
+  lettering and slate panels, its pictures behind the menus one after another in place of the
+  film, its frames round the panels, its clicks, and its menu theme as the menus' music. The menus
+  keep their layout, and the battle its own look ([SUPCOM_MENUS.md](docs/SUPCOM_MENUS.md)).
 
 ### Changed
 - The enemy Commanders' transmissions (their greetings, taunts and answers coming in at the top

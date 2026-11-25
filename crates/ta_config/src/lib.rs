@@ -691,6 +691,19 @@ pub enum RangeOverlays {
     Off,
 }
 
+/// How the game's menus look (Options, INTERFACE: MENU THEME).
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub enum MenuTheme {
+    /// TA Reborn's own: its metal, brass and pipes, its film behind the title menu.
+    #[default]
+    Reborn,
+    /// Supreme Commander: Forged Alliance's: its colours, its pictures behind the menus, its
+    /// panels' border art, its interface sounds and its menu music, from the mod
+    /// `supcom-menus` the launcher makes of the player's own copy (TA Reborn's own where it is not
+    /// installed and on). The layouts and the widgets' shapes stay TA Reborn's.
+    ForgedAlliance,
+}
+
 /// What plays behind the game's title menu.
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub enum MenuBackdrop {
@@ -1420,6 +1433,8 @@ pub struct Gameplay {
     pub companion: bool,
     /// What plays behind the title menu.
     pub menu_backdrop: MenuBackdrop,
+    /// How the menus look.
+    pub menu_theme: MenuTheme,
 }
 
 impl Default for Gameplay {
@@ -1471,6 +1486,7 @@ impl Default for Gameplay {
             coach_muted: Vec::new(),
             companion: false,
             menu_backdrop: MenuBackdrop::Film,
+            menu_theme: MenuTheme::Reborn,
         }
     }
 }

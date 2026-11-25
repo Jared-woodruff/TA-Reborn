@@ -87,7 +87,7 @@ impl LauncherApp {
                 self.push(Action::BrowsePackage);
             }
             if ui.add(ActionButton::secondary("SUPREME COMMANDER…").height(height))
-                .hover_tip(t("Import the factions of Supreme Commander: Forged Alliance from your own copy of the game (GOG's or Steam's): their units and buildings, to play in skirmish; and its soundtrack, to play with TA's music or in its place.")).clicked() {
+                .hover_tip(t("Import the factions of Supreme Commander: Forged Alliance from your own copy of the game (GOG's or Steam's): their units and buildings, to play in skirmish; its soundtrack, to play with TA's music or in its place; and its look for the game's menus.")).clicked() {
                 self.push(Action::SupcomOpen(crate::supcom::Tab::Factions));
             }
             if ui.add(ActionButton::secondary("MOD FOLDERS…").height(height)).hover_tip(t("The folders mods are looked for in")).clicked() {
@@ -628,7 +628,7 @@ impl LauncherApp {
         let installed = self.mods.get(&item.id);
         let version = installed.map(|entry| entry.info.manifest.version.as_str());
         let update = item.catalogue.and_then(|entry| mod_library::waiting_update(entry, self.mods.updatable_version(&item.id)));
-        // (Supreme Commander's maps, factions or music made by an older converter: made again in their dialog.)
+        // (Supreme Commander's maps, factions, music or menus made by an older converter: made again in their dialog.)
         let remake = self.supcom_update(&item.id);
         let on = self.config.mods.enabled.contains(&item.id);
         let stage = self.installer.stages.get(&item.id).filter(|stage| stage.active());
@@ -750,6 +750,7 @@ impl LauncherApp {
         else if self.supcom.importing() { Some(t("Wait for the Supreme Commander maps being made, then try again.")) }
         else if self.supcom.factions.importing() { Some(t("Wait for the Supreme Commander factions being made, then try again.")) }
         else if self.supcom.music.importing() { Some(t("Wait for the Supreme Commander music being made, then try again.")) }
+        else if self.supcom.menus.importing() { Some(t("Wait for the Supreme Commander menus being made, then try again.")) }
         else { None }
     }
 

@@ -695,3 +695,7 @@ stay in the nominative behind a noun: „do wersji {name}”, „usprawnienie {n
 | Building theme {n} | Motyw budowy {n} |
 | Briefing {n} | Odprawa {n} |
 | THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | MENU / ODPRAWY / FILMY |
+| MENU THEME (Options, Interface) | MOTYW MENU |
+| MENUS (the Supreme Commander dialog's tab) | MENU |
+| Supreme Commander menus (the mod) | Menu Supreme Commander |
+| Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | Tekst / Etykiety / Akcent / Panele / Linie / Przyciski |

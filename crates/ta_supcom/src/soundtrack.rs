@@ -79,12 +79,12 @@ impl Track {
 }
 
 /// A file of `sounds` (a game's `sounds` folder), whatever its case.
-fn sound_file(sounds: &Path, name: &str) -> Result<std::path::PathBuf> {
+pub(crate) fn sound_file(sounds: &Path, name: &str) -> Result<std::path::PathBuf> {
     ta_vfs::install::find_file_ci(sounds, name).ok_or_else(|| Error::Missing(format!("sounds/{name}")))
 }
 
 /// A wave bank's header and entries: read from its start alone, not its waves' data.
-fn bank_head(sounds: &Path, name: &str) -> Result<WaveBank> {
+pub(crate) fn bank_head(sounds: &Path, name: &str) -> Result<WaveBank> {
     use std::io::Read;
     let path = sound_file(sounds, name)?;
     let mut head = Vec::new();
@@ -92,7 +92,8 @@ fn bank_head(sounds: &Path, name: &str) -> Result<WaveBank> {
     WaveBank::read(&head).map_err(|e| Error::Format(format!("{}: {e}", path.display())))
 }
 
-fn sound_bank(sounds: &Path, name: &str) -> Result<SoundBank> {
+/// A sound bank of `sounds`, read whole.
+pub(crate) fn sound_bank(sounds: &Path, name: &str) -> Result<SoundBank> {
     let path = sound_file(sounds, name)?;
     let bytes = std::fs::read(&path).map_err(|e| Error::io(&path, e))?;
     SoundBank::read(&bytes).map_err(|e| Error::Format(format!("{}: {e}", path.display())))
@@ -139,6 +140,19 @@ pub fn tracks(sounds: &Path) -> Result<Vec<Track>> {
         return Err(Error::Missing("the game's music (sounds/Music.xwb)".into()));
     }
     Ok(out)
+}
+
+/// The data of wave `index` of the wave bank `name` in `sounds` (`bank`, its head), read from
+/// its place in the file alone.
+pub(crate) fn wave_data(sounds: &Path, name: &str, bank: &WaveBank, index: usize) -> Result<Vec<u8>> {
+    use std::io::{Read, Seek, SeekFrom};
+    let wave = bank.waves.get(index).ok_or_else(|| Error::Format(format!("{name}: no wave {index}")))?;
+    let path = sound_file(sounds, name)?;
+    let mut file = std::fs::File::open(&path).map_err(|e| Error::io(&path, e))?;
+    file.seek(SeekFrom::Start(wave.offset as u64)).map_err(|e| Error::io(&path, e))?;
+    let mut data = vec![0u8; wave.length];
+    file.read_exact(&mut data).map_err(|e| Error::io(&path, e))?;
+    Ok(data)
 }
 
 /// What was made.

@@ -3003,7 +3003,21 @@ where the units go (`hud/domain.rs`, below).
   stay; TA's alone without the mod. A change goes to the music player at once
   (`apply_soundtrack`), a track playing that its mood's new playlist lacks skipped; the player's
   own music (`UserMusic`) is laid over whichever playlists these are. `ta_audio` lists
-  `music/supcom/` beside `music/` (`engine::music_files`).
+  `music/supcom/` and `music/supcom-menus/` beside `music/` (`engine::music_files`).
+* **Menu theme** (`menu_theme.rs`, Options, INTERFACE: MENU THEME, `ta_config::MenuTheme`; the mod
+  `supcom-menus`, docs/SUPCOM_MENUS.md): its list (`menus/supcom/theme.toml`) read at the start and
+  when the setting changes (`App::apply_menu_theme`). While the menus are shown (not a unit on show,
+  nor the credits' film): its pictures are painted on egui's background layer
+  (`menu_theme::Pictures`: one decoded on a worker ahead of its turn, two held at most) and the
+  frame draws the interface alone (`Renderer::render_ui`), the film's captions and its watching
+  left out; the panels and strips are drawn in its border art (`ta_ui::panel::set_art`, set each
+  frame, none outside the menus); its sounds play for the interface's events
+  (`GameAudio::set_in_menus`); and the frame's meshes drawn in egui's own texture, its shapes and
+  text, are graded into its colours after tessellation (`menu_theme::Grade`: TA Reborn's palette
+  and metal colours as anchors onto the theme's palette made by `Palette::themed`, the players'
+  colours, black and white pinned, inverse-square weights fading out past `REACH`; pictures,
+  previews and portraits, in textures of their own, untouched). The menus' playlist is its music
+  whatever SOUNDTRACK plays (`GameAudio::set_menu_theme`).
 * **Audio transitions** (`audio.rs`, `ta_audio`): scene changes clear old effects, voices and
   combat intensity while keeping music running; loading frames service track sequencing and
   output recovery. Replaying the intro fades out both music decks before the movies. New

@@ -237,6 +237,13 @@ struct State {
     menu_film_world: Option<&'static str>,
     menu_film_idle: f32,
     menu_film_lens: bool,
+    /// The menus' theme while MENU THEME asks for one the game's files have (`menu_theme.rs`:
+    /// Forged Alliance's): its colours' grade, its pictures, its panels' art; whether the game's
+    /// files have one (MENU THEME offers it then); and whether its pictures stood behind the
+    /// menus last frame (the battlefield not drawn behind them then).
+    menu_look: Option<crate::menu_theme::Look>,
+    menu_theme_installed: bool,
+    menu_pictures_shown: bool,
     /// How far the battle has stepped back behind a dialog over it (0..1, eased; see
     /// [`App::battle_veiled`]), and whether its blur is the lens in the picture.
     veil: f32,
@@ -2355,6 +2362,9 @@ impl State {
             loaded_menu_film: None,
             menu_film_idle: 0.0,
             menu_film_lens: false,
+            menu_look: None,
+            menu_theme_installed: false,
+            menu_pictures_shown: false,
             veil: 0.0,
             veil_lens: false,
             assets,
@@ -2486,6 +2496,7 @@ impl State {
         if state.screen == Screen::Playing && state.tutorial.is_none() && !state.game.spectator {
             state.coach = coach_for(&state.settings, &state.career, &state.game.setup, state.script.is_empty());
         }
+        state.apply_menu_theme();
         // Captures: `TA_REVEAL=1` shows the whole map, as the `+nowisee` cheat does (only what
         // is shown; the battle is the same).
         if std::env::var_os("TA_REVEAL").is_some() {
@@ -4265,6 +4276,13 @@ impl State {
     /// click, wheel or move of the pointer (after a moment's grace, for the pointer that just
     /// clicked WATCH) brings it back.
     fn watch_menu_film(&mut self, dt: f32) {
+        // (Not behind the menus' theme's pictures: no film to watch.)
+        if self.menu_look.as_ref().is_some_and(|look| look.covers()) {
+            if let Some(film) = self.menu_film.as_mut() {
+                film.watching = false;
+            }
+            return;
+        }
         let on_title = self.menu.page == crate::menu::Page::Title && !self.options_open && !self.jukebox.open && self.menu.record_error.is_none();
         let pressed = !self.input.pressed_keys().is_empty() || !self.input.buttons_pressed.is_empty() || self.input.wheel != 0.0 || self.input.pad_pan != Vec2::ZERO
             || self.egui.ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Key { pressed: true, .. } | egui::Event::PointerButton { pressed: true, .. })));
@@ -6036,6 +6054,7 @@ impl State {
         let controls_open = &mut self.controls_open;
         let options_open = &mut self.options_open;
         let fa_soundtrack = audio.has_fa_soundtrack();
+        let fa_menus = self.menu_theme_installed;
         let loading = self.loading.clone();
         let curtain = &mut self.curtain;
         let tutorial = &mut self.tutorial;
@@ -6055,7 +6074,21 @@ impl State {
         // (A tip put away, and the hints the player asked to hear no more of: kept in the settings.)
         let mut tip_put_away = false;
         let mut hints_changed = false;
-        menu.film = self.menu_film.as_ref().filter(|_| self.showroom.is_none()).map(|f| f.showing(game));
+        // The menus' theme (MENU THEME): its pictures behind the menus in place of the film (not
+        // while a unit is on show, nor the credits' film), its panels' art while they are drawn,
+        // its sounds while they are shown.
+        let themed_menus = screen == Screen::Menu && self.showroom.is_none() && self.credits_show.is_none();
+        // (Out of the menus, their pictures let go of: decoded again on the way back.)
+        if !themed_menus && let Some(look) = self.menu_look.as_mut() {
+            look.pictures.let_go();
+        }
+        let mut menu_look = self.menu_look.as_mut().filter(|_| themed_menus);
+        let pictures_cover = menu_look.as_ref().is_some_and(|look| look.covers());
+        ta_ui::panel::set_art(menu_look.as_ref().and_then(|look| look.art.clone()));
+        audio.set_in_menus(screen == Screen::Menu);
+        let reduced_motion = settings.gameplay.reduced_motion;
+        let mut menu_pictures_shown = false;
+        menu.film = self.menu_film.as_ref().filter(|_| self.showroom.is_none() && !pictures_cover).map(|f| f.showing(game));
         menu.credits = self.credits_show.as_ref().map(|s| s.showing());
         let (now_playing, music_on) = audio.now_playing();
         let ta_tracks = if self.jukebox.open { audio.ta_tracks() } else { Vec::new() };
@@ -6094,6 +6127,12 @@ impl State {
                 film_action = film.page(ui, seeking);
                 return;
             }
+            // (The menus' theme's pictures, behind everything of the menus.)
+            if let Some(look) = menu_look.as_deref_mut() {
+                let ctx = ui.ctx().clone();
+                let painter = ctx.layer_painter(egui::LayerId::background());
+                menu_pictures_shown = look.pictures.paint(&ctx, &painter, ctx.content_rect(), ctx.input(|i| i.time), reduced_motion);
+            }
             if let Some(editor) = profile_editor {
                 let room = ui.ctx().content_rect();
                 let panel = ta_ui::panel::Panel::new("Create your commander profile")
@@ -6126,7 +6165,7 @@ impl State {
                     }
                 }
                 Screen::Menu if *options_open => {
-                    if options_panel(ui.ctx(), settings_view, settings, msaa_started, ray_tracing_running, native, gpu_kind, fa_soundtrack, &mut changes) {
+                    if options_panel(ui.ctx(), settings_view, settings, msaa_started, ray_tracing_running, native, gpu_kind, fa_soundtrack, fa_menus, &mut changes) {
                         *options_open = false;
                         options_closed = true;
                     }
@@ -6258,7 +6297,7 @@ impl State {
                         }
                     }
                     if *options_open {
-                        if options_panel(ui.ctx(), settings_view, settings, msaa_started, ray_tracing_running, native, gpu_kind, fa_soundtrack, &mut changes) {
+                        if options_panel(ui.ctx(), settings_view, settings, msaa_started, ray_tracing_running, native, gpu_kind, fa_soundtrack, fa_menus, &mut changes) {
                             *options_open = false;
                             options_closed = true;
                         }
@@ -6481,6 +6520,9 @@ impl State {
         if !self.hud.clip_dialog_open() && self.clip_previews.is_some() && self.film.is_none() {
             self.end_clip_previews();
         }
+        // (The menus' theme's art for this pass alone; whether its pictures stood behind them.)
+        ta_ui::panel::set_art(None);
+        self.menu_pictures_shown = menu_pictures_shown;
         // Multiplayer: what the interface ordered goes out now, with the frame's other orders,
         // rather than with the next frame's.
         if let Some(net) = self.game.net.as_mut() {
@@ -6510,7 +6552,11 @@ impl State {
         #[cfg(target_os = "macos")]
         crate::macos::refresh_cursor_now_and_then(&self.window);
         let ppp = output.pixels_per_point;
-        let prims = self.egui.ctx.tessellate(output.shapes, ppp);
+        let mut prims = self.egui.ctx.tessellate(output.shapes, ppp);
+        // (The menus in their theme's colours.)
+        if themed_menus && let Some(look) = self.menu_look.as_mut() {
+            look.grade.apply(&mut prims);
+        }
         let mut textures_delta = output.textures_delta;
         for (id, deltas) in textures_delta.set.drain() {
             for delta in deltas {
@@ -6945,6 +6991,9 @@ impl State {
             // the screen does not hold the film back.)
             None if film_window == Some(true) => self.renderer.render_ui(ui_pass),
             None if film_window == Some(false) => self.renderer.skip_frame(),
+            // (The menus' theme's pictures over the whole window: the battlefield behind them not
+            // drawn.)
+            None if self.screen == Screen::Menu && self.menu_pictures_shown => self.renderer.render_ui(ui_pass),
             None => self.renderer.render(&self.camera, ui_pass),
         }
         let t_end = Instant::now();
@@ -9262,6 +9311,7 @@ fn options_panel(
     native: Option<(u32, u32)>,
     gpu_kind: ta_config::GpuKind,
     fa_soundtrack: bool,
+    fa_menus: bool,
     changes: &mut ta_ui::settings::Changes,
 ) -> bool {
     use crate::theme::*;
@@ -9270,7 +9320,7 @@ fn options_panel(
     let (dirs, languages) = languages();
     let width = panel::fit_width(ctx, 1100.0);
     let compact = ta_ui::settings::compact(width) || ctx.content_rect().height() < 540.0;
-    let host = ta_ui::settings::Host { in_game: true, msaa_running: msaa_started, ray_tracing_running, native, gpu_kind: Some(gpu_kind), languages, language_dirs: dirs, height: (!compact).then(|| panel::fit_height(ctx, 260.0, 260.0, 640.0)), experimental: false, fa_soundtrack };
+    let host = ta_ui::settings::Host { in_game: true, msaa_running: msaa_started, ray_tracing_running, native, gpu_kind: Some(gpu_kind), languages, language_dirs: dirs, height: (!compact).then(|| panel::fit_height(ctx, 260.0, 260.0, 640.0)), experimental: false, fa_soundtrack, fa_menus };
     // (A dialog: its close cross, Escape or a click outside closes it, the settings saved.)
     let mut page = Panel::new("OPTIONS").subtitle("CHANGES TAKE EFFECT AT ONCE").width(width).exit(Exit::Close);
     if compact {
@@ -9293,6 +9343,26 @@ fn options_panel(
 impl State {
     /// Applies what the options changed this frame: volumes, the renderer's effects, the
     /// window, the camera, the skirmish page's unit limit.
+    /// The menus' theme as MENU THEME asks: Forged Alliance's where the game's files have it (its
+    /// mod installed and on), else TA Reborn's own. Its look for the menus, and its interface
+    /// sounds and menu music to the audio.
+    fn apply_menu_theme(&mut self) {
+        self.menu_theme_installed = crate::menu_theme::installed(&self.assets.vfs);
+        let wanted = self.settings.gameplay.menu_theme == ta_config::MenuTheme::ForgedAlliance;
+        match wanted.then(|| crate::menu_theme::MenuTheme::read(&self.assets.vfs)).flatten() {
+            Some(theme) if self.menu_look.as_ref().is_some_and(|look| look.theme == theme) => {}
+            Some(theme) => {
+                self.audio.set_menu_theme(theme.sounds.clone(), theme.music.clone());
+                let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+                self.menu_look = Some(crate::menu_theme::Look::new(&self.egui.ctx, &self.assets.vfs, theme, seed));
+            }
+            None => {
+                self.audio.set_menu_theme(Default::default(), None);
+                self.menu_look = None;
+            }
+        }
+    }
+
     fn apply_settings(&mut self, before: &ta_config::Config, changes: ta_ui::settings::Changes) {
         // (Without a profile the name is the settings' alone: the Multiplayer page and the
         // battle take it at once, as they do a profile's.)
@@ -9321,6 +9391,10 @@ impl State {
                     self.game.trouble(ta_ui::i18n::tf("Could not update profile: {error}", &[("error", &error)]));
                 }
             }
+        }
+        // (The menus' look: theirs at once.)
+        if before.gameplay.menu_theme != self.settings.gameplay.menu_theme {
+            self.apply_menu_theme();
         }
         // (The player's music: how it plays, or its folder, changed.)
         if changes.audio && (before.audio.user_music != self.settings.audio.user_music || before.audio.music_folder != self.settings.audio.music_folder) {

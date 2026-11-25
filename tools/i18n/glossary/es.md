@@ -697,3 +697,7 @@ quitarla, esta. "Stop" en las frases: Parar, con mayúscula (el nombre de la ord
 | Building theme {n} | Tema de construcción {n} |
 | Briefing {n} | Informe {n} |
 | THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | LOS MENÚS / INFORMES / PELÍCULAS |
+| MENU THEME (Options, Interface) | TEMA DE LOS MENÚS |
+| MENUS (the Supreme Commander dialog's tab) | MENÚS |
+| Supreme Commander menus (the mod) | Menús de Supreme Commander |
+| Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | Texto / Etiquetas / Énfasis / Paneles / Líneas / Botones |

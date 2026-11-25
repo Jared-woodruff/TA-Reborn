@@ -662,3 +662,7 @@ Forged Alliance's two features, in the terms the launcher's "Ще в плана�
 | Building theme {n} | Тема будівництва {n} |
 | Briefing {n} | Брифінг {n} |
 | THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | МЕНЮ / БРИФІНГИ / РОЛИКИ |
+| MENU THEME (Options, Interface) | ТЕМА МЕНЮ |
+| MENUS (the Supreme Commander dialog's tab) | МЕНЮ |
+| Supreme Commander menus (the mod) | Меню Supreme Commander |
+| Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | Текст / Підписи / Акцент / Панелі / Лінії / Кнопки |

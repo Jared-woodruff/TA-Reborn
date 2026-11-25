@@ -191,6 +191,7 @@ impl LauncherApp {
             (crate::supcom::Tab::Maps, self.supcom.importing(), &self.supcom.progress, n("SUPREME COMMANDER MAPS")),
             (crate::supcom::Tab::Factions, self.supcom.factions.importing(), &self.supcom.factions.progress, n("SUPREME COMMANDER FACTIONS")),
             (crate::supcom::Tab::Music, self.supcom.music.importing(), &self.supcom.music.progress, n("SUPREME COMMANDER MUSIC")),
+            (crate::supcom::Tab::Menus, self.supcom.menus.importing(), &self.supcom.menus.progress, n("SUPREME COMMANDER MENUS")),
         ] {
             if importing {
                 let page = if tab == crate::supcom::Tab::Maps { Page::Maps } else { Page::Mods };
