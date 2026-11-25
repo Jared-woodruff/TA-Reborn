@@ -28,11 +28,12 @@ impl Sim {
     }
 
     /// The place `u` views from afar now, and how far round it: none while it views nothing (no
-    /// order to, short of energy, not at work).
+    /// order to, short of energy, not at work, or driven by its owner: its orders, and so its
+    /// view's payment, wait meanwhile).
     pub fn viewing(&self, u: &Unit) -> Option<(FxVec3, Fx)> {
         let view = u.abilities(self.types.get(u.type_id)).remote_view?;
         let at = u.remote_view?;
-        (matches!(u.orders.front(), Some(Order::RemoteView(p)) if self.on_map(*p) == at) && self.working(u)).then_some((at, view.radius))
+        (matches!(u.orders.front(), Some(Order::RemoteView(p)) if self.on_map(*p) == at) && self.working(u) && u.direct_control.is_none()).then_some((at, view.radius))
     }
 
     /// `p` held within the map.

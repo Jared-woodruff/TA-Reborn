@@ -561,9 +561,10 @@ impl Sim {
         // reload and burst timers run down (as below, for most units on most ticks).
         let looking = fire_state >= 2 && (self.tick + id.slot as u64).is_multiple_of(RETARGET_TICKS);
         if forced.is_none() && !looking && u.weapons.iter().all(|ws| ws.target.is_none()) {
-            let armed = slots;
+            // (Every slot's: an empty one's too, whose weapon a toggle or an enhancement took out
+            // with its reload running, which goes on running for its return.)
             if let Some(u) = self.unit_mut(id) {
-                for (ws, _) in u.weapons.iter_mut().zip(armed).filter(|(_, w)| w.is_some()) {
+                for ws in u.weapons.iter_mut() {
                     ws.reload = ws.reload.saturating_sub(1);
                     ws.burst_timer = ws.burst_timer.saturating_sub(1);
                 }
@@ -593,9 +594,11 @@ impl Sim {
         #[allow(clippy::needless_range_loop)]
         for slot in 0..MAX_WEAPONS {
             let Some(wid) = slots[slot] else {
-                // No weapon here: nothing may hold a target in this slot.
+                // No weapon here: nothing may hold a target in this slot. (Its reload runs on, for
+                // the weapon a toggle or an enhancement put back.)
                 if let Some(u) = self.unit_mut(id) {
                     u.retarget(slot, None);
+                    u.weapons[slot].reload = u.weapons[slot].reload.saturating_sub(1);
                 }
                 continue;
             };
@@ -814,7 +817,13 @@ impl Sim {
         let pulled = control.pull.is_some_and(|until| self.tick < until);
         let mut fired = false;
         for slot in 0..MAX_WEAPONS {
-            let Some(weapon) = slots[slot] else { continue };
+            // (An empty slot's reload runs on too, for the weapon a toggle puts back.)
+            let Some(weapon) = slots[slot] else {
+                if let Some(unit) = self.unit_mut(id) {
+                    unit.weapons[slot].reload = unit.weapons[slot].reload.saturating_sub(1);
+                }
+                continue;
+            };
             let weapon = weapons.get(weapon);
             if let Some(unit) = self.unit_mut(id) {
                 let state = &mut unit.weapons[slot];

@@ -186,10 +186,14 @@ impl Sim {
                 u.health += after - before;
             }
             u.health = u.health.min(after);
-            // A slot whose weapon changed starts afresh: no target, aim or reload of the other's.
+            // A slot whose weapon changed starts afresh, no target, aim or burst of the other's;
+            // but its reload runs on (counting down while the slot is empty too): switching never
+            // readies a gun sooner, as a toggle flipped and flipped back would.
             for slot in 0..MAX_WEAPONS {
                 if slots_after[slot] != slots_before[slot] {
+                    let reload = u.weapons[slot].reload;
                     u.weapons[slot] = Default::default();
+                    u.weapons[slot].reload = reload;
                     if let Some(c) = &mut u.cob {
                         c.supersede_aims(slot as u16);
                     }

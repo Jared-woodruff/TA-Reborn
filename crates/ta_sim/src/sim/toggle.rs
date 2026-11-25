@@ -2,7 +2,8 @@
 //! anti-air's and cruisers' ground guns). [`Command::SetToggle`] switches a unit's toggle on or off:
 //! on, each slot the toggle names fires its weapon in place of the unit's own there (over what its
 //! enhancements put there), or nothing; off, its own again. The unit's figures are made again as
-//! an enhancement's are (`Sim::refit`): a slot whose weapon changed starts afresh, and a launcher
+//! an enhancement's are (`Sim::refit`): a slot whose weapon changed starts afresh but for its
+//! reload, which runs on (flipped and flipped back, a gun is no sooner ready), and a launcher
 //! that stockpiles its missiles, swapped for another or taken out, loses those built and the one
 //! under way. Its script is told (`SetToggle(on)`, where it has one), and
 //! `SimEvent::UnitToggled` follows. [`Unit::toggled`] is in the checksum.

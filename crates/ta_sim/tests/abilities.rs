@@ -145,6 +145,39 @@ fn a_toggle_swaps_its_units_weapons() {
     assert_eq!(slots(&sim)[..2], [Some(gun), None]);
 }
 
+/// A toggle flipped and flipped back readies no gun sooner: a slot's reload runs on across the
+/// switch (and while the slot is empty), so the long gun fired waits out its reload whatever the
+/// toggling; waited out, it fires again.
+#[test]
+fn toggling_readies_no_gun_sooner() {
+    let sniper = "Weapon1=GUN; [TOGGLE] { Name=Long Gun; Weapon1=; Weapon2=LONG; }";
+    let mut sim = sim_of(data_of(&[unit("SNIPER", sniper), unit("DUMMY", "FootprintX=1; FootprintZ=1;"), weapon("GUN", "range=200;"), weapon("LONG", "range=600; reloadtime=10;")]), 128, false);
+    let s = put(&mut sim, "SNIPER", 0, 600, 600);
+    let _target = put(&mut sim, "DUMMY", 1, 600, 1000);
+    let reload = |sim: &Sim| sim.unit(s).unwrap().weapons[1].reload;
+    sim.step(&[Command::SetToggle { player: 0, units: vec![s], on: true }]);
+    // (Until the long gun has fired: its reload set, ten seconds.)
+    let mut ticks = 0;
+    while reload(&sim) == 0 && ticks < 30 * 5 {
+        run(&mut sim, 1);
+        ticks += 1;
+    }
+    let fired = reload(&sim);
+    assert!(fired > 30 * 5, "the long gun fired, its reload running: {fired}");
+    // Flipped and flipped back at once: not ready.
+    sim.step(&[Command::SetToggle { player: 0, units: vec![s], on: false }]);
+    sim.step(&[Command::SetToggle { player: 0, units: vec![s], on: true }]);
+    assert!(reload(&sim) > 0 && reload(&sim) <= fired, "its reload ran on through the switch: {}", reload(&sim));
+    // Off for a while: the reload runs down meanwhile, and on again it is that much nearer.
+    sim.step(&[Command::SetToggle { player: 0, units: vec![s], on: false }]);
+    let before = reload(&sim);
+    run(&mut sim, 30 * 4);
+    assert!(reload(&sim) + 30 * 4 - 2 <= before, "it ran down in the empty slot: {} from {before}", reload(&sim));
+    run(&mut sim, 30 * 7);
+    sim.step(&[Command::SetToggle { player: 0, units: vec![s], on: true }]);
+    assert_eq!(reload(&sim), 0, "waited out: ready on its return");
+}
+
 /// A launcher toggled away loses the missiles it built, as a swapped enhancement's does.
 #[test]
 fn a_toggled_launcher_loses_its_missiles() {
@@ -228,6 +261,32 @@ fn remote_viewing_shows_a_far_place_while_it_is_paid_for() {
     run(&mut sim, 12);
     assert!(!sim.in_sight(0, place), "nothing seen without its energy");
     assert_eq!(sim.unit(eye).unwrap().orders.front(), Some(&Order::RemoteView(place)), "the order stands, waiting for energy");
+}
+
+/// A unit viewing from afar that its owner drives sees nothing there meanwhile: its orders, and so
+/// its view's payment, wait; let go, it views (and pays) again.
+#[test]
+fn remote_viewing_waits_while_its_unit_is_driven() {
+    let mut sim = sim_of(data_of(&[unit("SEER", &format!("{TANK} RemoteViewRadius=200; RemoteViewEnergy=30;")), unit("TANKY", "FootprintX=2; FootprintZ=2; SightDistance=40;")]), 128, false);
+    let seer = put(&mut sim, "SEER", 0, 100, 100);
+    let _enemy = put(&mut sim, "TANKY", 1, 1600, 1600);
+    let place = FxVec3::from_ints(1550, 0, 1550);
+    sim.step(&[Command::Order { player: 0, units: vec![seer], order: Order::RemoteView(place), queue: false }]);
+    run(&mut sim, 30);
+    assert!(sim.in_sight(0, place), "viewing");
+    let input = ta_sim::DirectInput { throttle: 0, turn: 0, course: None, heading: 0, pitch: 0, fire: false };
+    sim.step(&[Command::DirectControl { player: 0, unit: seer, input: Some(input) }]);
+    assert!(sim.unit(seer).unwrap().direct_control.is_some(), "driven");
+    let energy = sim.players[0].economy.energy;
+    for _ in 0..30 {
+        sim.step(&[Command::DirectControl { player: 0, unit: seer, input: Some(input) }]);
+    }
+    let _ = sim.take_events();
+    assert!(sim.viewing(sim.unit(seer).unwrap()).is_none() && !sim.in_sight(0, place), "nothing seen there while driven");
+    assert!(sim.players[0].economy.energy >= energy, "nor paid for");
+    sim.step(&[Command::DirectControl { player: 0, unit: seer, input: None }]);
+    run(&mut sim, 30);
+    assert!(sim.in_sight(0, place), "let go, viewing again");
 }
 
 /// A stunning shot leaves the enemy it hits unable to move for its time, beside its damage; its side
