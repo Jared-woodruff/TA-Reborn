@@ -70,7 +70,8 @@ have their tab, their choice and their import. The dialog's wizard makes them in
   it is imported: IMPORT… opens it, NOT NOW puts the card away; either way it is not offered again
   (`offered = true` in the launcher's `supcom.toml`, beside the game's folder as chosen). Nothing
   ever opens by itself.
-- **Its steps.** *The game:* the copy found (GOG's, Steam's or a folder, a switch each where there
+- **Its steps** (named in a row at its top: FORGED ALLIANCE, WHAT TO MAKE, IMPORTING, DONE).
+  *The game:* the copy found (GOG's, Steam's or a folder, a switch each where there
   are several) with CHANGE FOLDER…, and a picture of each part made of it; without the game, the
   card that says what is needed, its stores, CHOOSE FOLDER… and LOOK AGAIN (which looks again for
   every part). *What to make:* a card for each part, ticked, in the order they are made (the
