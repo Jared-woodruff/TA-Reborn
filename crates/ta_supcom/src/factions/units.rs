@@ -545,6 +545,9 @@ pub fn weapon_section_sounding(u: &UnitBlueprint, w: &WeaponBlueprint, name: &st
         Kind::AntiMissile => (1, "amdrocket", "Rockhvy1", "xplomed4"),
     };
     put("rendertype", render.to_string());
+    // (Forged Alliance's own model of its projectile, where its looks were made:
+    // `factions::effects`.)
+    let model = w.look.as_ref().and_then(|l| l.model.as_deref()).unwrap_or(model);
     if !model.is_empty() {
         put("model", model.into());
     }
@@ -688,6 +691,10 @@ pub fn weapon_section_sounding(u: &UnitBlueprint, w: &WeaponBlueprint, name: &st
     put("explosionart", explosion(blast).into());
     put("waterexplosiongaf", "fx".into());
     put("waterexplosionart", "h2oboom1".into());
+    // How it looks of its own: Forged Alliance's effects and colours (`factions::effects`).
+    for (key, value) in w.look.iter().flat_map(|l| l.keys.iter()) {
+        put(key, value.clone());
+    }
     // TA Reborn's abilities: its minimum range, its stun (`factions::abilities`).
     s.push_str(&super::abilities::weapon_keys(u, w, name));
     let damage = match &w.nuke {
@@ -926,6 +933,8 @@ pub struct Extra<'a> {
     /// Its own sound category, where the mod has its sounds (`factions::sounds`); none: TA's for
     /// its kind.
     pub sound_category: Option<String>,
+    /// Keys of how it looks (its adjacency beam: `factions::effects`).
+    pub look: Vec<(&'static str, String)>,
 }
 
 /// The name a unit is shown by: its own, else its description (the commanders' and most
@@ -1352,6 +1361,9 @@ pub fn unit_file(u: &UnitBlueprint, weapons: &Weapons, carries: Option<(u32, u32
         && let Some(size) = u.size_class()
     {
         put("AdjacencySize", size.to_string());
+    }
+    for (key, value) in &extra.look {
+        put(key, value.clone());
     }
     let ted = ted_class(u, weapons);
     put("TEDClass", ted.into());

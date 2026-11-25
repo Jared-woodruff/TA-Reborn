@@ -653,3 +653,23 @@ low, normal, high). What names a file reads as 「{name}の発射音」 does; a 
 | {name} alerts (a side's announcer) | {name}の警告音声 (as alerts 警告 in the UNIT REPLIES help; 警告 alone is the check's WARNING) |
 | FLAC stream information | ストリーム情報 |
 | the units' sounds (a step of the factions import, in 「{unit}を作成中」) | ユニットのサウンド |
+
+## A mod's own effects: particle effects, muzzle flashes, trails, a weapon's colours (`validation.rs`, `effect.rs`)
+
+Keys and values stay as written (kind=spark … ring, size=, color=, direction= with forward, back, up,
+down, out; rgbcolor=, rgbcolor2=, thickness=, AdjacencyBeamColor=, emit-sfx); a list of values takes
+、 and のいずれか, as the Affects= list. Spring (the engine) stays a name: Springと同じ形式で. Labels of
+what names an effect read as {name}の…エフェクト, as {name}の発射音.
+
+| English | 日本語 |
+|---|---|
+| burst (a section of an effect: particles of one kind) | バースト (as Unity's Bursts) |
+| particle / (particle) effect | パーティクル / エフェクト (as Particles パーティクル in Settings) |
+| effect {name} (effects/*.tdf) | エフェクト{name}（effects/*.tdf） |
+| {name} muzzle flash / {name} trail (GAF animations) | {name}のマズルフラッシュ / {name}の軌跡 |
+| {name} fire / trail / hit / water hit effect | {name}の発射エフェクト / 軌跡エフェクト / 着弾エフェクト / 水面への着弾エフェクト |
+| {name} effect for emit-sfx {sfx} | {name}のemit-sfx {sfx}用エフェクト |
+| its kind's own (a weapon's colours, thickness / a burst's value) | その種類の武器の既定の色・太さ / その種類の既定値 |
+| three numbers from 0 to 1 | 0～1の3つの数値 |
+| beam (an adjacency beam between buildings) | ビーム |
+| an effect costs every frame it plays | 再生中、毎フレーム負荷がかかります (as 負荷) |

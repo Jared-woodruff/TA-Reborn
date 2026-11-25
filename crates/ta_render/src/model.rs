@@ -2933,6 +2933,16 @@ impl ModelRenderer {
         })
     }
 
+    /// Asks for the paint of `model`'s materials now (a model with a surface of its own; else
+    /// nothing), as its first drawing would: the workers read it meanwhile, and the model is
+    /// painted from its first frame on (a weapon's projectile, whose first shots would otherwise
+    /// fly in their colour on average while it was read).
+    pub fn want_paint(&mut self, model: ModelId) {
+        for &slot in self.library.surface_slots(model) {
+            self.surfaces.want(slot);
+        }
+    }
+
     /// Style switches rebuild the next frame's batches; source rigs remain untouched.
     pub fn set_art_style(&mut self, reborn: bool) {
         self.art_style_reborn = reborn;

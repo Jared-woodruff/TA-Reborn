@@ -1,7 +1,7 @@
 // Declarations shared by the GPU particle compute and draw shaders (see gpu_particles.rs).
 // No bindings: each module binds its own.
 
-// One particle (48 bytes; mirrors `GpuParticle`).
+// One particle (64 bytes; mirrors `GpuParticle`).
 struct Particle {
     pos: vec3<f32>,
     // Seconds since birth (negative while waiting to be born).
@@ -13,7 +13,12 @@ struct Particle {
     // z = colour and opacity (4 x unorm8),
     // w = kind (bits 0-3) | flags (4-7) | random seed (8-15) | brightness (f16, 16-31)
     data: vec4<u32>,
+    // x = the colour it turns to as it ages (4 x unorm8), y = LOOK_* flags, zw = unused
+    look: vec4<u32>,
 };
+
+// `Particle::look.y`: it turns from its colour to `look.x`'s over its life.
+const LOOK_END_COLOR: u32 = 1u;
 
 // This frame's parameters (mirrors `GpuParams`).
 struct ParticleParams {
@@ -64,6 +69,15 @@ fn particle_seed(p: Particle) -> u32 {
 
 fn particle_brightness(p: Particle) -> f32 {
     return unpack2x16float(p.data.w >> 16u).x;
+}
+
+// Its colour (and opacity) at `t` of its life: its own, turning to its end colour where it has one.
+fn particle_tint(p: Particle, t: f32) -> vec4<f32> {
+    let tint = unpack4x8unorm(p.data.z);
+    if ((p.look.y & LOOK_END_COLOR) == 0u) {
+        return tint;
+    }
+    return vec4<f32>(mix(tint.rgb, unpack4x8unorm(p.look.x).rgb, t), tint.a);
 }
 
 // Additive kinds are drawn with the additive effects, the others with the smoke.

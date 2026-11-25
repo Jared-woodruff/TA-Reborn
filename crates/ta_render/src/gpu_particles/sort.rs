@@ -122,7 +122,7 @@ mod tests {
         let module = wgpu::naga::front::wgsl::parse_str(&source).unwrap_or_else(|e| panic!("{}", e.emit_to_string(&source)));
         wgpu::naga::valid::Validator::new(wgpu::naga::valid::ValidationFlags::all(), wgpu::naga::valid::Capabilities::all()).validate(&module).unwrap();
         assert_eq!(32u32 << (SORT_STEPS - 1), super::super::MAX_CAPACITY / 2);
-        assert_eq!(std::mem::size_of::<GpuParticle>(), 48);
+        assert_eq!(std::mem::size_of::<GpuParticle>(), 64);
     }
 
     /// Runs the actual GPU shader, including workgroup boundaries, ties, a changed compaction
@@ -148,6 +148,7 @@ mod tests {
             let particle = |id: u32| GpuParticle {
                 pos: [(id % 13) as f32, (id % 31) as f32, (id % 97) as f32], age: 0.25, vel: [0.0; 3], life: 2.0,
                 data: [id, 0, 0, 0],
+                look: [0; 4],
             };
             let alpha = n / 3;
             let front = n - alpha;

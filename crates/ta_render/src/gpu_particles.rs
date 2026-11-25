@@ -154,6 +154,9 @@ pub struct ParticleBurst {
     /// painted ground's colour instead (greyed a little and pulled towards a mid tone, so dust
     /// shows against the ground it comes from; above 1 lightens it).
     pub color: [f32; 3],
+    /// The colour each particle turns to over its life, from `color` (linear, 0 to 1 each, as
+    /// `color` is held to as a particle keeps it); none: `color` throughout.
+    pub end_color: Option<[f32; 3]>,
     /// HDR brightness of the additive kinds; opacity (0..1) of the alpha-blended ones.
     pub intensity: f32,
     /// Downward acceleration (world units / s²; negative rises).
@@ -198,6 +201,7 @@ impl ParticleBurst {
             life: [1.0, 2.0],
             size: [4.0, 4.0],
             color: [1.0; 3],
+            end_color: None,
             intensity: 1.0,
             gravity: 0.0,
             drag: 1.0,
@@ -388,6 +392,12 @@ impl ParticleBurst {
         self
     }
 
+    /// The colour each particle turns to as it ages (see [`ParticleBurst::end_color`]).
+    pub fn end_color(mut self, rgb: [f32; 3]) -> Self {
+        self.end_color = Some(rgb);
+        self
+    }
+
     /// HDR brightness (additive kinds) or opacity (alpha-blended kinds).
     pub fn intensity(mut self, intensity: f32) -> Self {
         self.intensity = intensity;
@@ -457,6 +467,7 @@ impl ParticleBurst {
             && finite(&self.life)
             && finite(&self.size)
             && finite(&self.color)
+            && self.end_color.is_none_or(|c| finite(&c))
             && finite(&[self.radius, self.vertical, self.spread, self.intensity, self.gravity, self.drag, self.duration, self.delay])
             && self.life[1] > 0.0
     }
@@ -466,7 +477,7 @@ impl ParticleBurst {
 /// [`Renderer::set_particle_settings`](crate::Renderer::set_particle_settings).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ParticleSettings {
-    /// Most particles alive at once (clamped to 1024..=1 048 576). Their memory is 144 bytes
+    /// Most particles alive at once (clamped to 1024..=1 048 576). Their memory is 176 bytes
     /// each; their cost follows the live count only. Changing it empties the pool.
     pub capacity: u32,
     /// Multiplies every burst's count (e.g. fewer at low effects quality).
@@ -507,6 +518,7 @@ struct GpuParticle {
     vel: [f32; 3],
     life: f32,
     data: [u32; 4],
+    look: [u32; 4],
 }
 
 /// Mirrors `ParticleParams` in `particle_common.wgsl`.
@@ -561,13 +573,20 @@ const EMIT_COLLIDE: u32 = 1;
 const EMIT_GROUND_COLOR: u32 = 2;
 const EMIT_COLD: u32 = 4;
 const EMIT_SPECK: u32 = 8;
+const EMIT_END_COLOR: u32 = 16;
+
+/// Four colour channels (0..1) as the shaders' `unpack4x8unorm` reads them.
+fn pack_unorm(c: [f32; 4]) -> u32 {
+    c.iter().enumerate().fold(0, |word, (i, v)| word | ((v.clamp(0.0, 1.0) * 255.0).round() as u32) << (8 * i))
+}
 
 impl GpuBurst {
     fn new(b: &ParticleBurst, first: u32, count: u32) -> GpuBurst {
         let flags = if b.collide { EMIT_COLLIDE } else { 0 }
             | if b.ground_color { EMIT_GROUND_COLOR } else { 0 }
             | if b.cold { EMIT_COLD } else { 0 }
-            | if b.speck { EMIT_SPECK } else { 0 };
+            | if b.speck { EMIT_SPECK } else { 0 }
+            | if b.end_color.is_some() { EMIT_END_COLOR } else { 0 };
         let (min_speed, max_speed) = (b.speed[0].max(0.0), b.speed[1].max(0.0));
         let (min_life, max_life) = (b.life[0].max(0.0), b.life[1].max(0.0));
         GpuBurst {
@@ -577,7 +596,7 @@ impl GpuBurst {
             speed_life: [min_speed.min(max_speed), max_speed, min_life.min(max_life), max_life],
             size_phys: [b.size[0].max(0.0), b.size[1].max(0.0), b.gravity, b.drag.max(0.0)],
             color: [b.color[0].max(0.0), b.color[1].max(0.0), b.color[2].max(0.0), b.intensity.max(0.0)],
-            info: [first, count, b.kind as u32 | flags << 8, 0],
+            info: [first, count, b.kind as u32 | flags << 8, b.end_color.map_or(0, |c| pack_unorm([c[0], c[1], c[2], 1.0]))],
             extra: [b.duration.max(0.0), b.delay.max(0.0), 0.0, 0.0],
         }
     }
@@ -1344,6 +1363,19 @@ mod tests {
         assert!(include_str!("shaders/particle_common.wgsl").contains(&format!("const FLAG_SPECK: u32 = {EMIT_SPECK}u;")));
         // Invalid bursts are dropped before they reach the GPU.
         assert!(!ParticleBurst::new(ParticleKind::Spark, [f32::NAN, 0.0, 0.0], 3).is_valid());
+        assert!(!ParticleBurst::new(ParticleKind::Glow, [0.0; 3], 3).end_color([f32::INFINITY, 0.0, 0.0]).is_valid());
+    }
+
+    /// A burst's end colour reaches its particles packed as the shaders unpack it, flagged; a
+    /// burst without one keeps its colour throughout (its word empty, as before end colours).
+    #[test]
+    fn an_end_colour_is_packed_for_the_particles() {
+        let plain = GpuBurst::new(&ParticleBurst::new(ParticleKind::Glow, [0.0; 3], 2).color([1.0, 0.5, 0.0]), 0, 2);
+        assert_eq!((plain.info[2] >> 8 & EMIT_END_COLOR, plain.info[3]), (0, 0));
+        let fading = GpuBurst::new(&ParticleBurst::new(ParticleKind::Glow, [0.0; 3], 2).color([1.0, 1.0, 1.0]).end_color([1.0, 0.25, -3.0]), 0, 2);
+        assert_eq!(fading.info[2] >> 8 & EMIT_END_COLOR, EMIT_END_COLOR);
+        assert_eq!(fading.info[3], 255 | 64 << 8 | 255 << 24, "red, a quarter green, no blue (held to 0), its alpha whole");
+        assert!(include_str!("shaders/particle_sim.wgsl").contains(&format!("const EMIT_END_COLOR: u32 = {EMIT_END_COLOR}u;")));
     }
 
     /// The structs shared with the GPU match their WGSL layouts.

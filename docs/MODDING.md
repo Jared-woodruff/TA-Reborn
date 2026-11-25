@@ -133,7 +133,8 @@ What the installer does with a package or a folder:
   (a mod that brings only those).
 - It keeps the TA archives there (one with an extension of its own, such as Total Battletech's
   `rev31.mwp`, is installed as a `.gp3`), TA's folders, TA Reborn's own (`menus/`: a menu theme's
-  pictures, panel art and list, as the Supreme Commander import makes them), folders the mod's own
+  pictures, panel art and list, as the Supreme Commander import makes them; `effects/`: particle
+  effects), folders the mod's own
   engine read in place of TA's ([renamed folders](#renamed-folders)) and documents (`.txt`, `.md`,
   `.rtf`, `.pdf`, `.doc`, `.docx`, `.htm`, `.html`, `.nfo`), which go in the mod's `docs/` folder:
   those beside the content, and those at the top of a folder of documents of its own (`Docs/`,
@@ -481,7 +482,8 @@ Paths are read in any case.
 | `gamedata/` | `sidedata.tdf` (sides, `[CANBUILD]`), `sidedata_<name>.tdf` ([side add-ons](#sides-of-a-mods-own)), `moveinfo.tdf` (movement classes), `sound.tdf` (sound categories), `sound_<name>.tdf` ([sound add-ons](#sounds): categories and sound sets) | |
 | `guis/` | `*.gui` pages: builders' menus (`<builder><n>.gui`), the side panel's | Top level only |
 | `download/` | `*.tdf` entries putting units on builders' menus | Top level only |
-| `anims/` | `*.gaf`: effects, explosions, build buttons' art, sides' emblems ([`logogaf`](#sides-of-a-mods-own)) | |
+| `anims/` | `*.gaf`: effects, explosions, muzzle flashes and trails ([`firegaf`, `trailgaf`](#how-weapons-look-and-effects-of-a-mods-own)), build buttons' art, sides' emblems ([`logogaf`](#sides-of-a-mods-own)) | |
+| `effects/` | `*.tdf` particle effects of the mod's own (TA Reborn's: [below](#how-weapons-look-and-effects-of-a-mods-own)) | Top level only |
 | `textures/` | `*.gaf` textures the models paint with; the `*.dds` textures surfaces name (anywhere) | |
 | `maps/` | `<map>.ota` with its `<map>.tnt` | Top level only; a map without its `.tnt` is left out |
 | `camps/` | Campaigns and their missions | |
@@ -1104,6 +1106,109 @@ the model has not, or its keys are out of order or past its end) is left out, th
 the log and the mod check name it. A death fades into its wreck's look in the moment its last pose
 holds.
 
+#### How weapons look, and effects of a mod's own
+
+TA draws a weapon's shots by its `rendertype` (a laser in its palette's `color` and `color2`, a
+shell's glow, a missile's model) and its blasts by its `explosiongaf` and `explosionart`; TA Reborn
+adds its own flashes, sparks, smoke and light by the same. A mod may give its weapons a look of
+their own, and its units effects of their own for their scripts to play. None of it plays a part
+in a battle: the simulation never reads it, saved games and replays do not depend on it, and
+players whose effects differ play together (the effects' files are no part of the data players
+compare, nor of a mod's digest).
+
+A weapon's keys, in its section beside TA's:
+
+| Key | What it does |
+| --- | --- |
+| `firegaf`, `fireart` | A muzzle flash: an animation in `anims/<firegaf>.gaf` (its entry `fireart`), played where a shot leaves, 20 frames a second. |
+| `trailgaf`, `trailart` | A trail: an animation left behind along a shot's flight every `smokedelay` seconds, each playing where it was left. |
+| `rgbcolor`, `rgbcolor2` | A shot's true colours, red, green and blue from 0 to 1 (`rgbcolor=1 0.5 0;`, Spring's names): a laser's or lightning bolt's glow and its core, a shell's glow and its tail. They take the place of the palette's `color` and `color2` and of TA Reborn's own; the shot's flash, its light and its impact's flash take the first. |
+| `thickness` | How wide a laser or lightning bolt is drawn, or a shell's glow, in pixels across. A beam drawn thinner than TA Reborn draws one of its damage lights the ground less, a thicker one more. |
+| `fireeffect` | An effect (below) played where a shot leaves; its forward the way the shot goes. |
+| `traileffect` | An effect played along a shot's flight as it goes, every frame; its forward the way it flies. Each of its bursts' `count` is how many particles it leaves a second. |
+| `hiteffect`, `waterhiteffect` | An effect played where a shot hits; on the water, the second where it is given. Its forward is back the way the shot came (up where that is not known). |
+| `smokedelay` | TA's: the seconds between a smoke trail's puffs (`smoketrail`; TA Reborn's smaller puffs come 2.5 times as often: TA's 0.1, every 0.04) and between a trail's animations. |
+| `endsmoke` | TA's: a puff of smoke where a shot ends. |
+
+A weapon with a muzzle flash or a fire effect of its own draws those in place of TA Reborn's own
+flash, sparks and smoke for its kind, and one with a hit effect that in place of TA Reborn's own
+sparks, flames, grit, smoke and flash where it hits; the light, the scorch mark on the ground, a big
+blast's shockwave, the camera's shake and the explosion's animation (`explosiongaf`) stay. A shot
+drawn as a model (`rendertype=1` and 6: missiles, torpedoes, bombs) is drawn in its owner's colour,
+as the unit that fired it, and its model's paint (a [surface](#models-with-surfaces-of-their-own))
+is read as the battle starts, so the first shots fly painted.
+
+**Effects** are files of TA Reborn's own, `effects/*.tdf` at the folder's top (any number of them,
+any number of effects to a file; an effect named again in a later file takes the place of the
+earlier one, as weapons do). Each top-level section is an effect, named by it (any case), each
+section within it a burst of particles, which the graphics card makes, moves and draws:
+
+```
+[GAUSS_HIT]
+	{
+	[FLASH]
+		{
+		kind=glow;
+		size=40 12;
+		life=0.1 0.15;
+		color=1 0.85 0.6;
+		endcolor=1 0.4 0.1;
+		intensity=3;
+		}
+	[SPARKS]
+		{
+		kind=spark;
+		count=12;
+		direction=up;
+		cone=60;
+		speed=60 200;
+		life=0.2 0.5;
+		}
+	}
+```
+
+| Key | What it gives |
+| --- | --- |
+| `kind` | What the particles are (the only key a burst needs): `spark` (white-hot streaks cooling as they fall and bounce; `cold=1` keeps their colour), `ember` (glowing motes rising), `glow` (a soft glow fading out: flashes, flares, plasma), `fire` (flames billowing up), `fireball`, `smoke`, `dust` (low over the ground), `dirt` (grit and clods thrown up), `spray` (droplets), or `ring`: a ring running out over the ground (or the water) from where the effect plays, from nothing to `size`'s second number across, its band as wide as the first; `count` is not read for it. |
+| `count` | How many particles (at most 256; 1 if not given); a trail's, how many a second. |
+| `size` | How big each is across as it is born and as it dies, in pixels. |
+| `life` | How long each lives, seconds: the least and the most. |
+| `speed`, `direction`, `cone` | How fast they fly, pixels a second (the least and the most); which way: `forward`, `back`, `up`, `down`, or `out` from the burst's middle every way; how far from it, degrees either side. |
+| `radius`, `vertical` | They start at random in a ball this big (pixels), squashed up and down by `vertical` (0 a flat disc, 1 a ball). |
+| `offset` | Where the burst's middle is from the effect's place: pixels to the right, up and forward. |
+| `color`, `endcolor` | Their colour, linear red, green and blue (0 to 1), and the colour they turn to as they age. Sparks, embers and flames are tinted by it (they cool as hot metal does by themselves); glows, smoke, dust, grit and spray are of it. |
+| `intensity` | How bright the glowing kinds are (sparks, embers, glows, flames, fireballs), how opaque the others (0 to 1); a ring's opacity. |
+| `gravity`, `drag` | How fast they fall (pixels a second, a second; less than none rises), and how the air slows them (their speed falls by e^-drag a second). |
+| `over`, `delay` | Their births spread over so many seconds, and the first of them after so many. |
+| `inherit` | The share of the shot's own speed a trail's particles take with them (0 to 1). |
+| `collide`, `cold`, `ground` | 1 or 0: bouncing off and resting on the ground (dying in water); sparks keeping their colour; taking the ground's colour where they start, times `color` (dust, grit). |
+
+One number where two are wanted serves for both (`life=0.3;`). Every key but `kind` may be left
+out: the kind's own is then taken (a spark's fall, a flame's rise). What an effect costs is
+bounded: at most 16 bursts are played of it and 256 particles made by a burst, the effects of the
+mods queue at most 6,000 particles a frame at the High effects quality (a quarter at Low, twice at
+Ultra), thinned past it, and the particles live in the battle's pool with every other (past half
+full new ones thin out, as they always have).
+
+**A unit's own effects:** `SfxEffects=SPARKS STEAM;` in its `[UNITINFO]` names effects, in order;
+its script plays the nth of them, counted from 0, with `emit-sfx 1024 + n from <piece>` (Spring's
+numbering of its explosion generators: `emit-sfx 1024 from flare` plays the first), where the piece
+is, its forward the way the unit faces. TA's own numbers play as ever (`emit-sfx 256 | 1`, white
+smoke).
+
+**Adjacency beams:** a building's `AdjacencyBeamColor=0.3 0.6 1;` (and `AdjacencyBeamThickness=3;`,
+pixels across, 2.5 where not given) draws a beam from it to each building its
+[adjacency](#adjacency) helps, along the ground, a pulse running along it to the one helped, as
+Supreme Commander draws its structures' adjacency; two buildings helping each other, one beam. In
+the viewer's sight only.
+
+MOD INFO's check (and `ta-tools validate-mod`) reads the effects as the game does, and tells an
+effect named that no file gives, a burst of no kind TA Reborn draws, a key that does not read, more
+bursts or particles than are played, and a colour or a thickness that is none
+([MOD_VALIDATION.md](MOD_VALIDATION.md)'s `effect.*`, `weapon.look`, `unit.look`). The Supreme
+Commander factions' weapons look as Forged Alliance's so
+([SUPCOM_UNITS.md](SUPCOM_UNITS.md#weapons-effects)).
+
 #### Build menus
 
 A builder's menu, what its player is offered, comes from two places:
@@ -1709,6 +1814,7 @@ names the mod's folder (an absolute path, with its `mod.toml`):
 | Script values | `crates/ta_sim/src/host.rs` |
 | Adjacency, buildings working round them | `crates/ta_data/src/adjacency.rs`, `crates/ta_sim/src/sim/adjacency.rs`, `crates/ta_sim/src/sim/repair_round.rs`, `apps/ta_game/src/hud/adjacency.rs` |
 | Abilities: minimum ranges, toggles, stealth fields, remote viewing, stuns, auras | `crates/ta_data/src/toggle.rs`, `crates/ta_sim/src/defs.rs` (`Abilities`), `crates/ta_sim/src/combat.rs` (`too_near`), `crates/ta_sim/src/combat/stun.rs`, `crates/ta_sim/src/sim/toggle.rs`, `remote_view.rs`, `aura.rs`, `crates/ta_data/src/validation/abilities.rs`, `apps/ta_game/src/game/abilities.rs`, `apps/ta_game/src/hud/abilities.rs` |
+| Weapons' looks and effects of a mod's own, adjacency beams | `crates/ta_data/src/weapon.rs` (`WeaponLook`), `crates/ta_data/src/effect.rs`, `apps/ta_game/src/effects_mods.rs`, `crates/ta_render/src/gpu_particles.rs` |
 | Models' surfaces and clips (walks, deaths, buildings at work) | `crates/ta_formats/src/surface.rs`, `crates/ta_formats/src/anims.rs`, `apps/ta_game/src/scene/walk.rs`, `apps/ta_game/src/scene/work.rs`, `apps/ta_game/src/effects_remains.rs` |
 | The classic build pages, 768-pixel layouts, shared places | `apps/ta_game/src/hud_classic_art.rs` |
 | The catalogue, installs, the MODS page | `apps/ta_launcher/src/catalogue.rs`, `getmods.rs`, `modlist.rs`, `mod_library.rs`, `pages/mods.rs`, `pages/mod_order.rs`, `pages/mod_report.rs` |

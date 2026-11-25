@@ -795,3 +795,20 @@ finding names it "die Waffe" after the colon and its hint says "Gib ihr" (a unit
 | a side's alerts (its announcer, `alerts`) | {name}-Warnungen (alerts = Warnungen, as UNIT REPLIES' help) |
 | stream information (a FLAC file's) | Stream-Informationen |
 | the units' sounds (a step of "{unit} wird erstellt") | Die Vertonung der Einheiten (singular, for wird) |
+
+## Mods' effects (`validation.rs`: particle effects in `effects/*.tdf`, a weapon's look, an adjacency beam's colour)
+
+Mod keys and values (`rgbcolor`, `thickness`, `kind=spark…`, `direction`, `AdjacencyBeamColor`, `emit-sfx`)
+stay as written; a key with its value is "der Eintrag {key}={value} von {name}", as the sound sets'.
+Spring (the engine) is a name: "wie Spring".
+
+| English | Deutsch |
+|---|---|
+| effect (a particle effect: a section of `effects/*.tdf`) | Effekt: "Effekt {name} (effects/*.tdf)", "des Effekts {effect}", "{name}-Effekt für emit-sfx {sfx}" |
+| burst (a section within an effect, of one kind: spark, ember, glow…) | Stoß (der Stoß, pl. Stöße; as Feuerstoß, Dampfstoß): "Der Stoß {burst} des Effekts {effect}", "Gib ihm kind=…" |
+| particle | Partikel (as the settings) |
+| muzzle flash / trail (a weapon's GAF animations) | {name}-Mündungsfeuer / {name}-Schweif |
+| fire / trail / hit / water hit effect (a weapon's particle effects) | {name}-Abfeuereffekt / {name}-Schweifeffekt / {name}-Einschlageffekt / {name}-Wassereinschlageffekt (as Abfeuersound, Einschlagsound) |
+| its kind's own (colours, width, value: its kind's defaults) | "in den Farben ihrer Art", "in der Breite ihrer Art" (a weapon); "Es gilt der Wert seiner Art" (a burst) |
+| beam (Supreme Commander's adjacency beam) | Strahl |
+| an effect costs every frame it plays | Ein Effekt kostet in jedem Bild Rechenzeit, solange er läuft |

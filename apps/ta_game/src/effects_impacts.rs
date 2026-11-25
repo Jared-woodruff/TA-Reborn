@@ -180,6 +180,10 @@ pub(super) fn impact_tint(w: &ta_sim::WeaponType, sim: &Sim) -> [f32; 3] {
     if w.def.paralyzer {
         return [0.55, 0.75, 1.0];
     }
+    // (A mod's true colour, paled as a laser's is.)
+    if let Some(c) = w.def.look.rgb_color {
+        return super::beam_color(c).map(|v| 0.35 + 0.65 * v);
+    }
     match w.def.render_type {
         RenderType::Laser | RenderType::Lightning => {
             let c = super::beam_color(super::weapon_color(w, sim));

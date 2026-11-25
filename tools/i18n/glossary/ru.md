@@ -675,3 +675,20 @@ Commander installs enhancements on itself, one a slot. Widths measured in Bahnsc
 | a side's alerts (its announcer) | тревоги (as UNIT REPLIES' help) |
 | stream information (FLAC) | информация о потоке |
 | the units' sounds (after "Создаётся {unit}") | озвучка юнитов (singular, for создаётся) |
+
+## Эффекты модов (`validation.rs`: эффекты частиц в `effects/*.tdf`, вид оружия, цвет луча соседства)
+
+Mod keys and values (`rgbcolor`, `thickness`, `kind=spark…`, `direction`, `AdjacencyBeamColor`, `emit-sfx`)
+stay as written; a key with its value is "Ключ {key}={value} оружия {name}", as the sound sets'. Spring (the
+engine) is a name: "как в Spring".
+
+| English | Русский |
+|---|---|
+| effect (a particle effect: a section of `effects/*.tdf`) | эффект: "эффект {name} (effects/*.tdf)", "эффект {name} для emit-sfx {sfx}" |
+| burst (a section within an effect, of one kind: spark, ember, glow…) | выброс (as "выброс частиц"): "Выброс {burst} эффекта {effect}"; counts: "Выбросов в эффекте {effect}: {n}", "Запрошено частиц в выбросе …: {count}" |
+| particle | частица |
+| muzzle flash / trail (a weapon's GAF animations) | дульная вспышка {name} / шлейф {name} |
+| fire / trail / hit / water hit effect | эффект выстрела / шлейфа / попадания {name}, эффект попадания {name} в воду (as "звук выстрела {name}") |
+| its kind's own (colours, width, value: its kind's defaults) | принятый для его типа: "цветами, принятыми для его типа", "берётся значение, принятое для его типа" |
+| beam (Supreme Commander's adjacency beam) | луч |
+| an effect costs every frame it plays | эффект отнимает время в каждом кадре, пока воспроизводится |

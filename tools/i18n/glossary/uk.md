@@ -711,3 +711,20 @@ Forged Alliance's two features, in the terms the launcher's "Ще в плана�
 | a side's alerts (its announcer) | тривоги (as UNIT REPLIES' help) |
 | stream information (FLAC) | інформація про потік |
 | the units' sounds (after "Створюється {unit}") | озвучення юнітів (singular, for створюється) |
+
+## Ефекти модів (`validation.rs`: ефекти частинок в `effects/*.tdf`, вигляд зброї, колір променя сусідства)
+
+Mod keys and values (`rgbcolor`, `thickness`, `kind=spark…`, `direction`, `AdjacencyBeamColor`, `emit-sfx`)
+stay as written; a key with its value is "Ключ {key}={value} зброї {name}", as the sound sets'. Spring (the
+engine) is a name: "як у Spring". A TDF section is секція, as "секцію UNITINFO".
+
+| English | Українська |
+|---|---|
+| effect (a particle effect: a section of `effects/*.tdf`) | ефект: "ефект {name} (effects/*.tdf)", "ефект {name} для emit-sfx {sfx}" |
+| burst (a section within an effect, of one kind: spark, ember, glow…) | викид (as "викид частинок"): "Викид {burst} ефекту {effect}"; counts: "Викидів в ефекті {effect}: {n}", "Запитано частинок у викиді …: {count}" |
+| particle | частинка |
+| muzzle flash / trail (a weapon's GAF animations) | дульний спалах {name} / шлейф {name} |
+| fire / trail / hit / water hit effect | ефект пострілу / шлейфу / влучання {name}, ефект влучання {name} у воду (as "звук пострілу {name}") |
+| its kind's own (colours, width, value: its kind's defaults) | прийнятий для її (його) типу: "кольорами, прийнятими для її типу", "береться значення, прийняте для його типу" |
+| beam (Supreme Commander's adjacency beam) | промінь |
+| an effect costs every frame it plays | ефект забирає час у кожному кадрі, поки відтворюється |

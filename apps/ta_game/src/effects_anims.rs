@@ -1,6 +1,7 @@
 //! TA's explosion animations, put in the sprite atlas as a battle starts: those the weapons
-//! name (their blasts on land, in water and in lava) and TA's own blasts Reborn's effects use
-//! (`fx/explode2` to `explode4`: a dying unit's, its pieces', a wreck's crash).
+//! name (their blasts on land, in water and in lava, and a mod's muzzle flashes and trails:
+//! `firegaf`, `trailgaf`) and TA's own blasts Reborn's effects use (`fx/explode2` to
+//! `explode4`: a dying unit's, its pieces', a wreck's crash).
 //!
 //! Every frame goes into the one sprite atlas the map's features use too. Each animation's
 //! file is read and its frames decoded one at a time (`GafReader`), each dropped once it is in
@@ -36,6 +37,9 @@ pub(super) struct Explosions {
     pub looks: Vec<AnimLook>,
     /// Per weapon: (land, water, lava) animation indices.
     pub weapon_anims: Vec<[Option<usize>; 3]>,
+    /// Per weapon: its muzzle flash's and its trail's animations (`firegaf`/`fireart`,
+    /// `trailgaf`/`trailart`), where it names them.
+    pub weapon_fire_trail: Vec<[Option<usize>; 2]>,
     /// TA's own blasts ("fx/explode3"...) where they are TA's size (see [`load`]).
     pub generic: HashMap<String, usize>,
 }
@@ -74,6 +78,15 @@ pub(super) fn load(vfs: &Vfs, atlas: &mut SpriteAtlas, palette: &Palette, sim: &
         .map(|w| {
             let d = &w.def;
             [want(&d.explosion_gaf, &d.explosion_art, true), want(&d.water_explosion_gaf, &d.water_explosion_art, true), want(&d.lava_explosion_gaf, &d.lava_explosion_art, true)]
+        })
+        .collect();
+    let look_wants: Vec<[Option<usize>; 2]> = sim
+        .weapon_types
+        .types
+        .iter()
+        .map(|w| {
+            let look = &w.def.look;
+            [want(&look.fire_gaf, &look.fire_art, true), want(&look.trail_gaf, &look.trail_art, true)]
         })
         .collect();
     let generic_wants: Vec<(String, usize)> = GENERIC.iter().filter_map(|e| want("fx", e, false).map(|i| (format!("fx/{e}"), i))).collect();
@@ -148,6 +161,7 @@ pub(super) fn load(vfs: &Vfs, atlas: &mut SpriteAtlas, palette: &Palette, sim: &
 
     let anim = |w: Option<usize>| w.and_then(|i| loaded.get(&i).copied());
     let weapon_anims = weapon_wants.iter().map(|set| set.map(anim)).collect();
+    let weapon_fire_trail = look_wants.iter().map(|set| set.map(anim)).collect();
     let generic = generic_wants.into_iter().filter_map(|(key, i)| anim(Some(i)).map(|a| (key, a))).collect();
     let (w, h) = atlas.size();
     log::info!(
@@ -159,7 +173,7 @@ pub(super) fn load(vfs: &Vfs, atlas: &mut SpriteAtlas, palette: &Palette, sim: &
         if plan.reduced() > 0 { format!(" ({} drawn reduced, at {:.0}% of their size)", plan.reduced(), plan.density * 100.0) } else { String::new() },
         (u64::from(w) * u64::from(h) * 4) >> 20,
     );
-    Explosions { anims, looks, weapon_anims, generic }
+    Explosions { anims, looks, weapon_anims, weapon_fire_trail, generic }
 }
 
 fn path(file: &str) -> String {

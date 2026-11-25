@@ -727,3 +727,20 @@ apostrophes.
 | a side's alerts (its announcer) | allarmi (as UNIT REPLIES' help) |
 | stream information (FLAC) | informazioni di flusso |
 | the units' sounds (after "Creazione di {unit}") | suoni per le unità (no article: "di" would need "dei") |
+
+## Gli effetti delle mod (`validation.rs`: effetti di particelle in `effects/*.tdf`, l'aspetto di un'arma, il colore del fascio di adiacenza)
+
+Mod keys and values (`rgbcolor`, `thickness`, `kind=spark…`, `direction`, `AdjacencyBeamColor`, `emit-sfx`)
+stay as written; a key with its value is "la voce {key}={value} di {name}", as the sound sets'. Spring (the
+engine) is a name: "come in Spring". Straight apostrophes.
+
+| English | Italiano |
+|---|---|
+| effect (a particle effect: a section of `effects/*.tdf`) | effetto: "l'effetto {name} (effects/*.tdf)", "effetto di {name} per emit-sfx {sfx}" |
+| burst (a section within an effect, of one kind: spark, ember, glow…) | raffica (f., pl. raffiche): "La raffica {burst} di {effect}", "Assegnale kind=…" |
+| particle | particella |
+| muzzle flash / trail (a weapon's GAF animations) | vampa di bocca di {name} / scia di {name} |
+| fire / trail / hit / water hit effect | effetto di sparo / di scia / di impatto / di impatto in acqua di {name} (as "suono di sparo di {name}") |
+| its kind's own (colours, width, value: its kind's defaults) | proprio del suo tipo: "con i colori propri del suo tipo", "si usa il valore proprio del suo tipo" |
+| beam (Supreme Commander's adjacency beam) | fascio |
+| an effect costs every frame it plays | un effetto ha un costo in ogni fotogramma in cui viene riprodotto |

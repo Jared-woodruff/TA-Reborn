@@ -247,7 +247,7 @@ fn particle_vertex(p: Particle, corner_index: u32) -> VOut {
     // (A fireball swells fast at first, then more and more slowly.)
     let grown = select(t, 1.0 - pow(1.0 - t, 2.2), kind == KIND_FIREBALL);
     var size = max(mix(sizes.x, sizes.y, grown), 0.01) * size_variation(kind, seed);
-    let tint = unpack4x8unorm(p.data.z);
+    let tint = particle_tint(p, t);
     let brightness = particle_brightness(p);
     let eye = view_dir(p.pos);
 
