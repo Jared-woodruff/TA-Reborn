@@ -840,6 +840,35 @@ they stand in for them.
 TA Reborn reads TA's formats as TA's own data has them; [FORMATS.md](FORMATS.md) has the verified
 details. What mod makers ask about most:
 
+#### TA Reborn's own keys, at a glance
+
+Beside TA's own keys, TA Reborn reads keys of its own: TA itself ignores them, so a mod that gives
+them still loads in TA, without what they do. These came with the Supreme Commander factions, each
+for any mod to use; the sections below tell them in full (older ones: [Adjacency](#adjacency),
+[Units that upgrade in place](#units-that-upgrade-in-place), [Enhancements](#enhancements)).
+
+| Keys | Given by | Section |
+| --- | --- | --- |
+| `gamedata/sound_<name>.tdf` (a sound add-on), `base`, `[SOUNDSETS]` (`sound<n>`, `weight<n>`, `volume`, `pitch`, `priority`, `radius`, `maxplaying`, `norepeat`, `fadeout`) | The sound tables | [Sounds](#sounds) |
+| `death`, `crash`, `sink`, `collapse`, `startmove`, `stopmove`, `moveloop`, `takeoff`, `landing`, `buildloop`, `reclaimloop`, `captureloop`, `buildstop`, `reclaimstop`, `capturestop`, `donebuilt`, `activeloop`, `open`, `close`, `shieldon`, `shieldoff` | A unit's sound category | [Sounds](#sounds) |
+| `soundloop`, `soundstop`, `soundstartwater` (and TA's `soundtrigger`, now honoured) | A weapon | [Sounds](#sounds) |
+| `alerts` (`commanderattacked`, `nuclearlaunch`) | A side | [Sounds](#sounds) |
+| `firegaf`, `fireart`, `trailgaf`, `trailart`, `rgbcolor`, `rgbcolor2`, `thickness`, `fireeffect`, `traileffect`, `hiteffect`, `waterhiteffect` | A weapon | [How weapons look](#how-weapons-look-and-effects-of-a-mods-own) |
+| `effects/*.tdf`: effects of bursts (`kind`, `count`, `size`, `life`, `speed`, `direction`, `cone`, `color`, `endcolor` and the rest) | The mod's files | [How weapons look](#how-weapons-look-and-effects-of-a-mods-own) |
+| `SfxEffects`, `AdjacencyBeamColor`, `AdjacencyBeamThickness` | A unit | [How weapons look](#how-weapons-look-and-effects-of-a-mods-own) |
+| `minrange`, `paralyzetime`, `paralyzeradius`, `paralyzeonfire`, `paralyzeexempt` | A weapon | [Abilities](#abilities) |
+| `[TOGGLE]` | A unit | [Abilities](#abilities) |
+| `RadarStealthField`, `SonarStealthField`, `RemoteViewRadius`, `RemoteViewEnergy`, `RegenAuraRadius`, `RegenAuraRate`, `RegenAuraShare` | A unit, or an enhancement | [Abilities](#abilities) |
+| `ShieldHealth`, `ShieldRegen`, `ShieldRegenDelay`, `ShieldRechargeTime`, `ShieldRadius`, `ShieldHeight`, `ShieldEnergyUse` | A unit, or an enhancement | [Shields](#shields) |
+| `TransportSlots`; `TransportClass` | An aircraft; its passenger | [Logistics](#logistics) |
+| `CanTeleport`, `TeleportEnergy`, `TeleportTime` | A unit, or an enhancement | [Logistics](#logistics) |
+| `[DRONES]` (`Unit`, `Count`, `RebuildTime`, `RebuildCostMetal`, `RebuildCostEnergy`, `Piece`, `Leash`) | A unit, or an enhancement | [Logistics](#logistics) |
+| `MobileFactory`, `BuildPiece` | A unit | [Logistics](#logistics) |
+
+The mod check (MOD INFO, `ta-tools validate-mod`) reads all of them as the game does, and its report
+("How TA Reborn plays what it uses") lists what a mod uses of the abilities, the shields and the
+logistics.
+
 #### Units, weapons and features
 
 - A unit's script is `scripts/<UnitName>.cob`, else its model's, `scripts/<Objectname>.cob`.
@@ -946,7 +975,7 @@ random each time):
 | `buildstop`, `reclaimstop`, `capturestop` | As it stops that work | Where it is |
 | `donebuilt` | It is done, anyone's in sight | Where it is |
 | `activeloop`, `open`, `close` | While it is on and at work (finished, its upkeep paid): a loop; as it comes on and goes off | Where it is |
-| `shieldon`, `shieldoff` | Its shield comes up and goes down (none yet: TA Reborn plays no shields) | Where it is |
+| `shieldon`, `shieldoff` | Its shield comes up and goes down ([Shields](#shields)) | Where it is |
 | `base` | The category it takes every key it does not give from (and that one's `base`, in turn): a unit of its own sounds keeps TA's replies and countdown with `base=ARM_TANK;` | |
 
 The loops play for the units nearest the view alone (eight moving, six at work, six buildings at

@@ -3,6 +3,10 @@
 ## Unreleased
 
 ### Added
+- [MODDING.md](docs/MODDING.md) has an index of TA Reborn's own keys that came with the Supreme
+  Commander factions ("TA Reborn's own keys, at a glance"): the sounds, the weapons' looks and
+  effects, the abilities, the shields and the logistics, each key with what gives it and its
+  section.
 - Supreme Commander: Forged Alliance's factions sound as they do in their game: their guns, beams
   and missiles, the blasts their shots end in, their deaths and wrecks crashing, their engines on
   the move, their builders and buildings at work, their selection, and the announcer telling you
