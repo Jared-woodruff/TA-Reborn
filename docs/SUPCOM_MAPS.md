@@ -9,9 +9,11 @@ The import was an experimental feature (Settings, LAUNCHER: ENABLE EXPERIMENTAL 
 1.0.9; it is now offered to every player.
 
 - **Players:** the launcher's Maps page, **SUPREME COMMANDER…** (its MAPS tab; the Mods page's
-  opens the same dialog at its FACTIONS). The dialog finds the game (a folder chosen with CHANGE
-  FOLDER…, or the copy switched to, is kept for the next start in the launcher's settings folder,
-  `supcom.toml`), lists its skirmish maps and the player's own (downloaded maps and Forged
+  opens the same dialog at its FACTIONS; with nothing of the game imported yet, at its wizard,
+  which makes every part in one go: [below](#the-wizard-and-update-all)). The dialog finds the
+  game (a folder chosen with CHANGE FOLDER…, or the copy switched to, is kept for the next start
+  in the launcher's settings folder, `supcom.toml`), lists its skirmish maps and the player's own
+  (downloaded maps and Forged
   Alliance Forever's vault) with the game's own pictures of them, and makes the chosen ones, one
   after another (at first, where the pack holds maps an older converter made, those alone are
   chosen, listed first, to be made again: its update; else, while the pack holds none of them,
@@ -53,7 +55,72 @@ The import was an experimental feature (Settings, LAUNCHER: ENABLE EXPERIMENTAL 
 
 The code: `crates/ta_supcom` (finding the game, reading it, converting), `crates/ta_mapart` (the
 art in TA's form, shared with TA Reborn's own map generator), `apps/ta_launcher/src/supcom.rs` and
-`pages/supcom.rs` (the dialog).
+`pages/supcom.rs` (the dialog), `supcom_wizard.rs` and `pages/supcom_wizard.rs` (its wizard).
+
+## The wizard, and UPDATE ALL
+
+The four imports (the maps here, the factions in [SUPCOM_UNITS.md](SUPCOM_UNITS.md), the music in
+[SUPCOM_MUSIC.md](SUPCOM_MUSIC.md), the menus' look in [SUPCOM_MENUS.md](SUPCOM_MENUS.md)) each
+have their tab, their choice and their import. The dialog's wizard makes them in one go:
+
+- **When it shows.** With none of the four imports' mods installed (named as their imports name
+  them; another mod of an id is not one), SUPREME COMMANDER… opens the wizard rather than the tabs.
+  The Mods page offers it once, in a card over the library, where Forged Alliance is found on the
+  computer (looked for on a worker the first time the page is shown in a launch) and nothing of
+  it is imported: IMPORT… opens it, NOT NOW puts the card away; either way it is not offered again
+  (`offered = true` in the launcher's `supcom.toml`, beside the game's folder as chosen). Nothing
+  ever opens by itself.
+- **Its steps** (named in a row at its top: FORGED ALLIANCE, WHAT TO MAKE, IMPORTING, DONE).
+  *The game:* the copy found (GOG's, Steam's or a folder, a switch each where there
+  are several) with CHANGE FOLDER…, and a picture of each part made of it; without the game, the
+  card that says what is needed, its stores, CHOOSE FOLDER… and LOOK AGAIN (which looks again for
+  every part). *What to make:* a card for each part, ticked, in the order they are made (the
+  factions, the music, the menus' look, the maps), each saying what it makes (all four factions and
+  their units; the soundtrack's tracks; the menus' pictures and sounds; the game's own skirmish
+  maps, not the player's own, which the MAPS tab offers), what it takes on the disk and about how
+  long, by its tab's own estimates (`time_estimate`, `size_estimate`), and the total; a part that
+  cannot be made says why and is held unticked (TA's own install not found, for the maps; no
+  tracks in the copy; a copy of its mod an import cannot replace). CHOOSE IN DETAIL… opens the
+  tabs. *Importing:* every part ticked, one after another, in one view: each waiting, being made
+  (its tab's own progress and words), made (its import's own words) or not (why). *Done:* what
+  each came to, turned on, with the settings it set (MENU THEME and SOUNDTRACK, said in the
+  imports' own words), a note that the tabs make or remove each part on its own, and PLAY A
+  SKIRMISH (the game opened at a skirmish's setup; PLAY where neither factions nor maps were
+  made).
+- **The import.** The wizard imports nothing itself: `LauncherApp::wizard_tick`, from the app's
+  update where the imports are polled, starts each part once the one before has ended. It waits
+  for its tab's look (made again where it is not current), sets its tab's choice (the maps chosen,
+  the sides chosen), then starts its tab's own import (`begin_supcom_import`, as IMPORT on the tab
+  does: the mod made again where the launcher finds it, a question first over another mod of its
+  id). A part waits, said why, for what passes (the game started, a mod being installed) and is
+  left out, said why, for what does not (KEEP at the question, a copy in TA Reborn's program
+  folder). The maps come last: the game's 54 take twenty minutes, and the others a minute. STOP
+  ends it once the part in hand is made (the factions, the music and the menus' look are finished,
+  their imports installing nothing when stopped); with the maps in hand, their import stops after
+  the map in hand, those made installed. The dialog may be closed meanwhile: the footer's chip shows
+  the part in hand and opens the wizard again; the parts' own notices are left to one at the end,
+  and the wizard opens at what it came to once. The game does not start while it waits between
+  parts.
+- **After a first import** SUPREME COMMANDER… opens the tabs as before, which say at their top what
+  is not imported yet, with IMPORT IN ONE GO… (the wizard at what to make, with those parts only).
+- **UPDATE ALL.** Where any of the imports' mods was made by an older converter (`update_tab`), the
+  Mods page says so in one bar over the library ("Supreme Commander imports were made by an older
+  TA Reborn: …", UPDATE ALL), and the tabs at their top. It opens the wizard straight at its
+  import, of those parts only: the maps an older converter made (the player's own among them; a
+  map whose folder is gone stays in the pack as it was), the factions the mod holds (the same
+  sides), the music, the menus' look. The music's and the menus' settings follow as their imports
+  make them follow. Each mod's own UPDATE… on the Mods page still opens its tab.
+- **Captures.** `--show supcom-wizard` (its first step, whatever is imported), `:choose` (what to
+  make), `:import` and `:done` (its import of every part begun; `TA_SUPCOM_SHOT_IMPORTING=1` takes
+  the picture during it), a third field naming the maps the maps' part makes
+  (`supcom-wizard:done:SCMP_009,SCMP_003`: all 54 take twenty minutes); `--show supcom-rest[:choose…]`
+  the parts not imported yet; `--show supcom-update[:<maps>]` UPDATE ALL.
+- **Tests:** `supcom_wizard::tests` (the parts' order, the import told as it went) and
+  `pages::supcom_wizard::tests` in the launcher: the steps walked, the queue's order and each
+  part's choice set before it starts, STOP (after the part in hand; the maps after the map in
+  hand), KEEP at the question, UPDATE ALL's parts and choices, the tabs' IMPORT IN ONE GO…, the
+  Mods page's offer made once, and every step's buttons in sight in a small window (imports
+  pretended, `Import::pretend_start`, never this computer's copy).
 
 ## Finding the game
 

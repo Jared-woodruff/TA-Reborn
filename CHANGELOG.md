@@ -54,6 +54,19 @@
   menu theme's loudest moments as a row of bars over one of the game's paintings, and the game's
   logo and a panel of its menus over their space. Mods imported before get theirs when the
   launcher starts, without being made again ([SUPCOM_MAPS.md](docs/SUPCOM_MAPS.md), "Banners").
+- The Supreme Commander import in one go: with nothing of the game imported yet, SUPREME
+  COMMANDER… opens a wizard rather than the tabs. It shows the copy of the game found (or what is
+  needed without one), then the four parts, ticked (the factions, the soundtrack, the menus' look
+  and the game's skirmish maps), each with what it takes on the disk and about how long, and the
+  total; IMPORT makes them one after another in one view, each part's progress, then what each
+  came to, and PLAY A SKIRMISH. STOP ends it once the part in hand is made (the maps once the map
+  in hand is), and it goes on with the dialog closed, the launcher's footer showing it. The Mods
+  page offers it once where Forged Alliance is installed and nothing of it imported yet (NOT NOW
+  puts the offer away). After a first import the dialog opens at its tabs as before, which offer
+  the parts not imported yet in one go (IMPORT IN ONE GO…). And when a later TA Reborn makes the
+  imports better, one UPDATE ALL, on the Mods page and in the dialog, makes again everything an
+  older one made: the maps it made, the factions the mod holds, the music and the menus' look
+  ([SUPCOM_MAPS.md](docs/SUPCOM_MAPS.md), "The wizard, and UPDATE ALL").
 - The Supreme Commander factions show their own emblems in the classic interface, at the top left
   and in the unit bar, in each player's colour as Arm's and Core's are, in place of TA's plain
   square (UPDATE… on the Mods page makes the factions again). A mod's own side can name its emblem

@@ -8,7 +8,8 @@
 //! past the room. The maps' list ends between two rows and draws only the
 //! rows in sight, and one past either edge for the keys to reach (each map's picture uploaded
 //! once); the buttons stay in sight under the body however small the window, and why one cannot
-//! be pressed is written beside it.
+//! be pressed is written beside it. With nothing imported yet the dialog shows its wizard instead
+//! (`pages/supcom_wizard.rs`), which makes every part in one go.
 
 use egui::{Color32, CornerRadius, Rect, RichText, ScrollArea, Sense, Stroke, StrokeKind, Ui, UiBuilder, vec2};
 use ta_ui::i18n::{n, t, tf};
@@ -88,32 +89,39 @@ struct Source {
 
 /// What the footer was asked to do.
 #[derive(Default)]
-struct Asked {
-    close: bool,
-    actions: Vec<Action>,
+pub(super) struct Asked {
+    pub(super) close: bool,
+    pub(super) actions: Vec<Action>,
 }
 
-/// A map's or a faction's card, to choose it by.
-struct Pick<'a> {
+/// A map's, a faction's or a wizard's part's card, to choose it by.
+pub(super) struct Pick<'a> {
     /// Its own id, the same wherever it is in the list (as rows scroll in and out of sight, an id
     /// counted from what came before it would change, and the keys' focus be lost).
-    id: egui::Id,
-    width: f32,
-    height: f32,
-    picture: Option<egui::TextureHandle>,
-    picture_side: f32,
-    title: &'a str,
-    title_size: f32,
+    pub(super) id: egui::Id,
+    pub(super) width: f32,
+    /// Its height; with `wrap`, at least this, taller where its lines need it.
+    pub(super) height: f32,
+    /// Its picture, in its square (with `crop`, its middle square, not squeezed into it); where
+    /// it has none, `glyph` on the dark square, else the square alone.
+    pub(super) picture: Option<egui::TextureHandle>,
+    pub(super) crop: bool,
+    pub(super) glyph: Option<widgets::Glyph>,
+    pub(super) picture_side: f32,
+    pub(super) title: &'a str,
+    pub(super) title_size: f32,
     /// The lines under the title: their words and colour.
-    lines: &'a [(&'a str, Color32)],
+    pub(super) lines: &'a [(&'a str, Color32)],
+    /// The lines wrap (else each is cut short to its room).
+    pub(super) wrap: bool,
     /// Whether it was imported before (its mark, and the mark's colour).
-    mark: Option<(&'a str, Color32)>,
+    pub(super) mark: Option<(&'a str, Color32)>,
     /// What the card says, for screen readers (its box's name).
-    spoken: &'a str,
-    /// Why it cannot be chosen now: an import under way.
-    held: Option<&'static str>,
+    pub(super) spoken: &'a str,
+    /// Why it cannot be chosen now: an import under way (a wizard's part: why it cannot be made).
+    pub(super) held: Option<&'a str>,
     /// What the pointer resting on it shows.
-    hover: Option<&'a str>,
+    pub(super) hover: Option<&'a str>,
 }
 
 impl LauncherApp {
@@ -202,6 +210,11 @@ impl LauncherApp {
 
     pub(crate) fn supcom_dialog(&mut self, ctx: &egui::Context) {
         if !self.supcom.open {
+            return;
+        }
+        // (The wizard in the tabs' place: nothing imported yet, its import under way...)
+        if self.supcom.wizard.shown {
+            self.wizard_dialog(ctx);
             return;
         }
         let width = (ctx.content_rect().width() - 80.0).clamp(1.0, WIDTH);
@@ -327,6 +340,7 @@ impl LauncherApp {
         let area = ScrollArea::vertical().id_salt(("supcom_tab", self.supcom.tab.label())).max_height(room).min_scrolled_height(room).auto_shrink([false, false]);
         ta_ui::scroll::show(ui, area, ta_ui::scroll::Behind::Plate, |ui| {
             ui.spacing_mut().item_spacing.y = 6.0;
+            self.wizard_offers(ui, actions);
             self.other_tab_news(ui);
             match self.supcom.tab {
                 Tab::Maps => self.maps_body(ui, actions),
@@ -508,7 +522,7 @@ impl LauncherApp {
         let mut chosen = self.supcom.factions.is_chosen(side);
         let picture = self.supcom.factions.texture(ui.ctx(), side);
         let lines = [(units.as_str(), TEXT), (kinds.as_str(), STEEL)];
-        let pick = Pick { id: egui::Id::new(("supcom_faction", side)), width, height: FACTION_ROW, picture, picture_side: PORTRAIT, title: side, title_size: 15.0, lines: &lines, mark, spoken: &spoken, held, hover: None };
+        let pick = Pick { id: egui::Id::new(("supcom_faction", side)), width, height: FACTION_ROW, picture, crop: false, glyph: None, picture_side: PORTRAIT, title: side, title_size: 15.0, lines: &lines, wrap: false, mark, spoken: &spoken, held, hover: None };
         let (toggled, gained) = pick_card(ui, &pick, &mut chosen);
         if toggled {
             self.supcom.factions.choose(side, chosen);
@@ -653,8 +667,14 @@ impl LauncherApp {
     /// Where the game is (or that it was not found, or could not be looked for) as the tab shown
     /// found it, and on the maps' tab the player's own maps' folders.
     fn supcom_source(&mut self, ui: &mut Ui, actions: &mut Vec<Action>) {
-        let maps = self.supcom.tab == Tab::Maps;
-        let (looking, failed, source) = match self.supcom.tab {
+        let tab = self.supcom.tab;
+        self.supcom_source_of(ui, actions, tab, tab == Tab::Maps);
+    }
+
+    /// Where the game is as the tab `tab`'s look found it (the wizard's, as the maps' did), and
+    /// with `maps` the player's own maps' folders.
+    pub(super) fn supcom_source_of(&mut self, ui: &mut Ui, actions: &mut Vec<Action>, tab: Tab, maps: bool) {
+        let (looking, failed, source) = match tab {
             Tab::Maps => {
                 let found = self.supcom.found().unwrap_or_default();
                 (self.supcom.scanning() && self.supcom.look.found.is_none(), self.supcom.look.failed, Source { copies: found.copies.clone(), install: found.install.clone(), picked_gone: found.picked_gone.clone(), error: found.error.clone() })
@@ -673,7 +693,7 @@ impl LauncherApp {
             }
         };
         if looking {
-            widgets::busy_line(ui, match self.supcom.tab {
+            widgets::busy_line(ui, match tab {
                 Tab::Maps => t("Looking for Supreme Commander: Forged Alliance…"),
                 Tab::Factions => t("Looking for Supreme Commander: Forged Alliance and its units…"),
                 Tab::Music => t("Looking for Supreme Commander: Forged Alliance and its music…"),
@@ -842,7 +862,7 @@ impl LauncherApp {
         let picture = self.supcom.texture(ui.ctx(), &entry.folder);
         let lines = [(detail.as_str(), STEEL)];
         let description = entry.scenario.description.trim();
-        let pick = Pick { id: egui::Id::new(("supcom_map", &entry.folder)), width, height, picture, picture_side: THUMB.min(height - 8.0), title: name, title_size: 14.0, lines: &lines, mark, spoken: &spoken, held, hover: (!description.is_empty()).then_some(description) };
+        let pick = Pick { id: egui::Id::new(("supcom_map", &entry.folder)), width, height, picture, crop: false, glyph: None, picture_side: THUMB.min(height - 8.0), title: name, title_size: 14.0, lines: &lines, wrap: false, mark, spoken: &spoken, held, hover: (!description.is_empty()).then_some(description) };
         let (toggled, gained) = pick_card(ui, &pick, &mut chosen);
         if toggled {
             self.supcom.choose(&entry.folder, chosen);
@@ -879,11 +899,27 @@ impl LauncherApp {
     }
 }
 
-/// A card to choose a map or a faction by: a click anywhere on it ticks its box; only the box
-/// takes the keys, named with all the card says. Whether it was ticked or unticked, and whether
-/// its box has just taken the keys.
-fn pick_card(ui: &mut Ui, pick: &Pick<'_>, chosen: &mut bool) -> (bool, bool) {
-    let (_, rect) = ui.allocate_space(vec2(pick.width, pick.height));
+/// A card to choose a map, a faction or a part of the wizard by: a click anywhere on it ticks its
+/// box; only the box takes the keys, named with all the card says. Whether it was ticked or
+/// unticked, and whether its box has just taken the keys.
+pub(super) fn pick_card(ui: &mut Ui, pick: &Pick<'_>, chosen: &mut bool) -> (bool, bool) {
+    // Its words first: its mark at the top right, its title in the room the mark leaves beside
+    // it, its lines under them (wrapped, they make the card as tall as they need).
+    let text_left = 38.0 + pick.picture_side + 12.0;
+    let room = (pick.width - text_left - 8.0).max(1.0);
+    let (mark, title, lines) = {
+        let galley = |words: &str, font: egui::FontId, colour: Color32, room: f32, mode: egui::TextWrapMode| egui::WidgetText::from(RichText::new(words).font(font).color(colour)).into_galley(ui, Some(mode), room, egui::TextStyle::Body);
+        let cut = egui::TextWrapMode::Truncate;
+        let mark = pick.mark.map(|(label, colour)| (galley(label, strong(9.5), colour, room, cut), colour));
+        let title_room = mark.as_ref().map_or(room, |(mark, _)| (room - mark.size().x - 8.0).max(1.0));
+        let title = galley(pick.title, strong(pick.title_size), TEXT_BRIGHT, title_room, cut);
+        let mode = if pick.wrap { egui::TextWrapMode::Wrap } else { cut };
+        let lines: Vec<_> = pick.lines.iter().map(|(words, colour)| (galley(words, body(12.5), *colour, room, mode), *colour)).collect();
+        (mark, title, lines)
+    };
+    let tall = title.size().y + 4.0 + lines.iter().map(|(line, _)| line.size().y).sum::<f32>();
+    let height = if pick.wrap { pick.height.max(tall + 12.0) } else { pick.height };
+    let (_, rect) = ui.allocate_space(vec2(pick.width, height));
     let response = ui.interact(rect, pick.id, Sense::CLICK);
     let free = pick.held.is_none();
     let painter = ui.painter_at(rect);
@@ -898,23 +934,23 @@ fn pick_card(ui: &mut Ui, pick: &Pick<'_>, chosen: &mut bool) -> (bool, bool) {
     if let Some(why) = pick.held {
         boxed.disabled_tip(why);
     }
-    // The picture.
+    // The picture, or its glyph.
     let picture = Rect::from_min_size(rect.min + vec2(38.0, (rect.height() - pick.picture_side) / 2.0), vec2(pick.picture_side, pick.picture_side));
     match &pick.picture {
-        Some(texture) => painter.image(texture.id(), picture, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE),
-        None => painter.rect_filled(picture, CornerRadius::same(2), Color32::from_black_alpha(120)),
+        Some(texture) => {
+            let uv = if pick.crop { super::getmods::square_uv(texture) } else { Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)) };
+            painter.image(texture.id(), picture, uv, Color32::WHITE);
+        }
+        None => {
+            painter.rect_filled(picture, CornerRadius::same(2), Color32::from_black_alpha(120));
+            if let Some(glyph) = pick.glyph {
+                widgets::paint_glyph(&painter, glyph, picture.center(), pick.picture_side / 22.0, STEEL);
+            }
+        }
     };
     painter.rect_stroke(picture, CornerRadius::same(2), Stroke::new(1.0, STEEL.gamma_multiply(0.5)), StrokeKind::Inside);
-    // Its mark at the top right; its title in the room the mark leaves beside it, its lines under
-    // them, all of it in the card's middle.
-    let text_x = picture.right() + 12.0;
-    let room = (rect.right() - text_x - 8.0).max(1.0);
-    let galley = |words: &str, font: egui::FontId, colour: Color32, room: f32| egui::WidgetText::from(RichText::new(words).font(font).color(colour)).into_galley(ui, Some(egui::TextWrapMode::Truncate), room, egui::TextStyle::Body);
-    let mark = pick.mark.map(|(label, colour)| (galley(label, strong(9.5), colour, room), colour));
-    let title_room = mark.as_ref().map_or(room, |(mark, _)| (room - mark.size().x - 8.0).max(1.0));
-    let title = galley(pick.title, strong(pick.title_size), TEXT_BRIGHT, title_room);
-    let lines: Vec<_> = pick.lines.iter().map(|(words, colour)| (galley(words, body(12.5), *colour, room), *colour)).collect();
-    let tall = title.size().y + 4.0 + lines.iter().map(|(line, _)| line.size().y).sum::<f32>();
+    // The words, all of them in the card's middle.
+    let text_x = rect.left() + text_left;
     let mut y = rect.top() + ((rect.height() - tall) / 2.0).max(4.0);
     painter.galley(egui::pos2(text_x, y), title.clone(), TEXT_BRIGHT);
     y += title.size().y + 4.0;
@@ -948,7 +984,7 @@ fn list_size(room: f32) -> (f32, f32) {
 }
 
 /// What an import under way is doing, as said under its rail.
-fn progress_words(tab: Tab, p: &supcom::Progress, stopping: bool) -> String {
+pub(super) fn progress_words(tab: Tab, p: &supcom::Progress, stopping: bool) -> String {
     match (tab, p.phase) {
         (Tab::Maps, Phase::Reading) => t("Reading Total Annihilation's and the game's files…").to_string(),
         (Tab::Maps, Phase::Making) if stopping => tf("Stopping once {map} is made ({i} of {n})…", &[("map", &p.current), ("i", &p.number()), ("n", &p.total)]),
@@ -1033,23 +1069,7 @@ fn supcom_footer(ui: &mut Ui, footer: &Footer, asked: &mut Asked) {
     }
     if let Some((summary, colour, failed)) = &footer.outcome {
         ui.add(egui::Label::new(RichText::new(summary).color(*colour)).wrap());
-        if !failed.is_empty() {
-            let header = match (footer.tab, failed.len()) {
-                (Tab::Maps, 1) => t("1 map could not be made").to_string(),
-                (Tab::Maps, n) => tf("{n} maps could not be made", &[("n", &n)]),
-                (Tab::Factions, n) => tf("Units that could not be made: {n}", &[("n", &n)]),
-                (Tab::Music, n) => tf("Tracks that could not be made: {n}", &[("n", &n)]),
-                (Tab::Menus, n) => tf("Parts that could not be made: {n}", &[("n", &n)]),
-            };
-            ui.collapsing(header, |ui| {
-                egui::ScrollArea::vertical().id_salt(("supcom_failed", footer.tab.label())).max_height(FAILED_HEIGHT).auto_shrink([false, true]).show(ui, |ui| {
-                    for (name, why) in failed {
-                        ui.label(RichText::new(name).font(strong(12.5)).color(TEXT));
-                        ui.add(egui::Label::new(RichText::new(why).color(AMBER)).wrap());
-                    }
-                });
-            });
-        }
+        failed_list(ui, footer.tab, failed, "supcom_failed");
     }
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 10.0;
@@ -1099,6 +1119,30 @@ fn supcom_footer(ui: &mut Ui, footer: &Footer, asked: &mut Asked) {
         } else if ui.add(ActionButton::secondary("CLOSE")).clicked() {
             asked.close = true;
         }
+    });
+}
+
+/// What an import of the tab `tab` could not make (each thing's name, and why), folded under a
+/// line that counts them, scrolling beyond a few (none: nothing drawn). `list_id` keeps one list's
+/// fold and scroll apart from another's of the same tab.
+pub(super) fn failed_list(ui: &mut Ui, tab: Tab, failed: &[(String, String)], list_id: &str) {
+    if failed.is_empty() {
+        return;
+    }
+    let header = match (tab, failed.len()) {
+        (Tab::Maps, 1) => t("1 map could not be made").to_string(),
+        (Tab::Maps, n) => tf("{n} maps could not be made", &[("n", &n)]),
+        (Tab::Factions, n) => tf("Units that could not be made: {n}", &[("n", &n)]),
+        (Tab::Music, n) => tf("Tracks that could not be made: {n}", &[("n", &n)]),
+        (Tab::Menus, n) => tf("Parts that could not be made: {n}", &[("n", &n)]),
+    };
+    egui::CollapsingHeader::new(header).id_salt((list_id, tab.label())).show(ui, |ui| {
+        egui::ScrollArea::vertical().id_salt((list_id, tab.label(), "list")).max_height(FAILED_HEIGHT).auto_shrink([false, true]).show(ui, |ui| {
+            for (name, why) in failed {
+                ui.label(RichText::new(name).font(strong(12.5)).color(TEXT));
+                ui.add(egui::Label::new(RichText::new(why).color(AMBER)).wrap());
+            }
+        });
     });
 }
 

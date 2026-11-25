@@ -73,6 +73,9 @@ impl LauncherApp {
         self.mods_tabs(ui);
         self.mod_problems(ui);
         self.game_folder_offers(ui);
+        // (The Supreme Commander imports made by an older TA Reborn: UPDATE ALL; or, once, the
+        // import offered where the game is found and nothing of it is imported.)
+        self.supcom_offers(ui);
         self.package_installs(ui);
         match self.mods_tab {
             ModsTab::Library => self.mod_library_view(ui),
@@ -1782,7 +1785,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let folder = dir.join("mods").join(id);
         std::fs::create_dir_all(folder.join("gamedata")).unwrap();
-        std::fs::write(folder.join("mod.toml"), format!("id = \"{id}\"\nname = \"{name}\"\nversion = \"13\"\ndescription = \"Supreme Commander: Forged Alliance's four factions, their units and buildings, made from your own copy of the game.\"\n")).unwrap();
+        // (Made by this converter: one older would be offered as an update, above the library.)
+        std::fs::write(folder.join("mod.toml"), format!("id = \"{id}\"\nname = \"{name}\"\nversion = \"{}\"\ndescription = \"Supreme Commander: Forged Alliance's four factions, their units and buildings, made from your own copy of the game.\"\n", crate::supcom_factions::VERSION)).unwrap();
         std::fs::write(folder.join("gamedata").join("sidedata_supcom.tdf"), "[SIDE0]\n\t{\n\tname=SERAPHIM;\n\t}\n[SIDE1]\n\t{\n\tname=UEF;\n\t}\n").unwrap();
         let ctx = egui::Context::default();
         let config = dir.join("config.toml");

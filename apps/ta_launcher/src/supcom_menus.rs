@@ -29,6 +29,9 @@ pub(crate) const MOD_DESCRIPTION: &str = n("Supreme Commander: Forged Alliance's
 pub const PICTURE_WIDTH: f32 = 160.0;
 /// What the mod takes on the disk, about (bytes): its pictures, art, sounds and music.
 pub const SIZE: u64 = 20_000_000;
+/// About how long it takes to make on a fast computer, in seconds (the wizard's estimate; the tab
+/// says it in words: a moment).
+pub const SECONDS: u64 = 1;
 
 pub fn mod_name() -> &'static str {
     t(MOD_NAME)

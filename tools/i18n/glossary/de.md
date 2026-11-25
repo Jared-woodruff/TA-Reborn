@@ -705,7 +705,7 @@ konnte nicht erstellt werden"); other counts read for any number ("nicht erstell
 |---|---|
 | Held until the import ends (beside greyed controls) | Während des Imports gesperrt |
 | STOPPING… / IMPORT MAPS / REPLACE AND IMPORT | WIRD ANGEHALTEN… / KARTEN IMPORTIEREN / ERSETZEN UND IMPORTIEREN |
-| UPDATE… (a mod made by an older TA Reborn, imported again) | UPDATE… (as UPDATE · {size}) |
+| UPDATE… / UPDATE (a mod made by an older TA Reborn, imported again; the tab's word) | AKTUALISIEREN… / AKTUALISIEREN (UPDATE ALL: ALLE AKTUALISIEREN) |
 | with this (dialog) closed / the launcher's footer | bei geschlossenem Dialog / die Statusleiste des Launchers |
 | the commanders' enhancements / upgrading buildings in place | die Erweiterungen der Kommandanten / das Aufrüsten von Gebäuden an Ort und Stelle |
 | shields / stealth fields / teleporting | Schilde / Tarnkappenfelder (as Tarnkappe, TA's stealth; tarnen is cloak) / Teleportation |
@@ -743,3 +743,22 @@ Refusals after "Nicht ausführbar: " stay lower-case fragments ("hat keine Baule
 | MENUS (the Supreme Commander dialog's tab) | MENÜS |
 | Supreme Commander menus (the mod) | Supreme-Commander-Menüs |
 | Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | Text / Beschriftungen / Akzentfarbe / Panels / Linien / Schaltflächen |
+
+## The Supreme Commander import's wizard and UPDATE ALL (`pages/supcom_wizard.rs`, `supcom_wizard.rs`, `supcom.rs`)
+
+The wizard makes the four parts (Teile: der Teil) one after another, der Reihe nach; a card ticked is
+gewählt, as the maps' "Gewählt: {n} von {total} Karten". `{parts}` fills "Mit einer älteren Version von TA
+Reborn erstellt: {parts}." and "Noch nicht importiert: {parts}.", joined by "und". Counts on the cards read
+for any number ("Gefechtskarten des Spiels: {n}", "Bilder ({pictures})").
+
+| English | Deutsch |
+|---|---|
+| part (one of the four imports) / ticked / Tick a part to make | Teil / gewählt / Wähle einen Teil zum Erstellen |
+| the maps / the factions / the music / the menus' look (`{parts}`) | die Karten / die Fraktionen / die Musik / das Menüdesign |
+| the wizard's steps THE GAME / WHAT TO MAKE / IMPORTING / DONE | DAS SPIEL / AUSWAHL / IMPORT / FERTIG |
+| UPDATE ALL / IMPORT IN ONE GO… / CHOOSE IN DETAIL… | ALLE AKTUALISIEREN / ALLE IMPORTIEREN… / IM DETAIL WÄHLEN… |
+| NOT NOW (the Mods page's offer, not made again) / PLAY A SKIRMISH | NICHT JETZT / GEFECHT SPIELEN |
+| the Supreme Commander imports (the four together) | die Supreme-Commander-Importe |
+| the dialog's tabs / the MAPS tab | die Reiter des Dialogs / der Reiter KARTEN |
+| Not made: … (a part's line) / {time} to make | Nicht erstellt: … / {time} zum Erstellen |
+| on the Mods and Maps pages | auf den Seiten MODS und KARTEN |

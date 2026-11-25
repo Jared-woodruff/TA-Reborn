@@ -704,3 +704,19 @@ Slot names (LCH, RCH, Back) come from the data as they are.
 | MENUS (the Supreme Commander dialog's tab) | 메뉴 |
 | Supreme Commander menus (the mod) | Supreme Commander 메뉴 |
 | Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | 글자 / 레이블 / 강조 색 / 패널 / 선 / 버튼 |
+
+## The Supreme Commander import's wizard and UPDATE ALL (`pages/supcom_wizard.rs`, `supcom_wizard.rs`, `supcom.rs`)
+
+A part of the import (the maps, the factions, the music, the menus' look) is 항목; ticking its card is
+선택 (as the tabs' 선택한 맵). In {parts} the parts are bare nouns joined by the file's ", " and " 및 "
+(진영, 메뉴 스타일 및 맵), so {parts} closes its sentence ("…항목: {parts}."). The dialog's MAPS tab is
+대화 상자의 맵 탭 (맵 탭 alone is the launcher's Maps page).
+
+| English | 한국어 |
+|---|---|
+| the wizard's steps THE GAME / WHAT TO MAKE / IMPORTING / DONE | 게임 / 만들 항목 / 가져오기 / 완료 |
+| UPDATE ALL / IMPORT IN ONE GO… / NOT NOW (the offer put away for good) | 모두 업데이트 / 한 번에 가져오기… / 지금은 안 함 |
+| CHOOSE IN DETAIL… (the dialog's tabs instead) / PLAY A SKIRMISH | 직접 선택… / 스커미시 플레이 |
+| the maps / the factions / the music / the menus' look (in {parts}) | 맵 / 진영 / 음악 / 메뉴 스타일 |
+| In all: about {size} on the disk, and {time} to make | 모두 합쳐 디스크를 약 {size} 차지하며, 만드는 데 {time} 걸립니다 |
+| Waiting for your answer / Not made (a part's line) | 응답을 기다리는 중 / 만들지 않음 |

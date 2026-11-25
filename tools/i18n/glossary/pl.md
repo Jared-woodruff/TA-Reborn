@@ -699,3 +699,23 @@ stay in the nominative behind a noun: „do wersji {name}”, „usprawnienie {n
 | MENUS (the Supreme Commander dialog's tab) | MENU |
 | Supreme Commander menus (the mod) | Menu Supreme Commander |
 | Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | Tekst / Etykiety / Akcent / Panele / Linie / Przyciski |
+
+## The Supreme Commander import's wizard (`pages/supcom_wizard.rs`, `supcom_wizard.rs`, `supcom.rs`)
+
+The four imports are „części” (each a część). {parts} is a list of nominatives after a colon,
+lowercase („frakcje, wygląd menu i mapy”); what comes before it is a label with a noun of its own, so
+nothing agrees with the list („Części utworzone przez…: {parts}”, „Pozostało do zaimportowania:
+{parts}”). {time} („poniżej minuty”, „około {n} min”) follows „czas tworzenia”.
+
+| English | pl |
+|---|---|
+| part (one of the four imports) | część („każda część”, „część po części”) |
+| the maps / the factions / the music / the menus' look | mapy / frakcje / muzyka / wygląd menu |
+| tick (a part) / ticked | zaznacz / zaznaczone |
+| steps THE GAME / WHAT TO MAKE / IMPORTING / DONE | GRA / CO UTWORZYĆ / IMPORT / GOTOWE |
+| UPDATE ALL / IMPORT IN ONE GO… / CHOOSE IN DETAIL… | AKTUALIZUJ WSZYSTKO (as AKTUALIZUJ WSZYSTKO · {n}) / IMPORTUJ WSZYSTKO… (not NARAZ: the parts are made one after another) / WYBIERZ SZCZEGÓŁOWO… |
+| NOT NOW / PLAY A SKIRMISH | NIE TERAZ / ZAGRAJ W POTYCZKĘ |
+| about {size} on the disk, {time} to make | około {size} na dysku, czas tworzenia {time} |
+| the Supreme Commander imports / Not made: (a part's line) | importy z Supreme Commander / Nie utworzono: |
+| another mod of its id | inny mod o tym identyfikatorze |
+| a skirmish's setup | ustawienia potyczki („w ustawieniach nowej potyczki”) |

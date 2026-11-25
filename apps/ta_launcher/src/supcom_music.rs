@@ -177,6 +177,16 @@ pub fn size_estimate(tracks: &[Track]) -> u64 {
     (tracks.iter().map(|t| t.bytes).sum::<u64>() as f64 * FLAC_SHARE) as u64
 }
 
+/// About how long a track takes to make on a fast computer (milliseconds): GOG's 21 in a few
+/// seconds.
+const TRACK_MILLIS: u64 = 200;
+
+/// About how long the music takes to make on a fast computer, in seconds (the wizard's estimate;
+/// the tab says it in words).
+pub fn time_estimate(tracks: &[Track]) -> u64 {
+    (tracks.len() as u64 * TRACK_MILLIS).div_ceil(1000)
+}
+
 #[derive(Default)]
 pub struct Music {
     pub(crate) look: Look<Found, u8>,

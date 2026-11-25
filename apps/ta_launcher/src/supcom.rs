@@ -9,7 +9,8 @@
 //! What both tabs share is here too: a tab's look for the game ([`Look`]: what it found and its
 //! pictures, looked for again whenever the tab is shown and its look is not current), an import
 //! on a worker ([`Job`], its [`Progress`] by [`Phase`]), where an import's mod is installed and
-//! goes ([`Place`]), and the room it needs on the disk.
+//! goes ([`Place`]), and the room it needs on the disk. The dialog's wizard
+//! (`crate::supcom_wizard`) starts the tabs' imports one after another, to make them in one go.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -52,7 +53,7 @@ const PREVIEW_LARGEST: u32 = 2048;
 /// manifest, the disk's own needs).
 const SPARE_BYTES: u64 = 64_000_000;
 /// The file in the launcher's settings folder (every commander's) that keeps the game's folder as
-/// the player chose it.
+/// the player chose it, and that the Mods page offered the import's wizard.
 const CHOICE_FILE: &str = "supcom.toml";
 
 /// The pack's name as the interface shows it, in the language in use.
@@ -120,6 +121,28 @@ impl Tab {
             Tab::Factions => n("FACTIONS"),
             Tab::Music => n("MUSIC"),
             Tab::Menus => n("MENUS"),
+        }
+    }
+
+    /// What it makes, as a sentence names it ("the factions and the music"; marked for
+    /// translation).
+    pub fn part(self) -> &'static str {
+        match self {
+            Tab::Maps => n("the maps"),
+            Tab::Factions => n("the factions"),
+            Tab::Music => n("the music"),
+            Tab::Menus => n("the menus' look"),
+        }
+    }
+
+    /// Its import's mod: its id, and the name the import gives it (another mod of the id is not
+    /// the import's).
+    pub fn mod_of(self) -> (&'static str, &'static str) {
+        match self {
+            Tab::Maps => (PACK_ID, PACK_NAME),
+            Tab::Factions => (crate::supcom_factions::MOD_ID, crate::supcom_factions::MOD_NAME),
+            Tab::Music => (crate::supcom_music::MOD_ID, crate::supcom_music::MOD_NAME),
+            Tab::Menus => (crate::supcom_menus::MOD_ID, crate::supcom_menus::MOD_NAME),
         }
     }
 }
@@ -730,30 +753,56 @@ pub(crate) fn error_text(error: &anyhow::Error) -> String {
     text
 }
 
+/// What the launcher's settings keep of the game (`store_dir`'s `supcom.toml`): its folder as the
+/// player chose it (`game`), and whether the Mods page's offer of the import's wizard was taken up
+/// or put away (`offered`).
+fn kept(store_dir: &Path) -> toml::Table {
+    std::fs::read_to_string(store_dir.join(CHOICE_FILE)).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+}
+
+/// Writes what the settings keep of the game (none of it: the file goes).
+fn keep(store_dir: &Path, table: &toml::Table) -> std::io::Result<()> {
+    let path = store_dir.join(CHOICE_FILE);
+    if table.is_empty() {
+        return match std::fs::remove_file(&path) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        };
+    }
+    let text = format!("# Supreme Commander: Forged Alliance, as the launcher keeps it: where it is, as chosen, and whether its import was offered.\n{}", toml::to_string(table).map_err(std::io::Error::other)?);
+    std::fs::create_dir_all(store_dir)?;
+    let part = store_dir.join(format!("{CHOICE_FILE}.part"));
+    std::fs::write(&part, text)?;
+    std::fs::rename(&part, &path)
+}
+
 /// The game's folder as the player chose it, as the launcher's settings keep it (`store_dir`'s).
 pub(crate) fn load_choice(store_dir: &Path) -> Option<PathBuf> {
-    let text = std::fs::read_to_string(store_dir.join(CHOICE_FILE)).ok()?;
-    let table: toml::Table = toml::from_str(&text).ok()?;
-    table.get("game")?.as_str().filter(|path| !path.trim().is_empty()).map(PathBuf::from)
+    kept(store_dir).get("game")?.as_str().filter(|path| !path.trim().is_empty()).map(PathBuf::from)
 }
 
 /// Keeps the game's folder as the player chose it (`picked`; none: the copy found) in the
 /// launcher's settings.
 pub(crate) fn save_choice(store_dir: &Path, picked: Option<&Path>) -> std::io::Result<()> {
-    let path = store_dir.join(CHOICE_FILE);
-    let Some(picked) = picked else {
-        return match std::fs::remove_file(&path) {
-            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
-            _ => Ok(()),
-        };
+    let mut table = kept(store_dir);
+    match picked {
+        Some(picked) => table.insert("game".into(), toml::Value::String(picked.to_string_lossy().into_owned())),
+        None => table.remove("game"),
     };
-    let mut table = toml::Table::new();
-    table.insert("game".into(), toml::Value::String(picked.to_string_lossy().into_owned()));
-    let text = format!("# Where Supreme Commander: Forged Alliance is, as chosen in the launcher.\n{}", toml::to_string(&table).map_err(std::io::Error::other)?);
-    std::fs::create_dir_all(store_dir)?;
-    let part = store_dir.join(format!("{CHOICE_FILE}.part"));
-    std::fs::write(&part, text)?;
-    std::fs::rename(&part, &path)
+    keep(store_dir, &table)
+}
+
+/// Whether the Mods page's offer of the wizard was taken up or put away, as the launcher's
+/// settings keep it (every commander's: it is made once).
+pub(crate) fn load_offered(store_dir: &Path) -> bool {
+    kept(store_dir).get("offered").and_then(toml::Value::as_bool).unwrap_or(false)
+}
+
+/// Keeps that the Mods page's offer of the wizard was taken up or put away.
+pub(crate) fn save_offered(store_dir: &Path) -> std::io::Result<()> {
+    let mut table = kept(store_dir);
+    table.insert("offered".into(), toml::Value::Boolean(true));
+    keep(store_dir, &table)
 }
 
 /// What a folder the player chose came to, checked on a worker.
@@ -804,13 +853,24 @@ pub struct Import {
     pub menus: crate::supcom_menus::Menus,
     /// An import asked for over another mod of its id, waiting for the player's word.
     pub confirm_replace: Option<(Tab, Installed)>,
+    /// The wizard: the four imports in one go ([`crate::supcom_wizard`]), shown in place of the
+    /// tabs while nothing is imported.
+    pub wizard: crate::supcom_wizard::Wizard,
+    /// The Mods page's offer of the wizard, once the game is found and nothing of it imported.
+    pub offer: crate::supcom_wizard::Offer,
+    /// In a test, what starts a tab's import in place of its own (never this computer's copy of
+    /// the game): given the tab, once its import has been asked for past the question over
+    /// another mod of its id.
+    #[cfg(test)]
+    pub pretend_start: Option<fn(&mut Import, Tab)>,
 }
 
 impl Import {
     /// The dialog, closed, the game's folder as the player chose it before (`picked`; none: the
-    /// copy found).
-    pub fn new(picked: Option<PathBuf>) -> Self {
-        Import { picked, ..Default::default() }
+    /// copy found), and the Mods page's offer of the wizard as it was left (`offered`: taken up or
+    /// put away).
+    pub fn new(picked: Option<PathBuf>, offered: bool) -> Self {
+        Import { picked, offer: crate::supcom_wizard::Offer::new(offered), ..Default::default() }
     }
 
     pub fn scanning(&self) -> bool {
@@ -862,14 +922,120 @@ impl Import {
         self.set_tab(tab);
     }
 
+    /// Opens the dialog at the wizard as `kind`, offering the parts of `parts`, every tab's look
+    /// made again unless it is current (its rows say what each found); `tab` is the tab its
+    /// CHOOSE IN DETAIL… shows.
+    pub fn show_wizard(&mut self, kind: crate::supcom_wizard::Kind, parts: &[Tab], tab: Tab, roots: Roots) {
+        self.open = true;
+        self.roots = roots;
+        self.tab = tab;
+        self.wizard.open(kind, parts);
+        self.look_all();
+    }
+
+    /// Opens the dialog at the wizard as it is: its import under way, or what it came to.
+    pub fn show_wizard_again(&mut self, tab: Tab, roots: Roots) {
+        self.open = true;
+        self.roots = roots;
+        self.tab = tab;
+        self.wizard.shown = true;
+        self.wizard.unseen = false;
+        self.look_all();
+    }
+
+    /// Whether the tab `tab`'s look is under way.
+    pub fn scanning_at(&self, tab: Tab) -> bool {
+        match tab {
+            Tab::Maps => self.look.scanning(),
+            Tab::Factions => self.factions.look.scanning(),
+            Tab::Music => self.music.look.scanning(),
+            Tab::Menus => self.menus.look.scanning(),
+        }
+    }
+
+    /// Whether the tab `tab`'s last look ended without a word (its worker failed).
+    pub fn look_failed_at(&self, tab: Tab) -> bool {
+        match tab {
+            Tab::Maps => self.look.failed,
+            Tab::Factions => self.factions.look.failed,
+            Tab::Music => self.music.look.failed,
+            Tab::Menus => self.menus.look.failed,
+        }
+    }
+
+    /// How the tab `tab`'s import is going (or last went).
+    pub fn progress_at(&self, tab: Tab) -> Progress {
+        match tab {
+            Tab::Maps => self.progress.lock().unwrap().clone(),
+            Tab::Factions => self.factions.progress.lock().unwrap().clone(),
+            Tab::Music => self.music.progress.lock().unwrap().clone(),
+            Tab::Menus => self.menus.progress.lock().unwrap().clone(),
+        }
+    }
+
+    /// Whether the tab `tab`'s import was asked to stop.
+    pub fn stopping_at(&self, tab: Tab) -> bool {
+        match tab {
+            Tab::Maps => self.stopping(),
+            Tab::Factions => self.factions.stopping(),
+            Tab::Music => self.music.stopping(),
+            Tab::Menus => self.menus.stopping(),
+        }
+    }
+
+    fn current_at(&self, tab: Tab) -> bool {
+        match tab {
+            Tab::Maps => self.look.current(),
+            Tab::Factions => self.factions.look.current(),
+            Tab::Music => self.music.look.current(),
+            Tab::Menus => self.menus.look.current(),
+        }
+    }
+
+    /// The copy of the game the tab `tab`'s last look found: `None` before it has looked,
+    /// `Some(None)` where it found none.
+    pub fn game_at(&self, tab: Tab) -> Option<Option<Install>> {
+        match tab {
+            Tab::Maps => self.look.found.as_ref().map(|f| f.install.clone()),
+            Tab::Factions => self.factions.look.found.as_ref().map(|f| f.install.clone()),
+            Tab::Music => self.music.look.found.as_ref().map(|f| f.install.clone()),
+            Tab::Menus => self.menus.look.found.as_ref().map(|f| f.install.clone()),
+        }
+    }
+
+    /// The tab `tab`'s look made again.
+    pub fn rescan_tab(&mut self, tab: Tab) {
+        match tab {
+            Tab::Maps => self.rescan(),
+            Tab::Factions => self.factions.rescan(self.picked.clone(), &self.roots),
+            Tab::Music => self.music.rescan(self.picked.clone(), &self.roots),
+            Tab::Menus => self.menus.rescan(self.picked.clone(), &self.roots),
+        }
+    }
+
+    /// Every tab's look made again unless it is current or under way (the wizard shows what each
+    /// found).
+    pub fn look_all(&mut self) {
+        for tab in Tab::ALL {
+            if !self.current_at(tab) && !self.scanning_at(tab) {
+                self.rescan_tab(tab);
+            }
+        }
+    }
+
     /// LOOK AGAIN (the game not found, or the look failed): every tab looks for it afresh, the one
-    /// shown at once; the game may have been installed since the dialog opened.
+    /// shown at once (in the wizard, every one); the game may have been installed since the
+    /// dialog opened.
     pub fn look_again(&mut self) {
         self.look.outdate();
         self.factions.look.outdate();
         self.music.look.outdate();
         self.menus.look.outdate();
-        self.set_tab(self.tab);
+        if self.wizard.shown {
+            self.look_all();
+        } else {
+            self.set_tab(self.tab);
+        }
     }
 
     /// Shows the tab `tab`, its look made again unless it is current (the rule both tabs keep).
@@ -903,7 +1069,8 @@ impl Import {
         }
     }
 
-    /// Closes the dialog: its pictures let go of (an import under way goes on).
+    /// Closes the dialog: its pictures let go of (an import under way goes on, and so does the
+    /// wizard's; a wizard not under way is put away).
     pub fn close(&mut self) {
         self.open = false;
         self.folder_error = None;
@@ -912,6 +1079,7 @@ impl Import {
         self.factions.look.let_go();
         self.music.look.let_go();
         self.menus.look.let_go();
+        self.wizard.close();
     }
 
     /// Looks for the game and its maps (in the player's chosen folder, else wherever a copy is).
@@ -975,22 +1143,23 @@ impl Import {
     }
 
     /// Uses the game in `root` (a copy found, or a folder chosen and checked): every tab lists that
-    /// copy's then (the factions' and the music's where they have been looked at), and the settings
-    /// keep it.
+    /// copy's then (each where it has been looked at, or is being looked at; in the wizard, every
+    /// one), and the settings keep it.
     pub fn pick(&mut self, root: PathBuf) {
         self.picked = Some(root);
         self.choice_changed = true;
         self.folder_error = None;
-        if self.look.found.is_some() || self.tab == Tab::Maps {
+        let wizard = self.wizard.shown;
+        if wizard || self.look.found.is_some() || self.look.scanning() || self.tab == Tab::Maps {
             self.rescan();
         }
-        if self.factions.look.found.is_some() || self.tab == Tab::Factions {
+        if wizard || self.factions.look.found.is_some() || self.factions.look.scanning() || self.tab == Tab::Factions {
             self.factions.rescan(self.picked.clone(), &self.roots);
         }
-        if self.music.look.found.is_some() || self.tab == Tab::Music {
+        if wizard || self.music.look.found.is_some() || self.music.look.scanning() || self.tab == Tab::Music {
             self.music.rescan(self.picked.clone(), &self.roots);
         }
-        if self.menus.look.found.is_some() || self.tab == Tab::Menus {
+        if wizard || self.menus.look.found.is_some() || self.menus.look.scanning() || self.tab == Tab::Menus {
             self.menus.rescan(self.picked.clone(), &self.roots);
         }
     }
@@ -1041,11 +1210,14 @@ impl Import {
         any
     }
 
-    /// Whether a capture may take its picture: the game looked for, a capture's maps imported
-    /// (or, with `TA_SUPCOM_SHOT_IMPORTING=1`, while they are).
+    /// Whether a capture may take its picture: the game looked for (by the dialog, and for the Mods
+    /// page's offer), a capture's maps imported (or, with `TA_SUPCOM_SHOT_IMPORTING=1`, while they
+    /// are), the wizard at its step.
     pub fn capture_ready(&self) -> bool {
         let during = std::env::var_os("TA_SUPCOM_SHOT_IMPORTING").is_some_and(|v| v == "1");
-        !self.open || (!self.scanning() && self.checking.is_none() && self.auto_start.is_none() && (during || !self.importing()) && self.factions.capture_ready() && self.music.capture_ready() && self.menus.capture_ready())
+        let dialog = !self.open || (!self.scanning() && self.checking.is_none() && self.auto_start.is_none() && (during || !self.importing()) && self.factions.capture_ready() && self.music.capture_ready() && self.menus.capture_ready() && self.wizard.capture_ready());
+        // (The Mods page's offer, once the game is looked for.)
+        dialog && !self.offer.seeking()
     }
 
     /// Stops the import after the map being made (not once it installs them).
@@ -2124,17 +2296,26 @@ mod tests {
         assert_eq!(error_text(&wrapped), "context: outer");
     }
 
-    /// The folder chosen is kept in the launcher's settings (none: the copy found), and read back.
+    /// The folder chosen is kept in the launcher's settings (none: the copy found), and read back;
+    /// so is the Mods page's offer of the wizard once made, beside it, each kept as the other
+    /// changes.
     #[test]
     fn the_folder_chosen_is_kept_in_the_settings() {
         let dir = temp("choice");
         assert_eq!(load_choice(&dir), None);
+        assert!(!load_offered(&dir));
         let game = PathBuf::from(r"D:\Games\Supreme Commander Forged Alliance");
         save_choice(&dir, Some(&game)).unwrap();
-        assert_eq!(load_choice(&dir), Some(game));
+        assert_eq!(load_choice(&dir), Some(game.clone()));
         save_choice(&dir, None).unwrap();
         assert_eq!(load_choice(&dir), None);
         save_choice(&dir, None).unwrap();
+        assert!(!dir.join(CHOICE_FILE).exists(), "nothing kept, no file");
+        save_offered(&dir).unwrap();
+        save_choice(&dir, Some(&game)).unwrap();
+        assert!(load_offered(&dir), "the offer kept as the folder is chosen");
+        save_choice(&dir, None).unwrap();
+        assert!(load_offered(&dir) && load_choice(&dir).is_none(), "and as it is forgotten");
         std::fs::remove_dir_all(dir).unwrap();
     }
 

@@ -701,3 +701,23 @@ quitarla, esta. "Stop" en las frases: Parar, con mayúscula (el nombre de la ord
 | MENUS (the Supreme Commander dialog's tab) | MENÚS |
 | Supreme Commander menus (the mod) | Menús de Supreme Commander |
 | Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | Texto / Etiquetas / Énfasis / Paneles / Líneas / Botones |
+
+## El asistente de importación de Supreme Commander (`pages/supcom_wizard.rs`, `supcom_wizard.rs`, `supcom.rs`)
+
+Las cuatro importaciones (facciones, música, aspecto de los menús, mapas) son «partes» (femenino:
+marcadas, creadas). {parts} es una lista en minúscula tras dos puntos; lo que la precede lleva su
+propio sustantivo o no concuerda ("Partes creadas por…: {parts}", "Aún sin importar: {parts}").
+{time} ("menos de un minuto", "alrededor de {n} minutos") va como sustantivo: "{time} de creación".
+
+| English | Español |
+|---|---|
+| part (one of the four imports) | parte ("Las partes marcadas", "una parte tras otra") |
+| the maps / the factions / the music / the menus' look | los mapas / las facciones / la música / el aspecto de los menús |
+| tick (a part) / ticked | marcar / marcadas |
+| steps THE GAME / WHAT TO MAKE / IMPORTING / DONE | LA PARTIDA (clave compartida con el panel de trucos) / QUÉ CREAR / IMPORTACIÓN / HECHO |
+| UPDATE ALL / IMPORT IN ONE GO… / CHOOSE IN DETAIL… | ACTUALIZAR TODO (como ACTUALIZAR TODO · {n}) / IMPORTAR DE UNA VEZ… / ELEGIR EN DETALLE… |
+| NOT NOW / PLAY A SKIRMISH | AHORA NO / JUGAR ESCARAMUZA |
+| about {size} on the disk, {time} to make | unos {size} en el disco, {time} de creación |
+| the Supreme Commander imports / Not made: (a part's line) | las importaciones de Supreme Commander / Sin crear: |
+| another mod of its id | otro mod con el mismo identificador |
+| a skirmish's setup | la preparación de una escaramuza |

@@ -633,3 +633,24 @@ follows "olur" or a colon.
 | MENUS (the Supreme Commander dialog's tab) | MENÜLER |
 | Supreme Commander menus (the mod) | Supreme Commander menüleri |
 | Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | Metin / Etiketler / Vurgu / Paneller / Çizgiler / Düğmeler |
+
+## The Supreme Commander import's wizard (`pages/supcom_wizard.rs`, `supcom_wizard.rs`, `supcom.rs`)
+
+The four imports are bileşen (an installer's components), not parça, which is a music track in the
+same dialog. {parts} is a list of bare nominatives after a colon, lowercase ("taraflar, menü görünümü
+ve haritalar"); what comes before it ends in a noun of its own ("…hazırlananlar: {parts}", "Henüz içe
+aktarılmayanlar: {parts}"). {time} ("bir dakikadan az", "yaklaşık {n} dakika") follows "hazırlama
+süresi", with no suffix.
+
+| English | tr |
+|---|---|
+| part (one of the four imports) | bileşen ("her bileşen", "bileşen bileşen") |
+| the maps / the factions / the music / the menus' look | haritalar / taraflar / müzik / menü görünümü |
+| tick (a part) / ticked | işaretle / işaretli, işaretlenen |
+| steps THE GAME / WHAT TO MAKE / IMPORTING / DONE | OYUN / NE HAZIRLANACAK / İÇE AKTARMA / TAMAM |
+| UPDATE ALL / IMPORT IN ONE GO… / CHOOSE IN DETAIL… | TÜMÜNÜ GÜNCELLE (as TÜMÜNÜ GÜNCELLE · {n}) / TEK SEFERDE İÇE AKTAR… / AYRINTILI SEÇ… |
+| NOT NOW / PLAY A SKIRMISH | ŞİMDİ DEĞİL (Windows' own) / ÇATIŞMA OYNA |
+| about {size} on the disk, {time} to make | diskte yaklaşık {size}, hazırlama süresi {time} |
+| the Supreme Commander imports / Not made: (a part's line) | Supreme Commander içe aktarmaları / Hazırlanmadı: |
+| another mod of its id | aynı kimliğe sahip başka bir mod |
+| a skirmish's setup | çatışma hazırlığı ("yeni bir çatışmanın hazırlığında") |
