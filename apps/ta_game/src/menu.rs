@@ -230,6 +230,19 @@ pub fn title_column_right(height: f32) -> f32 {
     (TITLE_LEFT + title_width(height < 1000.0) + 24.0) * title_scale(height)
 }
 
+/// Where the title screen's lockup ends (its name, the widest of it, and its shadow): its right
+/// edge and its foot, in points, as the title screen draws it in `screen`. What stands beside
+/// the title menu keeps clear of it.
+pub fn title_lockup_corner(ctx: &egui::Context, screen: egui::Rect) -> egui::Pos2 {
+    let compact = screen.height() < 1000.0;
+    let s = title_scale(screen.height());
+    let big = if compact { 60.0 } else { 84.0 * s };
+    let name = ctx.fonts_mut(|f| f.layout_no_wrap(ta_ui::i18n::t("TOTAL ANNIHILATION").to_owned(), display(big), Color32::WHITE));
+    let (name_top, name_foot) = ta_ui::metal::cap_band(&name);
+    let top = screen.min.y + if compact { 39.0 } else { 57.0 * s } - name_top;
+    pos2(screen.min.x + TITLE_LEFT * s + name.size().x + 3.0 * s, top + name_foot + 9.0 * s)
+}
+
 /// The title menu's entries as they are laid out: each fades and slides in a moment after
 /// the one above it.
 struct MenuItems {

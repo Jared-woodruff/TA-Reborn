@@ -100,7 +100,10 @@ have their tab, their choice and their import. The dialog's wizard makes them in
   the map in hand, those made installed. The dialog may be closed meanwhile: the footer's chip shows
   the part in hand and opens the wizard again; the parts' own notices are left to one at the end,
   and the wizard opens at what it came to once. The game does not start while it waits between
-  parts.
+  parts. The launcher closing (CLOSE ANYWAY, or an update of its own) starts none after the one
+  in hand, and keeps those not made in its settings (`pending` in `supcom.toml`): at its next
+  start the Mods page says the import stopped before they were made, while any is still not made,
+  with IMPORT IN ONE GO… (the wizard, those parts alone ticked) and NOT NOW (forgotten).
 - **After a first import** SUPREME COMMANDER… opens the tabs as before, which say at their top what
   is not imported yet, with IMPORT IN ONE GO… (the wizard at what to make, with those parts only).
 - **UPDATE ALL.** Where any of the imports' mods was made by an older converter (`update_tab`), the

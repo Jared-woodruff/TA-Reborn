@@ -191,7 +191,9 @@ original game's).
   unit with build power, `WorkerTime`, whatever its Builder flag, as the game has it: the mods'
   silos list missile buttons for their computer players, which build nothing) and the computer
   players' build lists (side data's CANBUILD, told as theirs: a unit only they name is on no
-  menu, so no panel misses its picture); maps to their
+  menu, so no panel misses its picture); a side to its art in the classic interface where its
+  side data names it, its panels' GAF (`intgaf`) and its emblem (`logogaf`, `logo`: the GAF in
+  `anims/` and the entry in it; docs/MODDING.md, "Sides of a mod's own"); maps to their
   terrain (without it the map is left out of the lists: a warning), meteors, placed units and
   features (a map's own among them: `maps/<map>.features`, checked as feature definitions, as
   maps converted from Supreme Commander carry them; docs/SUPCOM_MAPS.md). A file naming the same missing thing several times is told it once, with all that

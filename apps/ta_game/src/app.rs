@@ -6394,7 +6394,14 @@ impl State {
                 let music = crate::jukebox::Music { track: now_playing.as_deref(), on: music_on, position: music_position, bands: &music_bands };
                 // (Clear of the title screen's footer, and its shadow.)
                 let bottom = if screen == Screen::Menu { 88.0 } else { 20.0 };
-                jukebox_requests = jukebox.draw(ui.ctx(), &ta_tracks, &music, &music_source, &settings.audio, bottom);
+                // (Right of the title menu's column, in the menus, and clear of the title's lockup.)
+                let content = ui.ctx().content_rect();
+                let (left, lockup) = if screen == Screen::Menu {
+                    (crate::menu::title_column_right(content.height()), Some(crate::menu::title_lockup_corner(ui.ctx(), content)))
+                } else {
+                    (14.0, None)
+                };
+                jukebox_requests = jukebox.draw(ui.ctx(), &ta_tracks, &music, &music_source, &settings.audio, bottom, left, lockup);
             }
             if dev.visible && !minimal_view {
                 draw_dev_panel(ui.ctx(), dev, lighting, post, camera, game);

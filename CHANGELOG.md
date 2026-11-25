@@ -66,7 +66,9 @@
   the parts not imported yet in one go (IMPORT IN ONE GO…). And when a later TA Reborn makes the
   imports better, one UPDATE ALL, on the Mods page and in the dialog, makes again everything an
   older one made: the maps it made, the factions the mod holds, the music and the menus' look
-  ([SUPCOM_MAPS.md](docs/SUPCOM_MAPS.md), "The wizard, and UPDATE ALL").
+  ([SUPCOM_MAPS.md](docs/SUPCOM_MAPS.md), "The wizard, and UPDATE ALL"). Parts still waiting their
+  turn when the launcher closes (or updates itself) are offered again on the Mods page at its next
+  start.
 - The Supreme Commander factions show their own emblems in the classic interface, at the top left
   and in the unit bar, in each player's colour as Arm's and Core's are, in place of TA's plain
   square (UPDATE… on the Mods page makes the factions again). A mod's own side can name its emblem
@@ -93,6 +95,13 @@
     extractors and radars) for a missing nano-lathe in its script.
 
 ### Changed
+- The jukebox on a short screen (most windows at the interface's usual size) stands in two
+  columns, the player beside its tracks, so the tracks are in sight without scrolling its panel;
+  which music plays (THE GAME'S, BOTH, YOURS) is then beside its buttons at its foot, a drop-down
+  where they would not fit. It keeps clear of the title's lockup.
+- The mod check (MOD INFO, `ta-tools validate-mod`) checks a side's art in the classic interface
+  where its side data names it: its panels' GAF (`intgaf`) and its emblem (`logogaf`, `logo`)
+  ([MOD_VALIDATION.md](docs/MOD_VALIDATION.md)).
 - The enemy Commanders' transmissions (their greetings, taunts and answers coming in at the top
   left of the battlefield) are turned off with Options, GAMEPLAY: ENEMY TRANSMISSIONS, as COMPUTER
   PLAYERS TALK was called. It now takes effect at once, in a battle under way too: the card on the
@@ -135,6 +144,9 @@
   Multiplayer and replays need everyone on this build.
 
 ### Fixed
+- The Options page's list of settings stopped short of its panel's foot where the list's column is
+  too narrow for its title (in the game, at most sizes): it now reaches it, level with the
+  categories beside it, showing more settings at once.
 - Supreme Commander's factions in play, from a review before the import was offered to everyone
   (make the factions again on the Mods page, UPDATE…, to have the first two):
   - Their tiers had one name: a tech 3 factory's menu offered three Engineers, told apart only by
