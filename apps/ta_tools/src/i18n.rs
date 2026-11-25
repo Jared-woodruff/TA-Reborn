@@ -25,7 +25,7 @@ const SOURCES: &[&str] = &["apps/ta_game/src", "apps/ta_launcher/src", "crates/t
 /// The mod check's words and the maps' origins (`ta_data`, which has no `t`: the launcher and
 /// the game translate them): in these files only the texts marked `en`, and `enf`'s first
 /// argument, count (their other calls, `doc.section("UNITINFO")`, are no text).
-const DATA_SOURCES: &[&str] = &["crates/ta_data/src/validation.rs", "crates/ta_data/src/presentation.rs", "crates/ta_data/src/words.rs", "crates/ta_data/src/map.rs"];
+const DATA_SOURCES: &[&str] = &["crates/ta_data/src/validation.rs", "crates/ta_data/src/validation/abilities.rs", "crates/ta_data/src/presentation.rs", "crates/ta_data/src/words.rs", "crates/ta_data/src/map.rs"];
 const DATA_TRANSLATING: &[&str] = &["en", "enf"];
 const DATA_FIRST_ONLY: &[&str] = &["enf"];
 

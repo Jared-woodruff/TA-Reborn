@@ -99,6 +99,8 @@ pub enum CommandMode {
     Load,
     /// Extractors on every metal spot of an area (drag a circle).
     AreaMex,
+    /// See round a place from afar (remote viewing: `game/abilities.rs`).
+    RemoteView,
 }
 
 impl CommandMode {
@@ -122,6 +124,7 @@ impl CommandMode {
             CommandMode::Repair => ta_ui::i18n::n("Repair"),
             CommandMode::Load => ta_ui::i18n::n("Load"),
             CommandMode::AreaMex => ta_ui::i18n::n("Extractors in an area"),
+            CommandMode::RemoteView => ta_ui::i18n::n("View from afar"),
         }
     }
 
@@ -165,6 +168,7 @@ impl CommandMode {
             CommandMode::Repair => n("mend a damaged unit"),
             CommandMode::Load => n("pick a unit up"),
             CommandMode::AreaMex => n("drag a circle; a click takes the metal around the cursor"),
+            CommandMode::RemoteView => n("see round a place far off, from high over it, for as long as its energy is paid"),
         }
     }
 }
@@ -2257,6 +2261,7 @@ impl Game {
                 ("resurrect", CommandMode::Resurrect),
                 ("reclaim", CommandMode::Reclaim),
                 ("area_mex", CommandMode::AreaMex),
+                ("remote_view", CommandMode::RemoteView),
             ] {
                 if self.keys.pressed(input, action) && self.mode_available(mode) {
                     self.set_command_mode(Some(mode));
@@ -2359,6 +2364,10 @@ impl Game {
         }
         if self.keys.pressed(input, "cloak") && !self.selection.is_empty() {
             self.toggle_cloak();
+        }
+        // A weapon toggle (`game/abilities.rs`).
+        if self.keys.pressed(input, "weapon_toggle") && !self.selection.is_empty() && !self.spectator {
+            self.toggle_selection_weapons();
         }
         // Upgrade in place (with Shift: the step after those queued).
         if self.keys.pressed(input, "upgrade") && !self.selection.is_empty() && !self.spectator {
@@ -2796,6 +2805,7 @@ impl Game {
             CommandMode::Reclaim => friend.map(Order::ReclaimUnit).or_else(|| self.cursor_ground.and_then(|g| self.reclaimable_feature_at(g)).map(Order::Reclaim)),
             CommandMode::Repair => ally.map(Order::Repair),
             CommandMode::Load => friend.map(Order::Load),
+            CommandMode::RemoteView => ground.map(Order::RemoteView),
             // A click without a drag: the metal around the cursor.
             CommandMode::AreaMex => {
                 if let Some(g) = self.cursor_ground {
@@ -3181,6 +3191,8 @@ impl Game {
             // (A transport: a mod's building carries the module it upgraded with, for good.)
             CommandMode::Unload => self.selection.iter().any(|&id| self.sim.unit(id).is_some_and(|u| !u.cargo.is_empty() && self.sim.unit_type(u).transport_capacity > 0)),
             CommandMode::AreaMex => self.area_extractor_type().is_some(),
+            // (Its own, or an enhancement's installed.)
+            CommandMode::RemoteView => self.selection_views_afar(),
             _ => any(&|t| type_supports_mode(&self.sim, t, mode)),
         }
     }
@@ -3486,6 +3498,7 @@ impl Game {
                 CommandMode::Repair => C::Repair,
                 CommandMode::Load => C::Load,
                 CommandMode::AreaMex => C::Repair,
+                CommandMode::RemoteView => C::View,
             };
         }
         let me = self.local_player;
@@ -5016,9 +5029,11 @@ fn type_supports_mode(sim: &Sim, t: &ta_sim::UnitType, mode: CommandMode) -> boo
             let o = sim.types.get(o);
             o.extracts_metal > Fx::ZERO && !o.needs_geo && sim.is_allowed(o.id)
         }),
+        CommandMode::RemoteView => t.abilities.remote_view.is_some() || t.enhancements.iter().any(|e| e.abilities.remote_view.is_some()),
     }
 }
 
+mod abilities;
 mod clicks;
 pub(crate) mod nuclear;
 pub mod duty;
@@ -5249,7 +5264,7 @@ mod tests {
             CommandMode::Patrol, CommandMode::Fight, CommandMode::Move, CommandMode::Guard,
             CommandMode::Repair, CommandMode::Load, CommandMode::Unload, CommandMode::DGun,
             CommandMode::Attack, CommandMode::Capture, CommandMode::Resurrect,
-            CommandMode::Reclaim, CommandMode::AreaMex,
+            CommandMode::Reclaim, CommandMode::AreaMex, CommandMode::RemoteView,
         ] {
             assert!(!selection_drag(true, Some(mode), false), "{mode:?} must keep its target gesture after the pointer moves");
         }

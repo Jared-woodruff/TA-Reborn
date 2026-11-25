@@ -2,7 +2,7 @@
 //! its name), so the AI plays mods without changes.
 
 use ta_sim::world::MoveSpec;
-use ta_sim::{Fx, Locomotion, Sim, Trajectory, UnitType, WeaponType};
+use ta_sim::{Fx, FxVec3, Locomotion, Sim, Trajectory, UnitType, WeaponType};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Role {
@@ -60,6 +60,10 @@ pub(crate) struct TypeInfo {
     pub hp: i64,
     pub range: i64,
     pub air_range: i64,
+    /// The nearest its ground weapons fire (their `minrange`: the least of them, none where one
+    /// fires as near as it likes): a tower with one guards none of the ground within it (Supreme
+    /// Commander's artillery and missile launchers; TA's own have none).
+    pub min_range: i64,
     /// A combat unit on the ground (or hovering) that lobs its shells or missiles over the field
     /// from afar: a ground weapon, ballistic or guided, reaching [`ARTILLERY_RANGE`] or more (TA's
     /// Luger and Merl, the Supreme Commander factions' mobile artillery and missile launchers).
@@ -134,6 +138,12 @@ impl TypeInfo {
     /// its tactical missile defences take): strikes on what stands within its reach.
     pub fn tactical_silo(&self) -> bool {
         self.role == Role::Silo && self.silo_classes & ta_sim::STRATEGIC_CLASS == 0
+    }
+
+    /// Whether a tower of this type at `tower` guards `pos`: within its guns' reach (and a little
+    /// more), not nearer it than they fire (its [`TypeInfo::min_range`]).
+    pub fn guards(&self, tower: FxVec3, pos: FxVec3) -> bool {
+        tower.within_xz(pos, Fx::from_int(self.range.max(200) + 96)) && (self.min_range <= 0 || !tower.within_xz(pos, Fx::from_int(self.min_range)))
     }
 
     /// A building that shoots down missiles of classes other than the strategic one, and none of
@@ -260,6 +270,7 @@ pub(crate) fn classify(sim: &Sim) -> Vec<TypeInfo> {
             let air_dps: i64 = weapons.iter().filter(|w| hits_air(w)).map(|w| dps10(w)).sum();
             let range = weapons.iter().filter(|w| hits_ground(w)).map(|w| w.range.to_int()).max().unwrap_or(0);
             let air_range = weapons.iter().filter(|w| hits_air(w)).map(|w| w.range.to_int()).max().unwrap_or(0);
+            let min_range = weapons.iter().filter(|w| hits_ground(w)).map(|w| w.min_range.to_int().max(0)).min().unwrap_or(0);
             let lobs = weapons.iter().any(|w| hits_ground(w) && matches!(w.trajectory, Trajectory::Ballistic | Trajectory::Guided) && w.range.to_int() >= ARTILLERY_RANGE);
             let hp = t.max_health.to_int().max(1);
             let cost = (t.cost_metal + t.cost_energy / 60).to_int().max(1);
@@ -307,6 +318,7 @@ pub(crate) fn classify(sim: &Sim) -> Vec<TypeInfo> {
                 hp,
                 range,
                 air_range,
+                min_range,
                 artillery: role == Role::Combat && matches!(t.locomotion, Locomotion::Ground | Locomotion::Hover) && lobs,
                 value,
                 efficiency,

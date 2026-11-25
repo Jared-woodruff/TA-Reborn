@@ -228,6 +228,25 @@ pub struct UnitDef {
     /// never offered (TA: The Final Frontier's and Total Mayhem's AI Boost: `AAISOLAR` beside the
     /// `ARMSOLAR` a player builds, its own factories, the space mod's ground labs).
     pub ai_build_options: Vec<String>,
+    /// TA Reborn's stealth fields (`RadarStealthField`, `SonarStealthField`, px): its side's units
+    /// within them are hidden from enemy radar (and sonar) as `Stealth=1` hides one, while it is at
+    /// work (Supreme Commander's stealth field generators). TA's jammers do the same and hide
+    /// missiles too.
+    pub radar_stealth_field: f64,
+    pub sonar_stealth_field: f64,
+    /// Remote viewing (`RemoteViewRadius`, px; `RemoteViewEnergy`, energy a second while it
+    /// views): told to view a place, it sees round it as though from high over it, as long as the
+    /// order stands and it pays (the Aeon's Eye of Rhianne).
+    pub remote_view_radius: f64,
+    pub remote_view_energy: f64,
+    /// A regeneration aura (`RegenAuraRadius`, px; `RegenAuraRate`, hit points a second; or
+    /// `RegenAuraShare`, a share of each one's most health a second, up to the rate where both are
+    /// given): it mends its side's other finished units within it, once a second.
+    pub regen_aura_radius: f64,
+    pub regen_aura_rate: f64,
+    pub regen_aura_share: f64,
+    /// Its weapon toggle (`[TOGGLE]` within its `[UNITINFO]`: [`crate::ToggleDef`]). None of TA's.
+    pub toggle: Option<crate::ToggleDef>,
 }
 
 impl UnitDef {
@@ -399,6 +418,14 @@ impl UnitDef {
             adjacency_size: s.get_i64_or("AdjacencySize", 0).clamp(0, u32::MAX as i64) as u32,
             build_options: Vec::new(),
             ai_build_options: Vec::new(),
+            radar_stealth_field: f("RadarStealthField", 0.0).max(0.0),
+            sonar_stealth_field: f("SonarStealthField", 0.0).max(0.0),
+            remote_view_radius: f("RemoteViewRadius", 0.0).max(0.0),
+            remote_view_energy: f("RemoteViewEnergy", 0.0).max(0.0),
+            regen_aura_radius: f("RegenAuraRadius", 0.0).max(0.0),
+            regen_aura_rate: f("RegenAuraRate", 0.0).max(0.0),
+            regen_aura_share: f("RegenAuraShare", 0.0).max(0.0),
+            toggle: crate::ToggleDef::of_unit(s),
             name,
         })
     }
@@ -590,6 +617,24 @@ mod tests {
         assert!(!read("[UNITINFO]{UnitName=ARMSUB; BMcode=1; MaxVelocity=2; MinWaterDepth=20; WaterLine=20;}").unwrap().stands_on_sea_bed(), "a submarine");
         assert!(!read("[UNITINFO]{UnitName=ARMPT; BMcode=1; MaxVelocity=3; MinWaterDepth=6; Floater=1;}").unwrap().stands_on_sea_bed(), "a boat");
         assert!(!read("[UNITINFO]{UnitName=ARMLLT;}").unwrap().stands_on_sea_bed(), "a tower on land");
+    }
+
+    /// TA Reborn's abilities read from a unit's file: stealth fields, remote viewing, a regeneration
+    /// aura and a weapon toggle; none of them on TA's own units.
+    #[test]
+    fn abilities_are_read() {
+        let u = read(
+            "[UNITINFO]{UnitName=GEN; RadarStealthField=768; SonarStealthField=960; RemoteViewRadius=800; RemoteViewEnergy=5000;\
+             RegenAuraRadius=480; RegenAuraRate=75; RegenAuraShare=0.0055; Weapon1=GUN; [TOGGLE]{ Name=Long Gun; Weapon1=LONG; } }",
+        )
+        .unwrap();
+        assert_eq!((u.radar_stealth_field, u.sonar_stealth_field), (768.0, 960.0));
+        assert_eq!((u.remote_view_radius, u.remote_view_energy), (800.0, 5000.0));
+        assert_eq!((u.regen_aura_radius, u.regen_aura_rate, u.regen_aura_share), (480.0, 75.0, 0.0055));
+        assert_eq!(u.toggle.as_ref().map(|t| t.weapons[0].as_deref()), Some(Some("LONG")));
+        let plain = read("[UNITINFO]{UnitName=ARMPW; RegenAuraRadius=-3;}").unwrap();
+        assert_eq!((plain.radar_stealth_field, plain.remote_view_radius, plain.regen_aura_radius), (0.0, 0.0, 0.0));
+        assert!(plain.toggle.is_none());
     }
 
     /// TA's units spell the initial cloak `init_cloaked` (Core Contingency's mines).

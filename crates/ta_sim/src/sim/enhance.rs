@@ -132,7 +132,6 @@ impl Sim {
         let Some(u) = self.unit(id) else { return };
         let t = types.get(u.type_id);
         let Some(e) = t.enhancements.get(index as usize) else { return };
-        let before = u.max_health(t);
         let mut list = u.enhancements.clone();
         let mut gone: Vec<u16> = Vec::new();
         if on {
@@ -149,7 +148,29 @@ impl Sim {
             gone.push(index);
         }
         list.sort_unstable();
-        let boost = boost(t, &list);
+        let toggled = u.toggled;
+        self.refit(id, list, toggled);
+        if t.callins.set_enhancement {
+            for i in gone {
+                self.call_script(id, "SetEnhancement", &[i as i32, 0]);
+            }
+            if on {
+                self.call_script(id, "SetEnhancement", &[index as i32, 1]);
+            }
+        }
+        self.events.push(SimEvent::UnitEnhanced { id, index, on });
+    }
+
+    /// A unit's figures made again with the enhancements `installed` and its weapon toggle on or
+    /// not (`toggled`): its health rising with its most (falling only to it), a slot whose weapon
+    /// changed starting afresh, a stockpiling launcher swapped or gone taking its missiles with it,
+    /// a cloak it no longer has off.
+    pub(crate) fn refit(&mut self, id: UnitId, installed: Vec<u16>, toggled: bool) {
+        let types = self.types.clone();
+        let Some(u) = self.unit(id) else { return };
+        let t = types.get(u.type_id);
+        let before = u.max_health(t);
+        let boost = boost(t, &installed, toggled);
         let slots_before = *u.weapon_slots(t);
         // The weapon that builds its missiles (`stockpile`), before and after: another one (or
         // none) does not fire those built for this one, nor go on with the one under way.
@@ -157,7 +178,8 @@ impl Sim {
         let launcher = |slots: &[Option<usize>; MAX_WEAPONS]| slots.iter().flatten().copied().find(|&w| self.weapon_types.get(w).def.stockpile);
         let restock = launcher(&slots_before) != launcher(&slots_after);
         if let Some(u) = self.unit_mut(id) {
-            u.enhancements = list;
+            u.enhancements = installed;
+            u.toggled = toggled;
             u.boost = boost.map(Box::new);
             let after = u.max_health(t);
             if after > before {
@@ -183,21 +205,14 @@ impl Sim {
                 u.stockpile_progress = Fx::ZERO;
             }
         }
-        if t.callins.set_enhancement {
-            for i in gone {
-                self.call_script(id, "SetEnhancement", &[i as i32, 0]);
-            }
-            if on {
-                self.call_script(id, "SetEnhancement", &[index as i32, 1]);
-            }
-        }
-        self.events.push(SimEvent::UnitEnhanced { id, index, on });
     }
 }
 
-/// A unit of type `t`'s figures with the enhancements `installed` (none: its type's own).
-pub(crate) fn boost(t: &UnitType, installed: &[u16]) -> Option<Boost> {
-    if installed.is_empty() {
+/// A unit of type `t`'s figures with the enhancements `installed` and its weapon toggle on or not
+/// (`toggled`; none of either: its type's own). The toggle's slots go over the enhancements'.
+pub(crate) fn boost(t: &UnitType, installed: &[u16], toggled: bool) -> Option<Boost> {
+    let toggle = t.abilities.toggle.as_ref().filter(|_| toggled);
+    if installed.is_empty() && toggle.is_none() {
         return None;
     }
     let mut b = Boost {
@@ -214,6 +229,10 @@ pub(crate) fn boost(t: &UnitType, installed: &[u16]) -> Option<Boost> {
         ai_build_options: t.ai_build_options.clone(),
         cloak: (t.def.cloak_cost > 0.0).then(|| (Fx::from_f64(t.def.cloak_cost), Fx::from_f64(t.def.cloak_cost_moving), Fx::from_f64(t.def.min_cloak_distance))),
         stealth: t.def.stealth,
+        abilities: crate::defs::Abilities { toggle: None, ..t.abilities.clone() },
+        metal_make: t.metal_make,
+        energy_make: t.energy_make,
+        upkeep: Fx::ZERO,
     };
     // Mending: its own (100 hit points every `HealTime` seconds) and theirs, in hit points a second.
     let own = if t.heal_ticks > 0 { Fx::from_int(100 * 30) / t.heal_ticks as i64 } else { Fx::ZERO };
@@ -244,7 +263,30 @@ pub(crate) fn boost(t: &UnitType, installed: &[u16]) -> Option<Boost> {
             b.cloak = Some(b.cloak.map_or(c, |o| (o.0.max(c.0), o.1.max(c.1), o.2.max(c.2))));
         }
         b.stealth |= e.stealth;
+        // (TA Reborn's abilities: the widest jamming and fields, remote viewing and aura count;
+        // what it makes and takes adds up.)
+        let (a, e_a) = (&mut b.abilities, &e.abilities);
+        a.radar_jam = a.radar_jam.max(e_a.radar_jam);
+        a.sonar_jam = a.sonar_jam.max(e_a.sonar_jam);
+        a.radar_field = a.radar_field.max(e_a.radar_field);
+        a.sonar_field = a.sonar_field.max(e_a.sonar_field);
+        a.remote_view = match (a.remote_view, e_a.remote_view) {
+            (Some(x), Some(y)) => Some(if y.radius > x.radius { y } else { x }),
+            (x, y) => x.or(y),
+        };
+        a.aura = crate::defs::Aura::stronger(a.aura, e_a.aura, t.max_health);
+        b.metal_make += e.metal_make;
+        b.energy_make += e.energy_make;
+        b.upkeep += e.upkeep;
     }
-    b.heal_ticks = if mend > Fx::ZERO { (Fx::from_int(100 * 30) / mend).to_int().max(1) as u64 } else { 0 };
+    // (With none installed, its own mending as it is: toggled alone, nothing else changes.)
+    if !installed.is_empty() {
+        b.heal_ticks = if mend > Fx::ZERO { (Fx::from_int(100 * 30) / mend).to_int().max(1) as u64 } else { 0 };
+    }
+    // Its weapon toggle, on: its slots over the enhancements'.
+    if let Some(toggle) = toggle {
+        toggle.apply(&mut b.weapons);
+        b.stockpile |= toggle.stockpile;
+    }
     Some(b)
 }

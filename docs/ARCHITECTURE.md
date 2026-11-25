@@ -507,6 +507,29 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   is called; `SimEvent::UnitEnhanced` follows. `Unit::enhancements` is in the checksum. The
   interface gives an enhancement chosen from a type's list to the selected units of that type
   alone (`game::enhancement_orders`): the index is the type's.
+* **Abilities for mods** (docs/MODDING.md, "Abilities"; Supreme Commander's units use them), each a
+  key a unit or weapon may give, compiled into `UnitType::abilities` (`defs::Abilities`: the toggle,
+  jamming and stealth fields in whole pixels, remote viewing, the aura) and `WeaponType::min_range`
+  and `WeaponType::stun`; with enhancements, read through `Unit::abilities` (the `Boost`'s), with
+  their production and upkeep (`Unit::metal_make`, `energy_make`, `enhancement_upkeep`, which
+  `economy_end` and `flows.rs` count alike). **Minimum ranges** (`Sim::too_near`, from where the
+  unit stands to the target): `update_weapons` passes a target within one over (an automatic one for
+  `BLOCKED_TICKS`), `find_target`, `target_valid`, `within_reach` and a driven unit's aim leave such
+  targets out, and an attack order whose firing weapons all have one backs its unit off to the middle
+  of its band (`Sim::keep_off`). **Weapon toggles** (`sim/toggle.rs`, `Command::SetToggle`,
+  `Unit::toggled`): the unit's figures made again as an enhancement's are (`Sim::refit`, the
+  toggle's slots over the enhancements' in `enhance::boost`), `SetToggle(on)` told,
+  `SimEvent::UnitToggled`. **Stealth fields** stamp `vision::RADAR_STEALTH` and `SONAR_STEALTH` (bits
+  64 and 128) for their owner's side, which `Sim::seen_by` reads beside `stealthy()` (missiles are
+  not hidden by them: jamming hides those). **Remote viewing** (`sim/remote_view.rs`,
+  `Order::RemoteView`): the order pays the viewer's energy each tick it is at work and sets
+  `Unit::remote_view`, and `rebuild_vision` adds a line-of-sight sensor there with an eye
+  `REMOTE_EYE` over the ground. **Stuns** (`combat/stun.rs`): a stunning weapon's blast (or its
+  firing, `paralyzeonfire`) sets `Unit::paralyzed_until` of the enemies in reach, as TA's
+  paralyzers do, after its damage. **Regeneration auras** (`sim/aura.rs`, `Sim::mend_round` after
+  `heal_units`): once a second, the strongest aura over each of a side's damaged units mends it;
+  nothing runs without an aura in the game (`UnitTypes::auras`). `Unit::toggled` and
+  `Unit::remote_view` are in the checksum where set; TA's games sum as before.
 * **Standing orders** (`Command::SetStates`, never touching the queue): fire (hold, return,
   at will) and movement. Idle armed units hit from beyond their reach answer by movement
   state: Maneuver advances on the attacker within a 420 px leash and walks back afterwards,

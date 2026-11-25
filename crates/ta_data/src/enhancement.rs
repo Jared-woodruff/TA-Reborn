@@ -83,6 +83,28 @@ pub struct EnhancementDef {
     pub min_cloak_distance: f64,
     /// It hides the unit from radar (`Stealth`).
     pub stealth: bool,
+    /// Jamming and stealth fields it gives the unit (`RadarDistanceJam`, `SonarDistanceJam`,
+    /// `RadarStealthField`, `SonarStealthField`, px), as a unit's own keys do: the widest of each
+    /// counts.
+    pub radar_jam: f64,
+    pub sonar_jam: f64,
+    pub radar_stealth_field: f64,
+    pub sonar_stealth_field: f64,
+    /// Remote viewing it gives the unit (`RemoteViewRadius`, px; `RemoteViewEnergy`, energy a
+    /// second while it views).
+    pub remote_view_radius: f64,
+    pub remote_view_energy: f64,
+    /// A regeneration aura it gives the unit (`RegenAuraRadius`, px; `RegenAuraRate`, hit points a
+    /// second; `RegenAuraShare`, a share of each one's most health a second).
+    pub regen_aura_radius: f64,
+    pub regen_aura_rate: f64,
+    pub regen_aura_share: f64,
+    /// What it makes a second while installed (`MetalMake`, `EnergyMake`: Supreme Commander's
+    /// resource allocation), and the energy it takes a second (`EnergyUse`, paid while it is
+    /// installed: short of it, the unit's radar, sonar, jamming, fields and remote viewing stop).
+    pub metal_make: f64,
+    pub energy_make: f64,
+    pub energy_use: f64,
 }
 
 impl EnhancementDef {
@@ -117,8 +139,25 @@ impl EnhancementDef {
             cloak_cost_moving: f("CloakCostMoving"),
             min_cloak_distance: f("MinCloakDistance"),
             stealth: s.get_bool_or("Stealth", false),
+            radar_jam: f("RadarDistanceJam"),
+            sonar_jam: f("SonarDistanceJam"),
+            radar_stealth_field: f("RadarStealthField"),
+            sonar_stealth_field: f("SonarStealthField"),
+            remote_view_radius: f("RemoteViewRadius"),
+            remote_view_energy: f("RemoteViewEnergy"),
+            regen_aura_radius: f("RegenAuraRadius"),
+            regen_aura_rate: f("RegenAuraRate"),
+            regen_aura_share: f("RegenAuraShare"),
+            metal_make: f("MetalMake"),
+            energy_make: f("EnergyMake"),
+            energy_use: f("EnergyUse"),
             id,
         })
+    }
+
+    /// Whether it gives the unit a regeneration aura (a reach, and something to mend with).
+    pub fn mends_round(&self) -> bool {
+        self.regen_aura_radius > 0.0 && (self.regen_aura_rate > 0.0 || self.regen_aura_share > 0.0)
     }
 
     /// The enhancements of a unit's `[UNITINFO]` section: its `[ENHANCEMENTS]` section's own, in
@@ -177,5 +216,23 @@ mod tests {
         assert!(e[2].stealth && !e[2].cloaks(), "no negative costs");
         // A unit without the section has none.
         assert!(EnhancementDef::of_unit(tdf::parse("[UNITINFO]{UnitName=ARMCOM;}").section("UNITINFO").unwrap()).is_empty());
+    }
+
+    /// What TA Reborn's abilities add: jamming and stealth fields, remote viewing, a regeneration
+    /// aura, production and an upkeep.
+    #[test]
+    fn an_enhancements_abilities_are_read() {
+        let doc = tdf::parse(
+            "[UNITINFO]{UnitName=HELPER;\n[ENHANCEMENTS]{\n[Jammer]{Slot=Back;RadarDistanceJam=700;EnergyUse=60;}\n\
+             [Allocator]{Slot=Back;MetalMake=12;EnergyMake=900;}\n[Mender]{Slot=Right;RegenAuraRadius=360;RegenAuraShare=0.004;RegenAuraRate=40;}\n\
+             [Fields]{Slot=Left;SonarDistanceJam=300;RadarStealthField=500;SonarStealthField=600;RemoteViewRadius=800;RemoteViewEnergy=40;}\n}}",
+        );
+        let e = EnhancementDef::of_unit(doc.section("UNITINFO").unwrap());
+        assert_eq!((e[0].radar_jam, e[0].energy_use), (700.0, 60.0));
+        assert_eq!((e[1].metal_make, e[1].energy_make), (12.0, 900.0));
+        assert!(e[2].mends_round() && !e[0].mends_round());
+        assert_eq!((e[2].regen_aura_radius, e[2].regen_aura_rate, e[2].regen_aura_share), (360.0, 40.0, 0.004));
+        assert_eq!((e[3].sonar_jam, e[3].radar_stealth_field, e[3].sonar_stealth_field), (300.0, 500.0, 600.0));
+        assert_eq!((e[3].remote_view_radius, e[3].remote_view_energy), (800.0, 40.0));
     }
 }

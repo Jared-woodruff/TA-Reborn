@@ -10,7 +10,7 @@ use crate::cob::TICKS_PER_SECOND;
 use crate::fixed::{Fx, FxVec3};
 use crate::sim::Sim;
 use crate::sim::adjacency::scaled;
-use crate::unit::{Adjacency, Unit};
+use crate::unit::{Adjacency, Boost, Unit};
 use crate::world::World;
 
 /// Metal and energy made and used a second.
@@ -48,7 +48,7 @@ impl Sim {
     pub fn type_flows(&self, type_id: usize, pos: FxVec3) -> UnitFlows {
         let t = self.types.get(type_id);
         let origin = World::footprint_origin(World::pos_to_anchor(pos, t.footprint), t.footprint);
-        self.flows_of(type_id, true, true, Some(origin), None)
+        self.flows_of(type_id, None, true, true, Some(origin), None)
     }
 
     /// [`Sim::type_flows`] of one of `owner`'s, with what the finished buildings of theirs it would
@@ -57,7 +57,7 @@ impl Sim {
         let t = self.types.get(type_id);
         let origin = World::footprint_origin(World::pos_to_anchor(pos, t.footprint), t.footprint);
         let (taken, _) = self.adjacency_preview(type_id, pos, owner);
-        self.flows_of(type_id, true, true, Some(origin), taken.as_ref())
+        self.flows_of(type_id, None, true, true, Some(origin), taken.as_ref())
     }
 
     /// What `u` makes and uses a second now: a finished unit's production and upkeep (while it is
@@ -92,7 +92,13 @@ impl Sim {
             // (As the economy takes it: upkeep is paid while switched on, which TA does when a
             // unit is built or the player does; what is neither idles for free.)
             let active = u.activated || !t.def.on_offable && t.energy_use.is_zero();
-            f = self.flows_of(u.type_id, active, u.upkeep_paid, u.occupied_origin, u.adjacency.as_deref());
+            f = self.flows_of(u.type_id, u.boost.as_deref(), active, u.upkeep_paid, u.occupied_origin, u.adjacency.as_deref());
+        }
+        // A view from afar, paid for this tick (`sim/remote_view.rs`).
+        if u.remote_view.is_some()
+            && let Some(view) = u.abilities(t).remote_view
+        {
+            f.energy_use += view.energy * TICKS_PER_SECOND;
         }
         if u.cloak_on && u.carried_by.is_none()
             && let Some((still, on_the_move, _)) = u.cloak_costs(t)
@@ -136,14 +142,14 @@ impl Sim {
     }
 
     /// What a unit of `type_id` makes and uses a second (switched on and its upkeep paid, or
-    /// not), with the metal under it at `origin` and what the buildings beside it give it
-    /// (`adjacency`), as `Sim::economy_end` counts it.
-    fn flows_of(&self, type_id: usize, active: bool, paid: bool, origin: Option<(i32, i32)>, adjacency: Option<&Adjacency>) -> UnitFlows {
+    /// not), with what its enhancements make and take (`boost`), the metal under it at `origin`
+    /// and what the buildings beside it give it (`adjacency`), as `Sim::economy_end` counts it.
+    fn flows_of(&self, type_id: usize, boost: Option<&Boost>, active: bool, paid: bool, origin: Option<(i32, i32)>, adjacency: Option<&Adjacency>) -> UnitFlows {
         let factor = |a: AdjacencyAffect| adjacency.filter(|j| !j.change[a.index()].is_zero()).map(|j| j.factor(a));
         let t = self.types.get(type_id);
         let per_tick = |v: Fx| v / TICKS_PER_SECOND;
-        let mut energy = t.energy_make;
-        let mut metal = t.metal_make;
+        let mut energy = boost.map_or(t.energy_make, |b| b.energy_make);
+        let mut metal = boost.map_or(t.metal_make, |b| b.metal_make);
         if t.wind_generator > Fx::ZERO {
             energy += per_tick(self.wind.min(t.wind_generator));
         }
@@ -158,6 +164,10 @@ impl Sim {
             } else if paid {
                 upkeep = scaled(t.energy_use, factor(AdjacencyAffect::EnergyUse));
             }
+        }
+        // (Its enhancements' upkeep, paid while they are installed.)
+        if paid && let Some(b) = boost {
+            upkeep += b.upkeep;
         }
         if active && paid {
             if t.extracts_metal > Fx::ZERO && let Some(origin) = origin {

@@ -274,7 +274,9 @@ impl SkirmishAi {
         let out = (d - reach).max(200).min(d * 55 / 100);
         let near = Self::clamp_to_map(sim, self.base + toward.scale(fx(out)));
         let r = fx(sim.types.get(t).radius.to_int() + 16);
-        let ok = |p: FxVec3| p.within_xz(seen, fx(reach)) && plan.free(p, r) && self.threat.at(p) == 0 && self.builder_reaches(sim, b, p, t);
+        // (Past its guns' minimum range of it, where they have one.)
+        let least = self.info[t].min_range;
+        let ok = |p: FxVec3| p.within_xz(seen, fx(reach)) && (least <= 0 || !p.within_xz(seen, fx(least + 64))) && plan.free(p, r) && self.threat.at(p) == 0 && self.builder_reaches(sim, b, p, t);
         let site = self.find_site(sim, t, near, 24, &ok);
         if site.is_none() {
             self.place_failed.push((t, sim.tick + 30 * SECOND));
@@ -295,7 +297,7 @@ impl SkirmishAi {
         self.gun_targets.retain(|&(g, _, _)| sim.unit(g).is_some_and(|u| !u.dead && u.owner == me));
         let guns: Vec<&Unit> = s.own.iter().copied().filter(|u| self.info[u.type_id].long_range && Self::can_command(sim, u)).collect();
         for gun in guns {
-            let reach = self.info[gun.type_id].range;
+            let (reach, near) = (self.info[gun.type_id].range, self.info[gun.type_id].min_range);
             let shelling = match gun.orders.front() {
                 Some(&Order::Attack(Target::Ground(p))) => Some(p),
                 _ => None,
@@ -312,7 +314,8 @@ impl SkirmishAi {
             let best = self
                 .enemy_buildings
                 .iter()
-                .filter(|(_, p, _)| p.within_xz(gun.pos, fx(reach - 32)) && !friends.iter().any(|f| f.within_xz(*p, fx(220))))
+                // (Past its minimum range, where it has one: Forged Alliance's heavy artillery's.)
+                .filter(|(_, p, _)| p.within_xz(gun.pos, fx(reach - 32)) && (near <= 0 || !p.within_xz(gun.pos, fx(near + 32))) && !friends.iter().any(|f| f.within_xz(*p, fx(220))))
                 // (Not the one it had just now, while another is known.)
                 .map(|&(id, p, t)| (self.target_value(t) * 1000 / (1000 + dist(p, gun.pos) / 4) - if last.is_some_and(|l| l.within_xz(p, fx(48))) { 1_000_000 } else { 0 }, id.slot, p))
                 .max_by_key(|&(score, slot, _)| (score, Reverse(slot)));

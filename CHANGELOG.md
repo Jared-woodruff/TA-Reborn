@@ -93,6 +93,29 @@
     and the jukebox's PLAYS row says THE GAME'S rather than TA'S MUSIC.
   - The mod check no longer notes a building that upgrades itself in place (Forged Alliance's
     extractors and radars) for a missing nano-lathe in its script.
+- New abilities for mods, and for the Supreme Commander factions (made again with UPDATE…):
+  - Minimum ranges: a weapon may fire no nearer than its `minrange`; told to attack something too
+    near, its unit backs off before it fires. The factions' artillery, missiles and long guns
+    keep Forged Alliance's.
+  - Weapon toggles: a unit may switch to another set of weapons and back with a button of its own
+    (Alt+T), in both interfaces: the Seraphim sniper bot's long gun, the Cybran Sky Slammer's and
+    Siren's ground guns. The computer players switch them too.
+  - Stealth fields hide your units round them from enemy radar and sonar: the factions' stealth
+    field generators, the Deceiver, the Mermaid. Jammers now work too, at their upkeep, and
+    enhancements can give jamming: the UEF support commander's Radar Jammer. (Forged Alliance's
+    jammers scatter false blips; TA Reborn's hide what is near them, as TA's do.)
+  - Remote viewing: the Aeon's Eye of Rhianne sees round any place you point it at (REMOTE VIEW,
+    Alt+V, with its own pointer), for as long as it pays its energy.
+  - Stuns beside damage: the Cybran Medusa's shells, the Shimmer's bombs, the Dragon Fly's EMP
+    cannon, the Cybran nukes, the Cybran support commander's EMP Burst and the Aeon commander's
+    Chrono Dampener stun what they hit; a stunned unit cannot move, fire or build for a while, and
+    shows it as a paralysed one.
+  - Regeneration auras mend your units round a unit: the Seraphim commander's Restoration Field
+    and Rapid Restoration Field.
+  - Enhancements that make metal and energy: the commanders' Resource Allocation Systems.
+  - The mod check tells a minimum range past a weapon's range, a stun's parts without its time,
+    half an aura and a toggle naming a weapon nobody defines, and lists what a mod uses of these.
+  Multiplayer and replays need everyone on this build.
 
 ### Changed
 - The jukebox on a short screen (most windows at the interface's usual size) stands in two

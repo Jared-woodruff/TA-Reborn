@@ -114,8 +114,10 @@ pub use transport::{Client, Host, HostEvent};
 /// weapons and letting go, and idle planes with targets of their own landing. 118: simulation
 /// 113, a driven unit's course, its throttle in hundredths (`DirectInput`) and a click held. 119:
 /// simulation 114, the computer players' defence from the air, their Commander's retreat from guns
-/// and their climb up the tiers, and armies' worth without the Commanders.
-pub const PROTOCOL: u32 = 119;
+/// and their climb up the tiers, and armies' worth without the Commanders. 120: simulation 115,
+/// TA Reborn's abilities: `Command::SetToggle`, `Order::RemoteView`, minimum ranges, stealth fields,
+/// stuns, regeneration auras and enhancements' production.
+pub const PROTOCOL: u32 = 120;
 pub const DEFAULT_PORT: u16 = 7890;
 /// Ticks between state hash reports (which double as progress reports).
 pub const HASH_INTERVAL: u64 = 15;
@@ -1431,6 +1433,7 @@ pub fn command_player(c: &Command) -> u8 {
         | Command::SetShootAll { player, .. }
         | Command::DropOrder { player, .. }
         | Command::DirectControl { player, .. }
+        | Command::SetToggle { player, .. }
         | Command::Formation { player, .. }
         | Command::Signal { player, .. }
         | Command::Abandon { player }

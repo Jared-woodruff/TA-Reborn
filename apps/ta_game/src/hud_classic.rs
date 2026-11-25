@@ -1112,6 +1112,7 @@ impl ClassicHud {
         for (mode, labels, what, action) in [
             (CommandMode::Fight, &[n("FIGHT")][..], n("Attack-move: head for a place, fighting on the way"), "fight"),
             (CommandMode::Resurrect, &[n("RESURRECT"), n("REVIVE")][..], n("Raise a wreck back into the unit it was"), "resurrect"),
+            (CommandMode::RemoteView, &[n("REMOTE VIEW"), n("VIEW")][..], n("View from afar: see round a place far off for as long as its energy is paid"), "remote_view"),
         ] {
             if !game.mode_available(mode) {
                 continue;
@@ -1141,6 +1142,29 @@ impl ClassicHud {
             }
             if resp.clicked() {
                 game.upgrade_selection(ui.input(|i| i.modifiers.shift));
+            }
+        }
+        // A weapon toggle, where the selection has one (TA has no gadget for it): in a state place,
+        // else an order place (`game/abilities.rs`).
+        if let Some(state) = game.weapon_toggle() {
+            let name = ta_ui::i18n::upper(&state.name);
+            let labels = [name.as_str(), n("TOGGLE")];
+            let resp = match (wide.pop(), small.pop()) {
+                (Some(r), unused) => {
+                    small.extend(unused);
+                    Some(self.wide_toggle(ui, env, r, ui.id().with("extra_toggle"), &labels, state.on))
+                }
+                (None, Some(r)) => Some(self.plate_button(ui, env, r, ui.id().with("extra_toggle"), &labels, state.on, true)),
+                (None, None) => None,
+            };
+            if let Some(resp) = resp {
+                self.anchors.order("weapon_toggle", resp.rect);
+                if resp.hovered() {
+                    self.tip = Some(Tip::Text(name.clone(), game.weapon_toggle_tip()));
+                }
+                if resp.clicked() {
+                    game.toggle_selection_weapons();
+                }
             }
         }
         // Enhancements, where the selection's first unit has them (TA has no gadget for them):
@@ -1555,6 +1579,7 @@ fn action_tip(action: Action, game: &Game, menu: Option<MenuAt>) -> Tip {
                 CommandMode::Fight => (n("Click where to fight your way to"), "fight"),
                 CommandMode::Resurrect => (n("Click a wreck to raise; drag for an area"), "resurrect"),
                 CommandMode::AreaMex => (n("Drag a circle: extractors on every metal spot in it"), "area_mex"),
+                CommandMode::RemoteView => (n("Click the place to view from afar"), "remote_view"),
             };
             let what = if action.is_empty() { t(what).to_string() } else { format!("{} ({})", t(what), key(action)) };
             (ta_ui::i18n::upper(t(m.label_for(game))), what)

@@ -199,6 +199,10 @@ pub fn weapons(units: &[&UnitBlueprint]) -> String {
         for weapon in &extra {
             s.push_str(&units::weapon_section(u, weapon));
         }
+        // (Its weapon toggle's: `abilities::toggle`.)
+        for weapon in super::abilities::toggle_weapons(super::abilities::toggle(u, &w, &extra).as_ref()) {
+            s.push_str(&units::weapon_section(u, weapon));
+        }
         let (_, variants) = super::enhance::enhancements(u, units, &w, &extra);
         for (name, weapon, owner) in &variants.sections {
             s.push_str(&units::weapon_section_named(owner, weapon, name));

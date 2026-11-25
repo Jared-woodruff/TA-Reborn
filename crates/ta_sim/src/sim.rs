@@ -19,10 +19,13 @@ use crate::world::{CELL, MoveSpec, Occupant, Region, World};
 
 pub mod adjacency;
 mod air;
+pub mod aura;
 mod possession;
 mod blockers;
 pub mod enhance;
+pub mod remote_view;
 mod repair_round;
+mod toggle;
 mod upgrade;
 
 /// Base resource storage every player has regardless of buildings (TA default).
@@ -122,7 +125,7 @@ fn valid_order_position(order: &Order) -> bool {
     use crate::unit::Target;
     match order {
         Order::Move(p) | Order::Fight(p) | Order::Patrol(p) | Order::Unload(p) | Order::Build { pos: p, .. }
-        | Order::Attack(Target::Ground(p)) | Order::ManualFire(Target::Ground(p)) => valid_command_position(*p),
+        | Order::Attack(Target::Ground(p)) | Order::ManualFire(Target::Ground(p)) | Order::RemoteView(p) => valid_command_position(*p),
         _ => true,
     }
 }
@@ -226,6 +229,9 @@ pub enum Command {
     /// `player` drives their unit from the first-person view with `input` (sent when it changes,
     /// and once a second while it does not), or lets it go (`None`): see `sim/possession.rs`.
     DirectControl { player: u8, unit: UnitId, input: Option<crate::unit::DirectInput> },
+    /// Switches the units' weapon toggles on (their `[TOGGLE]`'s weapons) or off (their own): see
+    /// `sim/toggle.rs`. (Last: replays keep the earlier variants' numbers.)
+    SetToggle { player: u8, #[serde(deserialize_with = "crate::serde_limits::command_list")] units: Vec<UnitId>, on: bool },
 }
 
 /// The index nearest `index` (the lower first, of two as near) of those below `len` that `is`
@@ -917,14 +923,16 @@ impl Sim {
         let flags = self.vision.flags_at(self.vision_slot(player), u.pos);
         let jammed = self.vision.flags_at(self.vision_slot(u.owner), u.pos);
         let submerged = self.submerged(u);
+        // (Its side's sonar stealth field over it hides it as sonar jamming does.)
         let sonar = (self.types.get(u.type_id).locomotion == Locomotion::Naval || submerged)
-            && flags & vision::SONAR != 0 && jammed & vision::SONAR_JAM == 0;
+            && flags & vision::SONAR != 0 && jammed & (vision::SONAR_JAM | vision::SONAR_STEALTH) == 0;
         if submerged && !sonar { return Seen::Hidden; }
         if flags & vision::LOS != 0 {
             return Seen::Visible;
         }
         let t = self.types.get(u.type_id);
-        let stealth = u.stealthy(t);
+        // (Its own stealth, or its side's radar stealth field over it.)
+        let stealth = u.stealthy(t) || jammed & vision::RADAR_STEALTH != 0;
         if stealth && !sonar {
             return Seen::Hidden;
         }
@@ -1104,15 +1112,26 @@ impl Sim {
             if !self.sensors_active(u) {
                 continue;
             }
+            // (Jamming and stealth fields its type's, with its enhancements'.)
+            let abilities = u.abilities(t);
             for (range, flag) in [
                 (u.radar(t).to_int(), vision::RADAR),
                 (u.sonar(t).to_int(), vision::SONAR),
-                (t.def.radar_jam as i64, vision::RADAR_JAM),
-                (t.def.sonar_jam as i64, vision::SONAR_JAM),
+                (abilities.radar_jam, vision::RADAR_JAM),
+                (abilities.sonar_jam, vision::SONAR_JAM),
+                (abilities.radar_field, vision::RADAR_STEALTH),
+                (abilities.sonar_field, vision::SONAR_STEALTH),
             ] {
                 if range > 0 {
                     sensors.push(Sensor { player, pos, radius: range, flag, eye });
                 }
+            }
+            // A view from afar: sight round the place, from high over it.
+            if u.remote_view.is_some()
+                && let Some((at, radius)) = self.viewing(u)
+            {
+                let ground = self.world.height_at(at.x, at.z).max(self.world.sea_level).to_int();
+                sensors.push(Sensor { player, pos: at, radius: radius.to_int(), flag: vision::LOS, eye: ground + remote_view::REMOTE_EYE });
             }
         }
         self.vision.rebuild(&sensors);
@@ -1823,6 +1842,10 @@ impl Sim {
         if let Order::Enhance { index, .. } = order && !self.unit(id).is_some_and(|u| (*index as usize) < self.types.get(u.type_id).enhancements.len()) {
             return;
         }
+        // A view from afar, of a unit that has remote viewing.
+        if let Order::RemoteView(_) = order && !self.unit(id).is_some_and(|u| self.can_view_afar(u)) {
+            return;
+        }
         let (factory, fires) = {
             let t = self.types.get(type_id);
             let slots = self.unit(id).map_or(t.weapons, |u| *u.weapon_slots(t));
@@ -2181,6 +2204,7 @@ impl Sim {
                     p.shoot_all = *on;
                 }
             }
+            Command::SetToggle { player, units, on } => self.set_toggles(*player, units, *on),
             Command::DropOrder { player, unit, index, order } => {
                 let Some(u) = self.unit(*unit).filter(|u| u.owner == *player) else { return };
                 let orders = &u.orders;
@@ -2286,6 +2310,7 @@ impl Sim {
         self.update_fires();
         self.acid_seas();
         self.heal_units();
+        self.mend_round();
         let t3 = std::time::Instant::now();
         self.decay_abandoned_frames();
         self.process_deaths();
@@ -2667,6 +2692,8 @@ impl Sim {
     }
 
     fn update_orders(&mut self, id: UnitId, t: &UnitType) {
+        // A view from afar whose order is gone (Stop, another order) is given up.
+        self.end_remote_view(id);
         // Work on itself whose order is gone (Stop, an order not queued after it) is called off,
         // its metal back.
         if let Some(u) = self.unit(id)
@@ -2769,6 +2796,7 @@ impl Sim {
             Order::Unload(dest) => self.update_unload_order(id, t, dest),
             Order::Upgrade(to) => self.update_upgrade_order(id, t, to),
             Order::Enhance { index, remove } => self.update_enhance_order(id, t, index, remove),
+            Order::RemoteView(at) => self.update_remote_view_order(id, t, at),
             Order::SetStates { fire, movement } => {
                 if let Some(u) = self.unit_mut(id) {
                     u.fire_state = fire.min(2);
@@ -5700,8 +5728,9 @@ impl Sim {
                 continue;
             }
             let e = &mut self.players[o].economy;
-            let mut energy_in = t.energy_make;
-            let mut metal_in = t.metal_make;
+            // (Its type's, with what its enhancements make: Supreme Commander's resource allocation.)
+            let mut energy_in = u.energy_make(t);
+            let mut metal_in = u.metal_make(t);
             if t.wind_generator > Fx::ZERO {
                 energy_in += per_tick(wind.min(t.wind_generator));
             }
@@ -5725,6 +5754,8 @@ impl Sim {
                     upkeep = adjacency::scaled(t.energy_use, u.adjacency_factor(AdjacencyAffect::EnergyUse));
                 }
             }
+            // (What its enhancements take, paid while they are installed: a jammer's.)
+            upkeep += u.enhancement_upkeep();
             let paid = upkeep.is_zero() || e.energy >= upkeep;
             e.tick_energy_wanted += upkeep;
             // (For the figures the interface shows: `Sim::unit_flows`.)
@@ -6134,6 +6165,7 @@ impl Sim {
                 Order::Stop => mix(19),
                 Order::Upgrade(t) => { mix(20); mix(*t as i64); }
                 Order::Enhance { index, remove } => { mix(21); mix(*index as i64); mix(*remove as i64); }
+                Order::RemoteView(p) => { mix(22); target(mix, Some(Target::Ground(*p))); }
             }
         }
         let mut h: u64 = 0xcbf2_9ce4_8422_2325;
@@ -6277,6 +6309,15 @@ impl Sim {
             // (A script's hold likewise.)
             if u.immobile {
                 mix(-24);
+            }
+            // (A weapon toggle on, and a view from afar, only where there are some: TA's games sum
+            // as before.)
+            if u.toggled {
+                mix(-28);
+            }
+            if let Some(p) = u.remote_view {
+                mix(-29);
+                target(&mut mix, Some(Target::Ground(p)));
             }
             mix(u.orders.len() as i64);
             for o in &u.orders { order(&mut mix, o); }

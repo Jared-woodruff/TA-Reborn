@@ -119,7 +119,7 @@ pub(crate) fn block_end(t: &[Token], start: usize) -> usize {
 
 /// The bodies of the functions assigned to `name` (`name = function(...) ... end`), as token
 /// ranges (the body after the parameters, its `end` left out).
-fn functions(t: &[Token], name: &str, from: usize, to: usize) -> Vec<(usize, usize)> {
+pub(crate) fn functions(t: &[Token], name: &str, from: usize, to: usize) -> Vec<(usize, usize)> {
     let mut out = Vec::new();
     let mut k = from;
     while k + 2 < to {
@@ -140,7 +140,7 @@ fn functions(t: &[Token], name: &str, from: usize, to: usize) -> Vec<(usize, usi
 /// they stand in: which of the methods it calls (its index), the first argument (a string) and the
 /// second (`true`, `false` or none), and whether the call stands inside an `if` or loop of that
 /// range.
-fn calls(t: &[Token], methods: &[&str], from: usize, to: usize) -> Vec<(usize, String, Option<bool>, bool)> {
+pub(crate) fn calls(t: &[Token], methods: &[&str], from: usize, to: usize) -> Vec<(usize, String, Option<bool>, bool)> {
     let mut out = Vec::new();
     let mut depth = 0i32;
     let mut k = from;

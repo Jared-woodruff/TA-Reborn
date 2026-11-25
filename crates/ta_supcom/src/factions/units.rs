@@ -303,7 +303,7 @@ pub fn usable(u: &UnitBlueprint, w: &WeaponBlueprint, enhanced: bool) -> bool {
         && !w.label.to_ascii_lowercase().contains("antitorpedo")
         && !w.projectile.as_deref().unwrap_or("").to_ascii_lowercase().contains("antitorpedo")
         && !restricts_to(w, "TORPEDO")
-        && (w.damage > 1.0 || w.nuke.is_some() || k == Kind::AntiMissile || k == Kind::Overcharge)
+        && (w.damage > 1.0 || w.nuke.is_some() || k == Kind::AntiMissile || k == Kind::Overcharge || super::abilities::stuns(w))
 }
 
 /// The weapons that take its slots (eight at most), the death weapon and its kamikaze blast.
@@ -678,6 +678,8 @@ pub fn weapon_section_named(u: &UnitBlueprint, w: &WeaponBlueprint, name: &str) 
     put("explosionart", explosion(blast).into());
     put("waterexplosiongaf", "fx".into());
     put("waterexplosionart", "h2oboom1".into());
+    // TA Reborn's abilities: its minimum range, its stun (`factions::abilities`).
+    s.push_str(&super::abilities::weapon_keys(u, w, name));
     let damage = match &w.nuke {
         Some(n) => n.inner_damage,
         None if stock => cycle(w).per_shot,
@@ -837,6 +839,8 @@ pub fn yard_map(fx: i64, fz: i64) -> String {
 fn upkeep_pays(u: &UnitBlueprint) -> bool {
     let watches = (u.intel.radar > 0.0 && !u.birth.intel_off("Radar")) || (u.intel.sonar > 0.0 && !u.birth.intel_off("Sonar"));
     u.is("MASSEXTRACTION") || u.production_mass > 0.0 || watches && u.is("INTELLIGENCE") && (u.is("RADAR") || u.is("SONAR") || u.is("OMNI")) && !u.is("COUNTERINTELLIGENCE")
+        // (A jammer's, a stealth field generator's: `factions::abilities`.)
+        || super::abilities::upkeep_pays(u)
 }
 
 /// Whether its file has it switched on once built (`ActivateWhenBuilt`: TA's engine runs its
@@ -906,6 +910,9 @@ pub struct Extra<'a> {
     pub adjacency_categories: Option<&'a std::collections::BTreeSet<String>>,
     /// The name it is shown by ([`shown_name`]); empty: its own, else its description.
     pub name: String,
+    /// Its weapon toggle (`factions::abilities::toggle`: its slots after its own and those its
+    /// enhancements fill).
+    pub toggle: Option<super::abilities::Toggle<'a>>,
 }
 
 /// The name a unit is shown by: its own, else its description (the commanders' and most
@@ -1101,6 +1108,10 @@ pub fn unit_file(u: &UnitBlueprint, weapons: &Weapons, carries: Option<(u32, u32
     if u.intel.radar_stealth && !u.birth.intel_off("RadarStealth") {
         put("Stealth", "1".into());
     }
+    // Jamming, stealth fields and remote viewing (`factions::abilities`).
+    for (k, v) in super::abilities::unit_keys(u) {
+        put(k, v);
+    }
     // (Self-repair: TA Reborn mends 100 hit points every `HealTime` seconds.)
     if u.regen > 0.0 {
         put("HealTime", format!("{:.2}", 100.0 / u.regen));
@@ -1247,6 +1258,11 @@ pub fn unit_file(u: &UnitBlueprint, weapons: &Weapons, carries: Option<(u32, u32
             put(&format!("OnlyTargetCategory{}", slot + 1), "VTOL".into());
         }
     }
+    // (Its weapon toggle's slots take theirs: `factions::abilities`.)
+    let toggle = extra.toggle.as_ref().map(|t| super::abilities::toggle_section(u, t));
+    for (k, v) in toggle.iter().flat_map(|(_, keys)| keys) {
+        put(k, v.clone());
+    }
     if weapons.dgun.is_some() {
         put("canDgun", "1".into());
     }
@@ -1314,6 +1330,8 @@ pub fn unit_file(u: &UnitBlueprint, weapons: &Weapons, carries: Option<(u32, u32
             }
         }
     }
+    // (What stuns spare: `factions::abilities::categories`.)
+    cats.extend(super::abilities::categories(u).into_iter().map(String::from));
     put("Category", cats.join(" "));
     // Its size class among structures, for adjacency: which of a neighbour's buffs it takes, and
     // from how many neighbours at most (as many of the smallest structures as fit round it).
@@ -1429,7 +1447,8 @@ pub fn unit_file(u: &UnitBlueprint, weapons: &Weapons, carries: Option<(u32, u32
         }
     }
     let adjacency = if u.motion == Motion::None { adjacency_section(extra.adjacency) } else { String::new() };
-    format!("[UNITINFO]\n\t{{\n{f}{}{}{adjacency}\t}}\n", extra.enhancements, exits_section(&extra.exits))
+    let toggle = toggle.map(|(section, _)| section).unwrap_or_default();
+    format!("[UNITINFO]\n\t{{\n{f}{}{}{adjacency}{toggle}\t}}\n", extra.enhancements, exits_section(&extra.exits))
 }
 
 /// TA's sound category for the unit's kind (TA's own sounds, `gamedata/sound.tdf`'s: Forged
@@ -1844,7 +1863,7 @@ mod tests {
             ("GenReloadSize4", Some("ReloadTime"), Some("-0.03"), Some("4"), Some("ARTILLERY")),
         ]);
         let artillery = UnitBlueprint { id: "UEB2303".into(), faction: Faction::Uef, categories: vec!["STRUCTURE".into(), "ARTILLERY".into(), "SIZE4".into()], ..Default::default() };
-        assert_eq!(ta_formats::tdf::parse(&unit_file(&artillery, &none, None, &extra)).sections[0].get("Category"), Some("UEF LEVEL1 NOTAIR NOTSUB NOWEAPON ARTILLERY"));
+        assert_eq!(ta_formats::tdf::parse(&unit_file(&artillery, &none, None, &extra)).sections[0].get("Category"), Some("UEF LEVEL1 NOTAIR NOTSUB NOWEAPON ARTILLERY STRUCTURE"), "(a structure: what stuns spare)");
         let tank = UnitBlueprint { id: "UEL0201".into(), faction: Faction::Uef, motion: Motion::Land, categories: vec!["ARTILLERY".into(), "SIZE4".into()], ..Default::default() };
         let file = unit_file(&tank, &none, None, &extra);
         assert!(!file.contains("ADJACENCY") && !file.contains("AdjacencySize") && !file.contains(" ARTILLERY"), "{file}");

@@ -141,6 +141,23 @@ pub struct WeaponDef {
     pub sound_trigger: bool,
     pub shake_magnitude: f64,
     pub shake_duration: f64,
+    /// The nearest it fires (`minrange`, pixels across the ground from its unit to the target):
+    /// nothing nearer is taken on, and an attack order keeps its unit between this and its range
+    /// (Supreme Commander's `MinRadius`). None (0): as near as it likes, as all of TA's own.
+    pub min_range: f64,
+    /// TA Reborn's stun (`paralyzetime`, seconds): the enemies its shot hits are left unable to
+    /// move, fire or build for that long, beside its damage (Supreme Commander's EMP and Chrono
+    /// Dampener). 0: none. ([`WeaponDef::paralyzer`] is TA's, whose damage is the stun alone.)
+    pub paralyze_time: f64,
+    /// How far round where its shot goes off the stun reaches (`paralyzeradius`, px; 0: as far as
+    /// its blast, half its `areaofeffect`), the unit it hits always.
+    pub paralyze_radius: f64,
+    /// The stun goes off round the unit firing it as it fires (`paralyzeonfire=1`), not where its
+    /// shot goes off: the Chrono Dampener's pulse.
+    pub paralyze_on_fire: bool,
+    /// The categories of the units its stun spares (`paralyzeexempt`, `Category` tokens: any one
+    /// of them; empty, none).
+    pub paralyze_exempt: String,
 }
 
 impl WeaponDef {
@@ -240,7 +257,18 @@ impl WeaponDef {
             sound_trigger: b("soundtrigger"),
             shake_magnitude: f("shakemagnitude", 0.0),
             shake_duration: f("shakeduration", 0.0),
+            min_range: f("minrange", 0.0).max(0.0),
+            paralyze_time: f("paralyzetime", 0.0).max(0.0),
+            paralyze_radius: f("paralyzeradius", 0.0).max(0.0),
+            paralyze_on_fire: b("paralyzeonfire"),
+            paralyze_exempt: st("paralyzeexempt").to_ascii_uppercase(),
         }
+    }
+
+    /// Whether its hits stun (TA Reborn's `paralyzetime`; not TA's `paralyzer`, whose damage is
+    /// its stun).
+    pub fn stuns(&self) -> bool {
+        self.paralyze_time > 0.0 && !self.paralyzer
     }
 
     /// Damage dealt to a unit type (TA looks up the target's unit name).
@@ -313,6 +341,22 @@ mod tests {
         // Built by hand with the flags alone: class 1, as TA's.
         let by_hand = WeaponDef { interceptor: true, ..Default::default() };
         assert!(by_hand.intercepts(&WeaponDef { targetable: true, ..Default::default() }));
+    }
+
+    /// TA Reborn's own keys: a minimum range and a stun beside the damage, its reach, when it goes
+    /// off and whom it spares; none of them on TA's own weapons.
+    #[test]
+    fn minimum_ranges_and_stuns_are_read() {
+        let read = |keys: &str| WeaponDef::from_tdf(&tdf::parse(&format!("[W] {{ {keys} }}")).sections[0]);
+        let w = read("range=900; minrange=480; paralyzetime=3.5; paralyzeradius=704; paralyzeonfire=1; paralyzeexempt= Commander experimental ;");
+        assert_eq!((w.min_range, w.paralyze_time, w.paralyze_radius), (480.0, 3.5, 704.0));
+        assert!(w.paralyze_on_fire && w.stuns());
+        assert_eq!(w.paralyze_exempt, "COMMANDER EXPERIMENTAL", "tokens in capitals");
+        let plain = read("range=900;");
+        assert_eq!((plain.min_range, plain.paralyze_time, plain.paralyze_radius), (0.0, 0.0, 0.0));
+        assert!(!plain.stuns() && !plain.paralyze_on_fire && plain.paralyze_exempt.is_empty());
+        assert_eq!(read("minrange=-5; paralyzetime=-1;").min_range, 0.0, "no negative reach");
+        assert!(!read("paralyzer=1; paralyzetime=4;").stuns(), "TA's paralyzer stuns by its damage alone");
     }
 
     #[test]
