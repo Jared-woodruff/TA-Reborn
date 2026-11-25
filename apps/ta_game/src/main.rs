@@ -88,6 +88,7 @@ mod rivals;
 mod scenario;
 mod scene;
 mod setup;
+mod shields;
 mod signals;
 mod showroom;
 mod sound_log;

@@ -151,6 +151,29 @@
   - The mod check tells a minimum range past a weapon's range, a stun's parts without its time,
     half an aura and a toggle naming a weapon nobody defines, and lists what a mod uses of these.
   Multiplayer and replays need everyone on this build.
+- Shields, for mods and for the Supreme Commander factions (made again with UPDATE…):
+  - A bubble is a dome round its unit that stops the enemy's shells, missiles and lasers coming
+    into it from outside: they burst on it, and what stands under it is spared. Your own side's
+    shots go out through it, and an enemy that gets under it fires freely. It has hit points of
+    its own and regains them; run out, it collapses, and comes back whole after a while.
+    Overlapping domes each take what of a blast reaches them. Strategic missiles go through, as
+    Forged Alliance's nukes do, and torpedoes pass under.
+  - A personal shield takes the damage its unit takes before its health does.
+  - A shield costs energy while it is switched on: switched off, or short of energy, it is down,
+    and comes back up a few seconds after.
+  - The factions' shield generators, the mobile shield generators, the Bulwark, the Continental,
+    the Fatboy, the Obsidian, the Titan and the Harbinger have theirs, and the commanders' and
+    support commanders' shield enhancements (personal shields, and the UEF's Shield Generator
+    Field) are offered.
+  - Domes are drawn faint in their owner's colour, rippling where they are hit and flashing as
+    they collapse and come back; personal shields as a thin shell. The unit card shows a shield's
+    hit points under the health (and why it is down), the classic interface a bar under the health
+    bar, and the information page (F1) its figures.
+  - The computer players put shield generators up by their factories and defences, take a
+    commander's shield enhancement when rich, count a dome in what guards a place, keep their
+    tactical missiles off what a dome covers, and turn their long-range guns elsewhere first.
+  - The mod check tells shield keys without `ShieldHealth`, and lists what a mod uses of shields.
+  Multiplayer and replays need everyone on this build.
 
 ### Changed
 - The jukebox on a short screen (most windows at the interface's usual size) stands in two

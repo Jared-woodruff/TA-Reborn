@@ -31,6 +31,7 @@ mod idle;
 pub(crate) mod info;
 mod radial;
 pub(crate) mod ranges;
+pub(crate) mod shield;
 mod scenario;
 mod deck;
 

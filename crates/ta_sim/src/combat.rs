@@ -237,7 +237,7 @@ fn segment_distance(a: FxVec3, b: FxVec3, c: FxVec3) -> Fx {
 
 /// How far along the segment `a`..`b` (0 to 1) it first comes within `r` of `c`: 0 if it starts
 /// within, None if it never does.
-fn segment_entry(a: FxVec3, b: FxVec3, c: FxVec3, r: Fx) -> Option<Fx> {
+pub(crate) fn segment_entry(a: FxVec3, b: FxVec3, c: FxVec3, r: Fx) -> Option<Fx> {
     if a.distance(c) <= r {
         return Some(Fx::ZERO);
     }
@@ -1692,8 +1692,18 @@ impl Sim {
     /// [`Sim::explode`], `when` (0 to 1) through the tick: where a projectile met what it hit.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn explode_at(&mut self, w: &WeaponType, pos: FxVec3, source: UnitId, source_player: Option<u8>, direct: Option<UnitId>, water: bool, spare_flyers: bool, spare_side: Option<u8>, when: Fx) {
+        self.blast(w, pos, source, source_player, direct, water, spare_flyers, spare_side, when, None);
+    }
+
+    /// [`Sim::explode_at`], of a shot that burst on `struck`'s dome (a shield's bubble, which takes
+    /// its whole damage: `sim/shield.rs`).
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn blast(&mut self, w: &WeaponType, pos: FxVec3, source: UnitId, source_player: Option<u8>, direct: Option<UnitId>, water: bool, spare_flyers: bool, spare_side: Option<u8>, when: Fx, struck: Option<UnitId>) {
         self.events.push(SimEvent::Explosion { weapon: w.id, pos, water, when, player: source_player, death_of: None });
         let r = w.aoe_radius;
+        // (The shields' domes it meets from outside take it, and spare what is under them:
+        // `sim/shield.rs`. None in a game without shields.)
+        let cover = self.blast_on_bubbles(w, pos, r, source, source_player, struck);
         let mut near = std::mem::take(&mut self.scratch);
         self.grid.query(pos, r + self.types.collision_reach, &mut near);
         let mut victims: Vec<(UnitId, Fx)> = Vec::new();
@@ -1719,7 +1729,16 @@ impl Sim {
             }
             // Spring/TA falloff: (r - d) / (r - d · edge).
             let m = ((r - d) / (r - d * w.edge_effectiveness).max(Fx::EPSILON)).clamp(Fx::ZERO, Fx::ONE);
-            victims.push((u.id, base * m));
+            match &cover {
+                // (Under a dome it met: what the dome let through.)
+                Some(cover) => {
+                    let through = cover.through(c);
+                    if through > Fx::ZERO {
+                        victims.push((u.id, base * m * through));
+                    }
+                }
+                None => victims.push((u.id, base * m)),
+            }
         }
         self.scratch = near;
         if w.paralyzer {
@@ -1790,6 +1809,8 @@ impl Sim {
         let dmg = if u.armored { damage * Fx::from_f64(t.def.damage_modifier) } else { damage };
         // ...veterans shrug off up to a third of it.
         let dmg = dmg * (Fx::ONE - u.veterancy() * 3 / 10);
+        // (A personal shield up takes it first, but for the unit's own blast: `sim/shield.rs`.)
+        let (dmg, shielded) = if source == id { (dmg, None) } else { crate::sim::shield::absorb(u, t, dmg, tick) };
         u.health -= dmg;
         u.last_attacker = Some(source);
         u.last_hit_tick = tick;
@@ -1805,6 +1826,12 @@ impl Sim {
         if killed {
             u.dead = true;
             u.killer = Some(source);
+        }
+        if let Some((taken, collapsed)) = shielded {
+            self.events.push(SimEvent::ShieldHit { unit: id, pos, damage: taken });
+            if collapsed {
+                self.events.push(SimEvent::ShieldChanged { unit: id, up: false, collapsed: true });
+            }
         }
         // Tell the owner, now and then, that the enemy is shooting at them.
         if source_owner.is_none_or(|s| self.is_enemy(s, owner)) && let Some(p) = self.players.get_mut(owner as usize) && p.last_alert.is_none_or(|t| tick >= t + 30 * 10) {

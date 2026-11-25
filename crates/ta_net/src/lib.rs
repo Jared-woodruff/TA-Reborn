@@ -118,8 +118,8 @@ pub use transport::{Client, Host, HostEvent};
 /// TA Reborn's abilities: `Command::SetToggle`, `Order::RemoteView`, minimum ranges, stealth fields,
 /// stuns, regeneration auras and enhancements' production. 121: the sound tables (TA's `sound.tdf`
 /// and the sound add-ons) out of what peers compare (`Compatibility::network`): builds of 120 would
-/// take each other's data for different.
-pub const PROTOCOL: u32 = 121;
+/// take each other's data for different. 122: simulation 116, shields.
+pub const PROTOCOL: u32 = 122;
 pub const DEFAULT_PORT: u16 = 7890;
 /// Ticks between state hash reports (which double as progress reports).
 pub const HASH_INTERVAL: u64 = 15;

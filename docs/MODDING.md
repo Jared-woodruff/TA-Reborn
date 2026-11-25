@@ -1568,7 +1568,9 @@ sections is the order the menus show them in.
   `RegenAuraRate` or `RegenAuraShare` (the widest and strongest of the unit's and its
   enhancements' count), `MetalMake` and `EnergyMake` (what it makes a second: Supreme Commander's
   resource allocation) and `EnergyUse` (energy a second, paid while it is installed whatever the
-  unit's switch: short of it, the unit's radar, sonar, jamming, fields and remote viewing stop).
+  unit's switch: short of it, the unit's radar, sonar, jamming, fields and remote viewing stop). And
+  a [shield](#shields) (the shield keys: it takes the place of the unit's own while installed; of
+  several, the one of the most hit points).
 - **`Weapon1`** to **`Weapon8`**: the weapon a slot fires while it is installed, in place of the
   unit's own there; give the unit's file an empty slot (no `WeaponN`) for a weapon an
   enhancement adds. A launcher that stockpiles its missiles, swapped for another or taken out,
@@ -1671,6 +1673,73 @@ The mod check tells a minimum range no less than its weapon's range, a stun's ot
 `paralyzetime` (or with a TA paralyzer), half an aura, `RemoteViewEnergy` without a radius and a
 toggle naming a weapon nobody defines, and its report lists what the mod uses of them. The
 information page (F1) shows them.
+
+#### Shields
+
+A unit may carry a shield, as Supreme Commander's shield generators, shielded units and commanders
+do: keys of its `[UNITINFO]`, or of an enhancement's section (its shield then in place of the unit's
+own while installed). One shield a unit. TA's own units have none; TA itself ignores the keys.
+
+```text
+[UNITINFO]
+	{
+	UnitName=MYSHIELD;
+	OnOffable=1;
+	ActivateWhenBuilt=1;
+	ShieldHealth=9000;
+	ShieldRegen=120;
+	ShieldRegenDelay=1;
+	ShieldRechargeTime=15;
+	ShieldRadius=400;
+	ShieldHeight=320;
+	ShieldEnergyUse=200;
+	...
+	}
+```
+
+| Key | What it does |
+| --- | --- |
+| `ShieldHealth` | Its hit points. Without them the other keys do nothing (the mod check says so, `unit.shield`). |
+| `ShieldRegen` | Hit points a second it regains while it is up. |
+| `ShieldRegenDelay` | Seconds after its last hit before it regains (1 by default). |
+| `ShieldRechargeTime` | Seconds a collapse keeps it down; it comes back whole (10 by default). |
+| `ShieldRadius` | A bubble's radius across (pixels). None: a personal shield. |
+| `ShieldHeight` | A bubble's height over the unit's foot (pixels; as far down, under the ground: an ellipsoid round its foot). None: as high as it is wide. |
+| `ShieldEnergyUse` | Energy a second it takes while it is switched on, up or recharging. |
+
+- **A personal shield** takes the damage its unit takes before its health does, as much as it has;
+  the rest goes to the unit. Its own blast (a self-destruct) goes through.
+- **A bubble** stops its enemies' shots (shells, missiles, lasers, bombs, a Commander's D-gun) that
+  come into its dome from outside: they burst on it, and the dome takes their whole damage. A blast
+  going off outside the dome (on it, or near it) spares what is under it and the dome takes what of
+  it reaches the dome, as a unit there would (its edge falloff); overlapping domes each take what
+  reaches them. What a dome cannot hold (it collapses taking it) goes through to what is under it,
+  that share of the blast. Not stopped: its own side's and its allies' shots, shots fired from under
+  the dome (they go out, an enemy's too: an enemy under it fires freely), a blast going off under
+  it, strategic missiles (`targetable` of the strategic class: they go through shields, as Forged
+  Alliance's nukes do), what runs under the water (`waterweapon`: torpedoes and depth charges pass
+  under) and interceptors. A paralyzer's shot bursts on it too, stunning nothing under it, and takes
+  nothing off it. Aircraft count as flying over every dome: an aircraft's shot fired from under an
+  enemy's dome bursts on it at once (TA's flying heights are low, under a big dome's top).
+- **Hit points**: run out, a shield collapses, and comes back whole `ShieldRechargeTime` seconds
+  later, the time counting only while it is powered. Hit, it regains `ShieldRegen` a second once
+  `ShieldRegenDelay` seconds have gone without a hit.
+- **Power**: it is up while its unit is finished, neither carried nor stunned, switched on (or not
+  switchable, as a Commander) and its upkeep paid: `ShieldEnergyUse` is part of the unit's upkeep while it is switched
+  on, so short of energy it drops as a radar does, and switched off it is down and costs nothing.
+  Switched on again, or with its energy again, it comes back up five seconds later with the hit
+  points it had. Give a shield generator `OnOffable=1` and `ActivateWhenBuilt=1` for a switch.
+
+The battlefield shows a bubble as a faint dome in its owner's colour, rippling out from where it is
+hit and flashing as it collapses and comes back, and a personal shield as a thin shell round its
+unit. The unit card shows a shield's hit points under the unit's health (and why it is down), the
+classic interface a bar under the health bar, and the information page (F1) its figures. The
+computer players put shield generators (buildings with a bubble and no gun) up by their factories
+and defences once their economy carries the upkeep, take a commander's shield enhancement when rich,
+count a dome in what guards a place, keep their tactical missiles off what a dome covers and turn
+their long-range guns elsewhere first. The mod check tells shield keys without `ShieldHealth`, and its report lists what the mod
+uses of shields (`engine.shields`). The Supreme Commander factions' shields are made with these
+([SUPCOM_UNITS.md](SUPCOM_UNITS.md)).
 
 #### What TA Reborn does not run
 
@@ -1815,6 +1884,7 @@ names the mod's folder (an absolute path, with its `mod.toml`):
 | Adjacency, buildings working round them | `crates/ta_data/src/adjacency.rs`, `crates/ta_sim/src/sim/adjacency.rs`, `crates/ta_sim/src/sim/repair_round.rs`, `apps/ta_game/src/hud/adjacency.rs` |
 | Abilities: minimum ranges, toggles, stealth fields, remote viewing, stuns, auras | `crates/ta_data/src/toggle.rs`, `crates/ta_sim/src/defs.rs` (`Abilities`), `crates/ta_sim/src/combat.rs` (`too_near`), `crates/ta_sim/src/combat/stun.rs`, `crates/ta_sim/src/sim/toggle.rs`, `remote_view.rs`, `aura.rs`, `crates/ta_data/src/validation/abilities.rs`, `apps/ta_game/src/game/abilities.rs`, `apps/ta_game/src/hud/abilities.rs` |
 | Weapons' looks and effects of a mod's own, adjacency beams | `crates/ta_data/src/weapon.rs` (`WeaponLook`), `crates/ta_data/src/effect.rs`, `apps/ta_game/src/effects_mods.rs`, `crates/ta_render/src/gpu_particles.rs` |
+| Shields | `crates/ta_data/src/shield.rs`, `crates/ta_sim/src/defs.rs` (`Shield`), `crates/ta_sim/src/sim/shield.rs`, `crates/ta_ai/src/shields.rs`, `crates/ta_render/src/shields.rs`, `apps/ta_game/src/shields.rs`, `apps/ta_game/src/hud/shield.rs` |
 | Models' surfaces and clips (walks, deaths, buildings at work) | `crates/ta_formats/src/surface.rs`, `crates/ta_formats/src/anims.rs`, `apps/ta_game/src/scene/walk.rs`, `apps/ta_game/src/scene/work.rs`, `apps/ta_game/src/effects_remains.rs` |
 | The classic build pages, 768-pixel layouts, shared places | `apps/ta_game/src/hud_classic_art.rs` |
 | The catalogue, installs, the MODS page | `apps/ta_launcher/src/catalogue.rs`, `getmods.rs`, `modlist.rs`, `mod_library.rs`, `pages/mods.rs`, `pages/mod_order.rs`, `pages/mod_report.rs` |

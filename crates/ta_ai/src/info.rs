@@ -64,6 +64,12 @@ pub(crate) struct TypeInfo {
     /// fires as near as it likes): a tower with one guards none of the ground within it (Supreme
     /// Commander's artillery and missile launchers; TA's own have none).
     pub min_range: i64,
+    /// Its shield (TA Reborn's, `ShieldHealth`): its hit points (counted in `hp` too, for a personal
+    /// one), a bubble's radius across (px; none for a personal shield or none at all) and its
+    /// upkeep (energy a second). None of TA's.
+    pub shield: i64,
+    pub dome: i64,
+    pub shield_upkeep: i64,
     /// A combat unit on the ground (or hovering) that lobs its shells or missiles over the field
     /// from afar: a ground weapon, ballistic or guided, reaching [`ARTILLERY_RANGE`] or more (TA's
     /// Luger and Merl, the Supreme Commander factions' mobile artillery and missile launchers).
@@ -272,7 +278,9 @@ pub(crate) fn classify(sim: &Sim) -> Vec<TypeInfo> {
             let air_range = weapons.iter().filter(|w| hits_air(w)).map(|w| w.range.to_int()).max().unwrap_or(0);
             let min_range = weapons.iter().filter(|w| hits_ground(w)).map(|w| w.min_range.to_int().max(0)).min().unwrap_or(0);
             let lobs = weapons.iter().any(|w| hits_ground(w) && matches!(w.trajectory, Trajectory::Ballistic | Trajectory::Guided) && w.range.to_int() >= ARTILLERY_RANGE);
-            let hp = t.max_health.to_int().max(1);
+            // (A personal shield takes the damage first: as much more to wear down.)
+            let shield = t.abilities.shield.filter(|s| !s.bubble()).map_or(0, |s| s.health.to_int().max(0));
+            let hp = t.max_health.to_int().saturating_add(shield).max(1);
             let cost = (t.cost_metal + t.cost_energy / 60).to_int().max(1);
             // Combat value per cost: firepower times toughness, a little extra for reach.
             let value = if ground_dps > 0 { ground_dps * hp / cost * (300 + range.min(1200)) / 300 } else { 0 };
@@ -319,6 +327,9 @@ pub(crate) fn classify(sim: &Sim) -> Vec<TypeInfo> {
                 range,
                 air_range,
                 min_range,
+                shield: t.abilities.shield.map_or(0, |s| s.health.to_int().max(0)),
+                dome: t.abilities.shield.filter(|s| s.bubble()).map_or(0, |s| s.radius.to_int().max(0)),
+                shield_upkeep: t.abilities.shield.map_or(0, |s| (s.energy * 30).to_int().max(0)),
                 artillery: role == Role::Combat && matches!(t.locomotion, Locomotion::Ground | Locomotion::Hover) && lobs,
                 value,
                 efficiency,

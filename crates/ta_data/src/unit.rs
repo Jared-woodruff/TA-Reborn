@@ -256,6 +256,9 @@ pub struct UnitDef {
     pub regen_aura_share: f64,
     /// Its weapon toggle (`[TOGGLE]` within its `[UNITINFO]`: [`crate::ToggleDef`]). None of TA's.
     pub toggle: Option<crate::ToggleDef>,
+    /// Its shield (`ShieldHealth` and the other shield keys: [`crate::ShieldDef`]), a personal one or
+    /// a bubble. None of TA's.
+    pub shield: Option<crate::ShieldDef>,
 }
 
 impl UnitDef {
@@ -437,6 +440,7 @@ impl UnitDef {
             regen_aura_rate: f("RegenAuraRate", 0.0).max(0.0),
             regen_aura_share: f("RegenAuraShare", 0.0).max(0.0),
             toggle: crate::ToggleDef::of_unit(s),
+            shield: crate::ShieldDef::of(s),
             name,
         })
     }

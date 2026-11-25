@@ -26,7 +26,7 @@ as they work, how their weapons look, and their sounds.
   FACTIONS tab). The dialog finds the game (as for its maps: GOG's or Steam's copy, or a folder
   chosen, kept for the next start), counts each faction's units by kind, with its commander's
   build picture, and makes the factions chosen into the mod **Supreme Commander factions**
-  (`supcom-factions`), turned on, a side each in skirmish. All four take about 793 MB (5,310
+  (`supcom-factions`), turned on, a side each in skirmish. All four take about 793 MB (5,319
   files: their sounds 63 MB of it, their weapons' effects and projectiles' models 25 MB) and, on a
   fast computer, about half a minute, most of it writing and installing their files; the room on
   the disk is checked first. A stop installs nothing (not once the mod is being
@@ -324,9 +324,10 @@ Each unit becomes a TA unit (`units/<id>.fbi`, `scripts/<id>.cob`; `ta_supcom::f
   built and pay their upkeep while on, as TA's do. A hydrocarbon plant stands on a vent (the
   converted maps put one at each hydrocarbon point), every cell of its yard map a `G`, as TA's
   geothermal plants. A jammer's and a stealth field generator's upkeep is paid while it is on
-  (switchable, on once built), and remote viewing's while it views (Abilities, below). Upkeep for
-  what TA Reborn does not play yet (shields, the Fatboy's among them, a unit's own stealth and
-  cloak) is left out with it: a stealthy unit is hidden from radar for nothing, as TA's are.
+  (switchable, on once built), remote viewing's while it views (Abilities, below), and a shield's
+  while it is switched on (Shields, below). Upkeep for what TA Reborn does not play yet (a unit's
+  own stealth and cloak) is left out with it: a stealthy unit is hidden from radar for nothing, as
+  TA's are.
 - **Weapons** (`weapons/supcom_<faction>.tdf`): up to eight slots, the most TA Reborn gives a
   unit (TA's three and five more: `Weapon4` to `Weapon8`). A commander's main gun goes first and
   its Overcharge second, as TA's D-gun (`commandfire`); otherwise the most damaging go first, an
@@ -531,12 +532,13 @@ Each unit becomes a TA unit (`units/<id>.fbi`, `scripts/<id>.cob`; `ta_supcom::f
   make, their own figures: the advanced system's are the whole, not added to the first's), the
   regeneration auras, the EMP Burst (the gun its script gives its stun, a weapon of its own in the
   gun's slot: installed beside the Disintegrator Amplifier, whichever of the two was installed last
-  fires) and the Chrono Dampener. 56 enhancements are played, on the four commanders (the UEF's 7,
-  the Cybran's 8, the Aeon's 8, the Seraphim's 11) and their support commanders (5, 8, 4 and 5).
-  Left out, with what TA Reborn does not play yet: shields (the personal ones and the bubbles),
-  teleporting, drones and pods and the Sacrificial System: one none of whose effects is played is
-  not offered, nor one needing such another. FA's "Remove" enhancements are TA Reborn's own removal
-  (at once, for nothing).
+  fires), the Chrono Dampener and the shields (Shields, below: the commanders' and support
+  commanders' personal shields, the Aeon's heavy ones, the UEF's Shield Generator Field). 65
+  enhancements are played, on the four commanders (the UEF's 9, the Cybran's 8, the Aeon's 10, the
+  Seraphim's 11) and their support commanders (7, 8, 6 and 6). Left out, with what TA Reborn does
+  not play yet: teleporting, drones and pods and the Sacrificial System: one none of whose effects
+  is played is not offered, nor one needing such another. FA's "Remove" enhancements are TA
+  Reborn's own removal (at once, for nothing).
 - **Adjacency** (`crate::adjacency`; the unit file's `[ADJACENCY]` and `AdjacencySize`,
   docs/MODDING.md): what a structure gives the structures of its player beside it, as Forged
   Alliance's do, read when the factions are made from the player's own copy
@@ -616,6 +618,30 @@ Each unit becomes a TA unit (`units/<id>.fbi`, `scripts/<id>.cob`; `ta_supcom::f
   - **Resource allocation**: an enhancement's `ProductionPerSecondMass` and
     `ProductionPerSecondEnergy` as its `MetalMake` and `EnergyMake`: the commanders' systems (the
     Aeon's 18 and 2,700, advanced 36 and 5,400).
+- **Shields** (`factions::shields`; TA Reborn's own, docs/MODDING.md, "Shields"), from a unit's
+  `Defense.Shield` (made as it is finished: its `ShieldSize` some, its `StartOn` not false) and a
+  shield enhancement's own keys: `ShieldMaxHealth` (`ShieldHealth`), `ShieldRegenRate`
+  (`ShieldRegen`) from `ShieldRegenStartTime` seconds after a hit (`ShieldRegenDelay`),
+  `ShieldRechargeTime` (Forged Alliance's defaults where one is missing). A personal shield where
+  Forged Alliance makes one: `PersonalShield = true` (the Obsidian, the Titan, the UEF commanders'
+  enhancements), the units its abilities call a personal shield (the Harbinger's ball, as wide as
+  itself, its overkill passed to it) and an enhancement naming no size (the Aeon's and Seraphim's
+  commanders'). Else a bubble: Forged Alliance's is a ball `ShieldSize` across, its middle
+  `ShieldVerticalOffset` over the unit's foot (under it, for all of the factions'); TA Reborn's is a
+  dome round the unit's foot as wide as that ball where it meets the ground and as high as it rises
+  over it, ×32 both (`ShieldRadius`, `ShieldHeight`: the UEF's tech 2 generator 405 px across and
+  320 high, the Bulwark's flat dome 1,061 px across over its fleet). The unit's upkeep
+  (`MaintenanceConsumptionPerSecondEnergy`), which pays for its shield alone, is its
+  `ShieldEnergyUse` (an enhancement's own), taken while the shield is switched on; a unit whose
+  shield has a switch (`ToggleCaps`' `RULEUTC_ShieldToggle`: every one of the factions') is
+  `OnOffable` and on once built, its shield down and costing nothing switched off. 20 units have
+  shields of their own: the shield generators (two a faction, the Cybran's five), the mobile shield
+  generators (UEF, Aeon, Seraphim), the Bulwark and the Continental (bubbles), the Fatboy (a bubble
+  round it as it goes), the Obsidian, the Titan and the Harbinger (personal); and 9 enhancements.
+  Forged Alliance's shields come back after a drain in five seconds (`ShieldEnergyDrainRechargeTime`):
+  TA Reborn's all do. Not played: their meshes and impact effects (TA Reborn draws its own dome),
+  `RegenAssistMult` (engineers speeding a shield's regaining), the anti-artillery shields (none a
+  player makes).
 - **Sides:** `gamedata/sidedata_supcom.tdf` adds UEF, CYBRAN, AEON and SERAPHIM to the game's
   sides (a side add-on: docs/MODDING.md), each with its commander, drawn in Arm's panels (the UEF
   and the Aeon) or Core's (the Cybran and the Seraphim). They have no interface pages of their
@@ -720,14 +746,20 @@ side, out of the way out and off the ground the factory's upgrades take), and ma
 their upgraded extractors where the more they make pays for it within eight minutes (on Sherwood
 in 20 minutes, UEF against Cybran: 15 tech 1 generators beside the UEF's air and tech 3 land
 factories, 15 beside the Cybran's, and storage beside a tech 2 extractor of each). They build no
-engineering stations.
+engineering stations. They put shield generators up by their factories and defences from the
+eighth minute, once a third of their energy income carries one's upkeep, one at a time (on Sherwood
+in 25 minutes: the UEF's by its tech 2 land factories from the twelfth minute and a heavy one at
+the nineteenth, the Aeon's by its factories and anti-air from the fifteenth, the Cybran's by its
+point defences, where its crowded base has room; the Seraphim's none, its generator's 250 energy a
+second more than a third of their income), take a commander's shield enhancement when rich, keep
+their tactical missiles off what an enemy's dome covers and turn their long-range guns elsewhere
+first.
 
 Not yet in TA Reborn: the units' own effects (an engineer's, an aircraft's exhaust), the Kennel's
-drone (the station works with its own beams), shields and teleporting, and the enhancements that
-need them (and drones, the Sacrificial System); its jammers' false blips (TA Reborn's jammers hide
-what is near them), the sniper bot's slower walk in sniper mode, the remote viewing's opening
-drain, factories that move and build within themselves, and air transports carrying more than
-one unit at a time.
+drone (the station works with its own beams), teleporting, and the enhancements that need it (and
+drones, the Sacrificial System); its jammers' false blips (TA Reborn's jammers hide what is near
+them), the sniper bot's slower walk in sniper mode, the remote viewing's opening drain, factories
+that move and build within themselves, and air transports carrying more than one unit at a time.
 
 ## Sounds
 
@@ -750,7 +782,7 @@ units keep TA's sounds of their kinds, as before.
 | `DoneBeingBuilt` | `donebuilt` |
 | `ActiveLoop`; `Open` and `Close` (else `Unpack`, `Pack`) | `activeloop`; `open`, `close`, as its switch goes on and off |
 | A weapon's `Unpack` or `Open` and `Pack` or `Close` (else its unit's), where it unpacks before it fires | Its script's `play-sound` as it starts to unpack and to pack up |
-| `ShieldOn`, `ShieldOff` | `shieldon`, `shieldoff` (for when TA Reborn plays shields) |
+| `ShieldOn`, `ShieldOff` | `shieldon`, `shieldoff`: as its shield comes up and goes down |
 | A weapon's `Fire` (else `MuzzleChargeStart`, a beam's `BeamStart`) | `soundstart`: every shot; a beam's start and a salvo leaving together once a burst (`soundtrigger`) |
 | `BeamLoop` or `BarrelLoop`; `BeamStop` or `BarrelStop` | `soundloop`; `soundstop` |
 | `FireUnderWater` | `soundstartwater` |

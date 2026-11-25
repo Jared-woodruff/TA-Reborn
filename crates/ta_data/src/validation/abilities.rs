@@ -6,7 +6,8 @@
 use super::*;
 
 /// What the mod's own files use of the abilities: weapons with a minimum range or a stun, units
-/// with a toggle, a stealth field, remote viewing or an aura (their own, or an enhancement's).
+/// with a toggle, a stealth field, remote viewing, an aura or a shield (their own, or an
+/// enhancement's).
 #[derive(Default)]
 pub(super) struct AbilityUses {
     min_ranges: usize,
@@ -15,6 +16,9 @@ pub(super) struct AbilityUses {
     fields: usize,
     views: usize,
     auras: usize,
+    /// Units with a personal shield, and with a bubble.
+    personal_shields: usize,
+    bubbles: usize,
 }
 
 impl Scan<'_> {
@@ -27,11 +31,27 @@ impl Scan<'_> {
                 || unit.enhancements.iter().any(|e| e.radar_stealth_field > 0.0 || e.sonar_stealth_field > 0.0);
             let view = unit.remote_view_radius > 0.0 || unit.enhancements.iter().any(|e| e.remote_view_radius > 0.0);
             let aura = unit.regen_aura_radius > 0.0 || unit.enhancements.iter().any(|e| e.regen_aura_radius > 0.0);
+            // (A shield of its own, or one an enhancement gives: a bubble where any is one.)
+            let shields: Vec<&crate::ShieldDef> = unit.shield.iter().chain(unit.enhancements.iter().filter_map(|e| e.shield.as_ref())).filter(|s| s.works()).collect();
             let uses = &mut self.engine.abilities;
             uses.toggles += unit.toggle.is_some() as usize;
             uses.fields += field as usize;
             uses.views += view as usize;
             uses.auras += aura as usize;
+            let bubble = shields.iter().any(|s| s.is_bubble());
+            uses.bubbles += bubble as usize;
+            uses.personal_shields += (!shields.is_empty() && !bubble) as usize;
+        }
+        // (Shield keys without its hit points: no shield.)
+        if unit.shield.as_ref().is_some_and(|s| !s.works()) {
+            let words = enf("{unit} gives shield keys without ShieldHealth: it has no shield.", [("unit", name())]);
+            self.issue(Severity::Warning, "unit.shield", path, words, en("Give it ShieldHealth, the shield's hit points (with ShieldRadius for a bubble, none for a personal shield)."));
+            if self.halted { return; }
+        }
+        for e in unit.enhancements.iter().filter(|e| e.shield.as_ref().is_some_and(|s| !s.works())) {
+            let words = enf("{unit}'s enhancement {enhancement} gives shield keys without ShieldHealth: it gives no shield.", [("unit", name()), ("enhancement", Fill::name(&e.id))]);
+            self.issue(Severity::Warning, "unit.shield", path, words, en("Give it ShieldHealth, the shield's hit points (with ShieldRadius for a bubble, none for a personal shield)."));
+            if self.halted { return; }
         }
         if let Some(toggle) = &unit.toggle {
             for (slot, w) in toggle.named() {
@@ -71,6 +91,16 @@ impl Scan<'_> {
             let words = enf("{name} gives a stun's reach or the units it spares but no paralyzetime: it stuns nothing.", [("name", name())]);
             self.issue(Severity::Warning, "weapon.paralyze", path, words, en("Give it paralyzetime, how many seconds the units it hits are stunned for."));
         }
+    }
+
+    /// What the mod's own files use of TA Reborn's shields, for how TA Reborn plays it.
+    pub(super) fn shield_uses(uses: &AbilityUses) -> Option<(Words, &'static str)> {
+        (uses.personal_shields + uses.bubbles > 0).then(|| {
+            let words = enf("TA Reborn's shields. Units with a personal shield: {personal}; with a bubble: {bubbles} (their own, or an enhancement's).",
+                [("personal", Fill::number(uses.personal_shields)), ("bubbles", Fill::number(uses.bubbles))],
+            );
+            (words, en("Played as docs/MODDING.md tells them (ShieldHealth, ShieldRegen, ShieldRechargeTime, ShieldRadius, ShieldHeight, ShieldEnergyUse). TA's own engine never read these keys."))
+        })
     }
 
     /// What the mod's own files use of the abilities, for how TA Reborn plays it.

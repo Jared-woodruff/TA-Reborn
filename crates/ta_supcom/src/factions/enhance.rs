@@ -31,9 +31,11 @@
 //!   it makes, its own figures, not added along a chain: the advanced system's are the whole), **a
 //!   regeneration aura** (`Radius`, `RegenPerSecond`, `RegenCeiling`), **a stun** the script
 //!   switches on for a gun (`ReEnableBuff('STUN')`: the EMP Burst, a weapon of its own in the gun's
-//!   slot), and **a stunning weapon** it switches on (the Chrono Dampener's pulse).
+//!   slot), **a stunning weapon** it switches on (the Chrono Dampener's pulse), and **a shield**
+//!   (`factions::shields`: the commanders' and support commanders' personal shields and the UEF's
+//!   shield generator fields, at their upkeep).
 //!
-//! Left out, with what TA Reborn does not play yet: shields, teleporting, drones and pods and the
+//! Left out, with what TA Reborn does not play yet: teleporting, drones and pods and the
 //! Sacrificial System: an enhancement none of whose effects is played is not offered, nor one
 //! needing such another. The "Remove" ones are TA Reborn's own order (a slot cleared at once).
 

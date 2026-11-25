@@ -882,6 +882,20 @@ impl Hud {
                     ui.painter().add(hud_skin::gauge(bar, fraction, hud_skin::health_color(fraction), 1));
                     let text = ta_ui::widgets::galley(ui, RichText::new(format!("{health:.0} / {max_health:.0}")).font(strong(11.5)));
                     metal::slab_text(ui.painter(), bar.center(), text, true, pal().text_bright, false);
+                    // Its shield (a group's together) under its health, and for one unit why it is
+                    // down (`shield.rs`).
+                    if let Some(shield) = super::shield::reading(game) {
+                        ui.add_space(1.0);
+                        let fraction = if shield.most > 0.0 { (shield.health / shield.most).clamp(0.0, 1.0) } else { 0.0 };
+                        let (bar, _) = ui.allocate_exact_size(EVec2::new(ui.available_width(), 12.0), egui::Sense::hover());
+                        ui.painter().add(hud_skin::gauge(bar, fraction, super::shield::COLOUR, 1));
+                        let words = tf("Shield {now} / {most}", &[("now", &format!("{:.0}", shield.health)), ("most", &format!("{:.0}", shield.most))]);
+                        let text = ta_ui::widgets::galley(ui, RichText::new(words).font(strong(10.0)));
+                        metal::slab_text(ui.painter(), bar.center(), text, true, pal().text_bright, false);
+                        if let Some((status, colour)) = shield.status {
+                            ui.label(RichText::new(status).font(strong(11.0)).color(colour));
+                        }
+                    }
                 });
             });
             if !facts.is_empty() {

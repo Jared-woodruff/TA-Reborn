@@ -6817,6 +6817,10 @@ impl State {
         let mut rings = self.hud.rings().to_vec();
         rings.extend_from_slice(&self.game.effects.rings);
         renderer.prepare_rings(&rings);
+        // (The shields' domes and shells: `shields.rs`.)
+        let mut shields = Vec::new();
+        self.game.effects.shields.instances(&self.game, alpha, time, (view_min, view_max), &mut shields);
+        renderer.prepare_shields(&shields);
         // (Text in the world: lines of names laid on the ground, a staged scene's or the credits'.)
         let serial = renderer.world_text.serial();
         let glyphs = self.world_text.frame(serial, time, self.settings.gameplay.reduced_flashes);

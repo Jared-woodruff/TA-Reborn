@@ -163,8 +163,8 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   cores in big battles: a script changes only its own unit and reads the others from a
   snapshot taken before; what it asks of the sim (events, attach/drop) is applied after, in
   slot order) → collision separation (`crowd.rs`: each unit pushed by the mean of its overlaps
-  with the others, so a packed crowd settles; summed, it went to and fro every tick) →
-  projectiles → deaths → defeat check → economy end →
+  with the others, so a packed crowd settles; summed, it went to and fro every tick) → shields
+  (`Sim::update_shields`) → projectiles → deaths → defeat check → economy end →
   removal. Parallel phases give exactly what one core gives (`parallel` off proves it:
   `tests/stress.rs`).
 * **COB VM** (`cob.rs`): cooperative threads, signals, sleeps, wait-for-turn/move, query
@@ -530,6 +530,31 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   `heal_units`): once a second, the strongest aura over each of a side's damaged units mends it;
   nothing runs without an aura in the game (`UnitTypes::auras`). `Unit::toggled` and
   `Unit::remote_view` are in the checksum where set; TA's games sum as before.
+* **Shields** (`sim/shield.rs`; docs/MODDING.md, "Shields"; Supreme Commander's units use them): a
+  unit's or an enhancement's shield keys compiled into `Abilities::shield` (`defs::Shield`: hit
+  points, regaining a tick from a delay after a hit, ticks a collapse keeps it down, a bubble's
+  radius across and height, its upkeep a tick; an enhancement's in place of the unit's own, `boost`),
+  `UnitTypes::shields` saying whether any type has one (none: nothing of it runs). A unit's state is
+  `Unit::shield` (`ShieldState`: hit points, up, charge to come, collapsed, last hit), made whole as
+  it is first powered, dropped (`refit`) when its make changes. Each tick before the interceptors
+  and projectiles (`Sim::update_shields`): it is up while its unit is finished, not carried,
+  switched on as the economy charges upkeep (`Sim::shield_switched_on`) and its upkeep paid
+  (`economy_end` adds its `energy` while switched on; `flows.rs` likewise); unpowered it goes down
+  and charges `RESTART_TICKS` once powered again (its hit points kept), collapsed it charges its
+  recharge only while powered and comes back whole; up, it regains; each bubble up is listed where
+  its unit stands (`Sim::bubbles`, an ellipsoid round its foot: its height stretched to its radius
+  it is a ball, `Bubble::round`). A projectile's sweep meets the first dome of an enemy of its owner
+  it comes into from outside (`Sim::bubble_entry`, `segment_entry` in the dome's round space: not a
+  strategic missile, an interceptor or a `waterweapon`; an aircraft's shot under a dome at its first
+  stretch at once), before the units and the ground (`Impact::shield`), and bursts there
+  (`Sim::blast` with `struck`). A blast (`Sim::blast`, `explode_at`'s body) first meets the domes up
+  of the source's enemies with its middle outside them and in its reach (`Sim::blast_on_bubbles`):
+  each takes what reaches it as a unit at its surface would (falloff; the struck one all), through
+  cheats, perks and mutators, and lets through the share it could not hold (`Cover::through`): the
+  units under it take that much of their own damage (a stun nothing: `stun_round` asks
+  `Sim::shielded_from`). A personal shield takes `damage_unit`'s damage before the unit's health
+  (`shield::absorb`), but its own blast. Events: `ShieldHit` (where, how much), `ShieldChanged` (up,
+  down, collapsed). The state is in the checksum where a unit has one: TA's games sum as before.
 * **Standing orders** (`Command::SetStates`, never touching the queue): fire (hold, return,
   at will) and movement. Idle armed units hit from beyond their reach answer by movement
   state: Maneuver advances on the attacker within a 420 px leash and walks back afterwards,
@@ -1391,6 +1416,13 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   largest texture is too small for one (the game refuses the battle with that message), and
   the minimap's fog stays within 1024 texels a side.
 * **Beams**: additive ribbons for lasers and lightning.
+* **Shields** (`shields.rs`, `shaders/shield.wgsl`): instanced ellipsoids (32 sides round, 16 bands
+  down, made in the vertex shader), drawn after the water with the depth test and no depth
+  written, both faces (the far one fainter), premultiplied over the picture: faint glass in the
+  owner's colour with a brighter rim (`view_dir`), a slow shimmer, a ring running out over the dome
+  from each of its last four hits, and a flash as it collapses and comes up; a personal shield a
+  fainter shell. The game's `shields.rs` (`ShieldFx`, fed `ShieldHit` and `ShieldChanged` by the
+  effects) lists those of units the viewer sees in view; none in a battle without shields.
 * **Water** (`water.rs`): one quad per wet terrain chunk at sea level; travelling swells
   and filtered noise, sky-gradient reflection, sun glitter, absorption by depth from the
   heightmap, soft translucent surf along the waterline (on the *painted* shoreline where it
@@ -1858,6 +1890,17 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   maker of ours makes beside it (`storage_beside_task`: the best for its price, near home and out of
   danger, where the more it makes pays for it within eight minutes), one at a time. With no unit
   giving a bonus (TA's games), nothing of it runs. Engineering stations are not built.
+* Shields (`shields.rs`): `TypeInfo` keeps a type's shield (its hit points, a personal one counted
+  in `hp` too), its dome's radius and its upkeep. A shield generator (a building with a dome and no
+  gun) goes up by our most valuable factory or defence that no dome of ours covers (`shield_task`,
+  after the projects: from the eighth minute on ten metal a second, its upkeep a third of the energy
+  income at most, one going up at a time and one for every five minutes of the battle, the widest
+  dome within two minutes of metal income, the building's middle within seven eighths of the dome:
+  the blasts bursting on it spare what is under it; where a crowded base leaves no room, by the next
+  of them). An enemy's dome over a place adds twice its generator's cost to `defence_at`
+  (`dome_guard`), tactical missiles leave what an enemy's dome covers alone and long-range guns take
+  it at a third of its worth (`under_enemy_dome`); a shield enhancement is armour, taken when rich.
+  With no shields in the game (TA's), none of it changes anything.
 * Enhancements (`enhance.rs`, `run_enhancements`): the commander, near home and with no enemy
   close, installs an engineering suite once the economy reaches the tech climb's (the next suite
   once a factory of tech 2 stands, or metal piles up; a Tech persona's at once, `tech_eager`), a

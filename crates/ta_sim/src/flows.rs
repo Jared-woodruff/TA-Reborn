@@ -169,6 +169,10 @@ impl Sim {
         if paid && let Some(b) = boost {
             upkeep += b.upkeep;
         }
+        // (Its shield's, while switched on: `sim/shield.rs`.)
+        if active && paid && let Some(shield) = boost.map_or(t.abilities.shield, |b| b.abilities.shield) {
+            upkeep += shield.energy;
+        }
         if active && paid {
             if t.extracts_metal > Fx::ZERO && let Some(origin) = origin {
                 metal += per_tick(t.extracts_metal * Fx::from_int(self.world.metal_under(origin, t.footprint)));

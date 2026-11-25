@@ -36,6 +36,7 @@ mod info;
 mod map;
 mod navy;
 mod projects;
+mod shields;
 mod toggle;
 mod transport;
 mod upgrade;
@@ -46,6 +47,8 @@ mod tests;
 mod clear_tests;
 #[cfg(test)]
 mod projects_tests;
+#[cfg(test)]
+mod shields_tests;
 #[cfg(test)]
 mod air_tests;
 
@@ -880,6 +883,8 @@ struct Plan {
     /// Where anti-aircraft buildings are ordered, not yet started (`air.rs`: not two for one part
     /// of the economy).
     aa: Vec<FxVec3>,
+    /// Shield generators ordered, not yet started (`shields.rs`: one going up at a time).
+    shields: usize,
 }
 
 /// A job a builder has to itself (a frame is another matter: any number of hands may build it).

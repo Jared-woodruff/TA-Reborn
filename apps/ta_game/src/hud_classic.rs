@@ -1447,7 +1447,7 @@ impl ClassicHud {
         let at = l.get("UNITNAME").map_or(pos2(245.0, 452.0), |r| r.min);
         text(painter, font, tb, at.x, at.y, Align::Center, &name, pal().classic_text);
         if let Some(b) = l.get("DAMAGEBAR").map(inclusive) {
-            health(painter, env, b, u, t);
+            health(painter, env, b, u, t, &game.sim);
         }
         // A missile silo or anti-missile system: the missiles ready and the next one, under the
         // health bar (where an unfinished unit's build progress goes).
@@ -1490,7 +1490,7 @@ impl ClassicHud {
             let t = game.sim.unit_type(u);
             text(painter, font, tb, at.x, at.y, Align::Center, &t.def.display_name, pal().classic_text);
             if let Some(b) = l.get("DAMAGEBAR2").map(inclusive) {
-                health(painter, env, b, u, t);
+                health(painter, env, b, u, t, &game.sim);
             }
             // What a finished unit of ours (or an ally's) makes and uses, under the bar: the
             // metal's figures in the metal's colour, then the energy's.
@@ -1539,8 +1539,9 @@ impl ClassicHud {
     }
 }
 
-/// A health bar in the unit bar, with the build progress under it while unfinished.
-fn health(painter: &egui::Painter, env: &Env, b: Rect, u: &ta_sim::Unit, t: &ta_sim::UnitType) {
+/// A health bar in the unit bar, with the build progress under it while unfinished, or its shield's
+/// hit points (TA Reborn's shields: `hud/shield.rs`) under a finished one that has one.
+fn health(painter: &egui::Painter, env: &Env, b: Rect, u: &ta_sim::Unit, t: &ta_sim::UnitType, sim: &ta_sim::Sim) {
     let tb = env.tb;
     let frac = (u.health / u.max_health(t)).to_f32().clamp(0.0, 1.0);
     painter.rect_filled(tb.snap(b.expand(0.5)), 0.0, Color32::from_black_alpha(170));
@@ -1549,7 +1550,24 @@ fn health(painter: &egui::Painter, env: &Env, b: Rect, u: &ta_sim::Unit, t: &ta_
         let r = Rect::from_min_size(pos2(b.min.x, b.max.y + 1.0), vec2(b.width(), 2.0));
         painter.rect_filled(tb.snap(r.expand(0.5)), 0.0, Color32::from_black_alpha(170));
         bar(painter, tb, r, u.build_progress.to_f32(), &env.data.palette, 225);
+    } else if let Some((make, state)) = sim.shield(u) {
+        // (Down, an empty bar; whole where it has not been powered yet.)
+        let shield = state.map_or(1.0, |s| if s.up { (s.health / make.health).to_f32().clamp(0.0, 1.0) } else { 0.0 });
+        let r = Rect::from_min_size(pos2(b.min.x, b.max.y + 1.0), vec2(b.width(), 2.0));
+        painter.rect_filled(tb.snap(r.expand(0.5)), 0.0, Color32::from_black_alpha(170));
+        bar(painter, tb, r, shield, &env.data.palette, shield_color(&env.data.palette));
     }
+}
+
+/// The entry of TA's palette nearest a shield's blue (its bar in the unit bar), and the one after
+/// it as near (the bar shades down a ramp of two).
+fn shield_color(palette: &ta_formats::image::Palette) -> u8 {
+    let far = |i: u8| {
+        let [r, g, b] = palette.rgb(i);
+        let d = |c: u8, to: i32| (c as i32 - to).pow(2);
+        d(r, 70) + d(g, 150) + d(b, 255)
+    };
+    (0..=253u8).min_by_key(|&i| far(i) + far(i.saturating_add(1))).unwrap_or(232)
 }
 
 /// What the bottom bar says about a gadget.

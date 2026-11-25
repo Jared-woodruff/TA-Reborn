@@ -286,6 +286,9 @@ impl SkirmishAi {
         } else if i.tactical_cover() {
             plan.covers += 1;
         }
+        if i.dome > 0 && i.kind == Locomotion::Static {
+            plan.shields += 1;
+        }
     }
 
     /// Builders idle again within a few thinks of a build order had it refused (a site the
@@ -637,6 +640,11 @@ impl SkirmishAi {
         }
         // And hands for a project under way.
         if let Some(t) = self.help_project_task(sim, s, b, plan) {
+            return Some(t);
+        }
+        // A shield generator by our factories and defences, where the mod has them and the economy
+        // carries their upkeep (`shields.rs`; none of TA's), one at a time.
+        if !e_low && let Some(t) = self.shield_task(sim, s, b, &opts, plan) {
             return Some(t);
         }
         // Geothermal vents are the best power there is (when power is what we need).

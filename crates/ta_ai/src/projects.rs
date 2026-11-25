@@ -316,8 +316,9 @@ impl SkirmishAi {
                 .iter()
                 // (Past its minimum range, where it has one: Forged Alliance's heavy artillery's.)
                 .filter(|(_, p, _)| p.within_xz(gun.pos, fx(reach - 32)) && (near <= 0 || !p.within_xz(gun.pos, fx(near + 32))) && !friends.iter().any(|f| f.within_xz(*p, fx(220))))
-                // (Not the one it had just now, while another is known.)
-                .map(|&(id, p, t)| (self.target_value(t) * 1000 / (1000 + dist(p, gun.pos) / 4) - if last.is_some_and(|l| l.within_xz(p, fx(48))) { 1_000_000 } else { 0 }, id.slot, p))
+                // (Not the one it had just now, while another is known; what a shield's dome covers,
+                // on which its shells burst, a third of its worth: `shields.rs`.)
+                .map(|&(id, p, t)| ((self.target_value(t) / if self.under_enemy_dome(p) { 3 } else { 1 }) * 1000 / (1000 + dist(p, gun.pos) / 4) - if last.is_some_and(|l| l.within_xz(p, fx(48))) { 1_000_000 } else { 0 }, id.slot, p))
                 .max_by_key(|&(score, slot, _)| (score, Reverse(slot)));
             if let Some(k) = kept {
                 self.gun_targets.remove(k);
