@@ -678,3 +678,23 @@ hit points are 生命值, as a unit's.
 | collapse, collapsed / back (after a collapse) / coming up | 破碎 / 恢复 / 启动 |
 | Shield off (switched off) / Shield down: short of energy | 护盾已关闭 / 护盾失效：能量不足 |
 | shield keys (a unit's ShieldHealth...) | 护盾相关的键 |
+
+## TA Reborn's logistics: air transports with slots, teleporting, drones, factories that move (`game.rs`, `hud/deck.rs`, `hud/logistics.rs`, `hud_classic.rs`, `validation/logistics.rs`)
+
+One word each everywhere (the order, its buttons, the card, the information page, the mod check):
+传送 (as teleporting above), its charge 充能, a drone 无人机 (measure word 架), a transport's slot 槽位 (as
+an enhancement's), a factory that moves 移动工厂. Air transports are 空中运输机 (as the Talon's). The classic
+panel's TELEPORT and WARP are both 传送, as RESURRECT and REVIVE are both 复活.
+
+| English | 简体中文 |
+|---|---|
+| Teleport (the order) / TELEPORT, WARP (classic, long and short) | 传送 / 传送、传送 |
+| charge (a teleport's) / Charging to teleport / About to teleport | 充能 / 传送充能中 / 即将传送 |
+| Teleports anywhere: {energy} energy and {secs} s, more the farther it goes | 可传送至任意地点：消耗 {energy} 能量，耗时 {secs} 秒，距离越远所需越多 |
+| Click the place to teleport to | 单击要传送到的地点 |
+| drone / Keeps {n} drones / {name} drone (a reference in the mod check) | 无人机 / 拥有 {n} 架无人机 / {name} 的无人机 |
+| slot (a transport's) / small, medium, large (its classes) | 槽位 / 小型、中型、大型 |
+| air transport with slots / its passengers (the units it carries) | 带槽位的空中运输机 / 所载单位 |
+| factory that moves (MobileFactory) | 移动工厂 |
+| logistics (the mod check's report) | 后勤 |
+| piece (a model's) / the model's middle | 部件 (as the scripts' findings) / 模型的中心 |

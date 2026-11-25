@@ -784,3 +784,23 @@ klucze tarczy.
 | collapse / collapsed / after collapsing | rozbić się / rozbita / po rozbiciu |
 | Shield off / Shield down: short of energy / coming up in {secs} s / back in {secs} s | Tarcza wyłączona / Tarcza nieaktywna: za mało energii / Tarcza aktywna za {secs} s / wróci za {secs} s |
 | shield keys (a mod's) | klucze tarczy |
+
+## Logistyka (`game.rs`, `hud/deck.rs`, `hud/logistics.rs`, `hud_classic.rs`, `validation/logistics.rs`)
+
+Mods can give units air transports with slots, teleporting, drones and factories that move. The
+order is Teleportacja (a noun, as Wyładunek, Zdalny podgląd); a unit teleportuje się. Its charge
+(energy over some seconds, paid before it goes) is ładowanie, not ładunek, which is a transport's
+cargo ("po opłaceniu ładowania", "Ładuje się do teleportacji: {pct}%"). A factory that moves is
+feminine in the hints after it ("żeby się poruszała", "jej menu budowy"). The overview's second line
+agrees with Logistyka: "Obsługiwana tak, jak opisuje docs/MODDING.md".
+
+| English | Polski |
+|---|---|
+| teleport (the order) / to teleport / teleporting | Teleportacja / teleportować się / teleportacja |
+| TELEPORT / WARP (TA's 1997 panel: long and short) | TELEPORTACJA / TELEP. |
+| About to teleport (the card) | Za chwilę się teleportuje |
+| charge (a teleport's) | ładowanie ("ładowanie teleportacji") |
+| drone / {name} drone (the mod check's reference) / Keeps {n} drones | dron (pl. drony) / dron {name} / "Drony ({name}): {n}" |
+| slot (an air transport's, for one passenger) / transport slots (TransportSlots) | slot (as the enhancements') / sloty transportowe; sizes as labels: małe: {small}, średnie: {medium}, duże: {large} |
+| factory that moves (MobileFactory) | mobilna fabryka |
+| TA Reborn's logistics (the report's overview) | Logistyka TA Reborn |

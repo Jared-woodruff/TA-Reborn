@@ -515,6 +515,12 @@ impl SkirmishAi {
                             if !tt.can_carry(sim.unit_type(p)) || !self.can_pick_up(&way, p.pos) {
                                 continue;
                             }
+                            // (Aboard one with slots, those picked and this one must each find a
+                            // slot: a medium unit takes the room of the small ones under its slot.)
+                            let classes: Vec<u32> = picked.iter().map(|&j| sim.unit_type(waiting[j]).transport_class).chain([sim.unit_type(p).transport_class]).collect();
+                            if !tt.fits(&classes) {
+                                continue;
+                            }
                             if self.info[p.type_id].spec.is_some_and(|sp| self.zone_for(sim, sp, way).is_some()) {
                                 picked.push(k);
                             }

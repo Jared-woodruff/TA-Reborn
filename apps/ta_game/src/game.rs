@@ -101,6 +101,8 @@ pub enum CommandMode {
     AreaMex,
     /// See round a place from afar (remote viewing: `game/abilities.rs`).
     RemoteView,
+    /// Teleport to a place (`CanTeleport`: `game/abilities.rs`).
+    Teleport,
 }
 
 impl CommandMode {
@@ -125,6 +127,7 @@ impl CommandMode {
             CommandMode::Load => ta_ui::i18n::n("Load"),
             CommandMode::AreaMex => ta_ui::i18n::n("Extractors in an area"),
             CommandMode::RemoteView => ta_ui::i18n::n("View from afar"),
+            CommandMode::Teleport => ta_ui::i18n::n("Teleport"),
         }
     }
 
@@ -169,6 +172,7 @@ impl CommandMode {
             CommandMode::Load => n("pick a unit up"),
             CommandMode::AreaMex => n("drag a circle; a click takes the metal around the cursor"),
             CommandMode::RemoteView => n("see round a place far off, from high over it, for as long as its energy is paid"),
+            CommandMode::Teleport => n("go to a place in an instant once its charge is paid, landing on the nearest ground it can stand on there"),
         }
     }
 }
@@ -208,6 +212,7 @@ impl MarkKind {
             Order::Repair(_) | Order::Guard(_) | Order::Load(_) => MarkKind::Help,
             Order::Reclaim(_) | Order::ReclaimUnit(_) | Order::Resurrect(_) => MarkKind::Reclaim,
             Order::Unload(_) => MarkKind::Unload,
+            Order::Teleport(_) => MarkKind::Move,
             _ => return None,
         })
     }
@@ -2262,6 +2267,7 @@ impl Game {
                 ("reclaim", CommandMode::Reclaim),
                 ("area_mex", CommandMode::AreaMex),
                 ("remote_view", CommandMode::RemoteView),
+                ("teleport", CommandMode::Teleport),
             ] {
                 if self.keys.pressed(input, action) && self.mode_available(mode) {
                     self.set_command_mode(Some(mode));
@@ -2806,6 +2812,7 @@ impl Game {
             CommandMode::Repair => ally.map(Order::Repair),
             CommandMode::Load => friend.map(Order::Load),
             CommandMode::RemoteView => ground.map(Order::RemoteView),
+            CommandMode::Teleport => ground.map(Order::Teleport),
             // A click without a drag: the metal around the cursor.
             CommandMode::AreaMex => {
                 if let Some(g) = self.cursor_ground {
@@ -3193,6 +3200,7 @@ impl Game {
             CommandMode::AreaMex => self.area_extractor_type().is_some(),
             // (Its own, or an enhancement's installed.)
             CommandMode::RemoteView => self.selection_views_afar(),
+            CommandMode::Teleport => self.selection_teleports(),
             _ => any(&|t| type_supports_mode(&self.sim, t, mode)),
         }
     }
@@ -3499,6 +3507,8 @@ impl Game {
                 CommandMode::Load => C::Load,
                 CommandMode::AreaMex => C::Repair,
                 CommandMode::RemoteView => C::View,
+                // (TA's own teleport swirl.)
+                CommandMode::Teleport => C::View,
             };
         }
         let me = self.local_player;
@@ -5030,6 +5040,7 @@ fn type_supports_mode(sim: &Sim, t: &ta_sim::UnitType, mode: CommandMode) -> boo
             o.extracts_metal > Fx::ZERO && !o.needs_geo && sim.is_allowed(o.id)
         }),
         CommandMode::RemoteView => t.abilities.remote_view.is_some() || t.enhancements.iter().any(|e| e.abilities.remote_view.is_some()),
+        CommandMode::Teleport => t.locomotion != ta_sim::Locomotion::Static && (t.teleport.is_some() || t.enhancements.iter().any(|e| e.teleport.is_some())),
     }
 }
 
@@ -5264,7 +5275,7 @@ mod tests {
             CommandMode::Patrol, CommandMode::Fight, CommandMode::Move, CommandMode::Guard,
             CommandMode::Repair, CommandMode::Load, CommandMode::Unload, CommandMode::DGun,
             CommandMode::Attack, CommandMode::Capture, CommandMode::Resurrect,
-            CommandMode::Reclaim, CommandMode::AreaMex, CommandMode::RemoteView,
+            CommandMode::Reclaim, CommandMode::AreaMex, CommandMode::RemoteView, CommandMode::Teleport,
         ] {
             assert!(!selection_drag(true, Some(mode), false), "{mode:?} must keep its target gesture after the pointer moves");
         }

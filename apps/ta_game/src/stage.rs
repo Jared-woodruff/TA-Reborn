@@ -101,7 +101,8 @@
 //!
 //! [[order]]
 //! t = 1.5                    # seconds after the scene starts
-//! units = "tanks"            # who: a label or type name, or a list of them
+//! units = "tanks"            # who: a label or type name, or a list of them; "drones:kennel"
+//!                            #   the drones those units keep (`[DRONES]`: made by the game)
 //! do = "fight"               # move, fight (attack-move), attack, patrol, guard, repair (help
 //!                            #   build or mend), stop, build, self_destruct (TA's five-second
 //!                            #   countdown), dgun (fire a D-gun or launch a missile: manual fire),
@@ -112,12 +113,15 @@
 //!                            #   `type`; a label follows the unit it becomes), enhance (installs
 //!                            #   the enhancement `type`, by its id or name, what it needs first
 //!                            #   before it), toggle, untoggle (its weapon toggle on and off:
-//!                            #   `[TOGGLE]`), remote_view (views the place `at` from afar)
+//!                            #   `[TOGGLE]`), remote_view (views the place `at` from afar),
+//!                            #   load (a transport picks up the units `target` names, one
+//!                            #   after another), unload (sets its cargo down at `at`),
+//!                            #   teleport (teleports to `at`, once its charge is paid)
 //! at = [1900, 1200]          # where: world px, or rel = [dx, dz] from the middle of the map,
 //!                            #   or by = [dx, dz] from where each unit stands (move, fight,
 //!                            #   patrol, build, attack and dgun on the ground)
 //! target = "kbots"           # attack, guard, repair, dgun: a unit (attackers share out its
-//!                            #   units), instead of a place
+//!                            #   units), instead of a place; load: the units to pick up
 //! type = "ARMLLT"            # build, produce: what
 //! count = 4                  # produce: how many (default 1)
 //! seconds = 4                # build, produce: its construction takes this long (as
@@ -283,6 +287,11 @@ const FINISH_TICKS: u64 = 15;
 
 fn yes() -> bool {
     true
+}
+
+/// The units whose drones a name stands for (`drones:<name>`), if it is such a name.
+fn drones_of_name(name: &str) -> Option<&str> {
+    name.get(..7).filter(|p| p.eq_ignore_ascii_case("drones:")).map(|_| name[7..].trim())
 }
 
 fn one() -> u32 {
@@ -605,6 +614,15 @@ pub enum Action {
     /// A place viewed from afar (`Order::RemoteView`: remote viewing).
     #[serde(alias = "view")]
     RemoteView,
+    /// A transport picks up the units `target` names, one after another (`Order::Load`: each in
+    /// the next free slot, on one with slots).
+    #[serde(alias = "pick_up")]
+    Load,
+    /// A transport sets its cargo down at a place (`Order::Unload`).
+    #[serde(alias = "drop")]
+    Unload,
+    /// Teleports to a place (`Order::Teleport`: its charge paid, it lands there).
+    Teleport,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1106,6 +1124,8 @@ impl Stage {
                 Action::Enhance => o.kind.is_some() && !placed && o.target.is_none(),
                 Action::Toggle | Action::Untoggle => !placed && o.target.is_none(),
                 Action::RemoteView => placed && o.target.is_none(),
+                Action::Load => o.target.is_some() && !placed,
+                Action::Unload | Action::Teleport => placed && o.target.is_none(),
             };
             if !ok {
                 bail!(
@@ -1122,6 +1142,8 @@ impl Stage {
                         Action::Enhance => "needs a `type`, the enhancement (no place or target)",
                         Action::Toggle | Action::Untoggle => "takes no place or target",
                         Action::RemoteView => "needs a place (`at`, `rel` or `by`), no target",
+                        Action::Load => "needs a `target`, what to pick up (no place)",
+                        Action::Unload | Action::Teleport => "needs a place (`at`, `rel` or `by`), no target",
                     }
                 );
             }
@@ -1305,6 +1327,7 @@ impl Stage {
         let known = self.known_names();
         let check = |names: &Names, what: &dyn Fn() -> String| -> Result<()> {
             for n in names.list() {
+                let n = drones_of_name(n).unwrap_or(n);
                 if !known.iter().any(|k| k.eq_ignore_ascii_case(n)) {
                     bail!("{}: no unit labelled {n} (nor of that type) in the scene", what());
                 }
@@ -2012,6 +2035,14 @@ impl StageRun {
     fn find(&self, names: &Names, sim: &Sim) -> Vec<UnitId> {
         let mut out = Vec::new();
         for name in names.list() {
+            // (The drones those units keep, made by the game, not the scene.)
+            if let Some(parents) = drones_of_name(name) {
+                for parent in self.find(&Names::One(parents.to_string()), sim) {
+                    let Some(p) = sim.unit(parent) else { continue };
+                    out.extend(sim.drones_of(p).map(|d| d.id).filter(|d| !out.contains(d)).collect::<Vec<_>>());
+                }
+                continue;
+            }
             let labelled: Vec<UnitId> = self.cast.iter().filter(|m| m.label.as_deref().is_some_and(|l| l.eq_ignore_ascii_case(name))).map(|m| m.id).collect();
             let chosen = if labelled.is_empty() { self.cast.iter().filter(|m| m.kind.eq_ignore_ascii_case(name)).map(|m| m.id).collect() } else { labelled };
             for id in chosen {
@@ -2189,6 +2220,20 @@ impl StageRun {
                 Vec::new()
             }
             Action::RemoteView => each(&|k| Order::RemoteView(fx_point(goals[k]))),
+            Action::Unload => each(&|k| Order::Unload(fx_point(goals[k]))),
+            Action::Teleport => each(&|k| Order::Teleport(fx_point(goals[k]))),
+            // Each transport picks the units named up, one after another (shared out between
+            // the transports, in turn), queued.
+            Action::Load => {
+                for (k, &transport) in units.iter().enumerate() {
+                    let Some(owner) = sim.unit(transport).map(|u| u.owner) else { continue };
+                    let mine: Vec<UnitId> = targets.iter().copied().skip(k).step_by(units.len().max(1)).collect();
+                    for (n, cargo) in mine.into_iter().enumerate() {
+                        self.send(tick, Command::Order { player: owner, units: vec![transport], order: Order::Load(cargo), queue: o.queue || n > 0 }, sim);
+                    }
+                }
+                Vec::new()
+            }
             Action::Upgrade => {
                 let to = o.kind.as_deref().and_then(|k| sim.types.id(k));
                 units.iter().filter_map(|&id| Some((id, Order::Upgrade(to.or_else(|| sim.unit(id).and_then(|u| sim.next_upgrade(u)))?)))).collect()
@@ -2766,7 +2811,12 @@ follow = "com"
             "[[unit]]\ntype = \"ARMPW\"\nat = [1, 2]\nbuilder = \"x\"",
             "[[unit]]\ntype = \"ARMPW\"\nat = [1, 2]\nfacing = 3",
             "[[order]]\nt = 1\nunits = \"a\"\ndo = \"move\"",
-            "[[order]]\nt = 1\nunits = \"a\"\ndo = \"teleport\"\nat = [1, 2]",
+            "[[order]]\nt = 1\nunits = \"a\"\ndo = \"warp\"\nat = [1, 2]",
+            "[[order]]\nt = 1\nunits = \"a\"\ndo = \"teleport\"",
+            "[[order]]\nt = 1\nunits = \"a\"\ndo = \"teleport\"\nat = [1, 2]\ntarget = \"b\"",
+            "[[order]]\nt = 1\nunits = \"a\"\ndo = \"load\"",
+            "[[order]]\nt = 1\nunits = \"a\"\ndo = \"load\"\ntarget = \"b\"\nat = [1, 2]",
+            "[[order]]\nt = 1\nunits = \"a\"\ndo = \"unload\"\ntarget = \"b\"",
             "[[order]]\nt = -1\nunits = \"a\"\ndo = \"stop\"",
             "[[order]]\nt = 1\nunits = \"a\"\ndo = \"guard\"\nat = [1, 2]",
             "[[order]]\nt = 1\nunits = \"a\"\ndo = \"attack\"\nat = [1, 2]\ntarget = \"b\"",
@@ -2793,6 +2843,17 @@ follow = "com"
         ] {
             assert!(Stage::parse(bad).is_err(), "{bad:?} was taken");
         }
+    }
+
+    /// A transport's load (what its `target` names) and unload (at a place), and a teleport.
+    #[test]
+    fn loads_unloads_and_teleports() {
+        let s = Stage::parse("[[order]]\nt = 1\nunits = \"lifter\"\ndo = \"load\"\ntarget = \"tanks\"\n[[order]]\nt = 2\nunits = \"lifter\"\ndo = \"unload\"\nat = [1, 2]\nqueue = true\n[[order]]\nt = 3\nunits = \"acu\"\ndo = \"teleport\"\nrel = [700, 0]").unwrap();
+        assert_eq!(s.orders.iter().map(|o| o.action).collect::<Vec<_>>(), [Action::Load, Action::Unload, Action::Teleport]);
+        assert!(s.orders[0].target.is_some() && s.orders[1].queue);
+        assert_eq!(drones_of_name("drones:kennel"), Some("kennel"));
+        assert_eq!(drones_of_name("Drones: acu"), Some("acu"));
+        assert_eq!(drones_of_name("kennel"), None);
     }
 
     /// Upgrades in place and enhancements: an upgrade into the next step (or `type`), an

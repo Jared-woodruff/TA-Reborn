@@ -49,8 +49,12 @@ pub const TAGS: [&str; 3] = ["units", "factions", "supreme commander"];
 /// projectiles' own models where TA Reborn draws them as models, and the structures' adjacency
 /// beams: `effects`; 19: shields, `factions::shields`: the shield generators, the units with
 /// shields of their own and the Fatboy's, at their upkeep and with their switches, and the
-/// commanders' shield enhancements).
-pub const VERSION: u32 = 19;
+/// commanders' shield enhancements; 20: logistics: the air transports' slots, `TransportSlots`
+/// from their attach bones, and the passengers' `TransportClass`; the Personal Teleporter,
+/// `CanTeleport` at Forged Alliance's charge; the drones, `[DRONES]`: the Kennel's and the UEF
+/// commanders' pods, made as units of their own; and the factories that move, `MobileFactory`
+/// with their `BuildPiece`, the carriers air bases).
+pub const VERSION: u32 = 20;
 
 /// What [`make`]'s watch is told it makes once the units are made: their sounds.
 pub const SOUNDS: &str = "sounds";
@@ -165,10 +169,12 @@ pub fn make(files: &Files, units: &[UnitBlueprint], palette: Option<&Palette>, s
             adjacency: u.adjacency.as_deref().map_or(&[][..], |table| adjacency.of(table)),
             adjacency_categories: Some(&adjacency_categories),
             name: units::shown_name(u, &faction),
-            // (Its weapon toggle is found with its model's footprint: `unit`.)
+            // (Its weapon toggle is found with its model's footprint: `unit`; an air transport's
+            // slots with its mesh.)
             toggle: None,
             sound_category,
             look: fx.unit_keys(u),
+            transport_slots: Vec::new(),
         };
         let shown: Vec<Vec<String>> = list.iter().map(|e| enhance::shown_bones(u, e)).collect();
         match unit(files, u, &extra, &extra_weapons, shown, &unpack_sounds, &mut |path, bytes| put(path, bytes, &mut made))? {
@@ -382,7 +388,7 @@ fn unit(files: &Files, u: &UnitBlueprint, extra: &units::Extra, extra_weapons: &
     // toggle's slots after its own and its enhancements', `abilities::toggle`).
     let weapons = units::weapons(u);
     let toggle = abilities::toggle(u, &weapons, extra_weapons);
-    let extra = units::Extra { exits: units::exits(u, mesh, &floats), toggle: toggle.clone(), ..extra.clone() };
+    let extra = units::Extra { exits: units::exits(u, mesh, &floats), toggle: toggle.clone(), transport_slots: units::transport_slots(mesh), ..extra.clone() };
     put(&format!("units/{name}.fbi"), units::unit_file(u, &weapons, units::transport(mesh), &extra).as_bytes())?;
     let builds = units::builds(u);
     let pieces: Vec<String> = near.model.pieces.iter().map(|p| p.name.clone()).collect();
@@ -463,7 +469,8 @@ mod tests {
         let mesh = crate::scm::tests::tank();
         let units: Vec<(&str, String)> = vec![
             ("UEL0001", blueprint("'COMMAND', 'MOBILE', 'LAND'", &format!(
-                "Defense = {{ MaxHealth = 12000, RegenRate = 10 }}, Economy = {{ BuildCostMass = 18000, BuildCostEnergy = 5000000, BuildTime = 6000000, BuildRate = 10, BuildableCategory = {{ 'BUILTBYCOMMANDER UEF' }} }}, \
+                "Defense = {{ MaxHealth = 12000, RegenRate = 10 }}, Economy = {{ BuildCostMass = 18000, BuildCostEnergy = 5000000, BuildTime = 6000000, BuildRate = 10, BuildableCategory = {{ 'BUILTBYCOMMANDER UEF' }}, \
+                   TeleportEnergyMod = 0.03, TeleportMassMod = 0, TeleportTimeMod = 0.0001 }}, \
                  General = {{ FactionName = 'UEF', BuildBones = {{ YawBone = 'Turret', BuildEffectBones = {{ 'Turret_Barrel' }} }} }}, Intel = {{ VisionRadius = 26, SonarRadius = 60 }}, \
                  Physics = {{ MotionType = 'RULEUMT_Amphibious', MaxSpeed = 1.7, TurnRate = 90 }}, \
                  Weapon = {{ {}, {{ Label = 'Missile', WeaponCategory = 'Missile', Damage = 3000, MaxRadius = 60, RateOfFire = 1, CountedProjectile = true, ProjectileId = '/projectiles/Tactical/Tactical_proj.bp' }} }}, \
@@ -472,6 +479,8 @@ mod tests {
                    AdvancedEngineeringRemove = {{ BuildCostMass = 1, Slot = 'LCH', Prerequisite = 'AdvancedEngineering' }}, \
                    HeavyAntiMatterCannon = {{ BuildCostMass = 800, BuildCostEnergy = 24000, BuildTime = 800, Name = 'Zephyr Amplifier', NewMaxRadius = 30, ZephyrDamageMod = 100, Slot = 'RCH', ShowBones = {{ 'Turret_Barrel' }} }}, \
                    Missile = {{ BuildCostMass = 1000, BuildCostEnergy = 50000, BuildTime = 1000, Name = 'Tactical Missile Launcher', Slot = 'Back' }}, \
+                   Teleporter = {{ BuildCostMass = 15000, BuildCostEnergy = 1500000, BuildTime = 3000, Name = 'Personal Teleporter', Slot = 'Back' }}, \
+                   LeftPod = {{ BuildCostMass = 120, BuildCostEnergy = 2400, BuildTime = 400, Name = 'Shoulder Drone', Slot = 'Back', UpgradeEffectBones = {{ 'Turret' }} }}, \
                    Shield = {{ BuildCostMass = 1500, BuildCostEnergy = 112500, BuildTime = 1500, Name = 'Personal Shield Generator', ShieldMaxHealth = 24000, Slot = 'Back' }} }}",
                 gun("RightZephyr", "", "/projectiles/Shell/Shell_proj.bp")
             ))),
@@ -515,7 +524,7 @@ mod tests {
             ("UEB3101", blueprint("'STRUCTURE', 'RADAR', 'INTELLIGENCE', 'TECH1', 'SIZE4', 'BUILTBYTIER1ENGINEER'",
                 "Economy = { BuildCostMass = 60, BuildCostEnergy = 600, BuildTime = 120, MaintenanceConsumptionPerSecondEnergy = 20 }, Intel = { RadarRadius = 115, VisionRadius = 20 }")),
             ("UEL0111", blueprint("'MOBILE', 'LAND', 'TECH2', 'INDIRECTFIRE', 'BUILTBYTIER1FACTORY'",
-                "Economy = { BuildCostMass = 200, BuildCostEnergy = 1500, BuildTime = 1000 }, Physics = { MotionType = 'RULEUMT_Land', MaxSpeed = 2.8, TurnRate = 60 }, \
+                "Economy = { BuildCostMass = 200, BuildCostEnergy = 1500, BuildTime = 1000 }, Physics = { MotionType = 'RULEUMT_Land', MaxSpeed = 2.8, TurnRate = 60 }, Transport = { TransportClass = 2 }, \
                  Audio = { Unpack = Sound { Bank = 'UELWeapon', Cue = 'Gun' }, Pack = Sound { Bank = 'UELWeapon', Cue = 'Late' } }, \
                  Weapon = { { Label = 'MissileWeapon', WeaponCategory = 'Missile', Damage = 300, MaxRadius = 60, RateOfFire = 0.1, MuzzleVelocity = 3, Turreted = false, \
                    RackBones = { { RackBone = 'Turret_Barrel', MuzzleBones = { 'Turret_Barrel' } } }, ProjectileId = '/projectiles/Tactical/Tactical_proj.bp', \
@@ -536,18 +545,38 @@ mod tests {
             ("XEB0204", blueprint("'STRUCTURE', 'TECH3', 'ENGINEERSTATION'",
                 "Economy = { BuildCostMass = 600, BuildCostEnergy = 3000, BuildTime = 1500, BuildRate = 18, EngineeringPods = { { PodUnitID = 'XEA3204', PodName = 'PodOne' }, { PodUnitID = 'XEA3204', PodName = 'PodTwo' } } }, \
                  General = { FactionName = 'UEF', UpgradesFrom = 'xeb0104', CommandCaps = { RULEUCC_Guard = true } }")),
-            ("XEA3204", blueprint("'UEF', 'MOBILE', 'AIR', 'POD'", "AI = { GuardScanRadius = 12 }, Economy = { BuildRate = 12 }, Physics = { MotionType = 'RULEUMT_Air' }")),
+            ("XEA3204", blueprint("'UEF', 'MOBILE', 'AIR', 'POD'", "AI = { GuardScanRadius = 12 }, Economy = { BuildRate = 12, BuildCostMass = 250, BuildCostEnergy = 2500, BuildTime = 750 }, Physics = { MotionType = 'RULEUMT_Air' }")),
+            // The commander's pod, made by its enhancement; a factory that moves, an air staging
+            // platform too; an air transport. (Made-up figures.)
+            ("UEA0001", blueprint("'MOBILE', 'AIR', 'POD'", "AI = { GuardScanRadius = 10 }, Economy = { BuildRate = 5, BuildCostMass = 160, BuildCostEnergy = 1600, BuildTime = 400, BuildableCategory = { 'BUILTBYCOMMANDER UEF' } }, Physics = { MotionType = 'RULEUMT_Air' }")),
+            ("UEL0401", blueprint("'MOBILE', 'LAND', 'EXPERIMENTAL', 'FACTORY', 'AIRSTAGINGPLATFORM', 'BUILTBYTIER1ENGINEER'",
+                "Economy = { BuildCostMass = 28000, BuildCostEnergy = 350000, BuildTime = 20000, BuildRate = 180, BuildableCategory = { 'BUILTBYTIER1FACTORY UEF MOBILE' } }, \
+                 Physics = { MotionType = 'RULEUMT_Land', MaxSpeed = 2.5, TurnRate = 20 }")),
+            ("UEA0107", blueprint("'MOBILE', 'AIR', 'TRANSPORTATION', 'TECH1', 'TRANSPORTBUILTBYTIER1FACTORY'",
+                "Economy = { BuildCostMass = 105, BuildCostEnergy = 1600, BuildTime = 800 }, Physics = { MotionType = 'RULEUMT_Air', Elevation = 9 }, Air = { MaxAirspeed = 10 }")),
         ];
         let projectile = |cats: &str, rest: &str| format!("ProjectileBlueprint {{ Categories = {{ 'PROJECTILE', {cats} }}, {rest} }}");
         // (What the structures give those beside them.)
         let mut files: Vec<(String, Vec<u8>)> = vec![("lua/sim/AdjacencyBuffs.lua".into(), crate::adjacency::tests::BUFFS.as_bytes().to_vec())];
         for (id, bp) in &units {
             files.push((format!("units/{id}/{id}_unit.bp"), bp.clone().into_bytes()));
-            files.push((format!("units/{id}/{id}_lod0.scm"), mesh.clone()));
+            // (The transport's mesh its attach bones: three small, a medium one.)
+            let lifter = || {
+                let still = [1.0f32, 0.0, 0.0, 0.0];
+                crate::scm::tests::write(
+                    &[("Hull", -1, [0.0, 0.0, 0.0], still), ("Left_Attachpoint01", 0, [3.0, -1.0, 4.0], still), ("Right_Attachpoint01", 0, [-3.0, -1.0, 4.0], still), ("Left_Attachpoint02", 0, [3.0, -1.0, -4.0], still), ("Attachpoint_Med_01", 0, [0.0, -1.0, 0.0], still)],
+                    &[([1.0, 0.0, 2.0], [0.0, 0.0], 0), ([-1.0, 0.0, 2.0], [1.0, 0.0], 0), ([0.0, 1.0, -3.0], [0.5, 1.0], 0)],
+                    &[[0, 1, 2]],
+                )
+            };
+            files.push((format!("units/{id}/{id}_lod0.scm"), if *id == "UEA0107" { lifter() } else { mesh.clone() }));
         }
         files.push(("units/UEL0001/UEL0001_script.lua".into(), b"Unit = Class(Base) { Weapons = { Missile = Class(Launcher) { OnCreate = function(self) self:SetWeaponEnabled(false) end, }, }, \
             OnStopBeingBuilt = function(self, builder, layer) self:DisableUnitIntel('Sonar') end, \
-            CreateEnhancement = function(self, enh) if enh == 'Missile' then self:SetWeaponEnabledByLabel('Missile', true) elseif enh == 'MissileRemove' then self:SetWeaponEnabledByLabel('Missile', false) end end, }".to_vec()));
+            CreateEnhancement = function(self, enh) if enh == 'Missile' then self:SetWeaponEnabledByLabel('Missile', true) elseif enh == 'MissileRemove' then self:SetWeaponEnabledByLabel('Missile', false) \
+            elseif enh == 'Teleporter' then self:AddCommandCap('RULEUCC_Teleport') elseif enh == 'LeftPod' then local pod = CreateUnitHPR('UEA0001', self:GetArmy(), 0, 0, 0, 0, 0, 0) end end, }".to_vec()));
+        // The factory that moves builds at the bone its script names.
+        files.push(("units/UEL0401/UEL0401_script.lua".into(), b"Fatboy = Class(MobileFactory) { BuildAttachBone = 'Turret', }".to_vec()));
         files.push(("units/UEB1103/UEB1103_script.lua".into(), b"Extractor = Class(Base) { PlayActiveAnimation = function(self) Base.PlayActiveAnimation(self) \
             self.Pump = CreateAnimator(self) self.Pump:PlayAnim(self:GetBlueprint().Display.AnimationOpen, true) end, \
             OnProductionPaused = function(self) self.Pump:SetRate(0) end, }".to_vec()));
@@ -671,7 +700,7 @@ mod tests {
         std::fs::write(dir.0.join("units.scd"), archive()).unwrap();
         let files = Files::of(Vec::new(), vec![crate::scd::Scd::open(&dir.0.join("units.scd")).unwrap()]);
         let units: Vec<UnitBlueprint> = crate::unit::catalogue(&files).unwrap().into_iter().filter(|u| u.playable()).collect();
-        assert_eq!(units.len(), 16, "the station's next tier, made by upgrading alone, among them; not its drone");
+        assert_eq!(units.len(), 20, "the station's next tier, made by upgrading alone, among them; its drone and the commander's pod too");
         let palette = emblem::tests::palette();
         // (The copy's sound banks: synthetic ones.)
         let sounds = Some(dir.0.join("sounds"));
@@ -690,7 +719,7 @@ mod tests {
             (made, paths, hex)
         };
         let (made, paths, first) = run();
-        assert_eq!((made.units, made.skipped.len()), (16, 0), "{:?}", made.skipped);
+        assert_eq!((made.units, made.skipped.len()), (20, 0), "{:?}", made.skipped);
         // The tech 1 factory upgrades into the tech 2 one, which no builder builds.
         let mut texts: std::collections::BTreeMap<String, String> = Default::default();
         let mut emblems: Option<Vec<u8>> = None;
@@ -717,13 +746,28 @@ mod tests {
         assert!(!texts["units/ueb0201.fbi"].contains("UpgradesTo"));
         assert!(!texts["download/supcom_uef.tdf"].contains("UNITNAME=UEB0201;"), "on no menu");
         // The engineering station upgrades into its next tier, which nothing builds; each works
-        // round it by itself, by its drones' reach (12 ogrids) and its own work or theirs, the more.
+        // round it by itself, by its drones' reach (12 ogrids) and its own work; its drones made
+        // with it, one and two, made again in their build time at its build rate.
         let station = |id: &str| ta_formats::tdf::parse(&texts[&format!("units/{id}.fbi")]).sections.remove(0);
         let (t2, t3) = (station("xeb0104"), station("xeb0204"));
         assert_eq!((t2.get("UpgradesTo"), t2.get("DefaultMissionType"), t2.get("WorkerTime"), t2.get("BuildDistance"), t2.get("canguard")), (Some("XEB0204"), Some("AssistPatrol"), Some("180"), Some("384"), None));
-        assert_eq!((t3.get("UpgradesTo"), t3.get("DefaultMissionType"), t3.get("WorkerTime"), t3.get("canguard")), (None, Some("AssistPatrol"), Some("240"), Some("1")), "two drones' work; told to help, as FA lets it");
+        assert_eq!((t3.get("UpgradesTo"), t3.get("DefaultMissionType"), t3.get("WorkerTime"), t3.get("canguard")), (None, Some("AssistPatrol"), Some("180"), Some("1")), "its own work; told to help, as FA lets it");
         assert!(!texts["download/supcom_uef.tdf"].contains("UNITNAME=XEB0204;") && texts["download/supcom_uef.tdf"].contains("UNITNAME=XEB0104;"), "the next tier on no menu");
-        assert!(!texts.contains_key("units/xea3204.fbi"), "the drone is not made");
+        let drones = |s: &ta_formats::tdf::TdfSection| s.sections.iter().find(|d| d.name == "DRONES").map(|d| d.sections.iter().map(|k| (k.get("Unit").unwrap_or("").to_string(), k.get("Count").unwrap_or("").to_string(), k.get("RebuildTime").unwrap_or("").to_string(), k.get("Leash").unwrap_or("").to_string())).collect::<Vec<_>>());
+        assert_eq!(drones(&t2), Some(vec![("XEA3204".into(), "1".into(), "41.67".into(), "384".into())]), "750 at its 18 a second");
+        assert_eq!(drones(&t3).map(|d| d[0].1.clone()), Some("2".into()));
+        let drone = station("xea3204");
+        assert_eq!((drone.get("Builder"), drone.get("WorkerTime")), (Some("1"), Some("120")), "a drone helps with its own build power");
+        assert!(!texts["download/supcom_uef.tdf"].contains("UNITMENU=XEA3204;") && !texts["download/supcom_uef.tdf"].contains("UNITNAME=XEA3204;"), "on no menu, nor with one");
+        // A factory that moves, at the bone its script names, an air staging platform too; its menu
+        // its units.
+        let fatboy = station("uel0401");
+        assert_eq!((fatboy.get("MobileFactory"), fatboy.get("BuildPiece"), fatboy.get("IsAirBase"), fatboy.get("Builder")), (Some("1"), Some("Turret"), Some("1"), Some("1")));
+        assert!(texts["download/supcom_uef.tdf"].contains("UNITMENU=UEL0401;"), "its menu");
+        // An air transport's slots, from its attach bones; a medium passenger's class.
+        let lifter = station("uea0107");
+        assert_eq!(lifter.get("TransportSlots"), Some("Left_Attachpoint01 Right_Attachpoint01 Left_Attachpoint02 Attachpoint_Med_01:2"));
+        assert_eq!(station("uel0111").get("TransportClass"), Some("2"));
         // The generator gives the structures beside it its buffs; the factory, the extractor and
         // the radar say their size classes.
         let generator = ta_formats::tdf::parse(&texts["units/ueb1101.fbi"]).sections.remove(0);
@@ -741,16 +785,22 @@ mod tests {
         let acu = ta_formats::tdf::parse(&texts["units/uel0001.fbi"]);
         let list = acu.section("UNITINFO").and_then(|u| u.sections.iter().find(|s| s.name == "ENHANCEMENTS")).expect("its enhancements");
         let names: Vec<&str> = list.sections.iter().map(|s| s.name.as_str()).collect();
-        assert_eq!(names, ["AdvancedEngineering", "HeavyAntiMatterCannon", "Missile", "Shield"], "the removal left out");
-        let shield = &list.sections[3];
+        assert_eq!(names, ["AdvancedEngineering", "HeavyAntiMatterCannon", "LeftPod", "Missile", "Shield", "Teleporter"], "the removal left out");
+        let shield = &list.sections[4];
         assert_eq!((shield.get("ShieldHealth"), shield.get("ShieldRadius"), shield.get("Slot")), (Some("24000"), None, Some("Back")), "a personal shield");
+        // The teleporter at Forged Alliance's charge; the pod made at the bone its effects start at,
+        // made again in its build time at the commander's build rate.
+        let teleporter = &list.sections[5];
+        assert_eq!((teleporter.get("CanTeleport"), teleporter.get("TeleportEnergy"), teleporter.get("TeleportTime")), (Some("1"), Some("150000"), Some("15")));
+        let pod = list.sections[2].sections.iter().find(|d| d.name == "DRONES").and_then(|d| d.sections.first()).expect("its pod");
+        assert_eq!((pod.get("Unit"), pod.get("Count"), pod.get("Piece"), pod.get("RebuildTime"), pod.get("RebuildCostMetal"), pod.get("Leash")), (Some("UEA0001"), Some("1"), Some("Turret"), Some("40"), Some("160"), Some("320")));
         let suite = &list.sections[0];
         assert_eq!((suite.get("Name"), suite.get("Slot"), suite.get("BuildTime"), suite.get("WorkerTime")), (Some("Tech 2 Engineering Suite"), Some("LCH"), Some("9000"), Some("200")));
         assert_eq!((suite.get("MaxDamage"), suite.get("HealRate"), suite.get("BuildOptions"), suite.get("Picture")), (Some("3000"), Some("20"), Some("UEB0104"), Some("uel0001_advancedengineering")));
         assert!(paths.iter().any(|p| p == "unitpics/uel0001_advancedengineering.pcx"), "its picture");
         let gun = &list.sections[1];
         assert_eq!(gun.get("Weapon1"), Some("UEL0001_RIGHTZEPHYR_HEAVYANTIMATTERCANNON"));
-        assert_eq!(list.sections[2].get("Weapon2"), Some("UEL0001_MISSILE"), "the missile in the slot after the gun's");
+        assert_eq!(list.sections[3].get("Weapon2"), Some("UEL0001_MISSILE"), "the missile in the slot after the gun's");
         let fbi = acu.section("UNITINFO").unwrap();
         assert_eq!((fbi.get("Weapon1"), fbi.get("Weapon2")), (Some("UEL0001_RIGHTZEPHYR"), None), "a fresh commander without the missile");
         let weapons = ta_formats::tdf::parse(&texts["weapons/supcom_uef.tdf"]);
@@ -912,7 +962,7 @@ mod tests {
     }
 
     /// The hash of the test faction's mod (see the test above).
-    const EXPECTED: &str = "a8d03f5d60059df80fa74a511431d9768aa764b1d387042618e29ef018c305e6";
+    const EXPECTED: &str = "44d074721571a75fc4adaaa33bd228e507b386da4adf9b2033fd0622742b71bd";
 
     /// A unit whose mesh does not read is left out, with its reason; the rest are made.
     #[test]

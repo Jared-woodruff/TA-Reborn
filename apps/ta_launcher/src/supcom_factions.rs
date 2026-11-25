@@ -32,8 +32,9 @@ pub const MOD_NAME: &str = n("Supreme Commander factions");
 pub(crate) const MOD_DESCRIPTION: &str = n("Supreme Commander: Forged Alliance's factions, their units and buildings, made from your own copy of the game.");
 /// What a unit takes on the disk once made, about (its paint the most, as large as Forged Alliance
 /// paints it: since converter version 10; its sounds, since 17, a tenth of it; its weapons' effects
-/// and projectiles' models since 18): about 793 MB for the game's 364.
-const UNIT_BYTES: u64 = 2_178_000;
+/// and projectiles' models since 18; the drones' own units since 20): about 796 MB for the game's
+/// 364.
+const UNIT_BYTES: u64 = 2_186_000;
 
 /// The mod's name as the interface shows it, in the language in use.
 pub fn mod_name() -> &'static str {

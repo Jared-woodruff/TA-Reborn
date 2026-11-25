@@ -248,7 +248,14 @@ pub const RECORD_VERSION: u32 = 47;
 /// shots from outside and sparing what is under them from blasts outside, their hit points, regaining,
 /// collapse and recharge, and their upkeep; the computer players count them in threat and cover, and
 /// put shield generators up by their factories and defences.
-pub const SIMULATION_VERSION: u32 = 116;
+/// 117: /// logistics for mods (docs/MODDING.md): air transports with slots (`TransportSlots`,
+/// `TransportClass`: a unit in each, hanging under its slot, set down at once and spread out),
+/// teleporting (`CanTeleport`, `TeleportEnergy`, `TeleportTime`, `Order::Teleport`: a charge paid as
+/// construction pays, then a landing on the nearest spot it can stand on), drones (`[DRONES]`: made
+/// with their parent and rebuilt after a loss, guarding it within a leash, dying and changing sides
+/// with it) and factories that move (`MobileFactory`, `BuildPiece`: a unit built on the factory as it
+/// goes, set down beside it or launched).
+pub const SIMULATION_VERSION: u32 = 117;
 /// Records shorter than one year of simulated time are supported. Shared with the
 /// launcher's metadata reader so impossible durations cannot start endless save catch-up.
 pub const MAX_RECORD_TICKS: u64 = 30 * 3600 * 24 * 365;
@@ -408,6 +415,7 @@ impl Keys {
         ("upgrade", "Upgrade in place (with Shift: queued after the upgrade under way)", "Alt+U"),
         ("weapon_toggle", "Weapon toggle: switch to the other weapons and back", "Alt+T"),
         ("remote_view", "View from afar (remote viewing)", "Alt+V"),
+        ("teleport", "Teleport", "Alt+P"),
         ("self_destruct", "Self-destruct", "Ctrl+D"),
         ("select_all", "Select everything", "Ctrl+A"),
         ("select_commander", "Select the Commander", "Ctrl+C"),

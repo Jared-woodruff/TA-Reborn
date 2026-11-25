@@ -18,6 +18,7 @@ use ta_vfs::Vfs;
 use crate::words::{en, enf, Fill, Words};
 
 mod abilities;
+mod logistics;
 
 /// Bumped whenever the checks change what they report, so cached reports are made again (5:
 /// WAV music not misplaced, a replaced definition's findings not the replacing mod's, a folder of
@@ -53,8 +54,11 @@ mod abilities;
 /// `sounds/`; 25: a mod's particle effects (`effects/*.tdf`: `effect.*`), the weapons' and units'
 /// keys naming them and their muzzle flash and trail animations, their colours and thickness
 /// (`weapon.look`, `unit.look`); 26: shields, shield keys without hit points (`unit.shield`)
-/// and what the mod uses of them (`engine.shields`)).
-pub const SCHEMA_VERSION: u32 = 26;
+/// and what the mod uses of them (`engine.shields`); 27: logistics, an air transport's slots
+/// (`unit.transport_slots`), a teleport (`unit.teleport`), drones (`unit.drones`, their units
+/// references), factories that move (`unit.mobile_factory`), and the pieces they name that the
+/// model has not (`unit.logistics_piece`)).
+pub const SCHEMA_VERSION: u32 = 27;
 
 /// The keys of the sound tables' categories the game plays (`ta_audio`'s sound events: TA's, then
 /// TA Reborn's own), each with or without a variant number (`select1`, `select2`…), with
@@ -1038,7 +1042,7 @@ enum Use { File(String), Record(String) }
 /// `script`: the unit's script as the game finds it (`UnitDef::script_path`); `builds`: it has
 /// build power (`WorkerTime`), which makes it a builder whatever its Builder flag, as the game
 /// has it; `takes_no_ground`: a mod's upgrade module (`UnitDef::takes_no_ground`).
-struct UnitFacts { name: String, object: String, script: String, builds: bool, upgrades_alone: bool, takes_no_ground: bool, weapons: [bool; crate::unit::MAX_WEAPONS] }
+struct UnitFacts { name: String, object: String, script: String, builds: bool, upgrades_alone: bool, takes_no_ground: bool, weapons: [bool; crate::unit::MAX_WEAPONS], named_pieces: Vec<String> }
 #[derive(Default)]
 struct Animation { frames: usize, size: AnimSize }
 
@@ -1065,6 +1069,8 @@ struct EngineFacts {
     sides: Vec<String>,
     /// TA Reborn's own abilities its units and weapons use (`validation/abilities.rs`).
     abilities: abilities::AbilityUses,
+    /// What its units use of TA Reborn's logistics (`validation/logistics.rs`).
+    logistics: logistics::LogisticsUses,
 }
 
 /// A program or a library of one (a patched `TotalA.exe`, a DLL).
@@ -1548,6 +1554,9 @@ impl<'a> Scan<'a> {
             // (TA Reborn's abilities: its toggle's weapons, and a part without what makes it work.)
             self.unit_abilities(path, &unit, &mut refs);
             if self.halted { return; }
+            // (Its logistics: slots, a teleport, drones, a factory that moves.)
+            self.unit_logistics(path, s, &unit, &mut refs);
+            if self.halted { return; }
             for (name, what) in [(&unit.explode_as, en("{name} death explosion")), (&unit.self_destruct_as, en("{name} self-destruct explosion"))] { optional(&mut refs, "weapon", name, part(what, &unit.name), Severity::Warning); }
             optional(&mut refs, "feature", &unit.corpse, part(en("{name} wreckage"), &unit.name), Severity::Warning);
             // (Its own effects, which its script plays: `emit-sfx 1024 + n`.)
@@ -1568,7 +1577,11 @@ impl<'a> Scan<'a> {
             // (Its build power only upgrades it in place: a building that is no builder but
             // becomes another, Supreme Commander's extractors and radars.)
             let upgrades_alone = !unit.builder && !unit.upgrades_to.trim().is_empty();
-            let facts = UnitFacts { name: unit.name.clone(), object: unit.object.clone(), script, builds: unit.worker_time > 0.0, upgrades_alone, takes_no_ground: unit.takes_no_ground, weapons: unit.weapons.clone().map(|w| w.is_some_and(|w| !w.trim().is_empty())) };
+            // (The pieces its logistics keys name: its transport slots', its build piece, where its
+            // drones are made.)
+            let drone_pieces = unit.drones.iter().chain(unit.enhancements.iter().flat_map(|e| e.drones.iter())).map(|d| d.piece.clone());
+            let named_pieces = unit.transport_slots.iter().map(|s| s.piece.clone()).chain(Some(unit.build_piece.clone())).chain(drone_pieces).filter(|p| !p.trim().is_empty()).collect();
+            let facts = UnitFacts { name: unit.name.clone(), object: unit.object.clone(), script, builds: unit.worker_time > 0.0, upgrades_alone, takes_no_ground: unit.takes_no_ground, weapons: unit.weapons.clone().map(|w| w.is_some_and(|w| !w.trim().is_empty())), named_pieces };
             self.record(key("unit", &unit.name), Record { path: path.into(), refs, unit: Some(facts) });
         } else if direct(path, "weapons", "tdf") {
             let own = self.own(path);
@@ -2035,6 +2048,9 @@ impl<'a> Scan<'a> {
         if let Some((words, how)) = Self::shield_uses(&facts.abilities) {
             add("engine.shields", Support::Played, words, how);
         }
+        if let Some((words, how)) = Self::logistics_uses(&facts.logistics) {
+            add("engine.logistics", Support::Played, words, how);
+        }
         if !facts.sides.is_empty() {
             add("engine.sides", Support::Played,
                 enf("Sides of its own: {names}.", [("names", named(&facts.sides))]),
@@ -2126,6 +2142,13 @@ impl<'a> Scan<'a> {
                 self.issue(Severity::Warning, "script.model_piece", path, message, en("Confirm that these are intentional virtual/helper pieces; otherwise use matching model and COB files or align the BOS piece declarations with the model's piece names."));
                 if self.halted { return; }
             }
+        }
+        // The pieces its logistics keys name, in its model.
+        if !unit.named_pieces.is_empty()
+            && let Some(model_names) = self.pieces.get(&model).cloned()
+        {
+            self.logistics_pieces(path, unit, &model, &model_names);
+            if self.halted { return; }
         }
         // Where the engine asks a script for its weapons' muzzles and its nano-lathe (it
         // carries on without them, but it shows). Aim functions may be missing by design:
@@ -2284,7 +2307,7 @@ mod tests {
     /// A finding's words: their English is its message, and every text in them, and what to do,
     /// is one the languages' files collect (marked `en`, or `enf`'s first argument, here).
     fn assert_words(report: &Report) {
-        let sources = [include_str!("validation.rs"), include_str!("validation/abilities.rs"), include_str!("words.rs")].concat();
+        let sources = [include_str!("validation.rs"), include_str!("validation/abilities.rs"), include_str!("validation/logistics.rs"), include_str!("words.rs")].concat();
         let marked = |text: &str| sources.contains(&format!("en(\"{text}\")")) || sources.contains(&format!("enf(\"{text}\""));
         for issue in &report.issues {
             assert_eq!(issue.words.english(), issue.message, "{}", issue.code);
@@ -2577,6 +2600,43 @@ mod tests {
         assert!(told.len() == 2 && told.iter().any(|m| m.starts_with("EMPTY")) && told.iter().any(|m| m.contains("Field")), "{text}");
         let uses = report.engine.iter().find(|u| u.code == "engine.shields").expect("told how it plays");
         assert!(uses.message.contains("personal shield: 2; with a bubble: 1"), "{}", uses.message);
+        assert_words(&report);
+    }
+
+    /// TA Reborn's logistics: slots on a unit that does not fly, a teleport's charge without
+    /// `CanTeleport` (its own or an enhancement's), a teleport on a building, drones that are none,
+    /// a factory that moves standing or without build power, a drone's unit nobody defines and the
+    /// pieces its keys name that its model has not are told; what the mod uses of them is told with
+    /// how it plays.
+    #[test]
+    fn logistics_that_do_nothing_are_told() {
+        let f = Fixture::new(); f.valid("base");
+        f.put("mod", "units/lifter.fbi", b"[UNITINFO]{UnitName=LIFTER;ObjectName=example;Side=ARM;CanFly=1;TransportSlots=base Nowhere:2;}");
+        f.put("mod", "units/barge.fbi", b"[UNITINFO]{UnitName=BARGE;ObjectName=example;Side=ARM;CanMove=1;MaxVelocity=2;TransportSlots=base;}");
+        f.put("mod", "units/porter.fbi", b"[UNITINFO]{UnitName=PORTER;ObjectName=example;Side=ARM;CanMove=1;MaxVelocity=2;TeleportEnergy=50;}");
+        f.put("mod", "units/gate.fbi", b"[UNITINFO]{UnitName=GATE;ObjectName=example;Side=ARM;CanTeleport=1;}");
+        f.put("mod", "units/acu.fbi", b"[UNITINFO]{UnitName=ACU;ObjectName=example;Side=ARM;CanMove=1;MaxVelocity=1;[ENHANCEMENTS]{[Teleporter]{Slot=Back;CanTeleport=1;TeleportEnergy=100;}[Half]{Slot=Arm;TeleportTime=3;}[Pods]{Slot=Pod;[DRONES]{Unit=NOSUCHDRONE;Piece=Hatch;}}}}");
+        f.put("mod", "units/kennel.fbi", b"[UNITINFO]{UnitName=KENNEL;ObjectName=example;Side=ARM;Builder=1;WorkerTime=50;[DRONES]{[A]{Unit=EXAMPLE;Count=2;Piece=base;}}}");
+        f.put("mod", "units/empty.fbi", b"[UNITINFO]{UnitName=EMPTY;ObjectName=example;Side=ARM;[DRONES]{Count=3;}}");
+        f.put("mod", "units/carrier.fbi", b"[UNITINFO]{UnitName=CARRIER;ObjectName=example;Side=ARM;CanMove=1;MaxVelocity=1;MobileFactory=1;BuildPiece=Deck;}");
+        f.put("mod", "units/yard.fbi", b"[UNITINFO]{UnitName=YARD;ObjectName=example;Side=ARM;Builder=1;WorkerTime=50;MobileFactory=1;}");
+        let options = Options { target_layer: Some("mod".into()), ..Default::default() };
+        let report = validate(&f.vfs(&["base", "mod"]), &options, |_| true);
+        let text = report.to_text();
+        let codes = |code: &str| report.issues.iter().filter(|i| i.code == code).map(|i| (i.path.as_str(), i.message.as_str())).collect::<Vec<_>>();
+        assert_eq!(codes("unit.transport_slots").iter().map(|c| c.0).collect::<Vec<_>>(), ["units/barge.fbi"], "a ship's slots: {text}");
+        let teleports = codes("unit.teleport");
+        assert_eq!(teleports.len(), 3, "the porter's charge, the enhancement's and the gate: {text}");
+        assert!(teleports.iter().any(|t| t.0 == "units/gate.fbi" && t.1.contains("never moves")), "{teleports:?}");
+        let pieces = codes("unit.logistics_piece");
+        assert_eq!(pieces.len(), 3, "the lifter's slot, the carrier's build piece and the pod's hatch: {pieces:?}");
+        assert!(pieces.iter().any(|p| p.1.contains("Nowhere")) && pieces.iter().any(|p| p.1.contains("Deck")) && pieces.iter().any(|p| p.1.contains("Hatch")), "{pieces:?}");
+        assert!(report.issues.iter().any(|i| i.code == "reference.missing" && i.message.contains("NOSUCHDRONE") && i.message.contains("ACU drone")), "{text}");
+        assert_eq!(codes("unit.drones").iter().map(|c| c.0).collect::<Vec<_>>(), ["units/empty.fbi"], "{text}");
+        let mobile = codes("unit.mobile_factory");
+        assert!(mobile.len() == 2 && mobile.iter().any(|m| m.0 == "units/yard.fbi" && m.1.contains("never moves")) && mobile.iter().any(|m| m.0 == "units/carrier.fbi" && m.1.contains("no build power")), "{mobile:?}");
+        let uses = report.engine.iter().find(|u| u.code == "engine.logistics").expect("told how it plays");
+        assert!(uses.message.contains("Air transports with slots: 1; units that teleport: 2; units with drones: 2; factories that move: 1"), "{}", uses.message);
         assert_words(&report);
     }
 

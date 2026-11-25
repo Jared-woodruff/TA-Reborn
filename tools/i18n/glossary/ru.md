@@ -708,3 +708,22 @@ shield whose hit points run out is разрушен (после разрушен
 | collapse / collapsed / after collapsing / back in {secs} s | разрушиться / разрушен / после разрушения / восстановится через {secs} с |
 | Shield off / Shield down: short of energy / coming up in {secs} s | Щит выключен / Щит неактивен: не хватает энергии / Щит поднимется через {secs} с |
 | shield keys (a mod's) | ключи щита |
+
+## Логистика (`game.rs`, `hud/deck.rs`, `hud/logistics.rs`, `hud_classic.rs`, `validation/logistics.rs`)
+
+Mods can give units air transports with slots, teleporting, drones and factories that move. The
+order is Телепортация (a noun, as Выгрузка, Дальний обзор); a unit телепортируется. Its charge
+(energy over some seconds, paid before it goes) is заряд ("накопив заряд", "Заряжается для
+телепортации: {pct}%"). The overview counts in the genitive, as its abilities' line ("Юнитов с
+дронами: {drones}"), and its second line agrees with Логистика: "Работает так, как описано…".
+
+| English | Русский |
+|---|---|
+| teleport (the order) / to teleport / teleporting | Телепортация / телепортироваться / телепортация |
+| TELEPORT / WARP (TA's 1997 panel: long and short) | ТЕЛЕПОРТ / ТЕЛЕП. |
+| About to teleport (the card) | Приступает к телепортации (as "Приступает к установке") |
+| charge (a teleport's) | заряд ("заряд телепортации") |
+| drone / {name} drone (the mod check's reference) / Keeps {n} drones | дрон (pl. дроны) / дрон {name} / "Дроны ({name}): {n}" |
+| slot (an air transport's, for one passenger) / transport slots (TransportSlots) | слот (as the enhancements') / транспортные слоты; sizes: малых: {small}, средних: {medium}, больших: {large} |
+| factory that moves (MobileFactory) | передвижной завод ("{unit} — передвижной завод") |
+| TA Reborn's logistics (the report's overview) | Логистика TA Reborn |

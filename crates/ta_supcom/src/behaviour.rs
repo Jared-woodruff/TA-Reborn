@@ -268,6 +268,10 @@ pub struct EnhancementScript {
     pub weapons_off: Vec<String>,
     pub intel_on: Vec<String>,
     pub intel_off: Vec<String>,
+    /// The orders it gives the unit (`AddCommandCap('RULEUCC_Teleport')`: the Personal Teleporter).
+    pub command_caps: Vec<String>,
+    /// The units it makes (`CreateUnitHPR('UEA0001', ...)`: the UEF commanders' pods), by id.
+    pub units_made: Vec<String>,
 }
 
 /// What the unit script `text`'s `CreateEnhancement` (its last) does for each enhancement it names,
@@ -345,6 +349,8 @@ pub fn enhancements(text: &str) -> Vec<EnhancementScript> {
                             ("SetWeaponEnabledByLabel", Some(false)) => put(&mut entry.weapons_off, &first),
                             ("EnableUnitIntel", _) => put(&mut entry.intel_on, &first),
                             ("DisableUnitIntel", _) => put(&mut entry.intel_off, &first),
+                            ("AddCommandCap", _) => put(&mut entry.command_caps, &first),
+                            ("CreateUnitHPR", _) => entry.units_made.push(first.to_ascii_uppercase()),
                             _ => {}
                         }
                     }
@@ -355,6 +361,16 @@ pub fn enhancements(text: &str) -> Vec<EnhancementScript> {
         k += 1;
     }
     out
+}
+
+/// The bone a unit's script builds its units at (`BuildAttachBone = 'Attachpoint'` in its class:
+/// Forged Alliance's factories that move name theirs there), if it names one.
+pub fn build_attach_bone(text: &str) -> Option<String> {
+    let t = tokens(text);
+    (0..t.len().saturating_sub(2)).find_map(|k| match (&t[k], &t[k + 1], &t[k + 2]) {
+        (Token::Name(n), Token::Mark('='), Token::Str(bone)) if n == "BuildAttachBone" && !bone.trim().is_empty() => Some(bone.trim().to_string()),
+        _ => None,
+    })
 }
 
 /// What a projectile splits into as it lands: the child's blueprint (as written), how many of
@@ -436,6 +452,10 @@ Unit = Class(Base) {
             self:EnableUnitIntel('SonarStealth')
         elseif enh == 'StealthRemove' or enh == 'CloakRemove' then
             self:DisableUnitIntel('RadarStealth')
+        elseif enh == 'Teleporter' then
+            self:AddCommandCap('RULEUCC_Teleport')
+        elseif enh == 'LeftPod' then
+            local pod = CreateUnitHPR('uea0001', self:GetArmy(), 0, 0, 0, 0, 0, 0)
         elseif self.Other then
             self:SetWeaponEnabledByLabel('Gun', true)
         end
@@ -449,6 +469,10 @@ Unit = Class(Base) {
         assert_eq!((find("Billy").weapons_on.clone(), find("Billy").weapons_off.clone()), (vec!["Nuke".to_string()], vec!["Missile".to_string()]), "within a block of its branch too");
         assert_eq!(find("Stealth").intel_on, ["RadarStealth", "SonarStealth"]);
         assert_eq!(find("CloakRemove").intel_off, ["RadarStealth"], "two to one branch");
+        assert_eq!(find("Teleporter").command_caps, ["RULEUCC_Teleport"], "the orders it gives");
+        assert_eq!(find("LeftPod").units_made, ["UEA0001"], "the units it makes");
+        assert_eq!(build_attach_bone("Fatboy = Class(Factory) {\n    BuildAttachBone = 'Build_Attachpoint',\n}"), Some("Build_Attachpoint".to_string()));
+        assert_eq!(build_attach_bone("Unit = Class(Base) {}"), None);
         assert!(!e.iter().any(|x| x.weapons_on.iter().any(|w| w == "Gun" || w == "After")), "a branch for none, and what comes after the chain: {e:?}");
         assert!(enhancements("Unit = Class(Base) { OnCreate = function(self) end, }").is_empty());
     }

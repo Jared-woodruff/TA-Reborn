@@ -1109,7 +1109,13 @@ impl ClassicHud {
         small.dedup_by(|a, b| a.intersects(b.shrink(1.0)));
         wide.dedup_by(|a, b| a.intersects(b.shrink(1.0)));
         let key = |game: &Game, action: &str| game.keys.text(action).to_string();
+        let teleport = (CommandMode::Teleport, &[n("TELEPORT"), n("WARP")][..], n("Teleport: go to a place in an instant, once its charge is paid"), "teleport");
+        // (Teleporting first: a commander that can teleport has one order place free on its page,
+        // FIGHT going by its key there; where none is free, in a state place left once the rest
+        // have theirs, below.)
+        let mut teleport_late = false;
         for (mode, labels, what, action) in [
+            teleport,
             (CommandMode::Fight, &[n("FIGHT")][..], n("Attack-move: head for a place, fighting on the way"), "fight"),
             (CommandMode::Resurrect, &[n("RESURRECT"), n("REVIVE")][..], n("Raise a wreck back into the unit it was"), "resurrect"),
             (CommandMode::RemoteView, &[n("REMOTE VIEW"), n("VIEW")][..], n("View from afar: see round a place far off for as long as its energy is paid"), "remote_view"),
@@ -1117,16 +1123,11 @@ impl ClassicHud {
             if !game.mode_available(mode) {
                 continue;
             }
-            let Some(r) = small.pop() else { continue };
-            let on = game.command_mode == Some(mode);
-            let resp = self.plate_button(ui, env, r, ui.id().with(("extra", mode.label())), labels, on, true);
-            self.anchors.order(action, resp.rect);
-            if resp.hovered() {
-                self.tip = Some(Tip::Text(ta_ui::i18n::upper(t(mode.label_for(game))), format!("{} ({})", t(what), key(game, action))));
-            }
-            if resp.clicked() {
-                game.set_command_mode(if on { None } else { Some(mode) });
-            }
+            let Some(r) = small.pop() else {
+                teleport_late |= mode == CommandMode::Teleport;
+                continue;
+            };
+            self.extra_order(ui, env, game, r, (mode, labels, what, action));
         }
         // Upgrade in place, where the selection has an upgrade (TA has no gadget for it).
         if game.upgrade_offer().is_some()
@@ -1216,6 +1217,23 @@ impl ClassicHud {
             if resp.clicked() {
                 game.self_destruct_selection();
             }
+        }
+        if teleport_late && let Some(r) = wide.pop() {
+            self.extra_order(ui, env, game, r, teleport);
+        }
+    }
+
+    /// An order TA's GUIs have no gadget for (`extras`), its button at `r`: lit while its order is
+    /// being given, a click giving it (again: not).
+    fn extra_order(&mut self, ui: &egui::Ui, env: &Env, game: &mut Game, r: Rect, (mode, labels, what, action): (CommandMode, &[&'static str], &'static str, &'static str)) {
+        let on = game.command_mode == Some(mode);
+        let resp = self.plate_button(ui, env, r, ui.id().with(("extra", mode.label())), labels, on, true);
+        self.anchors.order(action, resp.rect);
+        if resp.hovered() {
+            self.tip = Some(Tip::Text(ta_ui::i18n::upper(t(mode.label_for(game))), format!("{} ({})", t(what), game.keys.text(action))));
+        }
+        if resp.clicked() {
+            game.set_command_mode(if on { None } else { Some(mode) });
         }
     }
 
@@ -1598,6 +1616,7 @@ fn action_tip(action: Action, game: &Game, menu: Option<MenuAt>) -> Tip {
                 CommandMode::Resurrect => (n("Click a wreck to raise; drag for an area"), "resurrect"),
                 CommandMode::AreaMex => (n("Drag a circle: extractors on every metal spot in it"), "area_mex"),
                 CommandMode::RemoteView => (n("Click the place to view from afar"), "remote_view"),
+                CommandMode::Teleport => (n("Click the place to teleport to"), "teleport"),
             };
             let what = if action.is_empty() { t(what).to_string() } else { format!("{} ({})", t(what), key(action)) };
             (ta_ui::i18n::upper(t(m.label_for(game))), what)

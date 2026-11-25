@@ -10,13 +10,16 @@ mod compatibility;
 pub use compatibility::Compatibility;
 
 pub mod adjacency;
+pub mod drones;
 pub mod effect;
 pub mod enhancement;
 pub mod feature;
 pub mod font;
 pub mod map;
 pub mod mission;
+pub mod teleport;
 pub mod toggle;
+pub mod transport;
 pub mod unit;
 pub mod weapon;
 pub mod validation;
@@ -33,12 +36,15 @@ use ta_formats::tdf::{self, TdfDocument, TdfSection};
 use ta_vfs::Vfs;
 
 pub use adjacency::{AdjacencyAffect, AdjacencyDef};
+pub use drones::DroneDef;
 pub use effect::{BurstDef, BurstDirection, BurstKind, EffectDef};
 pub use enhancement::EnhancementDef;
 pub use feature::FeatureDef;
 pub use map::MapInfo;
 pub use shield::ShieldDef;
+pub use teleport::TeleportDef;
 pub use toggle::ToggleDef;
+pub use transport::TransportSlotDef;
 pub use unit::{ExitDef, UnitDef};
 pub use weapon::{RenderType, STRATEGIC_CLASS, WeaponDef, WeaponLook};
 

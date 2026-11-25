@@ -318,12 +318,17 @@ pub struct Wreckage {
 
 /// A drone a structure keeps (`Economy.EngineeringPods`: the UEF's Kennel's), as its own blueprint
 /// gives it: its build power and how far round its station it looks for work (`AI.GuardScanRadius`,
-/// ogrids).
+/// ogrids); the bone it is made at (`PodAttachpoint`); and its price and build time, for making one
+/// lost again.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Pod {
     pub id: String,
     pub build_rate: f64,
     pub reach: f64,
+    pub bone: String,
+    pub cost_mass: f64,
+    pub cost_energy: f64,
+    pub build_time: f64,
 }
 
 /// A unit's blueprint.
@@ -384,6 +389,12 @@ pub struct UnitBlueprint {
     /// Its drones (`Economy.EngineeringPods`), with what their blueprints say (set by
     /// [`catalogue`]).
     pub pods: Vec<Pod>,
+    /// A drone of a unit a player can make (a station's `EngineeringPods`, or what a commander's
+    /// enhancement makes: the UEF's pods), made with it (set by [`catalogue`]).
+    pub drone: bool,
+    /// The bone it builds its units at: its blueprint's `Display.BuildAttachBone`, else its
+    /// script's `BuildAttachBone` (Forged Alliance's factories that move name theirs there).
+    pub build_bone: Option<String>,
     pub transport_class: Option<u32>,
     /// What its script switches off as it is made (`units/<id>/<id>_script.lua`).
     pub birth: crate::behaviour::Birth,
@@ -409,7 +420,7 @@ impl UnitBlueprint {
     /// ([`UnitBlueprint::upgrade_only`]: the tech 3 Kennel, the Hives of tech 2 and 3, which nothing
     /// builds).
     pub fn playable(&self) -> bool {
-        self.built_by_something() || self.upgrade_only
+        self.built_by_something() || self.upgrade_only || self.drone
     }
 
     /// [`UnitBlueprint::playable`] by its own categories alone: built by something, or a commander.
@@ -531,7 +542,16 @@ pub fn parse(id: &str, text: &str) -> Result<UnitBlueprint> {
     // (Its drones by their blueprints' ids: what they are, `catalogue` reads.)
     let pods = table
         .path(&["Economy", "EngineeringPods"])
-        .map(|t| t.array.iter().filter_map(Value::table).filter_map(|p| p.get_ci("PodUnitID").and_then(Value::str)).map(|id| Pod { id: id.trim().to_ascii_uppercase(), ..Pod::default() }).collect())
+        .map(|t| {
+            t.array
+                .iter()
+                .filter_map(Value::table)
+                .filter_map(|p| {
+                    let bone = p.get_ci("PodAttachpoint").and_then(Value::str).unwrap_or("").trim().to_string();
+                    p.get_ci("PodUnitID").and_then(Value::str).map(|id| Pod { id: id.trim().to_ascii_uppercase(), bone, ..Pod::default() })
+                })
+                .collect()
+        })
         .unwrap_or_default();
     Ok(UnitBlueprint {
         id: id.to_string(),
@@ -575,6 +595,8 @@ pub fn parse(id: &str, text: &str) -> Result<UnitBlueprint> {
         upgrade_only: false,
         adjacency: blueprint_id(text_at(&[], "Adjacency")),
         pods,
+        drone: false,
+        build_bone: None,
         transport_class: num(&["Transport"], "TransportClass").map(|n| n as u32),
         birth: crate::behaviour::Birth::default(),
         enhancement_scripts: Vec::new(),
@@ -782,7 +804,7 @@ pub fn relate(units: &mut [UnitBlueprint]) {
                 .map(|p| match units.iter().find(|o| o.id.eq_ignore_ascii_case(&p.id)) {
                     Some(o) => {
                         let reach = o.table.path(&["AI"]).and_then(|a| a.get_ci("GuardScanRadius")).and_then(Value::num).unwrap_or(0.0);
-                        Pod { id: o.id.clone(), build_rate: o.build_rate, reach }
+                        Pod { id: o.id.clone(), build_rate: o.build_rate, reach, bone: p.bone.clone(), cost_mass: o.cost_mass, cost_energy: o.cost_energy, build_time: o.build_time }
                     }
                     None => p.clone(),
                 })
@@ -809,6 +831,22 @@ pub fn relate(units: &mut [UnitBlueprint]) {
             units[k].upgrade_only = true;
         }
     }
+    // The drones of those a player can make: a station's, and what a commander's enhancement makes
+    // (the UEF's pods), of its faction.
+    let drones: Vec<usize> = (0..units.len())
+        .filter(|&k| {
+            let u = &units[k];
+            !u.playable()
+                && Faction::PLAYABLE.contains(&u.faction)
+                && units.iter().any(|from| {
+                    from.playable() && from.faction == u.faction && from.id != u.id
+                        && (from.pods.iter().any(|p| p.id.eq_ignore_ascii_case(&u.id)) || from.enhancement_scripts.iter().any(|s| s.units_made.iter().any(|m| m.eq_ignore_ascii_case(&u.id))))
+                })
+        })
+        .collect();
+    for k in drones {
+        units[k].drone = true;
+    }
 }
 
 /// How many times a projectile's splits are followed down (the deepest, the Salvation's, two).
@@ -829,6 +867,7 @@ pub fn attach(files: &crate::files::Files, units: &mut [UnitBlueprint]) -> Resul
             let text = String::from_utf8_lossy(&bytes);
             u.birth = crate::behaviour::birth(&text);
             u.enhancement_scripts = crate::behaviour::enhancements(&text);
+            u.build_bone = u.display.build_attach_bone.clone().or_else(|| crate::behaviour::build_attach_bone(&text));
             u.motions = crate::motions::motions(&text);
             u.abilities = crate::abilities::scripted(&text);
         }
@@ -1015,10 +1054,11 @@ UnitBlueprint {
         let mut all = vec![campaign, fab, nowhere, hive1, hive2, hive3_named, kennel, drone];
         relate(&mut all);
         let playable: Vec<&str> = all.iter().filter(|u| u.playable()).map(|u| u.id.as_str()).collect();
-        assert_eq!(playable, ["URB1104", "XRB0104", "XRB0204", "XRB0304", "XEB0104"]);
+        assert_eq!(playable, ["URB1104", "XRB0104", "XRB0204", "XRB0304", "XEB0104", "XEA3204"], "the Kennel's drone made with it");
         assert!(all.iter().filter(|u| u.upgrade_only).all(|u| u.id.starts_with("XRB0")), "built by none, made by upgrading");
+        assert!(all.iter().filter(|u| u.drone).map(|u| u.id.as_str()).eq(["XEA3204"]));
         let pods = &all.iter().find(|u| u.id == "XEB0104").unwrap().pods;
-        assert_eq!(pods, &[Pod { id: "XEA3204".into(), build_rate: 12.0, reach: 12.0 }]);
+        assert_eq!(pods, &[Pod { id: "XEA3204".into(), build_rate: 12.0, reach: 12.0, ..Pod::default() }]);
     }
 
     #[test]

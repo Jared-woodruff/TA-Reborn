@@ -1,8 +1,9 @@
 //! The interface's side of TA Reborn's abilities (docs/MODDING.md, "Abilities"): the weapon toggle
-//! the selection switches (`Command::SetToggle`: a button in both interfaces, its key), and remote
+//! the selection switches (`Command::SetToggle`: a button in both interfaces, its key), remote
 //! viewing's order (`CommandMode::RemoteView`, `Order::RemoteView`: a button, its key and its
-//! cursor). Stuns show as TA's paralysis does (the crackle, the bar, "Paralyzed"), and the fields,
-//! auras and minimum ranges on the information page.
+//! cursor) and teleporting's (`CommandMode::Teleport`, `Order::Teleport`: the same; its charge and
+//! its landing shown by `effects_teleport.rs`). Stuns show as TA's paralysis does (the crackle, the
+//! bar, "Paralyzed"), and the fields, auras and minimum ranges on the information page.
 
 use ta_sim::{Command, UnitId};
 use ta_ui::i18n::{t, tf};
@@ -61,5 +62,10 @@ impl Game {
     /// Whether any of the selection can view a place from afar.
     pub fn selection_views_afar(&self) -> bool {
         self.selection.iter().any(|&id| self.sim.unit(id).is_some_and(|u| self.sim.can_view_afar(u)))
+    }
+
+    /// Whether any of the selection can teleport (its type, or an enhancement it has installed).
+    pub fn selection_teleports(&self) -> bool {
+        self.selection.iter().any(|&id| self.sim.unit(id).is_some_and(|u| u.owner == self.local_player && self.sim.can_teleport(u)))
     }
 }

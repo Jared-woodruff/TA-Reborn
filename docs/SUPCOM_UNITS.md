@@ -26,7 +26,7 @@ as they work, how their weapons look, and their sounds.
   FACTIONS tab). The dialog finds the game (as for its maps: GOG's or Steam's copy, or a folder
   chosen, kept for the next start), counts each faction's units by kind, with its commander's
   build picture, and makes the factions chosen into the mod **Supreme Commander factions**
-  (`supcom-factions`), turned on, a side each in skirmish. All four take about 793 MB (5,319
+  (`supcom-factions`), turned on, a side each in skirmish. All four take about 796 MB (5,359
   files: their sounds 63 MB of it, their weapons' effects and projectiles' models 25 MB) and, on a
   fast computer, about half a minute, most of it writing and installing their files; the room on
   the disk is checked first. A stop installs nothing (not once the mod is being
@@ -311,12 +311,18 @@ Each unit becomes a TA unit (`units/<id>.fbi`, `scripts/<id>.cob`; `ta_supcom::f
   `Physics.TurnRate`, else twice its `KTurn`. Gunships (`GROUNDATTACK`) and the hovering craft
   with guns (the CZAR) hover over what they attack (`HoverAttack`); fighters and bombers make
   passes.
-- **Transports:** an air transport says it carries as many units as its mesh has attach bones
-  for small ones (`…Attachpoint…`, `_sml` or `_Small` or plain, on either side; or its larger
-  slots where it has none: the UEF's T2 gunship one), as large as its largest slots take (TA's
-  `TransportSize`): the T1 transports 6 to 8, the T2 10 to 16, the UEF's T3 28. TA Reborn's air
-  transports carry one unit, whatever their files say, as TA's did (TA's Atlas says 5 as well):
-  so do these.
+- **Transports:** an air transport's attach bones (`…Attachpoint…`: small ones plain, `_sml` or
+  `_Small`, on either side; medium `_Med`, large `_Lrg`) are its slots (TA Reborn's
+  `TransportSlots`, docs/MODDING.md, `units::transport_slots`): the small first, then the medium,
+  then the large, each class from its front to its back, its left before its right, so that they
+  fill from the front side by side. A passenger takes a slot of its class (`Transport.TransportClass`
+  as `TransportClass`: the tech 2 land units 2, the tech 3 and the commanders 3, the tech 1 none,
+  1) and hangs under it where it is seen; a larger slot overlaps the smaller nearest it, so the T1
+  transports carry six small units (eight the Seraphim's), two medium or one large, the T2 10 to 16
+  small, the UEF's T3 28, as Forged Alliance's attach points let them. Unloaded, they are set down
+  at once round the place, spread out as they rode. Its `TransportSize` is its largest slots' (TA's:
+  footprints up to twice it). TA's own air transports, whose files name no slots, carry one, as
+  TA's did (its Atlas says 5).
 - **Economy:** power generators make energy as in FA; extractors switch on when built, cover a
   metal spot (three cells a side, as TA's), store nothing (as TA's) and extract as TA's (0.001),
   three times that at T2 and nine times at T3 (FA's 2, 6 and 18 mass a second); fabricators
@@ -485,18 +491,27 @@ Each unit becomes a TA unit (`units/<id>.fbi`, `scripts/<id>.cob`; `ta_supcom::f
   do (`DefaultMissionType=AssistPatrol`, docs/MODDING.md): it helps build what its player is
   putting up within its reach (a frame, a factory's unit, a building upgrading in place), else
   mends the damaged units of its side and its allies there, else reclaims the wreckage there; the
-  player's orders come first. It works with its own beams: the Kennel's drone (`XEA3204`, its
-  `Economy.EngineeringPods`) is not made, the station working as far round it as the drone looks
-  for work (its `AI.GuardScanRadius`, 15 ogrids, 480 px) and with its own build power or its
-  drones' together, the more (the tech 2 Kennel its own 20, the tech 3 its two drones' 30; the
-  Hives their own 15, 25 and 35, as far as their `MaxBuildDistance`, 15, 20 and 25 ogrids). Told
-  to help a unit where Forged Alliance lets it (`CommandCaps`' guard: the tech 3 Kennel and the
-  Hives). An air staging platform repairs the aircraft landed on it, as TA's repair pads do
-  (`IsAirBase`). A mobile factory (the Fatboy, the carriers, the Atlantis, the Tempest, the CZAR)
-  builds its units out in the field round it, as an engineer does: TA Reborn has no factory that
-  moves. The menus (`download/supcom_<faction>.tdf`) put buildings before units, the lower tech
-  first, economy, factories, defences, then the rest; the same lists are the computer players'
-  (`[CANBUILD]`).
+  player's orders come first. It works with its own beams, at its own build power (the tech 2
+  Kennel's 20; the Hives' 15, 25 and 35), as far round it as its drones look for work (the Kennel's
+  `AI.GuardScanRadius`, 15 ogrids, 480 px) or its `MaxBuildDistance` (the Hives' 15, 20 and 25
+  ogrids). The Kennel's drones (`XEA3204`, its `Economy.EngineeringPods`: one, two on the tech 3)
+  are made with it (TA Reborn's `[DRONES]`, docs/MODDING.md; `units::station_drones`): at their
+  `PodAttachpoint`, guarding it and helping with what it works on within their 480 px, made again
+  after a loss in their build time at the station's build rate and at their price, as Forged
+  Alliance's `TPodTowerUnit` makes them, and going to the tech 3 Kennel it upgrades into. Told to help
+  a unit where Forged Alliance lets it (`CommandCaps`' guard: the tech 3 Kennel and the Hives). An
+  air staging platform repairs the aircraft landed on it, as TA's repair pads do (`IsAirBase`). A
+  factory that moves (the Fatboy, the carriers, the Atlantis, the Tempest, the CZAR:
+  `units::mobile_factory`) is one in TA Reborn too (`MobileFactory`, docs/MODDING.md): its menu its
+  units, built from a factory's queue on itself, at the bone its script builds at (its
+  `BuildAttachBone`: the Fatboy's `Build_Attachpoint`, the Cybran carrier's `Attachpoint`, the
+  others' their root or theirs) as it goes, set down behind it once done, or taking off from it and
+  flying clear of it, behind it (made inside a carrier's hull, it does not stay there); those that
+  are air staging platforms (the carriers, the Atlantis, the CZAR, the Fatboy) repair the aircraft
+  landed on them as well (`IsAirBase`). A drone (`POD`) helps and mends with its build power, with
+  what its unit builds and mends, and has no menu of its own. The menus (`download/supcom_<faction>.tdf`) put buildings
+  before units, the lower tech first, economy, factories, defences, then the rest; the same lists
+  are the computer players' (`[CANBUILD]`).
 - **Upgrades** (`faction::upgrade_of`): a unit whose `General.UpgradesTo` names a unit of its
   faction that is made, and that has build power to upgrade with (`Economy.BuildRate`), says
   `UpgradesTo` (docs/MODDING.md): the tech 1 factories into the tech 2 and those into the tech 3
@@ -533,12 +548,21 @@ Each unit becomes a TA unit (`units/<id>.fbi`, `scripts/<id>.cob`; `ta_supcom::f
   regeneration auras, the EMP Burst (the gun its script gives its stun, a weapon of its own in the
   gun's slot: installed beside the Disintegrator Amplifier, whichever of the two was installed last
   fires), the Chrono Dampener and the shields (Shields, below: the commanders' and support
-  commanders' personal shields, the Aeon's heavy ones, the UEF's Shield Generator Field). 65
-  enhancements are played, on the four commanders (the UEF's 9, the Cybran's 8, the Aeon's 10, the
-  Seraphim's 11) and their support commanders (7, 8, 6 and 6). Left out, with what TA Reborn does
-  not play yet: teleporting, drones and pods and the Sacrificial System: one none of whose effects
-  is played is not offered, nor one needing such another. FA's "Remove" enhancements are TA
-  Reborn's own removal (at once, for nothing).
+  commanders' personal shields, the Aeon's heavy ones, the UEF's Shield Generator Field). 74
+  enhancements are played, on the four commanders (the UEF's 12, the Cybran's 9, the Aeon's 11, the
+  Seraphim's 12) and their support commanders (8, 8, 7 and 7). The Personal Teleporter (its script's
+  `AddCommandCap('RULEUCC_Teleport')`) is TA Reborn's teleport (`CanTeleport`, docs/MODDING.md) at
+  Forged Alliance's charge for the unit (`InitiateTeleportThread`: its `BuildCostMass` times its
+  `Economy.TeleportMassMod` and its `BuildCostEnergy` times its `TeleportEnergyMod`, that energy
+  times its `TeleportTimeMod` in seconds: the Aeon commander's 150,000 energy over 15 s), wherever
+  it goes; the pods (what its script makes, `CreateUnitHPR`: the UEF commander's C-D1 and C-D2
+  Shoulder Drones, its support commander's Engineering Drone) are TA Reborn's drones (`[DRONES]`),
+  made at the bone the enhancement's effects start at, guarding the commander within how far they
+  look for work (10 ogrids), made again after a loss in their build time at the commander's build
+  rate and at their price (Forged Alliance takes the enhancement back instead), the second over the
+  first keeping both. Left out, with what TA Reborn does not play yet: the Sacrificial System: one
+  none of whose effects is played is not offered, nor one needing such another. FA's "Remove"
+  enhancements are TA Reborn's own removal (at once, for nothing).
 - **Adjacency** (`crate::adjacency`; the unit file's `[ADJACENCY]` and `AdjacencySize`,
   docs/MODDING.md): what a structure gives the structures of its player beside it, as Forged
   Alliance's do, read when the factions are made from the player's own copy
@@ -746,20 +770,24 @@ side, out of the way out and off the ground the factory's upgrades take), and ma
 their upgraded extractors where the more they make pays for it within eight minutes (on Sherwood
 in 20 minutes, UEF against Cybran: 15 tech 1 generators beside the UEF's air and tech 3 land
 factories, 15 beside the Cybran's, and storage beside a tech 2 extractor of each). They build no
-engineering stations. They put shield generators up by their factories and defences from the
-eighth minute, once a third of their energy income carries one's upkeep, one at a time (on Sherwood
-in 25 minutes: the UEF's by its tech 2 land factories from the twelfth minute and a heavy one at
-the nineteenth, the Aeon's by its factories and anti-air from the fifteenth, the Cybran's by its
-point defences, where its crowded base has room; the Seraphim's none, its generator's 250 energy a
-second more than a third of their income), take a commander's shield enhancement when rich, keep
-their tactical missiles off what an enemy's dome covers and turn their long-range guns elsewhere
-first.
+engineering stations. They put shield generators up by their factories and defences from the eighth
+minute, once a third of their energy income carries one's upkeep, one at a time (on Sherwood in 25
+minutes: the UEF's by its tech 2 land factories from the twelfth minute and a heavy one at the
+nineteenth, the Aeon's by its factories and anti-air from the fifteenth, the Cybran's by its point
+defences, where its crowded base has room; the Seraphim's none, its generator's 250 energy a second
+more than a third of their income), take a commander's shield enhancement when rich, keep their
+tactical missiles off what an enemy's dome covers and turn their long-range guns elsewhere first.
+Their air transports take as many passengers as their slots hold (a medium unit the room of the
+small ones under its slot: `UnitType::fits`), and their factories that move fight with the army and
+make units on the way, the best for the price that their stores and a minute's income pay for
+(`run_mobile_factories`).
 
-Not yet in TA Reborn: the units' own effects (an engineer's, an aircraft's exhaust), the Kennel's
-drone (the station works with its own beams), teleporting, and the enhancements that need it (and
-drones, the Sacrificial System); its jammers' false blips (TA Reborn's jammers hide what is near
-them), the sniper bot's slower walk in sniper mode, the remote viewing's opening drain, factories
-that move and build within themselves, and air transports carrying more than one unit at a time.
+Not yet in TA Reborn: the units' own effects (an engineer's, an aircraft's exhaust), the
+Sacrificial System; its jammers' false blips (TA Reborn's jammers hide what is near them), the
+sniper bot's slower walk in sniper mode, the remote viewing's opening drain, the pods docking on
+their commander, the carriers storing aircraft inside them, a teleport's charge growing with the
+way (Forged Alliance's is the same anywhere, and so is TA Reborn's for these), and the computer
+players teleporting.
 
 ## Sounds
 

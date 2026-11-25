@@ -29,6 +29,7 @@ pub(crate) mod enhance;
 mod eta;
 mod idle;
 pub(crate) mod info;
+pub(crate) mod logistics;
 mod radial;
 pub(crate) mod ranges;
 pub(crate) mod shield;

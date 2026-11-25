@@ -656,3 +656,24 @@ One word each everywhere (the card's gauge, the information page, the enhancemen
 | collapse, collapsed / back (after a collapse) / coming up | 破碎 / 恢復 / 啟動 |
 | Shield off (switched off) / Shield down: short of energy | 護盾關閉 / 護盾失效：能量不足 |
 | shield keys (a unit's ShieldHealth...) | 護盾相關的鍵 |
+
+## TA Reborn's logistics: air transports with slots, teleporting, drones, factories that move (`game.rs`, `hud/deck.rs`, `hud/logistics.rs`, `hud_classic.rs`, `validation/logistics.rs`)
+
+One word each everywhere (the order, its buttons, the card, the information page, the mod check):
+傳送 (as teleporting above), its charge 充能, a drone 無人機 (measure word 架), a transport's slot 槽位 (as
+an enhancement's), a factory that moves 移動工廠. Air transports are 空中運輸機 (as the Talon's). The classic
+panel's TELEPORT and WARP are both 傳送, as RESURRECT and REVIVE are both 復活. Labels of what names a
+reference follow {name} 無人機 (no 的), as {name} 模型.
+
+| English | 繁體中文 |
+|---|---|
+| Teleport (the order) / TELEPORT, WARP (classic, long and short) | 傳送 / 傳送、傳送 |
+| charge (a teleport's) / Charging to teleport / About to teleport | 充能 / 傳送充能中 / 即將傳送 |
+| Teleports anywhere: {energy} energy and {secs} s, more the farther it goes | 可傳送至任何地點：消耗 {energy} 能量，需時 {secs} 秒，距離越遠所需越多 |
+| Click the place to teleport to | 點擊要傳送到的位置 |
+| drone / Keeps {n} drones / {name} drone (a reference in the mod check) | 無人機 / 擁有 {n} 架無人機 / {name} 無人機 |
+| slot (a transport's) / small, medium, large (its classes) | 槽位 / 小型、中型、大型 |
+| air transport with slots / its passengers (the units it carries) | 帶槽位的空中運輸機 / 所載單位 |
+| factory that moves (MobileFactory) | 移動工廠 |
+| logistics (the mod check's report) | 後勤 |
+| piece (a model's) / the model's middle | 零件 (as the scripts' findings) / 模型的中心 |

@@ -420,6 +420,8 @@ pub(crate) fn facts(ui: &mut egui::Ui, game: &Game, ty: &UnitType, unit: Option<
     // a unit's with its enhancements', its jamming told above from its file).
     can.extend(super::abilities::lines(unit.map_or(&ty.abilities, |u| u.abilities(ty)), false));
     can.extend(super::abilities::toggle_line(ty));
+    // (Logistics: a transport's slots, a teleport, `logistics`.)
+    can.extend(super::logistics::lines(&game.sim, ty, unit));
     if d.on_offable {
         can.push(t("Switches on and off").to_string());
     }

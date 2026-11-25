@@ -122,6 +122,11 @@ pub enum Order {
     /// of Rhianne), as long as the order stands and it pays its `RemoteViewEnergy` (see
     /// `sim/remote_view.rs`). (After `Enhance`: records keep the earlier variants' numbers.)
     RemoteView(FxVec3),
+    /// Teleport to a place (a unit that can, `CanTeleport`: Supreme Commander's commanders'
+    /// Personal Teleporter): it stands and pays its charge, then lands on the nearest spot there it
+    /// can stand on (see `sim/teleport.rs`). (After `RemoteView`: records keep the earlier variants'
+    /// numbers.)
+    Teleport(FxVec3),
 }
 
 /// What a unit builds on itself: the type it is becoming ([`Order::Upgrade`]), or an enhancement
@@ -555,6 +560,17 @@ pub struct Unit {
     /// Its shield as it stands (`sim/shield.rs`): none for a unit without one (every unit of TA's),
     /// or before it is first powered.
     pub shield: Option<crate::sim::shield::ShieldState>,
+    /// Aboard a transport with slots: the slot it holds (`sim/transport.rs`; its `carry_piece` the
+    /// slot's piece, which it hangs under).
+    pub carry_slot: Option<u8>,
+    /// Its teleport's charge under way (`Order::Teleport`: `sim/teleport.rs`).
+    pub teleport: Option<crate::sim::teleport::Charge>,
+    /// A drone: the unit it is kept by (`sim/drones.rs`).
+    pub drone_of: Option<UnitId>,
+    /// A unit with drones: those it has made (alive or not: `Sim::drones_of`), and the one it is
+    /// making again (its type, and the work paid for so far).
+    pub drones: Vec<UnitId>,
+    pub drone_work: Option<(usize, u64)>,
 }
 
 /// A unit's own random numbers: from the game's `seed` and its id.
@@ -692,6 +708,11 @@ impl Unit {
             toggled: false,
             remote_view: None,
             shield: None,
+            carry_slot: None,
+            teleport: None,
+            drone_of: None,
+            drones: Vec::new(),
+            drone_work: None,
         }
     }
 }

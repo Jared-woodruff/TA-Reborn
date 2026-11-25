@@ -372,7 +372,8 @@ fn the_sides_emblems_are_made_of_the_games_own() {
 /// Every unit a player can make is reached from its faction's commander: what each builder
 /// builds (its lists' categories), what each upgrades into in place (the tech 2 and 3 factories,
 /// which nothing builds outright), what its enhancements add to its menu (the engineering
-/// suites'), and what those build and upgrade into, all the way down.
+/// suites'), the drones each keeps (a station's, a commander's pods), and what those build and
+/// upgrade into, all the way down.
 #[test]
 #[ignore]
 fn every_playable_unit_is_reached_from_its_commander() {
@@ -399,9 +400,25 @@ fn every_playable_unit_is_reached_from_its_commander() {
                 }
             }
             if let Some(u) = theirs.iter().find(|u| u.id == reached[k]) {
+                // (Its drones, made by it: a station's, TA Reborn's `[DRONES]`.)
+                for d in units::station_drones(u) {
+                    if let Some(b) = theirs.iter().find(|b| b.id.eq_ignore_ascii_case(&d.id))
+                        && !reached.contains(&b.id)
+                    {
+                        reached.push(b.id.clone());
+                    }
+                }
                 let own = units::weapons(u);
                 let extra = enhance::extra_weapons(u, &own);
                 for e in enhance::enhancements(u, &theirs, &own, &extra).0 {
+                    // (The drones it gives: a commander's pods.)
+                    for d in &e.drones {
+                        if let Some(b) = theirs.iter().find(|b| b.id.eq_ignore_ascii_case(&d.id))
+                            && !reached.contains(&b.id)
+                        {
+                            reached.push(b.id.clone());
+                        }
+                    }
                     for o in e.build_options {
                         if let Some(b) = theirs.iter().find(|b| b.id.eq_ignore_ascii_case(&o))
                             && !reached.contains(&b.id)
@@ -1166,4 +1183,98 @@ fn every_weapons_projectile_and_effects_are_made() {
         assert!(surface.fits(&model), "{path}: its surface fits");
         assert_eq!(out.iter().filter(|(p, _)| p.starts_with("textures/supcom/")).count(), 3, "{path}: its paint");
     }
+}
+
+/// TA Reborn's logistics as the factions' units are made with them, read as the game reads them:
+/// every air transport that carries does so in slots, each a piece of its model, the smaller
+/// first, of a passenger's class; every commander's Personal Teleporter teleports; the
+/// Kennels and the UEF's pods keep their drones (themselves on no menu); every factory that moves
+/// is a factory, with a build piece of its model and a menu.
+#[test]
+#[ignore]
+fn logistics_are_made() {
+    let Some(game) = the_game() else {
+        eprintln!("no copy of Forged Alliance found: nothing to read");
+        return;
+    };
+    let files = Files::own(&game).unwrap();
+    let units: Vec<_> = unit::catalogue(&files).unwrap().into_iter().filter(|u| u.playable()).collect();
+    let mut texts: BTreeMap<String, String> = BTreeMap::new();
+    let mut models: BTreeMap<String, Vec<u8>> = BTreeMap::new();
+    make::make(&files, &units, None, None, "test", &mut |path, bytes| {
+        if path.starts_with("units/") || path.starts_with("download/") {
+            texts.insert(path.to_string(), String::from_utf8_lossy(bytes).into_owned());
+        } else if path.starts_with("objects3d/") && path.ends_with(".3do") && !path.contains("_lod") {
+            models.insert(path.to_string(), bytes.to_vec());
+        }
+        Ok(())
+    }, &mut |_, _| true)
+    .unwrap();
+    let info = |id: &str| ta_formats::tdf::parse(&texts[&format!("units/{}.fbi", id.to_ascii_lowercase())]).sections.remove(0);
+    let def = |id: &str| ta_data::UnitDef::from_tdf(&info(id)).expect("a unit");
+    let pieces = |id: &str| -> Vec<String> {
+        let model = ta_formats::model3do::Model3do::parse(&models[&format!("objects3d/{}.3do", id.to_ascii_lowercase())]).expect("its model");
+        model.pieces.iter().map(|p| p.name.to_ascii_lowercase()).collect()
+    };
+    let menus: String = texts.iter().filter(|(p, _)| p.starts_with("download/")).map(|(_, t)| t.as_str()).collect();
+    let on_menu = |id: &str| menus.contains(&format!("UNITNAME={};", id.to_ascii_uppercase()));
+    let has_menu = |id: &str| menus.contains(&format!("UNITMENU={};", id.to_ascii_uppercase()));
+
+    // The air transports: slots of their models' pieces, the small first, and one in each.
+    let mut slotted = Vec::new();
+    for u in units.iter().filter(|u| u.motion == unit::Motion::Air && u.is("TRANSPORTATION")) {
+        let d = def(&u.id);
+        if d.transport_capacity == 0 {
+            continue;
+        }
+        assert!(!d.transport_slots.is_empty(), "{}: carries in slots", u.id);
+        let own = pieces(&u.id);
+        for s in &d.transport_slots {
+            assert!(own.contains(&s.piece.to_ascii_lowercase()), "{}: its slot {} is a piece of its model", u.id, s.piece);
+            assert!((1..=3).contains(&s.class), "{}: {} of a passenger's class", u.id, s.piece);
+        }
+        assert!(d.transport_slots.windows(2).all(|w| w[0].class <= w[1].class), "{}: the small slots first, by class", u.id);
+        slotted.push(format!("{} {}", u.id, d.transport_slots.len()));
+    }
+    // A passenger's class is one of the slots' (the tech 1 land units the small).
+    for u in units.iter().filter(|u| matches!(u.motion, unit::Motion::Land | unit::Motion::Hover | unit::Motion::Amphibious)) {
+        assert!((1..=10).contains(&def(&u.id).transport_class), "{}: a class", u.id);
+    }
+    // Every commander's Personal Teleporter.
+    let mut teleports = Vec::new();
+    for f in Faction::PLAYABLE {
+        let theirs: Vec<&unit::UnitBlueprint> = units.iter().filter(|u| u.faction == f).collect();
+        let commander = faction::commander(&theirs).expect("a commander");
+        let d = def(&commander.id);
+        let teleporter = d.enhancements.iter().find(|e| e.teleport.is_some()).unwrap_or_else(|| panic!("{}: a teleporter", commander.id));
+        let t = teleporter.teleport.unwrap();
+        assert!(t.energy > 0.0 && t.time > 0.0 && t.energy_per_px == 0.0, "{}: a charge, the same anywhere", commander.id);
+        teleports.push(format!("{} {}", commander.id, teleporter.id));
+    }
+    // The Kennels' drones, and the UEF's pods.
+    for (station, count) in [("XEB0104", 1), ("XEB0204", 2)] {
+        let d = def(station);
+        assert_eq!(d.drones.len(), 1, "{station}: its drone");
+        assert_eq!(d.drones[0].count, count, "{station}: as many as it keeps");
+        assert!(!on_menu(&d.drones[0].unit), "{station}: its drone is made by it alone");
+        assert!(pieces(station).contains(&d.drones[0].piece.to_ascii_lowercase()), "{station}: made at a piece of its model");
+    }
+    let uef: Vec<&unit::UnitBlueprint> = units.iter().filter(|u| u.faction == Faction::Uef).collect();
+    let commander = def(&faction::commander(&uef).unwrap().id);
+    let pods: Vec<_> = commander.enhancements.iter().filter(|e| !e.drones.is_empty()).collect();
+    assert!(pods.len() >= 2, "the UEF commander's two shoulder drones");
+    for e in &pods {
+        // (The second, installed over the first in its slot, keeps both.)
+        let count = if e.prerequisite.is_empty() { 1 } else { 2 };
+        assert!(!on_menu(&e.drones[0].unit) && e.drones[0].count == count, "{}: its pods, of their own", e.id);
+    }
+    // The factories that move.
+    let mobile: Vec<&unit::UnitBlueprint> = units.iter().filter(|u| units::mobile_factory(u)).collect();
+    for u in &mobile {
+        let d = def(&u.id);
+        assert!(d.mobile_factory && d.worker_time > 0.0 && has_menu(&u.id), "{}: a factory that moves, its menu", u.id);
+        assert!(pieces(&u.id).contains(&d.build_piece.to_ascii_lowercase()), "{}: built on a piece of its model ({})", u.id, d.build_piece);
+    }
+    assert!(mobile.len() >= 7, "the Fatboy, the carriers, the Atlantis, the Tempest, the CZAR: {:?}", mobile.iter().map(|u| &u.id).collect::<Vec<_>>());
+    eprintln!("slotted: {}\nteleporters: {}\nfactories that move: {}", slotted.join(", "), teleports.join(", "), mobile.iter().map(|u| u.id.as_str()).collect::<Vec<_>>().join(", "));
 }

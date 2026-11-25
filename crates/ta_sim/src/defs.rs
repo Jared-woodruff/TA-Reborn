@@ -283,10 +283,22 @@ pub struct UnitType {
     pub no_chase_mask: CategorySet,
     /// Gunships: aircraft that hover at range while attacking.
     pub hover_attack: bool,
-    /// Transports: how many units fit (air transports carry one) and the largest
-    /// footprint they take.
+    /// Transports: how many units fit (air transports carry one, but those with slots: as many
+    /// of the smallest class as their slots take at once) and the largest footprint they take.
     pub transport_capacity: u32,
     pub transport_size: u32,
+    /// An air transport's slots (`TransportSlots`, compiled: `sim/transport.rs`), and the class of
+    /// slot it takes as a passenger of one (`TransportClass`).
+    pub transport_slots: Vec<crate::sim::transport::Slot>,
+    pub transport_class: u32,
+    /// Its teleport (`CanTeleport`, compiled: `sim/teleport.rs`); an enhancement may give one.
+    pub teleport: Option<crate::sim::teleport::Teleport>,
+    /// Its drones (`[DRONES]`, compiled: `sim/drones.rs`); an enhancement may give more.
+    pub drones: Vec<crate::sim::drones::DroneSpec>,
+    /// A factory that moves (`MobileFactory=1`: `sim/mobile_factory.rs`), and the piece of its model
+    /// it builds at (`BuildPiece`; its first piece where none is given or its model has not that).
+    pub mobile_factory: bool,
+    pub build_piece: Option<usize>,
     /// A big walker (see [`big_walker`]): it stands level whatever the ground under it, as
     /// TA's `Upright=1` units do ([`UnitType::level`]).
     pub big_walker: bool,
@@ -550,6 +562,10 @@ pub struct Enhancement {
     pub metal_make: Fx,
     pub energy_make: Fx,
     pub upkeep: Fx,
+    /// A teleport it gives the unit (`CanTeleport`: `sim/teleport.rs`).
+    pub teleport: Option<crate::sim::teleport::Teleport>,
+    /// The drones it gives the unit (`[DRONES]`: `sim/drones.rs`), beside its own.
+    pub drones: Vec<crate::sim::drones::DroneSpec>,
 }
 
 /// A type's enhancements compiled (with the names of the slots they take).
@@ -599,6 +615,9 @@ fn compile_enhancements(u: &UnitDef, data: &GameData) -> (Vec<Enhancement>, Vec<
                 metal_make: per_tick(e.metal_make),
                 energy_make: per_tick(e.energy_make),
                 upkeep: per_tick(e.energy_use),
+                teleport: e.teleport.as_ref().map(crate::sim::teleport::Teleport::of),
+                // (Its drones: compiled with the unit's model, `UnitTypes::compile`.)
+                drones: Vec::new(),
             }
         })
         .collect();
@@ -654,11 +673,13 @@ impl UnitType {
         self.def.upright || self.big_walker
     }
 
-    /// Whether this transport can carry a unit of type `other`.
+    /// Whether this transport can carry a unit of type `other` (with slots: one of its class or
+    /// larger).
     pub fn can_carry(&self, other: &UnitType) -> bool {
         self.transport_capacity > 0
             && matches!(other.locomotion, Locomotion::Ground | Locomotion::Hover)
             && (self.transport_size == 0 || other.footprint.0.max(other.footprint.1) <= self.transport_size.max(1).saturating_mul(2))
+            && (self.transport_slots.is_empty() || self.transport_slots.iter().any(|s| s.class >= other.transport_class))
     }
 
     /// Fixed-wing combat aircraft: they attack in passes and can't hover over a target.
@@ -700,6 +721,9 @@ pub struct UnitTypes {
     /// Whether any type (or enhancement) has a shield ([`Abilities::shield`]): without, nothing of
     /// shields runs (TA's own games).
     pub shields: bool,
+    /// Whether any type (or enhancement) keeps drones ([`UnitType::drones`]): without, nothing of
+    /// them runs (TA's own games).
+    pub(crate) drones: bool,
     by_name: FxHashMap<String, usize>,
     /// Upper-case `Category` token → its number in a [`CategorySet`].
     categories: FxHashMap<String, usize>,
@@ -778,8 +802,18 @@ impl UnitTypes {
             // (A builder and a factory by all it builds: a mod's units for its AI alone, such as
             // TA: The Final Frontier's `AAILAB`, have nothing on a menu.)
             let is_builder = can_build && (u.builder || !ai_build_options.is_empty());
-            let is_factory = is_builder && locomotion == Locomotion::Static && !ai_build_options.is_empty();
-            let (enhancements, enhancement_slots) = compile_enhancements(u, data);
+            // (A factory that moves, `MobileFactory`, is one too: `sim/mobile_factory.rs`.)
+            let is_factory = is_builder && (locomotion == Locomotion::Static || u.mobile_factory) && !ai_build_options.is_empty();
+            let (mut enhancements, enhancement_slots) = compile_enhancements(u, data);
+            // (Drones, its own and its enhancements': `sim/drones.rs`.)
+            for (e, def) in enhancements.iter_mut().zip(&u.enhancements) {
+                e.drones = crate::sim::drones::compile_drones(&def.drones, u, u.worker_time, &model, data);
+            }
+            let drones = crate::sim::drones::compile_drones(&u.drones, u, u.worker_time, &model, data);
+            let mobile_factory = is_factory && locomotion != Locomotion::Static;
+            let build_piece = if mobile_factory { model.piece_index(&u.build_piece).or((!model.pieces.is_empty()).then_some(0)) } else { None };
+            // (An air transport with slots carries a unit in each: `sim/transport.rs`.)
+            let transport_slots = crate::sim::transport::compile_slots(u, &model, locomotion);
             types.push(UnitType {
                 id,
                 name: u.name.clone(),
@@ -838,8 +872,22 @@ impl UnitTypes {
                 weapon_only_masks: std::array::from_fn(|k| u.weapon_only_target_category[k].as_deref().map(|list| token_set(&categories, list))),
                 no_chase_mask: token_set(&categories, target_tags(u, &u.no_chase_category)),
                 hover_attack: u.hover_attack,
-                transport_capacity: if u.transport_capacity == 0 { 0 } else if locomotion == Locomotion::Air { 1 } else { u.transport_capacity },
+                transport_capacity: if !transport_slots.is_empty() {
+                    crate::sim::transport::slot_capacity(&transport_slots)
+                } else if u.transport_capacity == 0 {
+                    0
+                } else if locomotion == Locomotion::Air {
+                    1
+                } else {
+                    u.transport_capacity
+                },
                 transport_size: u.transport_size,
+                transport_slots,
+                transport_class: u.transport_class.max(1),
+                teleport: u.teleport.as_ref().map(crate::sim::teleport::Teleport::of),
+                drones,
+                mobile_factory,
+                build_piece,
                 big_walker,
                 // (`HealTime` seconds, in ticks: at least one; none, or none given, no mending.)
                 heal_ticks: if u.heal_time > 0.0 { ((u.heal_time * TICKS_PER_SECOND as f64).round() as u64).max(1) } else { 0 },
@@ -873,7 +921,8 @@ impl UnitTypes {
         let auras = types.iter().any(|t| t.abilities.aura.is_some() || t.enhancements.iter().any(|e| e.abilities.aura.is_some()));
         // (A shield, a unit's or an enhancement's: without, nothing of shields runs.)
         let shields = types.iter().any(|t| t.abilities.shield.is_some() || t.enhancements.iter().any(|e| e.abilities.shield.is_some()));
-        UnitTypes { types, by_name, categories, airbase_reach, collision_reach, target_reach, heals, adjacency, auras, shields }
+        let drones = types.iter().any(|t| !t.drones.is_empty() || t.enhancements.iter().any(|e| !e.drones.is_empty()));
+        UnitTypes { types, by_name, categories, airbase_reach, collision_reach, target_reach, heals, adjacency, auras, shields, drones }
     }
 
     pub fn get(&self, id: usize) -> &UnitType {

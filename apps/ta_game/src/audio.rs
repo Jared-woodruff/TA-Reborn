@@ -545,6 +545,16 @@ impl GameAudio {
                 }
             }
             SimEvent::ShieldChanged { unit, up, .. } if unit_seen(*unit) => self.shield_changed(sim, *unit, *up),
+            // A teleport: TA's cloak's shimmer where it goes, and its uncloaking where it comes, at
+            // each end heard where it is seen.
+            SimEvent::Teleported { from, to, .. } => {
+                if seen(*from) {
+                    self.engine.play_at("kloak1", from.to_f32(), 0.9);
+                }
+                if seen(*to) {
+                    self.engine.play_at("kloak1un", to.to_f32(), 0.9);
+                }
+            }
             SimEvent::UnderAttack { player, unit, .. }
                 // A global alert (not placed in the world), in the attacked unit's voice (one of
                 // its variants), or the side's announcer for its commander.

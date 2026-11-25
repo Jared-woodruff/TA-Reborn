@@ -25,7 +25,7 @@ const SOURCES: &[&str] = &["apps/ta_game/src", "apps/ta_launcher/src", "crates/t
 /// The mod check's words and the maps' origins (`ta_data`, which has no `t`: the launcher and
 /// the game translate them): in these files only the texts marked `en`, and `enf`'s first
 /// argument, count (their other calls, `doc.section("UNITINFO")`, are no text).
-const DATA_SOURCES: &[&str] = &["crates/ta_data/src/validation.rs", "crates/ta_data/src/validation/abilities.rs", "crates/ta_data/src/presentation.rs", "crates/ta_data/src/words.rs", "crates/ta_data/src/map.rs"];
+const DATA_SOURCES: &[&str] = &["crates/ta_data/src/validation.rs", "crates/ta_data/src/validation/abilities.rs", "crates/ta_data/src/validation/logistics.rs", "crates/ta_data/src/presentation.rs", "crates/ta_data/src/words.rs", "crates/ta_data/src/map.rs"];
 const DATA_TRANSLATING: &[&str] = &["en", "enf"];
 const DATA_FIRST_ONLY: &[&str] = &["enf"];
 
@@ -422,5 +422,25 @@ mod tests {
             const HOW: &str = en("Include the asset.");
         "##;
         assert_eq!(super::scan_with(src, super::DATA_TRANSLATING, super::DATA_FIRST_ONLY), ["Missing [UNITINFO]; this unit is skipped.", "Add a UNITINFO section.", "{whats}: {what} is missing.", "Include the asset."]);
+    }
+
+    /// Every file of `ta_data` with words of the mod check or the maps (`en`, `enf`, outside its
+    /// tests) is read for them: one left out of `DATA_SOURCES` would show its words in English
+    /// alone, whatever the language.
+    #[test]
+    fn every_data_file_with_words_is_read() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let mut files = Vec::new();
+        super::collect_rs(&root.join("crates/ta_data/src"), &mut files);
+        assert!(!files.is_empty(), "ta_data's sources");
+        for f in files {
+            let text = std::fs::read_to_string(&f).unwrap();
+            let code = text.split("#[cfg(test)]").next().unwrap_or(&text);
+            if super::scan_with(code, super::DATA_TRANSLATING, super::DATA_FIRST_ONLY).is_empty() {
+                continue;
+            }
+            let rel = f.strip_prefix(&root).unwrap().to_string_lossy().replace('\\', "/");
+            assert!(super::DATA_SOURCES.contains(&rel.as_str()), "{rel} has words for the interface: add it to DATA_SOURCES");
+        }
     }
 }

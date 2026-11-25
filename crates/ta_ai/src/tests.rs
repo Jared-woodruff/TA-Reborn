@@ -22,6 +22,9 @@ mod enhancements;
 #[path = "adjacency_tests.rs"]
 mod adjacency;
 
+#[path = "mobile_tests.rs"]
+mod mobile_factories;
+
 fn fixture() -> Sim {
     fixture_edit(|_| {})
 }

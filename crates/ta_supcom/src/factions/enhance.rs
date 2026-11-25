@@ -34,10 +34,21 @@
 //!   slot), **a stunning weapon** it switches on (the Chrono Dampener's pulse), and **a shield**
 //!   (`factions::shields`: the commanders' and support commanders' personal shields and the UEF's
 //!   shield generator fields, at their upkeep).
+//! - **The Personal Teleporter** (the script's `AddCommandCap('RULEUCC_Teleport')`): TA Reborn's
+//!   teleport (`CanTeleport`), at Forged Alliance's charge for the unit (`lua/sim/Unit.lua`'s
+//!   `InitiateTeleportThread`): its energy `BuildCostMass` times its `Economy.TeleportMassMod` and
+//!   `BuildCostEnergy` times its `TeleportEnergyMod` (each 0.01 where none is given), over that
+//!   times its `TeleportTimeMod` seconds, wherever it goes.
 //!
-//! Left out, with what TA Reborn does not play yet: teleporting, drones and pods and the
-//! Sacrificial System: an enhancement none of whose effects is played is not offered, nor one
-//! needing such another. The "Remove" ones are TA Reborn's own order (a slot cleared at once).
+//! - **Pods** (what the script makes, `CreateUnitHPR`: the UEF commander's two and its support
+//!   commander's one): TA Reborn's drones (`[DRONES]`), each pod made at the bone its effects start
+//!   at, made again after a loss in its build time at the unit's build rate, at its price (Forged
+//!   Alliance takes the enhancement back instead), kept within how far it looks for work; a second
+//!   pod over the first keeps both.
+//!
+//! Left out, with what TA Reborn does not play yet: the Sacrificial System: an enhancement none
+//! of whose effects is played is not offered, nor one needing such another. The "Remove" ones are
+//! TA Reborn's own order (a slot cleared at once).
 
 use std::fmt::Write as _;
 
@@ -73,6 +84,10 @@ pub struct Enhancement {
     pub stealth: bool,
     /// What it brings of TA Reborn's abilities (a jammer, resource allocation, an aura).
     pub abilities: super::abilities::EnhancementAbilities,
+    /// The teleport it gives (the Personal Teleporter): its charge's energy and seconds.
+    pub teleport: Option<(f64, f64)>,
+    /// The drones it gives (what its script makes, `CreateUnitHPR`: the UEF commanders' pods).
+    pub drones: Vec<units::Drone>,
 }
 
 /// The weapon sections an enhancement brings that the unit's own weapons are not: its main gun's
@@ -123,6 +138,34 @@ pub fn extra_weapons<'a>(u: &'a UnitBlueprint, own: &Weapons<'a>) -> Vec<&'a Wea
         }
     }
     out
+}
+
+/// A unit's teleport charge as Forged Alliance works it out (`lua/sim/Unit.lua`'s
+/// `InitiateTeleportThread`): its energy, its `BuildCostMass` times its `Economy.TeleportMassMod`
+/// and its `BuildCostEnergy` times its `TeleportEnergyMod` (0.01 each where none is given), and its
+/// seconds, that energy times its `TeleportTimeMod` (0.01 where none is given); wherever it goes.
+pub fn teleport_charge(u: &UnitBlueprint) -> (f64, f64) {
+    let economy = u.table.path(&["Economy"]);
+    let factor = |k: &str| economy.and_then(|e| e.get_ci(k)).and_then(Value::num).unwrap_or(0.01).max(0.0);
+    let energy = u.cost_mass * factor("TeleportMassMod") + u.cost_energy * factor("TeleportEnergyMod");
+    (energy.round(), ((energy * factor("TeleportTimeMod") * 100.0).round() / 100.0).max(0.1))
+}
+
+/// A pod an enhancement of `u` makes (`pod`, its blueprint), as its `[DRONES]` gives it: made at
+/// `bone`, made again in its build time at the unit's build rate and at its price (Forged Alliance
+/// takes the enhancement back with its pod; TA Reborn makes the pod again), kept within how far it
+/// looks for work (`AI.GuardScanRadius`).
+fn pod_drone(u: &UnitBlueprint, pod: &UnitBlueprint, bone: &str) -> units::Drone {
+    let reach = pod.table.path(&["AI"]).and_then(|a| a.get_ci("GuardScanRadius")).and_then(Value::num).unwrap_or(0.0);
+    units::Drone {
+        id: pod.id.to_ascii_uppercase(),
+        count: 1,
+        bone: bone.to_string(),
+        rebuild: if u.build_rate > 0.0 { (pod.build_time / u.build_rate * 100.0).round() / 100.0 } else { 30.0 },
+        mass: pod.cost_mass,
+        energy: pod.cost_energy,
+        leash: (reach * UNIT_SCALE).round(),
+    }
 }
 
 /// A number as written in a unit file.
@@ -187,6 +230,18 @@ pub fn enhancements<'a>(u: &'a UnitBlueprint, faction: &[&'a UnitBlueprint], own
             }
             if on("Cloak") {
                 e.cloak = Some(num(t, "MaintenanceConsumptionPerSecondEnergy").unwrap_or(0.0).max(1.0));
+            }
+            if s.command_caps.iter().any(|c| c.eq_ignore_ascii_case("RULEUCC_Teleport")) {
+                e.teleport = Some(teleport_charge(u));
+            }
+            // (Its pods: what it makes of its faction's, made at the bone its effects start at.)
+            let bone = t.get_ci("UpgradeEffectBones").and_then(Value::table).and_then(|b| b.array.iter().find_map(Value::str)).unwrap_or("").to_string();
+            for made in &s.units_made {
+                let Some(pod) = faction.iter().find(|p| p.id.eq_ignore_ascii_case(made)) else { continue };
+                match e.drones.iter_mut().find(|d| d.id.eq_ignore_ascii_case(made)) {
+                    Some(d) => d.count += 1,
+                    None => e.drones.push(pod_drone(u, pod, &bone)),
+                }
             }
         }
         if let Some(adds) = t.get_ci("BuildableCategoryAdds").and_then(Value::str) {
@@ -283,6 +338,13 @@ pub fn enhancements<'a>(u: &'a UnitBlueprint, faction: &[&'a UnitBlueprint], own
             }
             e.weapons.sort();
             e.stealth |= before.stealth;
+            // (A second pod over the first: both.)
+            for d in &before.drones {
+                match e.drones.iter_mut().find(|o| o.id == d.id) {
+                    Some(o) => o.count += d.count,
+                    None => e.drones.push(d.clone()),
+                }
+            }
             e.sonar = e.sonar.max(before.sonar);
             e.radar = e.radar.max(before.radar);
             e.sight = e.sight.max(before.sight);
@@ -296,6 +358,7 @@ pub fn enhancements<'a>(u: &'a UnitBlueprint, faction: &[&'a UnitBlueprint], own
     // Those with an effect played, whose prerequisite is played too.
     let plays = |e: &Enhancement| {
         e.max_damage > 0.0 || e.heal_rate > 0.0 || e.worker_time > 0.0 || e.sight > 0.0 || e.radar > 0.0 || e.sonar > 0.0 || !e.build_options.is_empty() || !e.weapons.is_empty() || e.cloak.is_some() || e.stealth || !e.abilities.is_empty()
+            || e.teleport.is_some() || !e.drones.is_empty()
     };
     let mut kept: Vec<Enhancement> = made.into_iter().map(|(e, _)| e).filter(plays).collect();
     loop {
@@ -355,8 +418,31 @@ pub fn section(u: &UnitBlueprint, list: &[Enhancement]) -> String {
         for (k, v) in super::abilities::enhancement_keys(&e.abilities) {
             put(k, v);
         }
+        if let Some((energy, seconds)) = e.teleport {
+            put("CanTeleport", "1".into());
+            put("TeleportEnergy", n(energy));
+            put("TeleportTime", n(seconds));
+        }
+        s.push_str(&units::drones_section(&e.drones, 3));
         s.push_str("\t\t\t}\n");
     }
     s.push_str("\t\t}\n");
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A commander's teleport charge, as Forged Alliance works it out from its economy: the Aeon
+    /// commander's 0.03 of its energy and none of its mass, a ten-thousandth of that in seconds;
+    /// 0.01 each where its blueprint gives none.
+    #[test]
+    fn a_teleport_charge_is_worked_out_as_forged_alliance_does() {
+        let table = Table { fields: crate::lua::parse("Economy = { TeleportEnergyMod = 0.03, TeleportMassMod = 0, TeleportTimeMod = 0.0001 }").unwrap(), array: Vec::new() };
+        let acu = UnitBlueprint { cost_mass: 18000.0, cost_energy: 5_000_000.0, table, ..Default::default() };
+        assert_eq!(teleport_charge(&acu), (150_000.0, 15.0));
+        let plain = UnitBlueprint { cost_mass: 1000.0, cost_energy: 10_000.0, ..Default::default() };
+        assert_eq!(teleport_charge(&plain), (110.0, 1.1));
+    }
 }

@@ -33,11 +33,12 @@ fn tier(u: &UnitBlueprint) -> u8 {
 /// until its engineering enhancements (`BUILTBYTIER2COMMANDER`, `BUILTBYTIER3COMMANDER`: the
 /// Cybran commander's Engineering Station).
 fn listed<'a>(builder: &UnitBlueprint, units: &[&'a UnitBlueprint]) -> Vec<&'a UnitBlueprint> {
-    if units::builds(builder) == Builds::No {
+    if matches!(units::builds(builder), Builds::No | Builds::Drone) {
         return Vec::new();
     }
     let lists = units::build_lists(builder);
-    let factory = units::builds(builder) == Builds::Factory;
+    // (A factory, and one that moves, makes units: the buildings its lists name are not its.)
+    let factory = units::builds(builder) == Builds::Factory || units::mobile_factory(builder);
     let commander = builder.is("COMMAND");
     units
         .iter()

@@ -716,3 +716,22 @@ short (f.: própria); a shield whose hit points run out colapsa (o colapso) and 
 | collapse / collapsed / after collapsing | colapsar / colapsado / após o colapso |
 | Shield off / Shield down: short of energy / coming up in {secs} s / back in {secs} s | Escudo desligado / Escudo inativo: energia insuficiente / Escudo ativo em {secs} s / volta em {secs} s |
 | shield keys (a mod's) | chaves de escudo |
+
+## Logística (`game.rs`, `hud/deck.rs`, `hud/logistics.rs`, `hud_classic.rs`, `validation/logistics.rs`)
+
+Mods can give units air transports with slots, teleporting, drones and factories that move. The
+order is Teletransportar (an infinitive, as Mover, Descarregar); a unit teletransporta-se (as
+"Camufla-se"; "pode se teletransportar" after a verb). Its charge (energy over some seconds, paid
+before it goes) is a carga ("depois de paga a carga"). The mod keys are masculine: seu Unit, um
+Count, o Piece de um drone.
+
+| English | pt-BR |
+|---|---|
+| teleport (the order) / to teleport / teleporting | Teletransportar / teletransportar-se / teletransporte |
+| TELEPORT / WARP (TA's 1997 panel: long and short) | TELETRANSPORTAR / TELETR. |
+| Charging to teleport / About to teleport (the card) | Carregando o teletransporte: {pct}% / Prestes a se teletransportar |
+| charge (a teleport's) | carga ("uma carga de teletransporte") |
+| drone / {name} drone (the mod check's reference) / Keeps {n} drones | drone (pl. drones) / drone de {name} / "Drones ({name}): {n}" |
+| slot (an air transport's, for one passenger) / transport slots (TransportSlots) | vaga (as the Conquest's vaga de transporte) / vagas de transporte; sizes as labels: pequenas: {small}, médias: {medium}, grandes: {large} |
+| factory that moves (MobileFactory) | fábrica móvel |
+| TA Reborn's logistics (the report's overview) | Logística do TA Reborn |

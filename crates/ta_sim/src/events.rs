@@ -83,4 +83,6 @@ pub enum SimEvent {
     /// A unit's shield came up (`up`), or went down: `collapsed`, its hit points gone (it comes back
     /// whole once recharged); else switched off, carried or short of energy.
     ShieldChanged { unit: UnitId, up: bool, collapsed: bool },
+    /// A unit teleported (`Order::Teleport`), its charge paid: gone from `from`, landed at `to`.
+    Teleported { id: UnitId, from: FxVec3, to: FxVec3 },
 }

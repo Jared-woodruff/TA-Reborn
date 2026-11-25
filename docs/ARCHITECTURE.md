@@ -560,6 +560,31 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   `stun_round` asks `Sim::shielded_from`). A personal shield takes `damage_unit`'s damage before the unit's health
   (`shield::absorb`), but its own blast. Events: `ShieldHit` (where, how much), `ShieldChanged` (up,
   down, collapsed). The state is in the checksum where a unit has one: TA's games sum as before.
+* **Logistics for mods** (docs/MODDING.md, "Logistics"; Supreme Commander's units use them): air
+  transports with slots (above, under Transports), and three more. **Teleporting**
+  (`sim/teleport.rs`, `Order::Teleport`; `CanTeleport`, its type's or an installed enhancement's,
+  `Sim::teleport_of`): the unit stands and pays its charge (`teleport::Charge` in `Unit::teleport`:
+  its energy, a base and so much a pixel of the way, over its ticks, likewise, a tick's work each
+  tick through `Economy::spend_work`, so it stalls as construction does), then lands at
+  `Sim::teleport_landing` (`drop_spot`'s nearest place to stand; an aircraft at the place, as high
+  as it flew), `SimEvent::Teleported` telling the client (`effects_teleport.rs`: the charge's sparks
+  and glow, a flash and a ring at each end; TA's cloak sounds). The order gone, `end_teleport` drops
+  the charge. **Drones** (`sim/drones.rs`; `[DRONES]`, a type's and its installed enhancements',
+  `Sim::wanted_drones`, summed by the drone's type): made at once as their unit is finished or
+  enhanced (`make_drones`, from `on_completed` and `set_enhancement`), linked both ways
+  (`Unit::drone_of`, `Unit::drones`), guarding it and held to their leash, made again at their
+  price after a loss (`update_drones` after the auras, `Unit::drone_work`), dying with their unit
+  (taken off the map with one given up or upgraded: `carry_drones_over` hands an upgraded unit's
+  to the one it becomes), changing sides with it (`change_owner`'s `drones_following`); nothing of
+  it runs without drones in the game (`UnitTypes::drones`). **Factories that move**
+  (`sim/mobile_factory.rs`; `MobileFactory`, `BuildPiece`: `UnitType::is_factory` with
+  `mobile_factory`): `update_factory` hands them to `update_mobile_factory`, which builds the queue's
+  next unit on the factory (`carried_by` and `factory` it, `carry_piece` the build piece:
+  `follow_transport` carries it, `apply_build_power` builds it there) as the factory goes about its
+  orders, and lets it go done (`release_product`: behind it on the nearest ground, or in flight
+  and flying clear of it).
+  `Unit::carry_slot`, `Unit::teleport`, the drones' links and `drone_work` are in the checksum
+  where set; TA's games sum as before.
 * **Standing orders** (`Command::SetStates`, never touching the queue): fire (hold, return,
   at will) and movement. Idle armed units hit from beyond their reach answer by movement
   state: Maneuver advances on the attacker within a 420 px leash and walks back afterwards,
@@ -626,7 +651,15 @@ GOG/Steam install ──ta_vfs──► bytes ──ta_formats──► parsed f
   without taking its passenger fails the order at once, and an unloading one that ends
   without letting go (the spot is out of the boom's reach) has the passenger set down on
   the spot directly (`ThreadTag::Transport` tells when the script is done). Passengers
-  leave collisions, targeting and orders, and die with their transport.
+  leave collisions, targeting and orders, and die with their transport. An air transport with
+  slots (`TransportSlots`, `sim/transport.rs`: compiled with each slot's piece, class and the
+  slots it overlaps, the nearest of each larger class at rest) takes each passenger into the first
+  free slot of its `TransportClass` (else of the smallest larger class: `transport::slot_for`;
+  `Sim::room_for` is the room check everyone asks, `UnitType::fits` the computer players'), hangs it
+  under that piece (`Unit::carry_slot`, `Sim::hang`), and sets every passenger down at once round
+  the place (`Sim::unload_slotted`: the slots' layout twice as wide, turned with it, each on the
+  nearest ground clear of the others); its capacity is how many of the smallest class it takes.
+  Without slots an air transport carries one, as TA's.
 * **Modules** (the mods' upgrades, docs/FORMATS.md): a unit that carries none takes on its own
   player's finished, loose units its script attaches (a building the module it made on its pad).
   A module takes no ground and stands where it was made (`UnitDef::takes_no_ground`,

@@ -130,7 +130,7 @@ pub fn upgrade_tip(game: &Game, key: &str) -> String {
 /// The orders the selection can give, in the order the plate sets them: every group's in turn
 /// (Stop always; Perspective for the first selected unit when it can be entered).
 pub fn available(game: &Game) -> Vec<Def> {
-    const MODES: [(CommandMode, Glyph, &str, Group); 14] = [
+    const MODES: [(CommandMode, Glyph, &str, Group); 15] = [
         (CommandMode::Move, Glyph::Move, "move", Group::Command),
         (CommandMode::Attack, Glyph::Attack, "attack", Group::Command),
         (CommandMode::Fight, Glyph::Fight, "fight", Group::Command),
@@ -146,6 +146,7 @@ pub fn available(game: &Game) -> Vec<Def> {
         (CommandMode::DGun, Glyph::DGun, "dgun", Group::Special),
         // (Remote viewing: an eye, as what is seen there.)
         (CommandMode::RemoteView, Glyph::Visible, "remote_view", Group::Special),
+        (CommandMode::Teleport, Glyph::Teleport, "teleport", Group::Special),
     ];
     let mut out = vec![Def { kind: Kind::Stop, glyph: Glyph::Stop, action: "stop", group: Group::Command }];
     // (Stop first, then the movers' orders; the work and special rows after.)

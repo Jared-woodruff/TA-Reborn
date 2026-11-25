@@ -1244,8 +1244,9 @@ fn transport_named(sim: &Sim, id: UnitId, name: &str, setup: &MissionSetup) -> O
     if me.carried_by.is_some() { return None; }
     let carries = |u: &Unit| {
         let t = sim.unit_type(u);
+        // (Room aboard: a slot that takes it, on a transport with slots.)
         !u.dead && u.id != id && u.owner == me.owner && u.carried_by.is_none()
-            && u.cargo.len() < t.transport_capacity as usize && t.can_carry(sim.unit_type(me))
+            && sim.room_for(u, sim.unit_type(me)) && t.can_carry(sim.unit_type(me))
     };
     if let Some(&t) = setup.idents.get(&key) {
         return sim.unit(t).filter(|u| carries(u)).map(|u| u.id);
@@ -1347,8 +1348,8 @@ pub fn setup_mission(
         });
         if let Some(t) = transport {
             // Reserve this space now: later passengers naming a type/group must
-            // choose among transports that still have room.
-            sim.attach(t, id, None);
+            // choose among transports that still have room (in a slot, on one with slots).
+            sim.board(t, id);
         }
         let steps = compile_script(sim, id, &pu.script, &setup);
         if !steps.is_empty() {
