@@ -1806,7 +1806,7 @@ impl Sim {
             self.set_active(id, true);
         }
         // (Its drones, made as it is finished: `sim/drones.rs`.)
-        self.make_drones(id);
+        self.make_drones(id, &[]);
     }
 
     fn set_active(&mut self, id: UnitId, on: bool) {
@@ -1971,7 +1971,10 @@ impl Sim {
             if std::mem::take(&mut u.repair_trip) && !u.landed {
                 u.air_pad = None;
             }
-            if u.build.is_some() {
+            // (A factory that moves keeps on with the unit it builds on itself: its orders are its
+            // going about, not its production's, `sim/mobile_factory.rs`.)
+            let job = u.build;
+            if job.is_some_and(|j| !self.built_on(id, j.target)) {
                 self.finish_build_job(id);
             }
         }
@@ -3053,7 +3056,8 @@ impl Sim {
 
     fn transfer_size(&self, id: UnitId) -> u32 {
         let Some(u) = self.unit(id).filter(|u| !u.dead) else { return 0 };
-        if u.cargo.is_empty() && u.build.is_none() {
+        // (Its drones go with it too: `sim/drones.rs`.)
+        if u.cargo.is_empty() && u.build.is_none() && u.drones.is_empty() {
             return 1;
         }
         let owner = u.owner;

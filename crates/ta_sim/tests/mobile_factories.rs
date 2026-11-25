@@ -66,6 +66,13 @@ fn put(sim: &mut Sim, name: &str, x: i64, z: i64) -> UnitId {
     sim.spawn_unit(sim.types.id(name).unwrap(), 0, FxVec3::from_ints(x, 60, z), 0, true).unwrap()
 }
 
+fn run(sim: &mut Sim, ticks: u32) {
+    for _ in 0..ticks {
+        sim.step(&[]);
+        sim.take_events();
+    }
+}
+
 fn produce(sim: &mut Sim, factory: UnitId, name: &str) {
     let type_id = sim.types.id(name).unwrap();
     sim.step(&[Command::Produce { player: 0, factory, type_id, count: 1 }]);
@@ -101,6 +108,33 @@ fn a_factory_that_moves_builds_on_itself_as_it_goes_and_sets_its_unit_down_behin
     assert_eq!(p.pos.y, Fx::from_int(60), "on the ground");
     assert!(p.pos.x < f.pos.x - Fx::from_int(32), "set down behind it, as it goes east: {:?} {:?}", p.pos, f.pos);
     assert!(f.factory_queue.is_empty() && f.build.is_none());
+}
+
+/// Its player's orders, given while it builds on itself (a move, an attack, a stop, none queued),
+/// are its going about: the unit on it is built on and let go, and no other is started beside it.
+#[test]
+fn orders_given_while_it_builds_leave_its_unit_on_it_built() {
+    let mut sim = field();
+    let fatboy = put(&mut sim, "FATBOY", 400, 600);
+    produce(&mut sim, fatboy, "TANK");
+    let tank = sim.unit(fatboy).unwrap().build.expect("building").target;
+    let tank_type = sim.types.id("TANK").unwrap();
+    for order in [Order::Move(FxVec3::from_ints(1600, 0, 600)), Order::Stop, Order::Move(FxVec3::from_ints(1600, 0, 900))] {
+        run(&mut sim, 5);
+        sim.step(&[Command::Order { player: 0, units: vec![fatboy], order, queue: false }]);
+        assert_eq!(sim.unit(fatboy).unwrap().build.map(|j| j.target), Some(tank), "still building it");
+    }
+    for _ in 0..30 * 4 {
+        if sim.unit(tank).unwrap().carried_by.is_none() {
+            break;
+        }
+        sim.step(&[]);
+    }
+    let p = sim.unit(tank).unwrap();
+    assert!(p.is_complete() && p.carried_by.is_none() && p.factory.is_none(), "done and let go");
+    let tanks = sim.units().filter(|u| !u.dead && u.type_id == tank_type).count();
+    assert_eq!(tanks, 1, "no other started beside it");
+    assert!(sim.unit(fatboy).unwrap().build.is_none() && sim.unit(fatboy).unwrap().factory_queue.is_empty());
 }
 
 #[test]

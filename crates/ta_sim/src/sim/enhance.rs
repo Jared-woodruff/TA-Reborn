@@ -160,9 +160,11 @@ impl Sim {
         }
         list.sort_unstable();
         let toggled = u.toggled;
+        // (What it kept of drones before: only those the change newly grants are made at once.)
+        let before = self.drone_entitlement(u);
         self.refit(id, list, toggled);
         // (The drones it gives made, or taken with it: `drones.rs`.)
-        self.make_drones(id);
+        self.make_drones(id, &before);
         if t.callins.set_enhancement {
             for i in gone {
                 self.call_script(id, "SetEnhancement", &[i as i32, 0]);

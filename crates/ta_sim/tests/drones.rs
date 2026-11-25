@@ -36,8 +36,9 @@ fn field() -> Sim {
         // What it upgrades into: three drones.
         unit("STATION2", "Builder=1; WorkerTime=100; BuildDistance=300; FootprintX=2; FootprintZ=2; BuildTime=100; [DRONES] { Unit=DRONE; Count=3; Leash=300; }"),
         unit("DRONE", "CanFly=1; CanMove=1; MaxVelocity=5; Acceleration=1; BrakeRate=1; TurnRate=2048; CruiseAlt=60; Builder=1; WorkerTime=50; BuildDistance=100; FootprintX=1; FootprintZ=1;"),
-        // A commander whose enhancement gives it a drone.
-        unit("ACU", "CanMove=1; BMcode=1; MaxVelocity=2; Acceleration=0.5; BrakeRate=1; TurnRate=2000; FootprintX=2; FootprintZ=2; Builder=1; WorkerTime=100; [ENHANCEMENTS] { [Pod] { Slot=Back; BuildTime=1; [DRONES] { Unit=DRONE; } } }"),
+        // A commander whose enhancement gives it a drone (made again in 20 seconds), and another
+        // that gives it nothing of the kind.
+        unit("ACU", "CanMove=1; BMcode=1; MaxVelocity=2; Acceleration=0.5; BrakeRate=1; TurnRate=2000; FootprintX=2; FootprintZ=2; Builder=1; WorkerTime=100; [ENHANCEMENTS] { [Pod] { Slot=Back; BuildTime=1; [DRONES] { Unit=DRONE; RebuildTime=20; } } [Armour] { Slot=Front; BuildTime=1; MaxDamage=2000; } }"),
         // A tank a builder of 100 build power would build in 30 s (and mend at that pace).
         unit("TANK", "CanMove=1; BMcode=1; MaxVelocity=2; Acceleration=0.5; BrakeRate=1; TurnRate=2000; FootprintX=2; FootprintZ=2; BuildTime=3000;"),
     ]));
@@ -181,6 +182,44 @@ fn an_enhancement_gives_a_drone_and_takes_it_away() {
     sim.step(&[Command::Order { player: 0, units: vec![acu], order: Order::Enhance { index: 0, remove: true }, queue: false }]);
     run(&mut sim, 2);
     assert!(drones(&sim, acu).is_empty() && sim.unit(d[0]).is_none_or(|u| u.dead), "taken out, it goes");
+}
+
+/// A unit with drones given away counts with them against the receiver's unit limit, idle as it is:
+/// with room for the unit alone, it is not given.
+#[test]
+fn a_unit_given_with_its_drones_counts_them_against_the_unit_limit() {
+    let mut sim = field();
+    sim.set_team(1, 0);
+    let station = put(&mut sim, "STATION", 0, 800, 800);
+    assert_eq!(drones(&sim, station).len(), 2);
+    // (Room for one more unit, the station, at player 1.)
+    let have = sim.units().filter(|u| !u.dead && u.owner == 1).count() as u32;
+    sim.unit_limit = have + 1;
+    sim.step(&[Command::GiveUnits { player: 0, units: vec![station], to: 1 }]);
+    assert_eq!(sim.unit(station).unwrap().owner, 0, "the station and its two drones are three units: no room for them");
+}
+
+/// A drone lost stays lost when the unit's enhancements change otherwise: it is made again in its
+/// time and at its price, its rebuilding so far kept, not for nothing at once.
+#[test]
+fn a_lost_drone_is_not_made_again_for_nothing_by_another_enhancement() {
+    let mut sim = field();
+    let acu = put(&mut sim, "ACU", 0, 800, 800);
+    sim.step(&[Command::Order { player: 0, units: vec![acu], order: Order::Enhance { index: 0, remove: false }, queue: false }]);
+    run(&mut sim, 30);
+    let pod = drones(&sim, acu);
+    assert_eq!(pod.len(), 1, "its pod");
+    sim.step(&[Command::Cheat { player: 0, cheat: Cheat::Destroy(pod.clone()) }]);
+    run(&mut sim, 30);
+    let work = sim.unit(acu).unwrap().drone_work;
+    assert!(work.is_some_and(|(_, w)| w > 0), "being made again: {work:?}");
+    // Another enhancement installed and taken out again.
+    for remove in [false, true] {
+        sim.step(&[Command::Order { player: 0, units: vec![acu], order: Order::Enhance { index: 1, remove }, queue: false }]);
+        run(&mut sim, 30);
+    }
+    assert!(drones(&sim, acu).is_empty(), "not made for nothing");
+    assert!(sim.unit(acu).unwrap().drone_work.is_some_and(|(_, w)| w > work.unwrap().1), "its rebuilding kept, and going on");
 }
 
 /// An upgraded unit's drones go to the unit it becomes, which makes the one more it keeps.

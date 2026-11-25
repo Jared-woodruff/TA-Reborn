@@ -41,6 +41,16 @@ impl Sim {
             }
             return;
         }
+        // (One left on it unfinished, its job dropped by something else: taken up again, never
+        // another started beside it, the first left on it for good.)
+        if let Some(left) = self.units.iter().flatten().find(|p| !p.dead && p.factory == Some(id) && p.carried_by == Some(id)).map(|p| p.id) {
+            self.start_script(id, "StartBuilding", &[]);
+            if let Some(f) = self.unit_mut(id) {
+                f.build = Some(BuildJob { target: left, started: true });
+            }
+            self.events.push(SimEvent::NanoSpray { builder: id, target: left });
+            return;
+        }
         // The next in its queue: a unit that moves (a building is left out of it).
         let Some(f) = self.unit(id) else { return };
         let Some(&type_id) = f.factory_queue.front() else { return };
@@ -68,6 +78,11 @@ impl Sim {
             f.build = Some(BuildJob { target: new, started: true });
         }
         self.events.push(SimEvent::NanoSpray { builder: id, target: new });
+    }
+
+    /// Whether `target` is the unit `id` builds on itself (a factory that moves).
+    pub(super) fn built_on(&self, id: UnitId, target: UnitId) -> bool {
+        self.unit(target).is_some_and(|p| p.factory == Some(id) && p.carried_by == Some(id))
     }
 
     /// Where a factory that moves builds (its build piece, else its middle), now.

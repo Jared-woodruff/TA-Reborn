@@ -92,9 +92,18 @@ impl Sim {
         u.drones.iter().filter_map(|&d| self.unit(d)).filter(move |d| !d.dead && d.drone_of == Some(u.id))
     }
 
-    /// The unit's drones as it is finished or its enhancements change: those it lacks made at once
-    /// (for nothing), those past what it keeps taken off the map (the newest first).
-    pub(super) fn make_drones(&mut self, parent: UnitId) {
+    /// What `u` keeps of each kind of drone, its type's and its enhancements' (a kind, how many):
+    /// [`Sim::make_drones`]'s `before`.
+    pub(super) fn drone_entitlement(&self, u: &Unit) -> Vec<(usize, u32)> {
+        self.wanted_drones(u).iter().map(|w| (w.unit_type, w.count)).collect()
+    }
+
+    /// The unit's drones as it is finished, its enhancements change or it upgrades: those past what
+    /// it keeps taken off the map (the newest first), and of each kind those it now keeps more of
+    /// than `before` (what it kept until now: nothing for a unit just finished) made at once, for
+    /// nothing. One lost before stays lost, to be made again at its price (`update_drones`), its
+    /// rebuilding so far kept.
+    pub(super) fn make_drones(&mut self, parent: UnitId, before: &[(usize, u32)]) {
         if !self.types.drones {
             return;
         }
@@ -120,7 +129,9 @@ impl Sim {
         }
         for spec in &wanted {
             let have = kept.iter().filter(|&&k| self.unit(k).is_some_and(|k| k.type_id == spec.unit_type)).count() as u32;
-            for _ in have..spec.count {
+            let had = before.iter().find(|&&(kind, _)| kind == spec.unit_type).map_or(0, |&(_, n)| n);
+            let granted = spec.count.saturating_sub(had);
+            for _ in 0..granted.min(spec.count.saturating_sub(have)) {
                 if self.spawn_drone(parent, spec).is_none() {
                     break;
                 }
@@ -172,6 +183,8 @@ impl Sim {
         if drones.is_empty() {
             return;
         }
+        // (What the old unit kept: the new one makes at once only the more it keeps.)
+        let before = self.drone_entitlement(u);
         for &d in &drones {
             if let Some(d) = self.unit_mut(d) {
                 d.drone_of = Some(new);
@@ -187,7 +200,7 @@ impl Sim {
             let made = std::mem::take(&mut n.drones);
             n.drones = drones.into_iter().chain(made).collect();
         }
-        self.make_drones(new);
+        self.make_drones(new, &before);
     }
 
     /// The drones' tick: each one's link (its unit gone, dead or given up; a drone captured on its
