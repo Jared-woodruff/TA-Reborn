@@ -167,6 +167,9 @@ import reads each bank's file once, for all of its tracks.
   least block size. A decoder then reads the blocks as variable-sized, and symphonia, the
   game's decoder, stops at the first frame as if the stream had ended. `soundtrack::flac` sets
   both sizes to the block size, as FLAC has it: the last block is left out of the least size.
+- **`media/banner.png`:** the picture the launcher's Mods library shows the mod by (its manifest's
+  `[media] banner`; `banner::music`): the menu theme's loudest eight seconds as a row of bars over
+  one of the game's paintings, made as the tracks are (docs/SUPCOM_MAPS.md, "Banners").
 - **Reproducible.** The files are the same, byte for byte, from one run to the next.
 
 ## Multiplayer

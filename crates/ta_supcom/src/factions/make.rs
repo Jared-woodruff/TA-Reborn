@@ -60,8 +60,10 @@ pub fn manifest(reborn: &str) -> String {
 
 /// Makes the mod of `units` (the playable ones of the player's copy), for TA Reborn `reborn` and
 /// newer, writing each file through `write` (a path in the mod, its bytes), in a fixed order: the
-/// same bytes on every computer. `watch` is told before each unit how many are made and the
-/// unit's id: false from it stops the making there ([`Made::stopped`]).
+/// same bytes on every computer. (Its banner too, the launcher's picture of it, where the copy
+/// has the pictures it is made of: [`crate::banner::factions`].) `watch` is told before each unit
+/// how many are made and the unit's id: false from it stops the making there
+/// ([`Made::stopped`]).
 pub fn make(files: &Files, units: &[UnitBlueprint], reborn: &str, write: &mut dyn FnMut(&str, &[u8]) -> Result<()>, watch: &mut dyn FnMut(usize, &str) -> bool) -> Result<Made> {
     let mut made = Made::default();
     let mut put = |path: &str, bytes: &[u8], made: &mut Made| -> Result<()> {
@@ -69,7 +71,18 @@ pub fn make(files: &Files, units: &[UnitBlueprint], reborn: &str, write: &mut dy
         made.bytes += bytes.len() as u64;
         write(path, bytes)
     };
-    put("mod.toml", manifest(reborn).as_bytes(), &mut made)?;
+    // The banner the launcher shows the mod by (the emblems of the factions made), where the copy
+    // has the pictures it is made of; the manifest naming it then.
+    let sides: Vec<&str> = Faction::PLAYABLE.iter().filter(|f| units.iter().any(|u| u.faction == **f)).map(units::side).collect();
+    let banner = crate::banner::factions(files, &sides);
+    let mut text = manifest(reborn);
+    if banner.is_some() {
+        text.push_str(&crate::banner::manifest_lines());
+    }
+    put("mod.toml", text.as_bytes(), &mut made)?;
+    if let Some(banner) = &banner {
+        put(crate::banner::PATH, banner, &mut made)?;
+    }
     // What each structure gives the structures beside it, as the player's copy has it.
     let adjacency = crate::adjacency::read(files)?;
     let adjacency_categories = adjacency.categories();

@@ -33,7 +33,7 @@ pub const PACK_ID: &str = "map-pack-supreme-commander";
 /// The pack's name and words as its manifest keeps them, in English (a mod's own words): the
 /// interface shows them translated ([`pack_name`]; the Mods page translates a description). The
 /// name also tells a pack an import made from another mod of its id.
-const PACK_NAME: &str = n("Supreme Commander maps");
+pub(crate) const PACK_NAME: &str = n("Supreme Commander maps");
 const PACK_DESCRIPTION: &str = n("Maps of Supreme Commander: Forged Alliance, made into TA maps from your own copy of the game.");
 /// The pack's tags, as the factions' mod has its own (the library's filters and search find it by
 /// them).
@@ -1314,10 +1314,33 @@ fn import(game: &Install, own: &[PathBuf], maps: &[(PathBuf, bool, String)], ta_
         })
     };
     let into = place.into.clone();
+    let game_maps = game.maps();
     make_pack(&work.0, existing.as_deref(), maps, &mut convert, progress, ending, |payload, manifest| {
-        ta_vfs::package::install(&ta_vfs::package::plan(payload)?, manifest, &into)?;
+        // (Its banner, the launcher's picture of it: the game's pictures of the maps it holds.)
+        let mut manifest = manifest.clone();
+        if let Some(png) = pack_banner(&payload.join("maps"), &game_maps, own, Some(&files)) {
+            std::fs::create_dir_all(payload.join("media"))?;
+            std::fs::write(payload.join(ta_supcom::banner::PATH), png)?;
+            manifest.media.banner = ta_supcom::banner::PATH.into();
+        }
+        ta_vfs::package::install(&ta_vfs::package::plan(payload)?, &manifest, &into)?;
         Ok(())
     })
+}
+
+/// The pack's banner (`ta_supcom::banner::maps`): the game's pictures of the maps in `maps` (the
+/// pack's maps folder), each found by the folder it was made from (its OTA's `supcommap`) in the
+/// game's maps folder `game_maps` or the player's own map folders `own`, over the game's loading
+/// rays (from `files`, where given). None where none of the maps' folders is there.
+pub(crate) fn pack_banner(maps: &Path, game_maps: &Path, own: &[PathBuf], files: Option<&Files>) -> Option<Vec<u8>> {
+    let sources: Vec<String> = made_by(maps).into_keys().collect();
+    let previews: Vec<ta_supcom::dds::Image> = ta_supcom::banner::map_order(&sources)
+        .iter()
+        .filter_map(|source| std::iter::once(game_maps).chain(own.iter().map(PathBuf::as_path)).find_map(|dir| ta_vfs::install::find_dir_ci(dir, source)))
+        .filter_map(|folder| ta_supcom::banner::map_preview(&folder))
+        .take(ta_supcom::banner::MOST_MAPS)
+        .collect();
+    ta_supcom::banner::maps(&previews, files)
 }
 
 /// The pack made in `work`: the maps of `existing` (the pack installed) kept, linked rather than
@@ -1573,6 +1596,58 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("ta-supcom-{name}-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    /// A map file holding a picture of one colour (the game's are 256 square), as far as a list of
+    /// maps reads it: its header, its picture, its version and size.
+    fn map_file(colour: [u8; 4]) -> Vec<u8> {
+        let mut picture = ta_supcom::dds::header(8, 8, 1, None);
+        for _ in 0..64 {
+            picture.extend_from_slice(&[colour[2], colour[1], colour[0], colour[3]]);
+        }
+        let mut file = b"Map\x1a".to_vec();
+        file.extend_from_slice(&[0; 26]);
+        file.extend_from_slice(&(picture.len() as i32).to_le_bytes());
+        file.extend_from_slice(&picture);
+        for v in [2i32, 256, 256, 0] {
+            file.extend_from_slice(&v.to_le_bytes());
+        }
+        file
+    }
+
+    /// The pack's banner: the game's pictures of its maps, found by the folders they were made
+    /// from (the game's own, the player's own, whatever their case); none where none of them is
+    /// there. Installed with the pack, it is its banner.
+    #[test]
+    fn the_packs_banner_shows_its_maps() {
+        let dir = temp("banner");
+        let (game_maps, own) = (dir.join("game").join("maps"), dir.join("own"));
+        for (folder, colour) in [(game_maps.join("SCMP_009"), [30, 120, 200, 255]), (own.join("My Map"), [200, 160, 90, 255])] {
+            std::fs::create_dir_all(&folder).unwrap();
+            std::fs::write(folder.join(format!("{}.scmap", folder.file_name().unwrap().to_string_lossy())), map_file(colour)).unwrap();
+        }
+        let payload = dir.join("payload");
+        let maps = payload.join("maps");
+        std::fs::create_dir_all(&maps).unwrap();
+        for (stem, source) in [("Setons Clutch (SC)", "scmp_009"), ("My Map (SC)", "my map"), ("Gone (SC)", "scmp_099")] {
+            std::fs::write(maps.join(format!("{stem}.ota")), format!("[GlobalHeader]{{missionname={stem};supcommap={source};supcomversion=2;}}")).unwrap();
+            std::fs::write(maps.join(format!("{stem}.tnt")), b"tnt").unwrap();
+        }
+        let png = pack_banner(&maps, &game_maps, std::slice::from_ref(&own), None).expect("a banner of two maps");
+        assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
+        assert!(pack_banner(&maps, &dir.join("nowhere"), &[], None).is_none(), "none of the maps there");
+        // (Installed as the import installs the pack: its banner kept, its manifest naming it.)
+        std::fs::create_dir_all(payload.join("media")).unwrap();
+        std::fs::write(payload.join(ta_supcom::banner::PATH), &png).unwrap();
+        let mut manifest = ModManifest { id: PACK_ID.into(), name: PACK_NAME.into(), version: "2".into(), ..Default::default() };
+        manifest.media.banner = ta_supcom::banner::PATH.into();
+        let mods = dir.join("mods");
+        let installed = ta_vfs::package::install(&ta_vfs::package::plan(&payload).unwrap(), &manifest, &mods).unwrap();
+        let info = ta_vfs::mods::read_mod(&installed).unwrap().unwrap();
+        assert_eq!(info.manifest.media.banner, ta_supcom::banner::PATH);
+        assert_eq!(std::fs::read(installed.join(ta_supcom::banner::PATH)).unwrap(), png);
+        assert!(installed.join("maps").join("My Map (SC).tnt").is_file());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

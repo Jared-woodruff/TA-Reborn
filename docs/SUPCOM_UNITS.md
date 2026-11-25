@@ -34,6 +34,8 @@ as they work. Their sounds come later.
   on with the dialog closed (the launcher's footer shows it), and an update of the launcher waits
   for it; the mod cannot be removed or replaced meanwhile. Like the maps' pack, it is made again
   where the launcher finds it, and in place of another mod of its id only once the player agrees.
+  Its banner in the Mods library is the game's hall of the factions with the emblems of those it
+  holds (`media/banner.png`; docs/SUPCOM_MAPS.md, "Banners").
   The mod keeps the version of the converter that made it (`factions::make::VERSION`, its
   manifest's `version`): a mod made by an older one is marked UPDATE, in the dialog and on the Mods
   page (its card, the UPDATES filter, UPDATE…). It needs the TA Reborn that made it, or newer

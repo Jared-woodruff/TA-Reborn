@@ -267,3 +267,41 @@ fn the_decals_each_map_paints() {
         eprintln!("{name}: {n} albedo decals of {kinds:?}, {mean:.1} a square, at most {max} [{:.1}s]", t.elapsed().as_secs_f32());
     }
 }
+
+/// The Supreme Commander mods' banners, made from this computer's copy as the imports make them
+/// (the maps' of every map of the game's own), written to `TA_BANNER_OUT` (a folder; else one
+/// in the system's temporary folder) to be looked at; each made twice, the same.
+#[test]
+#[ignore]
+fn the_banners_of_the_installed_copy() {
+    use ta_supcom::{banner, soundtrack};
+    let Some(game) = the_game() else {
+        eprintln!("no copy of Forged Alliance found: no banners");
+        return;
+    };
+    let out = std::env::var_os("TA_BANNER_OUT").map(PathBuf::from).unwrap_or_else(|| std::env::temp_dir().join("ta-supcom-banners"));
+    std::fs::create_dir_all(&out).unwrap();
+    let files = Files::own(&game).unwrap();
+    let started = std::time::Instant::now();
+    let factions = banner::factions(&files, &[]).expect("the factions' hall and emblems");
+    let two_factions = banner::factions(&files, &["UEF", "SERAPHIM"]).unwrap();
+    let sources: Vec<String> = std::fs::read_dir(game.maps()).unwrap().flatten().map(|e| e.file_name().to_string_lossy().to_ascii_lowercase()).collect();
+    let previews: Vec<_> = banner::map_order(&sources).iter().filter_map(|s| ta_vfs::install::find_dir_ci(&game.maps(), s)).filter_map(|folder| banner::map_preview(&folder)).take(banner::MOST_MAPS).collect();
+    assert_eq!(previews.len(), banner::MOST_MAPS, "{sources:?}");
+    let maps = banner::maps(&previews, Some(&files)).expect("the maps' pictures");
+    // (A pack of two maps, and of one.)
+    let two = banner::maps(&previews[..2], Some(&files)).unwrap();
+    let one = banner::maps(&previews[..1], Some(&files)).unwrap();
+    let sounds = ta_vfs::install::find_dir_ci(&game.root, "sounds").expect("the copy's sounds");
+    let loudness = soundtrack::menu_loudness(&sounds).unwrap().expect("the menu theme");
+    let music = banner::music(Some(&files), &loudness);
+    let menus = banner::menus(&files).expect("the menus' pictures");
+    eprintln!("four banners made in {:.2} s", started.elapsed().as_secs_f32());
+    for (name, png) in [("factions", &factions), ("factions_two", &two_factions), ("maps", &maps), ("maps_two", &two), ("maps_one", &one), ("music", &music), ("menus", &menus)] {
+        std::fs::write(out.join(format!("{name}.png")), png).unwrap();
+        eprintln!("  {name}: {} KB", png.len() >> 10);
+    }
+    assert_eq!(banner::factions(&files, &[]).as_ref(), Some(&factions), "the same twice");
+    assert_eq!(banner::music(Some(&files), &loudness), music, "the same twice");
+    eprintln!("written to {}", out.display());
+}

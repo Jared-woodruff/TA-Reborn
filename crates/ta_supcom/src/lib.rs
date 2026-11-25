@@ -19,6 +19,7 @@
 //! music), for TA Reborn's menus.
 
 pub mod adjacency;
+pub mod banner;
 pub mod behaviour;
 pub mod convert;
 /// (Read as TA Reborn reads textures of its own: `ta_formats::dds`.)

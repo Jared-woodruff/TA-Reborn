@@ -365,7 +365,9 @@ fn import(game: &Install, store_dir: &Path, place: &Place, needed: u64, progress
         p.total = tracks.len();
         p.phase = Phase::Making;
     }
-    let mut made = soundtrack::make(&sounds, env!("CARGO_PKG_VERSION"), &mut |path, bytes| write_into(&payload, path, bytes), &mut |done, stem| {
+    // (The game's own archives, for the banner's painting: without them, it is made without.)
+    let files = ta_supcom::files::Files::own(game).ok();
+    let mut made = soundtrack::make(&sounds, files.as_ref(), env!("CARGO_PKG_VERSION"), &mut |path, bytes| write_into(&payload, path, bytes), &mut |done, stem| {
         let mut p = progress.lock().unwrap();
         p.done = done;
         p.current = names.get(stem).cloned().unwrap_or_else(|| stem.to_string());

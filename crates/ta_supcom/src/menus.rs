@@ -287,9 +287,10 @@ pub fn theme(skin: &Skin, pictures: &[&str], panel: bool, sounds: &[(&str, Strin
 
 /// Makes the menus' mod of the copy whose files are `files` and whose `sounds` folder is `sounds`,
 /// for TA Reborn `reborn` and newer: the pictures and the panel's art as the game has them (DDS),
-/// the sounds as WAV, the music as FLAC, the theme and the manifest, written through `write` (a
-/// path in the mod, its bytes). `watch` is told before each step how many are done and what it
-/// makes: false from it stops the making there ([`Made::stopped`]).
+/// the sounds as WAV, the music as FLAC, the theme, the manifest and the banner the launcher shows
+/// the mod by ([`crate::banner::menus`]), written through `write` (a path in the mod, its bytes).
+/// `watch` is told before each step how many are done and what it makes: false from it stops the
+/// making there ([`Made::stopped`]).
 pub fn make(files: &Files, sounds: Option<&Path>, reborn: &str, write: &mut dyn FnMut(&str, &[u8]) -> Result<()>, watch: &mut dyn FnMut(usize, &str) -> bool) -> Result<Made> {
     let skin = skin(files)?;
     let mut made = Made::default();
@@ -298,7 +299,17 @@ pub fn make(files: &Files, sounds: Option<&Path>, reborn: &str, write: &mut dyn 
         made.bytes += bytes.len() as u64;
         write(path, bytes)
     };
-    put("mod.toml", manifest(reborn).as_bytes(), &mut made)?;
+    // The banner the launcher shows the mod by, where the copy has the pictures it is made of;
+    // the manifest naming it then.
+    let banner = crate::banner::menus(files);
+    let mut text = manifest(reborn);
+    if banner.is_some() {
+        text.push_str(&crate::banner::manifest_lines());
+    }
+    put("mod.toml", text.as_bytes(), &mut made)?;
+    if let Some(banner) = &banner {
+        put(crate::banner::PATH, banner, &mut made)?;
+    }
     let mut step = 0;
     let mut stop = |step: &mut usize, what: &str, made: &mut Made| -> bool {
         let go = watch(*step, what);
@@ -519,6 +530,10 @@ skins = {
         assert_eq!((made.pictures, made.panel, made.sounds, made.music, made.stopped), (2, true, 2, true, false));
         let paths: Vec<&str> = out.iter().map(|(p, _)| p.as_str()).collect();
         assert!(paths.contains(&"menus/supcom/pictures/space_1.dds") && paths.contains(&"menus/supcom/panel/bottom_right.dds"), "{paths:?}");
+        // (Its banner, of the space the copy has, named by its manifest.)
+        assert_eq!(&paths[..2], ["mod.toml", crate::banner::PATH]);
+        assert!(String::from_utf8_lossy(&out[0].1).ends_with("\n[media]\nbanner = \"media/banner.png\"\n"));
+        assert_eq!(&out[1].1[..8], b"\x89PNG\r\n\x1a\n");
         assert!(paths.contains(&"sounds/supcom-menus/ui_menu_mousedown.wav") && paths.contains(&MUSIC) && paths.last() == Some(&THEME), "{paths:?}");
         let wav = &out.iter().find(|(p, _)| p == "sounds/supcom-menus/ui_back_mousedown.wav").unwrap().1;
         assert_eq!((&wav[..4], &wav[8..16], u32::from_le_bytes(wav[24..28].try_into().unwrap()), wav.len()), (&b"RIFF"[..], &b"WAVEfmt "[..], 32_000, 44 + 120));
