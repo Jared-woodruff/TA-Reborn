@@ -629,3 +629,7 @@ aprimorar is only the building's upgrade, melhoria only the commander's enhancem
 | Building theme {n} | Tema de construção {n} |
 | Briefing {n} | Briefing {n} |
 | THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | OS MENUS / BRIEFINGS / FILMES |
+| MENU THEME (Options, Interface) | TEMA DOS MENUS |
+| MENUS (the Supreme Commander dialog's tab) | MENUS |
+| Supreme Commander menus (the mod) | Menus do Supreme Commander |
+| Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | Texto / Rótulos / Destaque / Painéis / Linhas / Botões |

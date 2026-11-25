@@ -629,3 +629,7 @@ follows "olur" or a colon.
 | Building theme {n} | İnşa teması {n} |
 | Briefing {n} | Brifing {n} |
 | THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | MENÜLER / BRİFİNGLER / VİDEOLAR |
+| MENU THEME (Options, Interface) | MENÜ TEMASI |
+| MENUS (the Supreme Commander dialog's tab) | MENÜLER |
+| Supreme Commander menus (the mod) | Supreme Commander menüleri |
+| Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | Metin / Etiketler / Vurgu / Paneller / Çizgiler / Düğmeler |

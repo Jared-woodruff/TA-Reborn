@@ -13,6 +13,7 @@ mod mod_new;
 mod notices;
 mod sprites;
 mod supcom;
+mod supcom_menus;
 mod supcom_music;
 mod supcom_units;
 
@@ -132,6 +133,14 @@ enum Cmd {
         /// The most cells a side of a map may have.
         #[arg(long, default_value_t = 1024)]
         max_cells: usize,
+    },
+    /// Make Supreme Commander: Forged Alliance's look for TA Reborn's menus (its interface's
+    /// colours, its menus' pictures, its panel art, its interface sounds and its menu music) into
+    /// a folder to mount as a mod, the theme the game's MENU THEME reads.
+    SupcomMenus {
+        out: PathBuf,
+        #[arg(long)]
+        game: Option<PathBuf>,
     },
     /// Make Supreme Commander: Forged Alliance's soundtrack (its menus', building and battle
     /// music, its briefings' and films') into TA Reborn's music: a FLAC file a track, into a
@@ -508,6 +517,7 @@ fn main() -> Result<()> {
         }
         Cmd::Supcom { out, only, game, preview, budget, max_cells } => supcom::run(&out, only.as_deref(), game.as_deref(), preview.as_deref(), budget, max_cells)?,
         Cmd::SupcomUnits { out, only, faction, game, preview } => supcom_units::run(&out, only.as_deref(), faction.as_deref(), game.as_deref(), preview.as_deref())?,
+        Cmd::SupcomMenus { out, game } => supcom_menus::run(&out, game.as_deref())?,
         Cmd::SupcomMusic { out, game } => supcom_music::run(&out, game.as_deref())?,
         Cmd::GafPack { manifest, out } => {
             let (_, vfs) = open_vfs()?;

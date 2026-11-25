@@ -602,3 +602,7 @@ clauses without 。. Effect lines are terse nouns (建設力 +{n}, 視界 +{n}).
 | Building theme {n} | 建設テーマ {n} |
 | Briefing {n} | ブリーフィング {n} |
 | THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | メニュー / ブリーフィング / ムービー |
+| MENU THEME (Options, Interface) | メニューのテーマ |
+| MENUS (the Supreme Commander dialog's tab) | メニュー |
+| Supreme Commander menus (the mod) | Supreme Commander のメニュー |
+| Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | 文字 / ラベル / アクセント / パネル / 線 / ボタン |

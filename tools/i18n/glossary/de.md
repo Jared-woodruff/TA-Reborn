@@ -739,3 +739,7 @@ Refusals after "Nicht ausführbar: " stay lower-case fragments ("hat keine Baule
 | Building theme {n} | Bauthema {n} |
 | Briefing {n} | Briefing {n} |
 | THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | MENÜS / BRIEFINGS / FILME |
+| MENU THEME (Options, Interface) | MENÜDESIGN |
+| MENUS (the Supreme Commander dialog's tab) | MENÜS |
+| Supreme Commander menus (the mod) | Supreme-Commander-Menüs |
+| Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | Text / Beschriftungen / Akzentfarbe / Panels / Linien / Schaltflächen |

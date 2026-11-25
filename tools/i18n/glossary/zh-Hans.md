@@ -591,3 +591,7 @@ characters, none against full-width punctuation.
 | Building theme {n} | 建造主题 {n} |
 | Briefing {n} | 简报 {n} |
 | THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | 菜单 / 简报 / 影片 |
+| MENU THEME (Options, Interface) | 菜单主题 |
+| MENUS (the Supreme Commander dialog's tab) | 菜单 |
+| Supreme Commander menus (the mod) | Supreme Commander 菜单外观 |
+| Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | 文字 / 标签 / 强调色 / 面板 / 线条 / 按钮 |

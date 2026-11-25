@@ -669,3 +669,7 @@ livello sul posto" of the retired launcher line.
 | Building theme {n} | Tema di costruzione {n} |
 | Briefing {n} | Briefing {n} |
 | THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | MENU / BRIEFING / FILMATI |
+| MENU THEME (Options, Interface) | TEMA DEI MENU |
+| MENUS (the Supreme Commander dialog's tab) | MENU |
+| Supreme Commander menus (the mod) | Menu di Supreme Commander |
+| Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | Testo / Etichette / Accento / Pannelli / Linee / Pulsanti |

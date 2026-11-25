@@ -54,6 +54,7 @@ impl LauncherApp {
             height: (!compact).then_some(height),
             experimental: !crate::experimental::Feature::ALL.is_empty(),
             fa_soundtrack: self.mods.get(ta_supcom::soundtrack::MOD_ID).is_some() && self.config.mods.enabled.iter().any(|id| id == ta_supcom::soundtrack::MOD_ID),
+            fa_menus: self.mods.get(ta_supcom::menus::MOD_ID).is_some() && self.config.mods.enabled.iter().any(|id| id == ta_supcom::menus::MOD_ID),
         };
         let enabled = !self.dialog_open();
         // (A name another commander has is said at once by the name's setting: the profile would

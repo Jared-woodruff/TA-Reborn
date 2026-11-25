@@ -626,3 +626,7 @@ Commander installs enhancements on itself, one a slot. Widths measured in Bahnsc
 | Building theme {n} | Тема строительства {n} |
 | Briefing {n} | Брифинг {n} |
 | THE MENUS / BRIEFINGS / FILMS (the soundtrack's parts) | МЕНЮ / БРИФИНГИ / РОЛИКИ |
+| MENU THEME (Options, Interface) | ТЕМА МЕНЮ |
+| MENUS (the Supreme Commander dialog's tab) | МЕНЮ |
+| Supreme Commander menus (the mod) | Меню Supreme Commander |
+| Lettering / Labels / Accent / Panels / Lines / Buttons (the colours' swatches) | Текст / Подписи / Акцент / Панели / Линии / Кнопки |

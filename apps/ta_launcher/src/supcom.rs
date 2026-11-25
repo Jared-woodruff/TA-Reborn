@@ -63,22 +63,24 @@ pub fn mod_name(manifest: &ModManifest) -> &str {
         PACK_ID if manifest.name.trim() == PACK_NAME => pack_name(),
         crate::supcom_factions::MOD_ID if manifest.name.trim() == crate::supcom_factions::MOD_NAME => crate::supcom_factions::mod_name(),
         crate::supcom_music::MOD_ID if manifest.name.trim() == crate::supcom_music::MOD_NAME => crate::supcom_music::mod_name(),
+        crate::supcom_menus::MOD_ID if manifest.name.trim() == crate::supcom_menus::MOD_NAME => crate::supcom_menus::mod_name(),
         _ => &manifest.name,
     }
 }
 
-/// The dialog's tabs: the game's maps, its factions, or its music.
+/// The dialog's tabs: the game's maps, its factions, its music, or its look for the menus.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Tab {
     #[default]
     Maps,
     Factions,
     Music,
+    Menus,
 }
 
 impl Tab {
     /// The tabs as the dialog's strip shows them.
-    pub const ALL: [Tab; 3] = [Tab::Maps, Tab::Factions, Tab::Music];
+    pub const ALL: [Tab; 4] = [Tab::Maps, Tab::Factions, Tab::Music, Tab::Menus];
 
     /// Its name on the dialog's tab strip (marked for translation).
     pub fn label(self) -> &'static str {
@@ -86,6 +88,7 @@ impl Tab {
             Tab::Maps => n("MAPS"),
             Tab::Factions => n("FACTIONS"),
             Tab::Music => n("MUSIC"),
+            Tab::Menus => n("MENUS"),
         }
     }
 }
@@ -582,6 +585,7 @@ pub fn update_tab(mods: &ModList, id: &str) -> Option<Tab> {
         PACK_ID => (Tab::Maps, convert::VERSION, PACK_NAME),
         crate::supcom_factions::MOD_ID => (Tab::Factions, crate::supcom_factions::VERSION, crate::supcom_factions::MOD_NAME),
         crate::supcom_music::MOD_ID => (Tab::Music, crate::supcom_music::VERSION, crate::supcom_music::MOD_NAME),
+        crate::supcom_menus::MOD_ID => (Tab::Menus, crate::supcom_menus::VERSION, crate::supcom_menus::MOD_NAME),
         _ => return None,
     };
     let copy = Installed::listed(mods, id, ours)?;
@@ -733,6 +737,8 @@ pub struct Import {
     pub factions: crate::supcom_factions::Factions,
     /// The game's music, the third tab's.
     pub music: crate::supcom_music::Music,
+    /// The game's look for the menus, the fourth tab's.
+    pub menus: crate::supcom_menus::Menus,
     /// An import asked for over another mod of its id, waiting for the player's word.
     pub confirm_replace: Option<(Tab, Installed)>,
 }
@@ -773,6 +779,7 @@ impl Import {
             Tab::Maps => self.importing(),
             Tab::Factions => self.factions.importing(),
             Tab::Music => self.music.importing(),
+            Tab::Menus => self.menus.importing(),
         }
     }
 
@@ -798,6 +805,7 @@ impl Import {
         self.look.outdate();
         self.factions.look.outdate();
         self.music.look.outdate();
+        self.menus.look.outdate();
         self.set_tab(self.tab);
     }
 
@@ -823,6 +831,12 @@ impl Import {
                     self.music.rescan(self.picked.clone(), &self.roots);
                 }
             }
+            Tab::Menus => {
+                self.menus.unseen = false;
+                if !self.menus.look.current() && !self.menus.look.scanning() {
+                    self.menus.rescan(self.picked.clone(), &self.roots);
+                }
+            }
         }
     }
 
@@ -834,6 +848,7 @@ impl Import {
         self.look.let_go();
         self.factions.look.let_go();
         self.music.look.let_go();
+        self.menus.look.let_go();
     }
 
     /// Looks for the game and its maps (in the player's chosen folder, else wherever a copy is).
@@ -912,6 +927,9 @@ impl Import {
         if self.music.look.found.is_some() || self.tab == Tab::Music {
             self.music.rescan(self.picked.clone(), &self.roots);
         }
+        if self.menus.look.found.is_some() || self.tab == Tab::Menus {
+            self.menus.rescan(self.picked.clone(), &self.roots);
+        }
     }
 
     /// The game's folder as chosen, once, when it changed: for the settings to keep.
@@ -964,7 +982,7 @@ impl Import {
     /// (or, with `TA_SUPCOM_SHOT_IMPORTING=1`, while they are).
     pub fn capture_ready(&self) -> bool {
         let during = std::env::var_os("TA_SUPCOM_SHOT_IMPORTING").is_some_and(|v| v == "1");
-        !self.open || (!self.scanning() && self.checking.is_none() && self.auto_start.is_none() && (during || !self.importing()) && self.factions.capture_ready() && self.music.capture_ready())
+        !self.open || (!self.scanning() && self.checking.is_none() && self.auto_start.is_none() && (during || !self.importing()) && self.factions.capture_ready() && self.music.capture_ready() && self.menus.capture_ready())
     }
 
     /// Stops the import after the map being made (not once it installs them).

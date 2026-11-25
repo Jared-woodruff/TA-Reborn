@@ -13,7 +13,7 @@ use egui::{
     Slider, Stroke, TextEdit, Ui, vec2,
 };
 use ta_config::{
-    ArtStyle, Audio, CameraStyle, Config, Driving, Gameplay, Graphics, HealthBars, Keys, Launcher, MenuBackdrop, OnPlay, OrderButton, Preset, Quality, RadialOpens,
+    ArtStyle, Audio, CameraStyle, Config, Driving, Gameplay, Graphics, HealthBars, Keys, Launcher, MenuBackdrop, MenuTheme, OnPlay, OrderButton, Preset, Quality, RadialOpens,
     RangeOverlays, Reflections, SeasonalTheme, Soundtrack, TimeOfDay, UserMusic, WindowMode, limits,
 };
 
@@ -112,6 +112,9 @@ pub struct Host<'a> {
     /// Supreme Commander: Forged Alliance's soundtrack is installed and on (its music mod, made
     /// from the player's own copy): SOUNDTRACK offers it.
     pub fa_soundtrack: bool,
+    /// Supreme Commander: Forged Alliance's look for the menus is installed and on (its mod, made
+    /// from the player's own copy): MENU THEME offers it.
+    pub fa_menus: bool,
 }
 
 /// What changed, for the host to apply.
@@ -900,8 +903,24 @@ fn interface(ui: &mut Ui, rows: &mut Rows, p: &mut Gameplay, launcher: &mut Laun
     });
     toggle_row(ui, rows, "MODS' INTERFACE THEMES", "Battles played with a mod that has an interface theme show the HUD in the mod's colours, pictures and font. Off: TA Reborn's own always.", "mod theme hud colours colors skin look interface style font", &mut p.mod_themes);
     toggle_row(ui, rows, "COMPANION SCREEN", "Every battle opens the companion screen on your second display: the map and intel beside the battle. Its key (Alt+C) opens and closes it at any time.", "second monitor display screen map intel window dual", &mut p.companion);
+    // (Forged Alliance's look once its mod is installed; before, said where it comes from. Its
+    // pictures take the backdrop's place behind the menus.)
+    let fa_menus = host.fa_menus && p.menu_theme == MenuTheme::ForgedAlliance;
+    setting_row(ui, rows, "MENU THEME", "How the game's menus look: TA Reborn's own, or Supreme Commander: Forged Alliance's, with its colours, its pictures behind the menus, its panels' border art, its interface sounds and its menu music. The menus are laid out as they are.", "menu theme look skin style supreme commander forged alliance colours colors pictures background sounds music interface", |ui| {
+        ui.add_enabled_ui(host.fa_menus, |ui| {
+            widgets::segmented_fill(ui, &mut p.menu_theme, &[(MenuTheme::Reborn, n("TA REBORN")), (MenuTheme::ForgedAlliance, n("FORGED ALLIANCE"))]);
+        });
+        if !host.fa_menus {
+            ui.add(Label::new(RichText::new(t("Forged Alliance's look is made from your own copy of the game: the launcher's Mods page, SUPREME COMMANDER…, MENUS.")).font(body(12.0)).color(STEEL)).wrap());
+        }
+    });
     setting_row(ui, rows, "MENU BACKDROP", "Behind the game's title menu: a film of short scenes staged on TA Reborn's worlds (the season's at Halloween, Christmas and the New Year), or a battle between computer players as it plays", "title main menu background scene film cinematic attract battle", |ui| {
-        widgets::segmented_fill(ui, &mut p.menu_backdrop, &[(MenuBackdrop::Film, n("FILM")), (MenuBackdrop::Battle, n("BATTLE"))]);
+        ui.add_enabled_ui(!fa_menus, |ui| {
+            widgets::segmented_fill(ui, &mut p.menu_backdrop, &[(MenuBackdrop::Film, n("FILM")), (MenuBackdrop::Battle, n("BATTLE"))]);
+        });
+        if fa_menus {
+            ui.add(Label::new(RichText::new(t("Forged Alliance's menus show its own pictures.")).font(body(12.0)).color(STEEL)).wrap());
+        }
     });
     // (The seasons are the launcher's settings, kept in its section, but they deck the game's
     // loading screens and title menu too: both show them here.)
@@ -1327,7 +1346,7 @@ mod tests {
     }
 
     fn host() -> Host<'static> {
-        Host { in_game: true, msaa_running: 4, ray_tracing_running: false, native: Some((2560, 1440)), gpu_kind: None, languages: &[], language_dirs: &[], height: Some(600.0), experimental: true, fa_soundtrack: false }
+        Host { in_game: true, msaa_running: 4, ray_tracing_running: false, native: Some((2560, 1440)), gpu_kind: None, languages: &[], language_dirs: &[], height: Some(600.0), experimental: true, fa_soundtrack: false, fa_menus: false }
     }
 
     #[test]
