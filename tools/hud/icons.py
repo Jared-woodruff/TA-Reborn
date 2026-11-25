@@ -28,7 +28,7 @@ GLYPHS = [
     "stop", "move", "attack", "fight", "patrol", "guard", "capture", "repair", "load", "unload",
     "resurrect", "reclaim", "dgun", "hold_fire", "return_fire", "fire_at_will", "hold_position",
     "maneuver", "roam", "cloaked", "visible", "power", "self_destruct", "area_mex", "perspective",
-    "build", "info", "back", "more", "cancel", "duty", "queue", "upgrade",
+    "build", "info", "back", "more", "cancel", "duty", "queue", "upgrade", "teleport",
 ]
 # Pixel sizes: hud_icons::SIZES.
 SIZES = [14, 16, 18, 20, 24, 28, 32, 40, 48, 64]
@@ -235,6 +235,11 @@ def glyph(name):
     if name == "upgrade":
         # A building raised a tier: its block, and two chevrons over it pointing up.
         return path("M9,44 H55 V59 H9 Z", 6) + path("M15,33 L32,19 L49,33", 7.5) + path("M15,19 L32,5 L49,19", 7.5)
+    if name == "teleport":
+        # Gone from one place and there at another: where it leaves a broken ring, where it comes
+        # a whole one with its mark, and the way between them a dotted arc.
+        trail = '<path d="M20,37 Q21,22 33,17" fill="none" stroke="white" stroke-width="5.5" stroke-linecap="round" stroke-dasharray="0.5 8.5"/>'
+        return ring(14, 49, 9.5, 5.5, dash="5 4.4") + ring(47, 17, 11.5, 6.5) + circle(47, 17, 4.5) + trail
     raise KeyError(name)
 
 

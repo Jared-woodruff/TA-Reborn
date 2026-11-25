@@ -116,6 +116,9 @@ pub(crate) struct TypeInfo {
     /// which fights with the army); and a factory whose every combat unit is one (TA's Gantry).
     pub experimental: bool,
     pub experimental_factory: bool,
+    /// A factory that moves (`MobileFactory`: Forged Alliance's carriers, Atlantis, Tempest, CZAR
+    /// and Fatboy): it fights with the army, making units as it goes (`mobile.rs`).
+    pub mobile_factory: bool,
     /// A building whose guns reach [`LONG_RANGE`] or further: a long-range gun (Big Bertha, the
     /// Intimidator, the Vulcan), fired at what we know of the enemy's base (`projects.rs`).
     pub long_range: bool,
@@ -359,6 +362,7 @@ pub(crate) fn classify(sim: &Sim) -> Vec<TypeInfo> {
                 builds_strategic: false,
                 fire_energy: weapons.iter().filter(|w| !w.def.stockpile).map(|w| w.energy_per_shot.to_int().max(0) * w.burst.max(1) as i64 * 30 / w.reload_ticks.max(1) as i64).sum(),
                 experimental_factory: false,
+                mobile_factory: t.mobile_factory,
                 long_range: role == Role::Defense && range >= LONG_RANGE,
             }
         })

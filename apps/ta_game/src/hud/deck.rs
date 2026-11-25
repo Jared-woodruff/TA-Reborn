@@ -2221,6 +2221,11 @@ pub(crate) fn activity(game: &Game, u: &Unit) -> (String, Color32) {
         // (A view from afar: seeing there while it pays for it.)
         Some(Order::RemoteView(_)) if u.remote_view.is_some() => (t("Viewing from afar").to_string(), pal().info),
         Some(Order::RemoteView(_)) => (t("Too short of energy to view from afar").to_string(), pal().bad),
+        // (A teleport: its charge, as far as it has been paid.)
+        Some(Order::Teleport(_)) => match u.teleport {
+            Some(charge) => (tf("Charging to teleport: {pct}%", &[("pct", &percent(charge.progress()))]), pal().info),
+            None => (t("About to teleport").to_string(), pal().info),
+        },
         None if ty.is_factory && !u.factory_queue.is_empty() => (t("Starting the next unit").to_string(), pal().good),
         None if ty.is_factory => (t("Idle: nothing queued").to_string(), pal().steel),
         None => match u.weapons.iter().find_map(|w| w.target) {

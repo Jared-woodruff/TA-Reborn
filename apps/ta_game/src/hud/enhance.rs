@@ -84,6 +84,7 @@ pub(crate) fn effects(game: &Game, ty: &UnitType, index: u16) -> Vec<String> {
     // TA Reborn's abilities: jamming, fields, remote viewing, an aura, what it makes and takes.
     out.extend(super::abilities::lines(&e.abilities, true));
     out.extend(super::abilities::production_lines(e));
+    out.extend(super::logistics::enhancement_lines(&game.sim, e));
     out
 }
 

@@ -34,6 +34,7 @@ mod economy;
 mod enhance;
 mod info;
 mod map;
+mod mobile;
 mod navy;
 mod projects;
 mod shields;
@@ -1318,6 +1319,7 @@ impl SkirmishAi {
         self.run_enhancements(sim, &s, &mut out);
         self.run_toggles(sim, &s, &mut out);
         self.run_factories(sim, &s, &mut out);
+        self.run_mobile_factories(sim, &s, &mut out);
         self.run_scouting(sim, &s, &mut out);
         self.run_army(sim, &s, &mut out);
         if self.p.clear_way {
@@ -1361,7 +1363,8 @@ impl SkirmishAi {
     /// view's `Command::DirectControl`, which takes no orders until it is let go) retain their own
     /// orders.
     fn can_command(sim: &Sim, u: &Unit) -> bool {
-        !u.dead && u.is_complete() && u.carried_by.is_none() && u.direct_control.is_none() && !sim.runs_mission_script(u.id)
+        // (A drone keeps by the unit it guards: `Unit::drone_of`.)
+        !u.dead && u.is_complete() && u.carried_by.is_none() && u.direct_control.is_none() && u.drone_of.is_none() && !sim.runs_mission_script(u.id)
             && !matches!(u.orders.front(), Some(Order::Wait(_) | Order::WaitAttacked(_) | Order::AttackType(_) | Order::SetStates { .. } | Order::Patrol(_)))
     }
 
@@ -1463,6 +1466,13 @@ impl SkirmishAi {
                 // (An experimental that builds, Forged Alliance's Fatboy: a factory on tracks,
                 // it fights with the army.)
                 Role::Builder if i.experimental => {
+                    if out_of_yard {
+                        s.army.push(u);
+                    }
+                }
+                // (A factory that moves fights with the army too, making units as it goes:
+                // `mobile.rs`.)
+                Role::Builder if i.mobile_factory => {
                     if out_of_yard {
                         s.army.push(u);
                     }

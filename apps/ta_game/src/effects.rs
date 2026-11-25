@@ -315,6 +315,8 @@ mod mods;
 mod particles;
 #[path = "effects_remains.rs"]
 mod remains;
+#[path = "effects_teleport.rs"]
+mod teleport;
 pub use remains::Death;
 
 use particles::Blast;
@@ -1515,6 +1517,8 @@ impl Effects {
             SimEvent::Sfx { kind, .. } if ta_data::effect::sfx_effect(*kind).is_some() => {
                 self.unit_effect(sim, e, now);
             }
+            // (Each end where the viewer sees it: `effects_teleport.rs`.)
+            SimEvent::Teleported { id, from, to } => self.teleported(sim, *id, *from, *to, now),
             SimEvent::Sfx { pos, kind, .. }
                 // A submarine's or an underwater plant's bubbles (256|3, TA's SFXTYPE_SUBBUBBLES).
                 if *kind == (256 | 3) => {
@@ -1760,6 +1764,7 @@ impl Effects {
         self.update_remains(sim, now, dt);
         self.update_aftermath(sim, now);
         self.update_damage(sim, now);
+        self.update_teleports(sim, dt);
         self.update_tree_fires(sim, now);
         self.track_decals(now);
         self.update_ambient(sim, now, dt, alpha);

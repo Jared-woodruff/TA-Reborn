@@ -20,13 +20,17 @@ use crate::world::{CELL, MoveSpec, Occupant, Region, World};
 pub mod adjacency;
 mod air;
 pub mod aura;
+pub mod drones;
+mod mobile_factory;
 mod possession;
 mod blockers;
 pub mod enhance;
 pub mod remote_view;
 mod repair_round;
 pub mod shield;
+pub mod teleport;
 mod toggle;
+pub mod transport;
 mod upgrade;
 
 /// Base resource storage every player has regardless of buildings (TA default).
@@ -126,7 +130,7 @@ fn valid_order_position(order: &Order) -> bool {
     use crate::unit::Target;
     match order {
         Order::Move(p) | Order::Fight(p) | Order::Patrol(p) | Order::Unload(p) | Order::Build { pos: p, .. }
-        | Order::Attack(Target::Ground(p)) | Order::ManualFire(Target::Ground(p)) | Order::RemoteView(p) => valid_command_position(*p),
+        | Order::Attack(Target::Ground(p)) | Order::ManualFire(Target::Ground(p)) | Order::RemoteView(p) | Order::Teleport(p) => valid_command_position(*p),
         _ => true,
     }
 }
@@ -1437,6 +1441,7 @@ impl Sim {
             u.transport_job = None;
             u.hover_alt = None;
             u.speed = Fx::ZERO;
+            u.teleport = None;
             for w in &mut u.weapons {
                 w.target = None;
             }
@@ -1453,7 +1458,8 @@ impl Sim {
         let t = self.unit(u.carried_by?)?;
         let tt = self.types.get(t.type_id);
         Some(match u.carry_piece {
-            Some(p) => piece_world_position(t, tt, t.cob.as_ref(), p),
+            // (Under a transport's slot it hangs, its top there: `sim/transport.rs`.)
+            Some(p) => piece_world_position(t, tt, t.cob.as_ref(), p) - FxVec3::new(Fx::ZERO, self.hang(u), Fx::ZERO),
             None => t.pos,
         })
     }
@@ -1469,6 +1475,7 @@ impl Sim {
         if let Some(u) = self.unit_mut(unit) {
             u.carried_by = None;
             u.carry_piece = None;
+            u.carry_slot = None;
             u.pos = FxVec3::new(spot.x, ground, spot.z);
             u.path_goal = None;
             u.move_request = None;
@@ -1539,7 +1546,6 @@ impl Sim {
         let types = self.types.clone();
         let Some(u) = self.unit(id) else { return };
         let owner = u.owner;
-        let full = u.cargo.len() as u32 >= t.transport_capacity;
         let Some(tu) = self.unit(target).filter(|tu| !tu.dead && tu.owner == owner && tu.is_complete()) else {
             done(self);
             return;
@@ -1549,6 +1555,8 @@ impl Sim {
             return;
         }
         let tt = types.get(tu.type_id);
+        // (Full: no slot takes it, or as many aboard as it carries.)
+        let full = !self.room_for(u, tt);
         if full || tu.carried_by.is_some() || !t.can_carry(tt) {
             self.events.push(SimEvent::OrderFailed { unit: id, reason: "cannot carry that" });
             done(self);
@@ -1556,16 +1564,22 @@ impl Sim {
         }
         let (target_pos, target_top) = (tu.pos, tu.pos.y + tt.model.height);
         if t.locomotion == Locomotion::Air {
-            // Hover just above the unit, then hook it (the engine attaches air cargo).
-            let hover = target_top + Fx::from_int(8);
+            // Hover just above the unit, then hook it (the engine attaches air cargo; one with
+            // slots, in the slot that takes it).
+            let hover = if t.has_slots() { self.slot_pickup_height(t, target_top) } else { target_top + Fx::from_int(8) };
             let u = self.unit(id).unwrap();
             let over = u.pos.within_xz(target_pos, Fx::from_int(10));
             let low = (u.pos.y - hover).abs() <= Fx::from_int(6);
             if over && low {
-                let piece = self.call_script(id, "QueryTransport", &[0]).and_then(|p| p.first().copied()).unwrap_or(-1);
-                self.start_script(id, "BeginTransport", &[tt.model.height.to_cob()]);
-                let model_piece = self.cob_to_model_piece(id, piece);
-                self.attach(id, target, model_piece);
+                if t.has_slots() {
+                    self.start_script(id, "BeginTransport", &[tt.model.height.to_cob()]);
+                    self.board(id, target);
+                } else {
+                    let piece = self.call_script(id, "QueryTransport", &[0]).and_then(|p| p.first().copied()).unwrap_or(-1);
+                    self.start_script(id, "BeginTransport", &[tt.model.height.to_cob()]);
+                    let model_piece = self.cob_to_model_piece(id, piece);
+                    self.attach(id, target, model_piece);
+                }
                 done(self);
                 return;
             }
@@ -1631,9 +1645,20 @@ impl Sim {
         let cargo_height = self.unit(cargo).map_or(Fx::from_int(16), |c| types.get(c.type_id).model.height);
         if t.locomotion == Locomotion::Air {
             let ground = self.world.height_at(dest.x, dest.z).max(self.world.sea_level);
-            let hover = ground + cargo_height + Fx::from_int(6);
+            // (One with slots: low enough that the tallest hanging under it is on the ground.)
+            let hover = if t.has_slots() {
+                let tallest = u.cargo.iter().filter_map(|&c| self.unit(c)).map(|c| types.get(c.type_id).model.height).max().unwrap_or(cargo_height);
+                self.slot_pickup_height(t, ground + tallest) - Fx::from_int(2)
+            } else {
+                ground + cargo_height + Fx::from_int(6)
+            };
             let over = u.pos.within_xz(dest, Fx::from_int(10));
             let low = (u.pos.y - hover).abs() <= Fx::from_int(6);
+            if over && low && t.has_slots() {
+                self.unload_slotted(id, dest);
+                done(self);
+                return;
+            }
             if over && low {
                 if !self.detach(id, cargo, dest) {
                     self.events.push(SimEvent::OrderFailed { unit: id, reason: "no room to unload" });
@@ -1780,6 +1805,8 @@ impl Sim {
         if activate {
             self.set_active(id, true);
         }
+        // (Its drones, made as it is finished: `sim/drones.rs`.)
+        self.make_drones(id);
     }
 
     fn set_active(&mut self, id: UnitId, on: bool) {
@@ -1830,6 +1857,10 @@ impl Sim {
             if !t.is_builder || !self.is_allowed(*product) || !self.unit(id).is_some_and(|u| u.ai_build_options(t).contains(product)) {
                 return;
             }
+            // (A factory that moves makes its units from its queue, not in the field.)
+            if t.mobile_factory && self.types.get(*product).locomotion != Locomotion::Static {
+                return;
+            }
             if self.ceasefire_bars(player, *pos) {
                 self.events.push(SimEvent::OrderFailed { unit: id, reason: "too near an enemy base in the ceasefire" });
                 return;
@@ -1848,6 +1879,10 @@ impl Sim {
         }
         // A view from afar, of a unit that has remote viewing.
         if let Order::RemoteView(_) = order && !self.unit(id).is_some_and(|u| self.can_view_afar(u)) {
+            return;
+        }
+        // A teleport, of a unit that can teleport.
+        if let Order::Teleport(_) = order && !self.unit(id).is_some_and(|u| self.can_teleport(u)) {
             return;
         }
         let (factory, fires) = {
@@ -2135,7 +2170,7 @@ impl Sim {
                     // Not Commanders, passengers (they go with their transport) or units
                     // still in a factory's yard.
                     if u.owner != *player || u.dead || u.carried_by.is_some() || u.factory.is_some() && !u.is_complete() || self.types.get(u.type_id).def.is_commander
-                        || self.carries_commander(id)
+                        || self.carries_commander(id) || u.drone_of.is_some()
                     {
                         continue;
                     }
@@ -2317,6 +2352,7 @@ impl Sim {
         self.acid_seas();
         self.heal_units();
         self.mend_round();
+        self.update_drones();
         let t3 = std::time::Instant::now();
         self.decay_abandoned_frames();
         self.process_deaths();
@@ -2698,8 +2734,10 @@ impl Sim {
     }
 
     fn update_orders(&mut self, id: UnitId, t: &UnitType) {
-        // A view from afar whose order is gone (Stop, another order) is given up.
+        // A view from afar whose order is gone (Stop, another order) is given up, as is a
+        // teleport's charge.
         self.end_remote_view(id);
+        self.end_teleport(id);
         // Work on itself whose order is gone (Stop, an order not queued after it) is called off,
         // its metal back.
         if let Some(u) = self.unit(id)
@@ -2803,6 +2841,7 @@ impl Sim {
             Order::Upgrade(to) => self.update_upgrade_order(id, t, to),
             Order::Enhance { index, remove } => self.update_enhance_order(id, t, index, remove),
             Order::RemoteView(at) => self.update_remote_view_order(id, t, at),
+            Order::Teleport(to) => self.update_teleport_order(id, t, to),
             Order::SetStates { fire, movement } => {
                 if let Some(u) = self.unit_mut(id) {
                     u.fire_state = fire.min(2);
@@ -2983,6 +3022,8 @@ impl Sim {
                     pending.push(passenger);
                 }
             }
+            // (Its drones with it: `sim/drones.rs`.)
+            pending.extend(self.drones_following(id, from));
         }
     }
 
@@ -3027,6 +3068,7 @@ impl Sim {
             if let Some(job) = u.build && self.unit(job.target).is_some_and(|b| b.factory == Some(id)) {
                 pending.push(job.target);
             }
+            pending.extend(self.drones_following(id, owner));
         }
         seen.len() as u32
     }
@@ -4836,7 +4878,8 @@ impl Sim {
         let types = self.types.clone();
         let Some(owner) = self.unit(builder).map(|u| u.owner) else { return };
         let Some(tu) = self.unit(target) else { return };
-        if tu.dead || tu.carried_by.is_some() || !t.is_builder || !self.allied(owner, tu.owner) {
+        // (Carried: but a factory that moves builds its unit on itself.)
+        if tu.dead || tu.carried_by.is_some_and(|c| c != builder || tu.factory != Some(builder)) || !t.is_builder || !self.allied(owner, tu.owner) {
             return;
         }
         let tt = types.get(tu.type_id);
@@ -4942,6 +4985,11 @@ impl Sim {
     }
 
     fn update_factory(&mut self, id: UnitId, t: &UnitType) {
+        // (One that moves builds on itself as it goes: `sim/mobile_factory.rs`.)
+        if t.mobile_factory {
+            self.update_mobile_factory(id, t);
+            return;
+        }
         let types = self.types.clone();
         // Its units on their way out are let go as they clear its footprint.
         let exit = self.factory_exit(id, t);
@@ -6176,6 +6224,7 @@ impl Sim {
                 Order::Upgrade(t) => { mix(20); mix(*t as i64); }
                 Order::Enhance { index, remove } => { mix(21); mix(*index as i64); mix(*remove as i64); }
                 Order::RemoteView(p) => { mix(22); target(mix, Some(Target::Ground(*p))); }
+                Order::Teleport(p) => { mix(23); target(mix, Some(Target::Ground(*p))); }
             }
         }
         let mut h: u64 = 0xcbf2_9ce4_8422_2325;
@@ -6336,6 +6385,34 @@ impl Sim {
                 mix(s.up as i64 | (s.collapsed as i64) << 1);
                 mix(s.charge as i64);
                 mix(s.hit_at as i64);
+            }
+            // (A slot aboard a transport with slots, and a teleport's charge, only where there are
+            // some: TA's games sum as before.)
+            if let Some(slot) = u.carry_slot {
+                mix(-31);
+                mix(slot as i64);
+            }
+            if let Some(c) = u.teleport {
+                mix(-32);
+                target(&mut mix, Some(Target::Ground(c.to)));
+                mix(c.work as i64);
+                mix(c.total as i64);
+                mix(c.energy.0);
+            }
+            // (Drones, and their units' links and rebuilding, only where there are some.)
+            if let Some(p) = u.drone_of {
+                mix(-33);
+                target(&mut mix, Some(Target::Unit(p)));
+            }
+            if !u.drones.is_empty() {
+                mix(-34);
+                mix(u.drones.len() as i64);
+                for &d in &u.drones { target(&mut mix, Some(Target::Unit(d))); }
+            }
+            if let Some((kind, work)) = u.drone_work {
+                mix(-35);
+                mix(kind as i64);
+                mix(work as i64);
             }
             mix(u.orders.len() as i64);
             for o in &u.orders { order(&mut mix, o); }

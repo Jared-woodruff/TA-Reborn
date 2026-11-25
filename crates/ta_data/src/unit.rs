@@ -259,6 +259,24 @@ pub struct UnitDef {
     /// Its shield (`ShieldHealth` and the other shield keys: [`crate::ShieldDef`]), a personal one or
     /// a bubble. None of TA's.
     pub shield: Option<crate::ShieldDef>,
+    /// An air transport's slots (`TransportSlots`: [`crate::TransportSlotDef`]), each a piece its
+    /// passenger hangs from, with its class: it carries a unit in each. None of TA's, whose air
+    /// transports carry one.
+    pub transport_slots: Vec<crate::TransportSlotDef>,
+    /// The class of slot it takes aboard a transport with slots (`TransportClass`; 1 where none is
+    /// given): one of its class, else of the smallest larger class free.
+    pub transport_class: u32,
+    /// Its teleport (`CanTeleport`, `TeleportEnergy`, `TeleportTime`: [`crate::TeleportDef`]). None
+    /// of TA's.
+    pub teleport: Option<crate::TeleportDef>,
+    /// Its drones (`[DRONES]` within its `[UNITINFO]`: [`crate::DroneDef`]). None of TA's.
+    pub drones: Vec<crate::DroneDef>,
+    /// A factory that moves (`MobileFactory=1`): it builds the units of its menu from its queue as a
+    /// factory does, each on itself at its `BuildPiece` (a piece of its model; none: its middle)
+    /// while it goes, and sets each down beside it once it is done (an aircraft takes off). None of
+    /// TA's, whose factories stand.
+    pub mobile_factory: bool,
+    pub build_piece: String,
 }
 
 impl UnitDef {
@@ -441,6 +459,12 @@ impl UnitDef {
             regen_aura_share: f("RegenAuraShare", 0.0).max(0.0),
             toggle: crate::ToggleDef::of_unit(s),
             shield: crate::ShieldDef::of(s),
+            transport_slots: crate::TransportSlotDef::of_unit(s),
+            transport_class: crate::transport::transport_class(s),
+            teleport: crate::TeleportDef::of(s),
+            drones: crate::DroneDef::of(s),
+            mobile_factory: b("MobileFactory", false),
+            build_piece: st("BuildPiece"),
             name,
         })
     }
@@ -653,6 +677,15 @@ mod tests {
         let plain = read("[UNITINFO]{UnitName=ARMPW; RegenAuraRadius=-3;}").unwrap();
         assert_eq!((plain.radar_stealth_field, plain.remote_view_radius, plain.regen_aura_radius), (0.0, 0.0, 0.0));
         assert!(plain.toggle.is_none());
+        // An air transport's slots, a passenger's class and a teleport; none on TA's.
+        let lifter = read("[UNITINFO]{UnitName=LIFTER; CanFly=1; TransportSlots=A B Mid:2; TransportClass=2; CanTeleport=1; TeleportEnergy=100;}").unwrap();
+        assert_eq!(lifter.transport_slots.len(), 3);
+        assert_eq!((lifter.transport_class, lifter.teleport.map(|t| t.energy)), (2, Some(100.0)));
+        assert!(plain.transport_slots.is_empty() && plain.teleport.is_none() && plain.transport_class == 1);
+        // Drones and a factory that moves; none on TA's.
+        let carrier = read("[UNITINFO]{UnitName=CARRIER; MobileFactory=1; BuildPiece=Deck; [DRONES]{ Unit=POD; Count=2; } }").unwrap();
+        assert!(carrier.mobile_factory && carrier.build_piece == "Deck" && carrier.drones.len() == 1);
+        assert!(!plain.mobile_factory && plain.build_piece.is_empty() && plain.drones.is_empty());
     }
 
     /// TA's units spell the initial cloak `init_cloaked` (Core Contingency's mines).

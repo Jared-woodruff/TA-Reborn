@@ -386,6 +386,29 @@ pub fn transport(mesh: &crate::scm::Mesh) -> Option<(u32, u32)> {
     (units > 0).then_some((units, if large > 0 { 3 } else if medium > 0 { 2 } else { 1 }))
 }
 
+/// An air transport's slots, for its unit file's `TransportSlots` (docs/MODDING.md): its mesh's
+/// attach bones (as [`transport`] counts them), each with its class (small 1, `_Med` 2, `_Lrg` 3),
+/// the small first, then the medium, then the large, each class from its front to its back and from
+/// its left to its right at rest (a passenger takes the first free slot of its class: they fill
+/// from the front, side by side). A larger slot overlaps the smaller nearest it in TA Reborn, as
+/// Forged Alliance's do (its T1 transports carry six small units, two medium or one large).
+pub fn transport_slots(mesh: &crate::scm::Mesh) -> Vec<(String, u32)> {
+    let rest = mesh.rest_poses();
+    let mut slots: Vec<(u32, i64, i64, String)> = Vec::new();
+    for (k, b) in mesh.bones.iter().enumerate() {
+        let name = b.name.to_ascii_lowercase();
+        if !name.contains("attachpoint") {
+            continue;
+        }
+        let class = if name.contains("lrg") { 3 } else if name.contains("med") { 2 } else { 1 };
+        // (In mesh units, rounded: Forged Alliance's units face +z, their left at +x.)
+        let [x, _, z] = rest.get(k).map_or([0.0; 3], |p| p.0);
+        slots.push((class, -(z * 64.0).round() as i64, -(x * 64.0).round() as i64, b.name.clone()));
+    }
+    slots.sort();
+    slots.into_iter().map(|(class, _, _, name)| (name, class)).collect()
+}
+
 /// A nuke's range, pixels: the whole of any map.
 const NUKE_RANGE: i64 = 32000;
 
@@ -735,15 +758,17 @@ fn blast_section(u: &UnitBlueprint, w: &WeaponBlueprint, what: &str) -> Option<S
     ))
 }
 
-/// How it builds: none, standing in place (a factory), moving (an engineer, a commander), or
-/// standing and lending its build power to what is built round it (an engineering station, TA's
-/// assist turret).
+/// How it builds: none, standing in place (a factory), moving (an engineer, a commander, a factory
+/// that moves: [`mobile_factory`]), standing and lending its build power to what is built round it
+/// (an engineering station, TA's assist turret), or helping and mending what the unit it is a drone
+/// of builds (a drone, `POD`: no menu of its own).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Builds {
     No,
     Factory,
     Mobile,
     Assist,
+    Drone,
 }
 
 pub fn builds(u: &UnitBlueprint) -> Builds {
@@ -753,6 +778,10 @@ pub fn builds(u: &UnitBlueprint) -> Builds {
     // (An engineering station builds nothing of its own: its drones lend their power round it.)
     if u.motion == Motion::None && u.is("ENGINEERSTATION") {
         return Builds::Assist;
+    }
+    // (A drone helps and mends what its unit builds: nothing of its own, whatever its lists say.)
+    if u.is("POD") {
+        return Builds::Drone;
     }
     if build_lists(u).is_empty() {
         return Builds::No;
@@ -764,6 +793,13 @@ pub fn builds(u: &UnitBlueprint) -> Builds {
         Motion::None => Builds::No,
         _ => Builds::Mobile,
     }
+}
+
+/// Whether it is a factory that moves (`FACTORY` that moves and builds: the Fatboy, the carriers,
+/// the Atlantis, the Tempest, the CZAR): TA Reborn's `MobileFactory`, building its units on itself
+/// at its build bone (`BuildPiece`) from a factory's queue as it goes.
+pub fn mobile_factory(u: &UnitBlueprint) -> bool {
+    u.motion != Motion::None && u.is("FACTORY") && builds(u) == Builds::Mobile
 }
 
 /// What a unit's build lists name that it builds from the start: a commander's own tier (its
@@ -937,6 +973,8 @@ pub struct Extra<'a> {
     pub sound_category: Option<String>,
     /// Keys of how it looks (its adjacency beam: `factions::effects`).
     pub look: Vec<(&'static str, String)>,
+    /// An air transport's slots ([`transport_slots`]: they need its mesh), each a bone and its class.
+    pub transport_slots: Vec<(String, u32)>,
 }
 
 /// The name a unit is shown by: its own, else its description (the commanders' and most
@@ -1062,15 +1100,82 @@ pub fn exits_section(exits: &[Exit]) -> String {
     s
 }
 
-/// An engineering station's build power and reach (ogrids): its own `BuildRate`, or its drones'
-/// together where they have more (the tech 3 Kennel's two), and its `MaxBuildDistance`, or how far
-/// round it its drones look for work (`AI.GuardScanRadius`), or five ogrids. TA Reborn's station
-/// builds with its own beams: its drones are not made (the Kennel's), their work its own.
+/// An engineering station's build power and reach (ogrids): its own `BuildRate`, and its
+/// `MaxBuildDistance`, or how far round it its drones look for work (`AI.GuardScanRadius`), or five
+/// ogrids. TA Reborn's station works round it with its own beams, and its drones (the Kennel's,
+/// made with it: [`drones_section`]) help it, guarding it.
 pub fn station_work(u: &UnitBlueprint) -> (f64, f64) {
-    let pods: f64 = u.pods.iter().map(|p| p.build_rate.max(0.0)).sum();
     let own_reach = u.table.path(&["Economy"]).and_then(|e| e.get_ci("MaxBuildDistance")).and_then(|v| v.num());
     let pod_reach = u.pods.iter().map(|p| p.reach).fold(0.0f64, f64::max);
-    (u.build_rate.max(pods), own_reach.or((pod_reach > 0.0).then_some(pod_reach)).unwrap_or(5.0))
+    (u.build_rate, own_reach.or((pod_reach > 0.0).then_some(pod_reach)).unwrap_or(5.0))
+}
+
+/// One kind of drone a unit's file keeps (its `[DRONES]`, docs/MODDING.md): the drone's id, how
+/// many, the bone it is made at, how long one lost takes to make again (seconds) and its price, and
+/// how far from the unit it may go (px).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Drone {
+    pub id: String,
+    pub count: u32,
+    pub bone: String,
+    pub rebuild: f64,
+    pub mass: f64,
+    pub energy: f64,
+    pub leash: f64,
+}
+
+/// A station's drones (`Economy.EngineeringPods`), a kind for each drone, as many as it names: made
+/// again in their build time at the station's build rate, at their price, as Forged Alliance's
+/// stations make theirs (`TPodTowerUnit`), kept within how far they look for work.
+pub fn station_drones(u: &UnitBlueprint) -> Vec<Drone> {
+    let mut out: Vec<Drone> = Vec::new();
+    for p in &u.pods {
+        match out.iter_mut().find(|d| d.id.eq_ignore_ascii_case(&p.id)) {
+            Some(d) => d.count += 1,
+            None => out.push(Drone {
+                id: p.id.to_ascii_uppercase(),
+                count: 1,
+                bone: p.bone.clone(),
+                rebuild: if u.build_rate > 0.0 { p.build_time / u.build_rate } else { 30.0 },
+                mass: p.cost_mass,
+                energy: p.cost_energy,
+                leash: (p.reach * UNIT_SCALE).round(),
+            }),
+        }
+    }
+    out
+}
+
+/// The `[DRONES]` section of a unit's file (or of an enhancement's, `indent` tabs in), or nothing.
+pub fn drones_section(drones: &[Drone], indent: usize) -> String {
+    if drones.is_empty() {
+        return String::new();
+    }
+    let tab = "	".repeat(indent);
+    let mut s = format!("{tab}[DRONES]
+{tab}	{{
+");
+    for (k, d) in drones.iter().enumerate() {
+        let _ = write!(s, "{tab}	[DRONE{}]
+{tab}		{{
+{tab}		Unit={};
+{tab}		Count={};
+", k + 1, d.id, d.count);
+        if !d.bone.is_empty() {
+            let _ = writeln!(s, "{tab}		Piece={};", tdf_text(&d.bone));
+        }
+        let number = |v: f64| if (v - v.round()).abs() < 1e-9 { format!("{}", v.round() as i64) } else { format!("{v:.2}") };
+        let _ = write!(s, "{tab}		RebuildTime={};
+{tab}		RebuildCostMetal={};
+{tab}		RebuildCostEnergy={};
+", number(d.rebuild), number(d.mass), number(d.energy));
+        if d.leash > 0.0 {
+            let _ = writeln!(s, "{tab}		Leash={};", number(d.leash));
+        }
+        let _ = writeln!(s, "{tab}		}}");
+    }
+    let _ = writeln!(s, "{tab}	}}");
+    s
 }
 
 /// The `[ADJACENCY]` section of a unit's file: each buff it gives the structures beside it, by
@@ -1235,6 +1340,18 @@ pub fn unit_file(u: &UnitBlueprint, weapons: &Weapons, carries: Option<(u32, u32
             put("WorkerTime", ((u.build_rate * WORK).round().max(1.0) as i64).to_string());
         }
     }
+    // A factory that moves builds its units on itself at its build bone, from its queue as it goes
+    // (`MobileFactory`, docs/MODDING.md); one that is an air staging platform (the carriers, the
+    // Atlantis, the CZAR, the Fatboy) repairs the aircraft landed on it besides.
+    if mobile_factory(u) {
+        put("MobileFactory", "1".into());
+        if let Some(bone) = &u.build_bone {
+            put("BuildPiece", tdf_text(bone));
+        }
+        if u.is("AIRSTAGINGPLATFORM") {
+            put("IsAirBase", "1".into());
+        }
+    }
     // An air staging platform repairs the aircraft landed on it, as TA's repair pads do (their
     // 200 of work a second; no builder: the Cybran cruiser that is one stays a warship).
     if u.is("AIRSTAGINGPLATFORM") && builds == Builds::No {
@@ -1250,6 +1367,11 @@ pub fn unit_file(u: &UnitBlueprint, weapons: &Weapons, carries: Option<(u32, u32
         put("Commander", "1".into());
         put("ShowPlayerName", "1".into());
         put("cancapture", "1".into());
+    }
+    // The slots it takes aboard an air transport with slots (`Transport.TransportClass`: the tech 2
+    // land units 2, the tech 3 and the commanders 3; 1 where none is given, the tech 1).
+    if let Some(class) = u.transport_class.filter(|&c| c > 1) {
+        put("TransportClass", class.to_string());
     }
     // Weapons.
     for (slot, w) in weapons.slots.iter().enumerate() {
@@ -1438,6 +1560,11 @@ pub fn unit_file(u: &UnitBlueprint, weapons: &Weapons, carries: Option<(u32, u32
                     put("TransportCapacity", units.to_string());
                     put("TransportMaxUnits", units.to_string());
                     put("TransportSize", size.to_string());
+                    // (A unit in each slot, hanging at its attach bone: TA Reborn's slots.)
+                    if !extra.transport_slots.is_empty() {
+                        let slots: Vec<String> = extra.transport_slots.iter().map(|(bone, class)| if *class > 1 { format!("{bone}:{class}") } else { bone.clone() }).collect();
+                        put("TransportSlots", slots.join(" "));
+                    }
                 }
                 // Gunships hover over what they attack; Forged Alliance's other hovering craft
                 // with guns (the CZAR) as well. Its fighters and bombers make passes.
@@ -1466,6 +1593,8 @@ pub fn unit_file(u: &UnitBlueprint, weapons: &Weapons, carries: Option<(u32, u32
         }
     }
     let adjacency = if u.motion == Motion::None { adjacency_section(extra.adjacency) } else { String::new() };
+    // (A station's drones, made with it: `[DRONES]`.)
+    let adjacency = adjacency + &drones_section(&station_drones(u), 1);
     let toggle = toggle.map(|(section, _)| section).unwrap_or_default();
     format!("[UNITINFO]\n\t{{\n{f}{}{}{adjacency}{toggle}\t}}\n", extra.enhancements, exits_section(&extra.exits))
 }
@@ -1664,6 +1793,18 @@ mod tests {
         assert_eq!(transport(&mesh(&["Attachpoint01", "Attachpoint02"])), Some((2, 1)));
         assert_eq!(transport(&mesh(&["Attachpoint_Med_01"])), Some((1, 2)), "a gunship's one slot");
         assert_eq!(transport(&mesh(&["Turret", "Muzzle"])), None);
+        // Its slots, each with its class: the small first, then the medium, the large; each from
+        // the front (+z) to the back, its left (+x) before its right.
+        let placed = |bones: &[(&str, [f32; 3])]| {
+            let mut all = vec![("Hull", -1, [0.0f32; 3], still)];
+            all.extend(bones.iter().map(|(b, at)| (*b, 0, *at, still)));
+            crate::scm::parse(&crate::scm::tests::write(&all, &[([0.0; 3], [0.0; 2], 0)], &[[0, 0, 0]])).unwrap()
+        };
+        let lifter = placed(&[("Attachpoint_Lrg_01", [0.0, 0.0, 5.0]), ("Right_Attachpoint_sml_02", [-5.0, 0.0, -5.0]), ("Left_Attachpoint_sml_01", [5.0, 0.0, 5.0]), ("Right_Attachpoint_sml_01", [-5.0, 0.0, 5.0]), ("Attachpoint_Med_01", [5.0, 0.0, 0.0]), ("Turret", [0.0; 3])]);
+        let slots = transport_slots(&lifter);
+        let got: Vec<(&str, u32)> = slots.iter().map(|(b, c)| (b.as_str(), *c)).collect();
+        assert_eq!(got, [("Left_Attachpoint_sml_01", 1), ("Right_Attachpoint_sml_01", 1), ("Right_Attachpoint_sml_02", 1), ("Attachpoint_Med_01", 2), ("Attachpoint_Lrg_01", 3)]);
+        assert!(transport_slots(&mesh(&["Turret"])).is_empty());
     }
 
     fn projectile(categories: &[&str], mass: f64, energy: f64, build_time: f64) -> ProjectileBlueprint {
@@ -1873,6 +2014,13 @@ mod tests {
         let transport = UnitBlueprint { id: "UEA0107".into(), faction: Faction::Uef, motion: Motion::Air, categories: vec!["AIR".into(), "TRANSPORTATION".into()], ..Default::default() };
         let file = unit_file(&transport, &none, Some((6, 3)), &Extra::default());
         assert!(file.contains("TransportCapacity=6;") && file.contains("TransportMaxUnits=6;") && file.contains("TransportSize=3;") && file.contains("canload=1;"), "{file}");
+        assert!(!file.contains("TransportSlots"), "no slots given, none written");
+        let slots = Extra { transport_slots: vec![("Left_sml".into(), 1), ("Mid_Med".into(), 2)], ..Extra::default() };
+        assert!(unit_file(&transport, &none, Some((6, 3)), &slots).contains("TransportSlots=Left_sml Mid_Med:2;"));
+        // A passenger's class: the tech 2 and 3 land units say theirs; the tech 1 take the default.
+        let tank = UnitBlueprint { id: "UEL0202".into(), faction: Faction::Uef, motion: Motion::Land, transport_class: Some(2), ..Default::default() };
+        assert!(unit_file(&tank, &none, None, &Extra::default()).contains("TransportClass=2;"));
+        assert!(!unit_file(&UnitBlueprint { transport_class: Some(1), ..tank.clone() }, &none, None, &Extra::default()).contains("TransportClass"));
         assert!(!unit_file(&transport, &none, None, &Extra::default()).contains("canload"), "no attach bones, no transport");
         // An extractor on land or the sea bed; a torpedo trap on the sea bed alone; a sonar afloat.
         let structure = |id: &str, layers: Layers| UnitBlueprint { id: id.into(), faction: Faction::Uef, categories: vec!["STRUCTURE".into()], layers, ..Default::default() };
@@ -1919,10 +2067,10 @@ mod tests {
             u
         };
         // (Made-up figures.)
-        let drone = |rate: f64| crate::unit::Pod { id: "XEA3204".into(), build_rate: rate, reach: 12.0 };
+        let drone = |rate: f64| crate::unit::Pod { id: "XEA3204".into(), build_rate: rate, reach: 12.0, ..Default::default() };
         assert_eq!(station_work(&station("XRB0104", 14.0, "MaxBuildDistance = 13", Vec::new())), (14.0, 13.0));
-        assert_eq!(station_work(&station("XEB0104", 18.0, "", vec![drone(12.0)])), (18.0, 12.0), "its own work, the more; its drone's reach");
-        assert_eq!(station_work(&station("XEB0204", 18.0, "", vec![drone(12.0), drone(12.0)])), (24.0, 12.0), "two drones' work");
+        assert_eq!(station_work(&station("XEB0104", 18.0, "", vec![drone(12.0)])), (18.0, 12.0), "its own work; its drone's reach");
+        assert_eq!(station_work(&station("XEB0204", 18.0, "", vec![drone(12.0), drone(12.0)])), (18.0, 12.0), "its own work: its drones are made, and work beside it");
         assert_eq!(station_work(&station("XEB0304", 18.0, "", Vec::new())), (18.0, 5.0), "no drones and no reach of its own: five ogrids");
         let hive = unit_file(&station("XRB0104", 14.0, "MaxBuildDistance = 13", Vec::new()), &none, None, &Extra::default());
         assert!(hive.contains("DefaultMissionType=AssistPatrol;") && hive.contains("WorkerTime=140;") && hive.contains("BuildDistance=416;") && hive.contains("CanReclamate=1;"), "{hive}");

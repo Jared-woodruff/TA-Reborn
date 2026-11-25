@@ -496,16 +496,6 @@ impl LauncherApp {
         // (The mod is turned on once made, and the units it adds are compared with the other
         // players' online: said where the factions are chosen.)
         ui.add(egui::Label::new(RichText::new(t("Once made, the factions' mod is on: choose a faction as a player's side when you set up a skirmish. Online, everyone in a battle needs it, made by the same version of TA Reborn; turn it off on the Mods page to join battles without it.")).color(STEEL)).wrap());
-        ui.add_space(space::XS);
-        // (A footnote: at the foot of the room where the tab leaves some, under the cards where it
-        // does not.)
-        let note = RichText::new(t("Not played yet: teleporting.")).color(STEEL);
-        let tall = widgets::wrapped_galley(ui, note.clone(), ui.available_width()).size().y;
-        let spare = ui.available_height() - tall - ui.spacing().item_spacing.y - 2.0;
-        if spare > 0.0 {
-            ui.add_space(spare);
-        }
-        ui.add(egui::Label::new(note).wrap());
     }
 
     /// A faction: its box, its commander's picture, its name, its units by kind, and whether it
@@ -1500,8 +1490,7 @@ mod tests {
         for _ in 0..4 { frame(&ctx, &mut app, size, Vec::new()); }
         let (_, texts) = frame(&ctx, &mut app, size, Vec::new());
         // (The mod holds the UEF and the Aeon: those are chosen at first.)
-        assert!(texts.iter().any(|(text, _, _)| text == "2 of 4 factions chosen, 178 units, about 388 MB on the disk"), "{:?}", texts_of(&texts));
-        assert!(texts.iter().any(|(text, _, _)| text.starts_with("Not played yet: teleporting")), "{:?}", texts_of(&texts));
+        assert!(texts.iter().any(|(text, _, _)| text == "2 of 4 factions chosen, 178 units, about 389 MB on the disk"), "{:?}", texts_of(&texts));
         assert!(texts.iter().any(|(text, _, _)| text.contains("Online, everyone in a battle needs it")), "online play said: {:?}", texts_of(&texts));
         // The keys stop at each faction's box once.
         let tab = egui::Event::Key { key: egui::Key::Tab, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE };

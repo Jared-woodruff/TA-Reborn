@@ -1744,6 +1744,128 @@ their long-range guns elsewhere first. The mod check tells shield keys without `
 uses of shields (`engine.shields`). The Supreme Commander factions' shields are made with these
 ([SUPCOM_UNITS.md](SUPCOM_UNITS.md)).
 
+#### Logistics
+
+Four more of TA Reborn's own, for carrying, moving and making units: air transports with several
+slots, teleporting, drones and factories that move. A unit that gives none of their keys plays as
+before (TA's own give none); TA itself ignores them.
+
+**Air transports with slots.** TA's air transports carry one unit, whatever their files say (its
+Atlas says 5), and so does any that names no slots. One that names them carries a unit in each:
+
+```text
+[UNITINFO]
+	{
+	UnitName=MYLIFTER;
+	CanFly=1;
+	TransportSize=3;
+	TransportSlots=LeftFront RightFront LeftBack RightBack Middle:2;
+	...
+	}
+```
+
+- **`TransportSlots`**: pieces of its model, apart by spaces or commas, each a slot. A passenger
+  hangs under its slot's piece (its top there), drawn where it rides. A slot may give its class
+  after a colon (`Middle:2`; 1, small, where none is given).
+- **`TransportClass`** (the passenger's; 1 where none is given): a passenger takes the first free
+  slot of its own class, in the list's order, else one of the smallest larger class that is free.
+- **A larger slot overlaps the smaller ones**: each slot is under the nearest slot (at rest) of each
+  larger class, and while one of the two holds a unit the other is not free. Lay a medium slot
+  between two small ones and a large one over all of them, as Supreme Commander's transports do
+  (six small units, two medium or one large).
+- How many units it carries (the information page's figure, and the computer players' reckoning)
+  is how many of the smallest class it takes at once. `TransportSize` still caps a passenger's
+  footprint, and `TransportCapacity` is not read.
+- A load order (one after another, with Shift) takes each unit into the next free slot that takes
+  it; with none, the order fails. An unload order sets every passenger down at once round the place
+  given, each where the layout of the slots puts it (twice as far apart as they ride, turned with
+  the transport), on the nearest ground it can stand on, clear of the others.
+- The script is told `BeginTransport` and `EndTransport` as TA's transports' are; `QueryTransport`
+  is not asked. Slots are read for aircraft alone (the mod check tells them on another unit): ships
+  and hovercraft carry as many as `TransportCapacity` says, as before.
+
+**Teleporting.** A unit that can teleport goes to any place on the map: told to (TELEPORT in both
+interfaces, Alt+P, with TA's teleport pointer), it stands and pays its charge, as construction is
+paid (a share of its energy each tick, slowed when the economy cannot pay it all, nothing paid
+while there is none), then lands on the nearest spot to the place that it can stand on (within a
+few cells; an aircraft at the place itself, as high over the ground as it flew), with a flash at
+both ends. Stop, or another order, calls the charge off: what was paid is spent. A place with
+nowhere to stand near it fails the order, before the charge and as it lands.
+
+| Key | What it does |
+| --- | --- |
+| `CanTeleport` | `1`: it can teleport. A building does not, whatever it says. |
+| `TeleportEnergy` | The charge's energy: a base, and a second number for so much more a pixel of the way (`TeleportEnergy=20000 4`). None given, it is free. |
+| `TeleportTime` | The charge's time in seconds: a base, and so much more a pixel of the way (`TeleportTime=10 0.005`). One second where none is given. |
+
+An enhancement may give the three keys (installed, the unit can teleport at the enhancement's
+charge). The computer players do not teleport.
+
+**Drones.** A `[DRONES]` section within the unit's `[UNITINFO]`, or within one of its enhancements'
+sections, gives it units of another type that it keeps by it:
+
+```text
+[UNITINFO]
+	{
+	UnitName=MYSTATION;
+	...
+	[DRONES]
+		{
+		[PodOne]
+			{
+			Unit=MYDRONE;
+			Count=2;
+			RebuildTime=40;
+			RebuildCostMetal=250;
+			RebuildCostEnergy=2500;
+			Piece=PodBay;
+			Leash=480;
+			}
+		}
+	}
+```
+
+- A section a kind of drone (any name), or the keys straight in `[DRONES]` for one kind.
+- **`Unit`** (needed: the mod check tells one nobody defines) and **`Count`** (1 where none is
+  given). The kinds of the unit's own and its enhancements' that name the same unit add up.
+- **Made** as the unit is finished, or the enhancement installed, at once and for nothing, at
+  **`Piece`** (a piece of the unit's model; none: its middle). An aircraft takes off from there; a
+  unit that does not fly stands on the nearest ground it can.
+- **Guarding it**: whenever a drone has nothing to do it guards its unit (a builder among them helps
+  build what its unit builds, mends it, and helps mend what it mends within the leash). Its player
+  may give it orders, but sent further from its unit than **`Leash`** (pixels; 512 where none is
+  given), it gives them up and comes back.
+- **Made again** after a loss, a kind at a time: its unit pays **`RebuildCostMetal`** and
+  **`RebuildCostEnergy`** (none given: the drone's own price) over **`RebuildTime`** seconds (none
+  given: the drone's `BuildTime` at the unit's `WorkerTime`, else thirty), as construction is paid,
+  while it is finished, not paralysed and not carried.
+- **With its unit**: drones die with it (taken off the map with it where it is given up), change
+  sides with it, and go to what it becomes when it upgrades in place. An enhancement taken out takes
+  its drones away. A drone given away or captured on its own is no longer a drone. A drone keeps no
+  drones of its own.
+
+**Factories that move.** `MobileFactory=1` makes a unit that moves (a ship, a walker, an
+aircraft) a factory: its player queues the units of its menu as a factory's (the build menu shows
+them so, in both interfaces), and it builds them one after another with its own build power,
+paid as construction is paid, while it goes about its orders.
+
+- **`BuildPiece`**: the piece of its model each unit is built on (its first piece where none is
+  given). The unit rides there, out of the way of collisions and shots, and dies with the factory.
+- Done, it is set down behind the factory on the nearest ground it can stand on (on the water for a
+  ship), or takes off from it and flies clear of it, behind it, if it flies; then it follows the
+  factory's rally orders (if any).
+- It makes units that move: a building in its queue is left out of it, and it is given no order to
+  build one of its units in the field. It makes nothing while it upgrades or installs an
+  enhancement.
+- Give it `IsAirBase=1` as well and it repairs the aircraft landed on it, as a carrier does.
+- The computer players make units with theirs, their best for the price that their stores and a
+  minute's income pay for, and it fights with their army.
+
+The information page (F1) shows each of them. The mod check tells slots on a unit that does not
+fly, a teleport's charge without `CanTeleport` and a teleport on a building, a `[DRONES]` giving none
+and a drone's unit nobody defines, a factory that moves standing or with no build power, and pieces
+these keys name that the model has not, and its report lists what the mod uses of them.
+
 #### What TA Reborn does not run
 
 TA Reborn runs no code from a mod: patched executables (`TotalA.exe` and the like), DLLs and
@@ -1888,6 +2010,7 @@ names the mod's folder (an absolute path, with its `mod.toml`):
 | Abilities: minimum ranges, toggles, stealth fields, remote viewing, stuns, auras | `crates/ta_data/src/toggle.rs`, `crates/ta_sim/src/defs.rs` (`Abilities`), `crates/ta_sim/src/combat.rs` (`too_near`), `crates/ta_sim/src/combat/stun.rs`, `crates/ta_sim/src/sim/toggle.rs`, `remote_view.rs`, `aura.rs`, `crates/ta_data/src/validation/abilities.rs`, `apps/ta_game/src/game/abilities.rs`, `apps/ta_game/src/hud/abilities.rs` |
 | Weapons' looks and effects of a mod's own, adjacency beams | `crates/ta_data/src/weapon.rs` (`WeaponLook`), `crates/ta_data/src/effect.rs`, `apps/ta_game/src/effects_mods.rs`, `crates/ta_render/src/gpu_particles.rs` |
 | Shields | `crates/ta_data/src/shield.rs`, `crates/ta_sim/src/defs.rs` (`Shield`), `crates/ta_sim/src/sim/shield.rs`, `crates/ta_ai/src/shields.rs`, `crates/ta_render/src/shields.rs`, `apps/ta_game/src/shields.rs`, `apps/ta_game/src/hud/shield.rs` |
+| Logistics: air transports with slots, teleporting, drones, factories that move | `crates/ta_data/src/transport.rs`, `teleport.rs`, `drones.rs`, `crates/ta_sim/src/sim/transport.rs`, `teleport.rs`, `drones.rs`, `mobile_factory.rs`, `crates/ta_data/src/validation/logistics.rs`, `crates/ta_ai/src/mobile.rs`, `apps/ta_game/src/effects_teleport.rs`, `apps/ta_game/src/hud/logistics.rs` |
 | Models' surfaces and clips (walks, deaths, buildings at work) | `crates/ta_formats/src/surface.rs`, `crates/ta_formats/src/anims.rs`, `apps/ta_game/src/scene/walk.rs`, `apps/ta_game/src/scene/work.rs`, `apps/ta_game/src/effects_remains.rs` |
 | The classic build pages, 768-pixel layouts, shared places | `apps/ta_game/src/hud_classic_art.rs` |
 | The catalogue, installs, the MODS page | `apps/ta_launcher/src/catalogue.rs`, `getmods.rs`, `modlist.rs`, `mod_library.rs`, `pages/mods.rs`, `pages/mod_order.rs`, `pages/mod_report.rs` |

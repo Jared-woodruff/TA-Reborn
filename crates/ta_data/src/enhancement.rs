@@ -108,6 +108,12 @@ pub struct EnhancementDef {
     /// A shield it gives the unit (the shield keys, as a unit's own: [`crate::ShieldDef`]), in place
     /// of the unit's own while it is installed (of several, the one of the most hit points).
     pub shield: Option<crate::ShieldDef>,
+    /// A teleport it gives the unit (`CanTeleport`, `TeleportEnergy`, `TeleportTime`:
+    /// [`crate::TeleportDef`]), in place of one of its own.
+    pub teleport: Option<crate::TeleportDef>,
+    /// The drones it gives the unit (`[DRONES]` within its section: [`crate::DroneDef`]), beside its
+    /// own; made as it is installed.
+    pub drones: Vec<crate::DroneDef>,
 }
 
 impl EnhancementDef {
@@ -155,6 +161,8 @@ impl EnhancementDef {
             energy_make: f("EnergyMake"),
             energy_use: f("EnergyUse"),
             shield: crate::ShieldDef::of(s),
+            teleport: crate::TeleportDef::of(s),
+            drones: crate::DroneDef::of(s),
             id,
         })
     }
@@ -238,5 +246,18 @@ mod tests {
         assert_eq!((e[2].regen_aura_radius, e[2].regen_aura_rate, e[2].regen_aura_share), (360.0, 40.0, 0.004));
         assert_eq!((e[3].sonar_jam, e[3].radar_stealth_field, e[3].sonar_stealth_field), (300.0, 500.0, 600.0));
         assert_eq!((e[3].remote_view_radius, e[3].remote_view_energy), (800.0, 40.0));
+        assert!(e.iter().all(|e| e.teleport.is_none()));
+        let doc = tdf::parse("[UNITINFO]{UnitName=ACU;
+[ENHANCEMENTS]{
+[Teleporter]{Slot=Back;CanTeleport=1;TeleportEnergy=150000;TeleportTime=15;}
+}}");
+        let e = EnhancementDef::of_unit(doc.section("UNITINFO").unwrap());
+        assert_eq!(e[0].teleport.map(|t| (t.energy, t.time)), Some((150000.0, 15.0)));
+        let doc = tdf::parse("[UNITINFO]{UnitName=ACU;
+[ENHANCEMENTS]{
+[LeftPod]{Slot=Back;[DRONES]{Unit=POD;Piece=Shoulder;}}
+}}");
+        let e = EnhancementDef::of_unit(doc.section("UNITINFO").unwrap());
+        assert_eq!(e[0].drones.iter().map(|d| (d.unit.as_str(), d.count, d.piece.as_str())).collect::<Vec<_>>(), [("POD", 1, "Shoulder")]);
     }
 }

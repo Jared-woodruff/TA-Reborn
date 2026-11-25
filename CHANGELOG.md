@@ -173,6 +173,31 @@
     commander's shield enhancement when rich, count a dome in what guards a place, keep their
     tactical missiles off what a dome covers, and turn their long-range guns elsewhere first.
   - The mod check tells shield keys without `ShieldHealth`, and lists what a mod uses of shields.
+- Logistics for mods, and for the Supreme Commander factions (made again with UPDATE…):
+  - Air transports with several slots: an aircraft naming its slots (`TransportSlots`, each a piece
+    of its model, small, medium or large) carries a unit in each, hanging under it where you see
+    it; each load order takes the next free slot, and an unload order sets them all down at once,
+    spread out round the place. A larger unit (`TransportClass`) takes a larger slot, which covers
+    the smaller ones round it. The factions' transports carry what Forged Alliance's do (six small
+    units, two medium or one large on the small ones), and the computer players load them full. TA's
+    Atlas, and every transport naming no slots, carries one unit as before.
+  - Teleporting: a unit that can (`CanTeleport`, or an enhancement) stands, pays its charge as
+    construction is paid (`TeleportEnergy`, `TeleportTime`), then lands on the nearest ground it
+    can stand on there, with a flash at both ends; Stop calls it off. TELEPORT in both interfaces
+    (Alt+P), with TA's teleport pointer. The factions' commanders' Personal Teleporter is played, at
+    Forged Alliance's charge.
+  - Drones (`[DRONES]`): units a unit keeps by it, made with it (or with an enhancement), guarding
+    and helping it within a leash, made again at their price after a loss, dying and changing sides
+    with it. The UEF Kennels' engineering drones and the UEF commanders' and support commander's
+    pods are made and fly.
+  - Factories that move (`MobileFactory`, `BuildPiece`): a unit with a factory's menu and queue,
+    building each unit on itself as it goes, then setting it down beside it or launching it. The
+    Fatboy, the carriers, the Atlantis, the Tempest and the CZAR are such factories (the carriers
+    and the other air staging platforms among them repair aircraft too), and the computer players
+    make units with them.
+  - The mod check tells slots on a unit that does not fly, a teleport's charge without
+    `CanTeleport`, drones that are none or of a unit nobody defines, a factory that moves standing
+    or without build power, and pieces these keys name that the model has not.
   Multiplayer and replays need everyone on this build.
 
 ### Changed

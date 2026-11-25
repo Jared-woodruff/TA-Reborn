@@ -198,6 +198,8 @@ impl Sim {
             self.world.release(Occupant::Unit(id.slot), origin, ot.footprint);
         }
         let Some(new) = self.spawn_unit(to, owner, pos, heading, true) else { return };
+        // (Its drones go to the unit it becomes: `drones.rs`.)
+        self.carry_drones_over(id, new);
         let nt = types.get(to);
         // A factory's queue: what the new one can build (all of it, upgraded in Forged Alliance).
         // (The unit on its pad, first in the queue, whatever it is: it is finished.)

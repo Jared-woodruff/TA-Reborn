@@ -161,6 +161,8 @@ impl Sim {
         list.sort_unstable();
         let toggled = u.toggled;
         self.refit(id, list, toggled);
+        // (The drones it gives made, or taken with it: `drones.rs`.)
+        self.make_drones(id);
         if t.callins.set_enhancement {
             for i in gone {
                 self.call_script(id, "SetEnhancement", &[i as i32, 0]);
