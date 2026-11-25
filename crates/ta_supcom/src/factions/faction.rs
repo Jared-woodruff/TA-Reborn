@@ -188,16 +188,21 @@ pub fn wrecks(units: &[&UnitBlueprint]) -> String {
 
 /// The faction's weapons: each unit's in its slots, those its enhancements switch on and change,
 /// and its death's.
-pub fn weapons(units: &[&UnitBlueprint]) -> String {
+pub fn weapons(units: &[&UnitBlueprint], sounds: &std::collections::BTreeMap<String, Vec<(&'static str, String)>>) -> String {
     let mut s = String::new();
+    // (Each with its own sounds where the mod has them, an enhancement's gun with its gun's.)
+    let section = |u: &UnitBlueprint, weapon: &crate::unit::WeaponBlueprint, name: &str| -> String {
+        let own = sounds.get(&units::weapon_name(u, weapon)).map_or(&[][..], |k| k.as_slice());
+        units::weapon_section_sounding(u, weapon, name, own)
+    };
     for u in units {
         let w = units::weapons(u);
         for weapon in &w.slots {
-            s.push_str(&units::weapon_section(u, weapon));
+            s.push_str(&section(u, weapon, &units::weapon_name(u, weapon)));
         }
         let extra = super::enhance::extra_weapons(u, &w);
         for weapon in &extra {
-            s.push_str(&units::weapon_section(u, weapon));
+            s.push_str(&section(u, weapon, &units::weapon_name(u, weapon)));
         }
         // (Its weapon toggle's: `abilities::toggle`.)
         for weapon in super::abilities::toggle_weapons(super::abilities::toggle(u, &w, &extra).as_ref()) {
@@ -205,7 +210,7 @@ pub fn weapons(units: &[&UnitBlueprint]) -> String {
         }
         let (_, variants) = super::enhance::enhancements(u, units, &w, &extra);
         for (name, weapon, owner) in &variants.sections {
-            s.push_str(&units::weapon_section_named(owner, weapon, name));
+            s.push_str(&section(owner, weapon, name));
         }
         if let Some(death) = w.death.and_then(|d| units::death_section(u, d)) {
             s.push_str(&death);

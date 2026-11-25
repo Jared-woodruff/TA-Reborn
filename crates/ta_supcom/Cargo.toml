@@ -26,3 +26,5 @@ winreg = "0.56"
 ta_sim.workspace = true
 # (The factories' ways out read back as the game reads them.)
 ta_data.workspace = true
+# (The units' sounds decoded as the game decodes them.)
+ta_audio.workspace = true

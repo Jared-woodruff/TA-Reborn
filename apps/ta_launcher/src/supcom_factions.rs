@@ -31,8 +31,9 @@ pub const MOD_NAME: &str = n("Supreme Commander factions");
 // here to be collected for translation, and held to `make`'s by a test.)
 pub(crate) const MOD_DESCRIPTION: &str = n("Supreme Commander: Forged Alliance's factions, their units and buildings, made from your own copy of the game.");
 /// What a unit takes on the disk once made, about (its paint the most, as large as Forged Alliance
-/// paints it: since converter version 10): about 680 MB for the game's 364.
-const UNIT_BYTES: u64 = 1_910_000;
+/// paints it: since converter version 10; its sounds, since 16, a tenth of it): about 770 MB for
+/// the game's 364.
+const UNIT_BYTES: u64 = 2_110_000;
 
 /// The mod's name as the interface shows it, in the language in use.
 pub fn mod_name() -> &'static str {
@@ -374,7 +375,7 @@ pub fn size_estimate(entries: &[Entry]) -> u64 {
 }
 
 /// About how long a unit takes to make and install on a fast computer (milliseconds): the four
-/// factions' 364 in about half a minute.
+/// factions' 364 in about half a minute, their sounds (a few seconds) among it.
 const UNIT_MILLIS: u64 = 80;
 
 /// About how long the factions chosen take to make on a fast computer, in seconds (the wizard's
@@ -494,7 +495,9 @@ fn import(game: &Install, sides: &BTreeSet<String>, ta_root: Option<&Path>, stor
     let payload = work.0.join("payload");
     let factions: Vec<String> = Faction::PLAYABLE.iter().map(made_units::side).filter(|s| sides.contains(*s)).map(str::to_string).collect();
     let into = place.into.clone();
-    build(&payload, &names, factions, progress, ending, |write, watch| Ok(make::make(&files, &units, palette.as_ref(), env!("CARGO_PKG_VERSION"), write, watch)?), || install_made(&payload, &into).map(|_| ()))
+    // (Forged Alliance's sounds from the copy's own banks, where it has them.)
+    let sounds = ta_vfs::install::find_dir_ci(&game.root, "sounds");
+    build(&payload, &names, factions, progress, ending, |write, watch| Ok(make::make(&files, &units, palette.as_ref(), sounds.as_deref(), env!("CARGO_PKG_VERSION"), write, watch)?), || install_made(&payload, &into).map(|_| ()))
 }
 
 /// The mod made into `payload` by `make` (given where each file goes, and told before each unit
@@ -518,7 +521,8 @@ fn build(
     let mut made = make(&mut |path, bytes| write_into(payload, path, bytes), &mut |done, id| {
         let mut p = progress.lock().unwrap();
         p.done = done;
-        p.current = names.get(id).cloned().unwrap_or_else(|| id.to_string());
+        // (Once the units are made, their sounds.)
+        p.current = if id == make::SOUNDS { t("the units' sounds").to_string() } else { names.get(id).cloned().unwrap_or_else(|| id.to_string()) };
         !ending.stop.load(Ordering::Relaxed)
     })?;
     for (unit, _) in &mut made.skipped {

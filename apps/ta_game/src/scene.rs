@@ -1054,7 +1054,7 @@ impl Scene {
         let mut blasts: Vec<(Vec2, f32, f32)> = Vec::new();
         for event in events {
             match event {
-                SimEvent::WeaponFired { unit, weapon, pos, target } => {
+                SimEvent::WeaponFired { unit, weapon, pos, target, .. } => {
                     let w = sim.weapon_types.get(*weapon);
                     let share = recoil_share(w);
                     let Some(u) = sim.unit(*unit).filter(|_| share > 0.0) else { continue };

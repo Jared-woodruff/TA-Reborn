@@ -5928,6 +5928,8 @@ impl State {
         for e in std::mem::take(&mut self.game.events_out) {
             self.audio.on_event(&e, &self.game.sim, local, viewer);
         }
+        // (The units heard as they go about the battle: their moves, work and loops.)
+        self.audio.update_units(&self.game.sim, viewer, local, self.game.paused);
         self.audio.sing = self.game.view_cheats.sing;
         for (u, ev) in std::mem::take(&mut self.game.voices) {
             self.audio.unit_voice(&self.game.sim, u, ev);
@@ -5941,8 +5943,8 @@ impl State {
         for event in std::mem::take(&mut self.game.ui_sounds) {
             self.audio.play_interface(event);
         }
-        for (name, pos, volume) in std::mem::take(&mut self.game.effects.sounds) {
-            self.audio.play_ambient(name, pos, volume);
+        for sound in std::mem::take(&mut self.game.effects.sounds) {
+            self.audio.play_effect(&self.game.sim, sound);
         }
         if self.screen != Screen::Intro {
             self.audio.set_wind(self.game.sim.wind.to_f32(), &self.camera, dt);

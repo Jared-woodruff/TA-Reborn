@@ -865,7 +865,7 @@ mod tests {
             funcs.push(CobFunction { name: name.to_string(), offset: code.len() as u32 });
             code.extend_from_slice(body);
         }
-        let script = CobScript { functions: funcs, pieces: vec!["base".into(), "turret".into()], code, static_var_count: 2 };
+        let script = CobScript { functions: funcs, pieces: vec!["base".into(), "turret".into()], code, static_var_count: 2, sounds: Vec::new() };
         Arc::new(CobProgram::new(script, &["base".into(), "turret".into()]))
     }
 

@@ -99,7 +99,7 @@ impl Effects {
         let rise = (2.0 * 90.0 * CLIMB * (0.8 + 0.4 * self.rand())).sqrt();
         self.shells.push(Shell { pos: at, vel: Vec3::new(lean.x, rise, lean.z), burst: now + rise / 90.0 * 0.92, colours, big });
         self.flash(at + Vec3::Y * 4.0, now, 0.15, 10.0, [1.0, 0.8, 0.5], 3.0);
-        self.sounds.push(("xplosml2", at, 0.25));
+        self.sounds.push(("xplosml2", at, 0.25).into());
     }
 
     fn firework_burst(&mut self, s: &Shell, now: f32) {
@@ -134,6 +134,6 @@ impl Effects {
         let mean = [0, 1, 2].map(|i| (s.colours[0][i] + s.colours[1][i]) * 0.5);
         self.flash(s.pos, now, 0.35, if s.big { 60.0 } else { 40.0 }, mean, 2.5);
         self.light(s.pos, now, 0.9, if s.big { 420.0 } else { 320.0 }, mean.map(|c| c * 3.0));
-        self.sounds.push((if s.big { "xplomed2" } else { "xplosml2" }, s.pos, if s.big { 0.55 } else { 0.4 }));
+        self.sounds.push((if s.big { "xplomed2" } else { "xplosml2" }, s.pos, if s.big { 0.55 } else { 0.4 }).into());
     }
 }

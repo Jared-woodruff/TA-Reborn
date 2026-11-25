@@ -85,6 +85,11 @@ pub struct SideDef {
     /// (`logo`), each empty where not given. See [`SideDef::emblem`].
     pub logo_gaf: String,
     pub logo: String,
+    /// Its alerts (TA Reborn's key, `alerts`): the sound category its announcer speaks from, the
+    /// player's commander under attack, a strategic missile launched (`ta_audio`'s
+    /// `commanderattacked`, `nuclearlaunch`); empty where not given (a sound add-on's
+    /// `ALERTS_<side>` then, else none: TA's sides keep their sounds).
+    pub alerts: String,
 }
 
 impl SideDef {
@@ -298,6 +303,7 @@ impl GameData {
                     metal_color: s.get_i32_or("metalcolor", 224).clamp(0, 255) as u8,
                     logo_gaf: s.get_str("logogaf", "").trim().to_string(),
                     logo: s.get_str("logo", "").trim().to_string(),
+                    alerts: s.get_str("alerts", "").trim().to_string(),
                 });
             }
         }

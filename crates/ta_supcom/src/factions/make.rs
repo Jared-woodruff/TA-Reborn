@@ -5,7 +5,7 @@
 use ta_formats::image::Palette;
 use ta_formats::surface::Material;
 
-use super::{abilities, anims, emblem, enhance, faction, model, pictures, script, textures, units, work, UNIT_SCALE};
+use super::{abilities, anims, emblem, enhance, faction, model, pictures, script, sounds, textures, units, work, UNIT_SCALE};
 use crate::files::Files;
 use crate::scm::{self, Mesh};
 use crate::sca;
@@ -41,8 +41,13 @@ pub const TAGS: [&str; 3] = ["units", "factions", "supreme commander"];
 /// add-on's `logogaf` and `logo`: `emblem`; 16: TA Reborn's abilities, `factions::abilities`:
 /// weapons' minimum ranges and stuns, jamming, stealth fields and remote viewing at their upkeep,
 /// the weapon toggles, and the enhancements they made playable: the radar jammer, resource
-/// allocation, the regeneration auras, the EMP Burst and the Chrono Dampener).
-pub const VERSION: u32 = 16;
+/// allocation, the regeneration auras, the EMP Burst and the Chrono Dampener; 17: Forged Alliance's
+/// own sounds, made from the copy's banks (`sounds`): a sound category a unit, sets, the weapons'
+/// and projectiles' keys, the announcer, IMA ADPCM waves in `sounds/supcom/`).
+pub const VERSION: u32 = 17;
+
+/// What [`make`]'s watch is told it makes once the units are made: their sounds.
+pub const SOUNDS: &str = "sounds";
 
 /// What was made.
 #[derive(Clone, Debug, Default)]
@@ -52,6 +57,8 @@ pub struct Made {
     pub bytes: u64,
     /// Units left out, and why.
     pub skipped: Vec<(String, String)>,
+    /// The sound files made (none without the copy's `sounds` folder).
+    pub sounds: usize,
     /// Stopped before every unit was made (the watch said so): the files written are no whole mod.
     pub stopped: bool,
 }
@@ -69,11 +76,13 @@ pub fn manifest(reborn: &str) -> String {
 /// Makes the mod of `units` (the playable ones of the player's copy), for TA Reborn `reborn` and
 /// newer, writing each file through `write` (a path in the mod, its bytes), in a fixed order: the
 /// same bytes on every computer. (Its banner too, the launcher's picture of it, where the copy
-/// has the pictures it is made of: [`crate::banner::factions`]; and the sides' emblems in the
+/// has the pictures it is made of: [`crate::banner::factions`]; the sides' emblems in the
 /// classic interface in `palette`, TA's own, read from the player's copy of TA: none without it,
-/// the sides keeping TA's plain square.) `watch` is told before each unit how many are made and
-/// the unit's id: false from it stops the making there ([`Made::stopped`]).
-pub fn make(files: &Files, units: &[UnitBlueprint], palette: Option<&Palette>, reborn: &str, write: &mut dyn FnMut(&str, &[u8]) -> Result<()>, watch: &mut dyn FnMut(usize, &str) -> bool) -> Result<Made> {
+/// the sides keeping TA's plain square; and Forged Alliance's sounds, from the copy's `sounds`
+/// folder: none without it, the units keeping TA's of their kinds.) `watch` is told before each
+/// unit how many are made and the unit's id (and once more as the sounds are made, [`SOUNDS`]):
+/// false from it stops the making there ([`Made::stopped`]).
+pub fn make(files: &Files, units: &[UnitBlueprint], palette: Option<&Palette>, sounds: Option<&std::path::Path>, reborn: &str, write: &mut dyn FnMut(&str, &[u8]) -> Result<()>, watch: &mut dyn FnMut(usize, &str) -> bool) -> Result<Made> {
     let mut made = Made::default();
     let mut put = |path: &str, bytes: &[u8], made: &mut Made| -> Result<()> {
         made.files += 1;
@@ -92,6 +101,16 @@ pub fn make(files: &Files, units: &[UnitBlueprint], palette: Option<&Palette>, r
     if let Some(banner) = &banner {
         put(crate::banner::PATH, banner, &mut made)?;
     }
+    // The copy's sound banks (where they read: otherwise the units keep TA's sounds).
+    let banks = match sounds.map(sounds::Banks::read) {
+        Some(Ok(banks)) => Some(banks),
+        Some(Err(e)) => {
+            log::warn!("Forged Alliance's sounds left out: {e}");
+            None
+        }
+        None => None,
+    };
+    let mut plan = sounds::Plan::default();
     // What each structure gives the structures beside it, as the player's copy has it.
     let adjacency = crate::adjacency::read(files)?;
     let adjacency_categories = adjacency.categories();
@@ -120,6 +139,14 @@ pub fn make(files: &Files, units: &[UnitBlueprint], palette: Option<&Palette>, r
                 None => e.icon = None,
             }
         }
+        // Its sounds: its own category, its weapons' keys, what its weapons play as they unpack.
+        let mut unpack_sounds: std::collections::BTreeMap<String, (Option<String>, Option<String>)> = Default::default();
+        let sound_category = banks.as_ref().and_then(|banks| {
+            for w in u.weapons.iter().filter(|w| w.unpack.is_some()) {
+                unpack_sounds.insert(units::weapon_name(u, w), plan.unpacking(banks, u, w));
+            }
+            plan.unit(banks, u, units::ta_sound_category(u, &own))
+        });
         let extra = units::Extra {
             upgrades_to: faction::upgrade_of(u, &faction).map(|t| t.id.as_str()),
             enhancements: enhance::section(u, &list),
@@ -130,9 +157,10 @@ pub fn make(files: &Files, units: &[UnitBlueprint], palette: Option<&Palette>, r
             name: units::shown_name(u, &faction),
             // (Its weapon toggle is found with its model's footprint: `unit`.)
             toggle: None,
+            sound_category,
         };
         let shown: Vec<Vec<String>> = list.iter().map(|e| enhance::shown_bones(u, e)).collect();
-        match unit(files, u, &extra, &extra_weapons, shown, &mut |path, bytes| put(path, bytes, &mut made))? {
+        match unit(files, u, &extra, &extra_weapons, shown, &unpack_sounds, &mut |path, bytes| put(path, bytes, &mut made))? {
             Ok(footprint) => {
                 for (path, picture) in &icons {
                     put(path, picture, &mut made)?;
@@ -163,7 +191,24 @@ pub fn make(files: &Files, units: &[UnitBlueprint], palette: Option<&Palette>, r
         let name = units::side(f).to_ascii_lowercase();
         put(&format!("download/supcom_{name}.tdf"), faction::menus(theirs).as_bytes(), &mut made)?;
         put(&format!("features/corpses/supcom_{name}.tdf"), faction::wrecks(theirs).as_bytes(), &mut made)?;
-        put(&format!("weapons/supcom_{name}.tdf"), faction::weapons(theirs).as_bytes(), &mut made)?;
+        put(&format!("weapons/supcom_{name}.tdf"), faction::weapons(theirs, &plan.weapons).as_bytes(), &mut made)?;
+    }
+    // The sounds: the sound add-on (the units' categories, the sides' announcer, the sets) and the
+    // waves.
+    if let Some(banks) = &banks {
+        if !watch(made.units, SOUNDS) {
+            made.stopped = true;
+            return Ok(made);
+        }
+        plan.commander_alert(banks, files)?;
+        let sides: Vec<&str> = factions.iter().map(|(f, _)| units::side(f)).collect();
+        put(sounds::TABLE, plan.table(&sides).as_bytes(), &mut made)?;
+        let mut count = 0;
+        plan.write(banks, 64, &mut |path, bytes| {
+            count += 1;
+            put(path, bytes, &mut made)
+        })?;
+        made.sounds = count;
     }
     Ok(made)
 }
@@ -236,7 +281,7 @@ fn read(files: &Files, u: &UnitBlueprint, upgrades: bool) -> std::result::Result
 /// not its blueprint's (`units::fitted_footprint`). `Err(why)` (inside the Ok) when it is left
 /// out: what it is made of does not read, or its model cannot be written (nothing of it written
 /// then).
-fn unit(files: &Files, u: &UnitBlueprint, extra: &units::Extra, extra_weapons: &[&crate::unit::WeaponBlueprint], shown: Vec<Vec<String>>, put: &mut dyn FnMut(&str, &[u8]) -> Result<()>) -> Result<std::result::Result<Option<[f64; 2]>, String>> {
+fn unit(files: &Files, u: &UnitBlueprint, extra: &units::Extra, extra_weapons: &[&crate::unit::WeaponBlueprint], shown: Vec<Vec<String>>, unpack_sounds: &std::collections::BTreeMap<String, (Option<String>, Option<String>)>, put: &mut dyn FnMut(&str, &[u8]) -> Result<()>) -> Result<std::result::Result<Option<[f64; 2]>, String>> {
     let read = match read(files, u, extra.upgrades_to.is_some()) {
         Ok(r) => r,
         Err(why) => return Ok(Err(why)),
@@ -327,7 +372,11 @@ fn unit(files: &Files, u: &UnitBlueprint, extra: &units::Extra, extra_weapons: &
     let worked: Vec<u32> = clips.clips.iter().filter(|c| matches!(c.name.as_str(), ta_formats::anims::ACTIVE | ta_formats::anims::OPEN)).flat_map(|c| c.pieces.iter().copied()).collect();
     let unpacks = slots
         .iter()
-        .map(|w| unpacking(w, &read.unpacks, mesh, &near.bones, u.display.uniform_scale * UNIT_SCALE).and_then(|up| up.leaving_out(&worked)))
+        .map(|w| {
+            let up = unpacking(w, &read.unpacks, mesh, &near.bones, u.display.uniform_scale * UNIT_SCALE).and_then(|up| up.leaving_out(&worked))?;
+            let sounds = unpack_sounds.get(&units::weapon_name(u, w)).cloned().unwrap_or_default();
+            Some(script::Unpacking { sounds, ..up })
+        })
         .collect();
     let plan = script::Plan {
         unit: u,
@@ -356,7 +405,7 @@ pub fn unpacking(w: &crate::unit::WeaponBlueprint, animations: &[(String, sca::A
     let (_, animation) = animations.iter().find(|(p, _)| p == path)?;
     let clips = anims::anims(mesh, pieces, pixels, None, &[], &[anims::Work { name: "unpack", animation, rate: u.rate, cycle: false }]);
     let clip = clips.clips.into_iter().find(|c| c.name == "unpack")?;
-    Some(script::Unpacking { clip, repack_ms: (u.repack * 1000.0).round() as i32, locks_motion: u.locks_motion, after_launch: w.counted })
+    Some(script::Unpacking { clip, repack_ms: (u.repack * 1000.0).round() as i32, locks_motion: u.locks_motion, after_launch: w.counted, sounds: (None, None) })
 }
 
 #[cfg(test)]
@@ -414,11 +463,13 @@ mod tests {
                  Physics = { MotionType = 'RULEUMT_Land', MaxSpeed = 1.9, TurnRate = 120 }, Display = { UniformScale = 0.05, Mesh = { LODs = { { ShaderName = 'Seraphim' } } } }")),
             ("UEL0201", blueprint("'MOBILE', 'LAND', 'TECH1', 'DIRECTFIRE', 'BUILTBYTIER1FACTORY', 'BUILTBYTIER2FACTORY'", &format!(
                 "Defense = {{ MaxHealth = 300 }}, Economy = {{ BuildCostMass = 56, BuildCostEnergy = 266, BuildTime = 280 }}, Physics = {{ MotionType = 'RULEUMT_Land', MaxSpeed = 3.4, TurnRate = 90 }}, \
+                 Audio = {{ UISelection = Sound {{ Bank = 'UELWeapon', Cue = 'Late' }}, StartMove = Sound {{ Bank = 'UELWeapon', Cue = 'Gun' }}, AmbientMove = Sound {{ Bank = 'UELWeapon', Cue = 'Engine' }}, \
+                   Destroyed = Sound {{ Bank = 'UELWeapon', Cue = 'Layered' }}, StopMove = Sound {{ Bank = 'NoBank', Cue = 'Nothing' }}, DoneBeingBuilt = Sound {{ Bank = 'UELWeapon', Cue = 'Engine' }} }}, \
                  Weapon = {{ {} }}",
-                gun("MainGun", "DoTPulses = 3, DoTTime = 1", "/projectiles/Frag/Frag_proj.bp")
+                gun("MainGun", "DoTPulses = 3, DoTTime = 1, Audio = { Fire = Sound { Bank = 'UELWeapon', Cue = 'Gun' }, BarrelLoop = Sound { Bank = 'UELWeapon', Cue = 'Engine' } }", "/projectiles/Frag/Frag_proj.bp")
             ))),
             ("UEB2305", blueprint("'STRUCTURE', 'TECH1', 'BUILTBYTIER1ENGINEER'",
-                "Economy = { BuildCostMass = 15000, BuildCostEnergy = 210000, BuildTime = 9000, BuildRate = 1080 }, \
+                "Economy = { BuildCostMass = 15000, BuildCostEnergy = 210000, BuildTime = 9000, BuildRate = 1080 }, Audio = { NuclearLaunchDetected = Sound { Bank = 'XGG', Cue = 'Alarm' } }, \
                  Weapon = { { Label = 'NukeMissiles', WeaponCategory = 'Missile', Damage = 0, MaxRadius = 20000, RateOfFire = 1, CountedProjectile = true, ManualFire = 1, \
                    NukeInnerRingDamage = 70000, NukeInnerRingRadius = 30, NukeOuterRingDamage = 500, NukeOuterRingRadius = 40, ProjectileId = '/projectiles/Nuke/Nuke_proj.bp' } }")),
             ("UEB4302", blueprint("'STRUCTURE', 'TECH1', 'BUILTBYTIER1ENGINEER'",
@@ -440,6 +491,7 @@ mod tests {
                 "Economy = { BuildCostMass = 60, BuildCostEnergy = 600, BuildTime = 120, MaintenanceConsumptionPerSecondEnergy = 20 }, Intel = { RadarRadius = 115, VisionRadius = 20 }")),
             ("UEL0111", blueprint("'MOBILE', 'LAND', 'TECH2', 'INDIRECTFIRE', 'BUILTBYTIER1FACTORY'",
                 "Economy = { BuildCostMass = 200, BuildCostEnergy = 1500, BuildTime = 1000 }, Physics = { MotionType = 'RULEUMT_Land', MaxSpeed = 2.8, TurnRate = 60 }, \
+                 Audio = { Unpack = Sound { Bank = 'UELWeapon', Cue = 'Gun' }, Pack = Sound { Bank = 'UELWeapon', Cue = 'Late' } }, \
                  Weapon = { { Label = 'MissileWeapon', WeaponCategory = 'Missile', Damage = 300, MaxRadius = 60, RateOfFire = 0.1, MuzzleVelocity = 3, Turreted = false, \
                    RackBones = { { RackBone = 'Turret_Barrel', MuzzleBones = { 'Turret_Barrel' } } }, ProjectileId = '/projectiles/Tactical/Tactical_proj.bp', \
                    FireTargetLayerCapsTable = { Land = 'Land|Water' }, WeaponUnpacks = true, WeaponUnpackAnimation = '/units/UEL0111/UEL0111_aopen.sca', \
@@ -535,7 +587,9 @@ mod tests {
         // The faction's emblem (a square with a hole in it).
         files.push((crate::banner::emblem_path("UEF").unwrap().into(), emblem::tests::icon(48, 12)));
         files.push(("projectiles/Shell/Shell_proj.bp".into(), projectile("'DIRECTFIRE'", "Physics = { InitialSpeed = 30 }").into_bytes()));
-        files.push(("projectiles/Frag/Frag_proj.bp".into(), projectile("'INDIRECTFIRE'", "Physics = { InitialSpeed = 30 }").into_bytes()));
+        files.push(("projectiles/Frag/Frag_proj.bp".into(), projectile("'INDIRECTFIRE'", "Physics = { InitialSpeed = 30 }, Audio = { Impact = Sound { Bank = 'UELWeapon', Cue = 'Late' } }").into_bytes()));
+        // (What the announcer says of a commander under attack, as the game's brain names it.)
+        files.push(("lua/aibrain.lua".into(), b"AIBrain = Class(Base) { OnPlayCommanderUnderAttackVO = function(self) local Voice = Sound { Bank = 'XGG', Cue = 'Alarm', } end, }".to_vec()));
         files.push(("projectiles/Frag/Frag_script.lua".into(), b"Frag = Class(Base) { OnImpact = function(self, t, e) local ChildProjectileBP = '/projectiles/Shell/Shell_proj.bp' \
             self:CreateChildProjectile(ChildProjectileBP) local numProjectiles = 4 for i = 0, (numProjectiles -1) do self:CreateChildProjectile(ChildProjectileBP) end end, }".to_vec()));
         files.push(("projectiles/Tactical/Tactical_proj.bp".into(), projectile("'TACTICAL', 'MISSILE'", "Economy = { BuildCostMass = 180, BuildCostEnergy = 3600, BuildTime = 300 }, Physics = { MaxSpeed = 12, TrackTarget = true }").into_bytes()));
@@ -557,10 +611,13 @@ mod tests {
         let units: Vec<UnitBlueprint> = crate::unit::catalogue(&files).unwrap().into_iter().filter(|u| u.playable()).collect();
         assert_eq!(units.len(), 16, "the station's next tier, made by upgrading alone, among them; not its drone");
         let palette = emblem::tests::palette();
+        // (The copy's sound banks: synthetic ones.)
+        let sounds = Some(dir.0.join("sounds"));
+        sounds::tests::sounds_folder(sounds.as_deref().unwrap());
         let run = || {
             let mut hash = Sha256::new();
             let mut paths: Vec<String> = Vec::new();
-            let made = make(&files, &units, Some(&palette), "test", &mut |path, bytes| {
+            let made = make(&files, &units, Some(&palette), sounds.as_deref(), "test", &mut |path, bytes| {
                 hash.update(path.as_bytes());
                 hash.update((bytes.len() as u64).to_le_bytes());
                 hash.update(bytes);
@@ -575,9 +632,12 @@ mod tests {
         // The tech 1 factory upgrades into the tech 2 one, which no builder builds.
         let mut texts: std::collections::BTreeMap<String, String> = Default::default();
         let mut emblems: Option<Vec<u8>> = None;
-        make(&files, &units, Some(&palette), "test", &mut |path, bytes| {
+        let mut truck: Option<Vec<u8>> = None;
+        make(&files, &units, Some(&palette), sounds.as_deref(), "test", &mut |path, bytes| {
             if path.ends_with(".fbi") || path.ends_with(".tdf") {
                 texts.insert(path.to_string(), String::from_utf8_lossy(bytes).into_owned());
+            } else if path == "scripts/uel0111.cob" {
+                truck = Some(bytes.to_vec());
             } else if path == emblem::path() {
                 emblems = Some(bytes.to_vec());
             }
@@ -632,6 +692,28 @@ mod tests {
         let amplified = weapons.section("UEL0001_RIGHTZEPHYR_HEAVYANTIMATTERCANNON").expect("the gun as amplified");
         assert_eq!(amplified.get("range"), Some("960"), "30 ogrids");
         assert!(weapons.section("UEL0001_MISSILE").is_some());
+        // Its sounds: the tank's own category (TA's tank's for the rest), its gun's and its shell's
+        // keys (its barrels' loop a loop), the missile truck's script playing its unpacking and
+        // packing, the announcer's alerts, the sets and their waves.
+        let table = ta_formats::tdf::parse(&texts[sounds::TABLE]);
+        let tank = table.section("SUPCOM_UEL0201").expect("the tank's category");
+        assert_eq!((tank.get("base"), tank.get("select1"), tank.get("startmove"), tank.get("moveloop"), tank.get("death")), (Some("ARM_TANK"), Some("FA_UELWEAPON_LATE"), Some("FA_UELWEAPON_GUN"), Some("FA_UELWEAPON_ENGINE"), Some("FA_UELWEAPON_LAYERED")));
+        assert!(tank.get("stopmove").is_none(), "a bank the copy has not");
+        assert!(tank.get("donebuilt").is_none(), "a loop is no one-shot");
+        assert!(texts["units/uel0201.fbi"].contains("SoundCategory=SUPCOM_UEL0201;") && texts["units/ueb0101.fbi"].contains("SoundCategory=TANKPLANT;"), "TA's for a unit with no sounds of its own");
+        let gun = weapons.section("UEL0201_MAINGUN").unwrap();
+        assert_eq!((gun.get("soundstart"), gun.get("soundloop"), gun.get("soundhit"), gun.get("soundwater"), gun.get("soundtrigger")), (Some("FA_UELWEAPON_GUN"), Some("FA_UELWEAPON_ENGINE"), Some("FA_UELWEAPON_LATE"), Some("FA_UELWEAPON_LATE"), None));
+        let alerts = table.section("ALERTS_UEF").expect("the announcer");
+        assert_eq!((alerts.get("commanderattacked"), alerts.get("nuclearlaunch")), (Some("FA_XGG_ALARM"), Some("FA_XGG_ALARM")));
+        let sets = table.section("SOUNDSETS").unwrap();
+        let fired = sets.sections.iter().find(|s| s.name == "FA_UELWEAPON_GUN").unwrap();
+        assert_eq!((fired.get("sound1"), fired.get("maxplaying"), fired.get("norepeat")), (Some("sounds/supcom/uelweapon/0000"), Some("3"), Some("1")));
+        assert!(sets.sections.iter().find(|s| s.name == "FA_UELWEAPON_ENGINE").unwrap().get("fadeout").is_some(), "a loop fades out");
+        assert!(paths.iter().any(|p| p == "sounds/supcom/uelweapon/0000.wav") && paths.iter().any(|p| p == "sounds/supcom/mix/uelweapon_layered_0.wav"));
+        assert_eq!(made.sounds, paths.iter().filter(|p| p.starts_with("sounds/")).count());
+        let truck = ta_formats::cob::CobScript::parse(&truck.expect("the truck's script")).unwrap();
+        assert_eq!(truck.sounds, ["FA_UELWEAPON_GUN", "FA_UELWEAPON_LATE"], "its unpacking's and its packing's");
+        assert!(!table.sections.iter().any(|s| s.name == "SUPCOM_UEL0111" && s.get("open").is_some()), "its opening in its script, not on its switch");
         // Its script shows the gun's barrel once amplified.
         // The factory's ways out to either side; the truck unpacks before it fires, holding still;
         // the tower shoots aircraft alone.
@@ -656,7 +738,7 @@ mod tests {
         let files = Files::of(Vec::new(), vec![crate::scd::Scd::open(&dir.0.join("units.scd")).unwrap()]);
         let units: Vec<UnitBlueprint> = crate::unit::catalogue(&files).unwrap().into_iter().filter(|u| u.playable()).collect();
         let mut written: std::collections::BTreeMap<String, Vec<u8>> = Default::default();
-        make(&files, &units, None, "test", &mut |path, bytes| {
+        make(&files, &units, None, None, "test", &mut |path, bytes| {
             written.insert(path.to_string(), bytes.to_vec());
             Ok(())
         }, &mut |_, _| true).unwrap();
@@ -710,7 +792,7 @@ mod tests {
         let files = Files::of(Vec::new(), vec![crate::scd::Scd::open(&dir.0.join("units.scd")).unwrap()]);
         let units: Vec<UnitBlueprint> = crate::unit::catalogue(&files).unwrap().into_iter().filter(|u| u.playable()).collect();
         let mut written: std::collections::BTreeMap<String, Vec<u8>> = Default::default();
-        make(&files, &units, None, "test", &mut |path, bytes| {
+        make(&files, &units, None, None, "test", &mut |path, bytes| {
             if path.starts_with("textures/") {
                 written.insert(path.to_string(), bytes.to_vec());
             }
@@ -764,7 +846,7 @@ mod tests {
         let files = Files::of(Vec::new(), vec![crate::scd::Scd::open(&dir.0.join("units.scd")).unwrap()]);
         let units: Vec<UnitBlueprint> = crate::unit::catalogue(&files).unwrap();
         let mut written: Vec<String> = Vec::new();
-        let made = make(&files, &units, None, "test", &mut |path, _| {
+        let made = make(&files, &units, None, None, "test", &mut |path, _| {
             written.push(path.to_string());
             Ok(())
         }, &mut |_, _| true).unwrap();

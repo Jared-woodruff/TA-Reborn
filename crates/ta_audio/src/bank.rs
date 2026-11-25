@@ -101,8 +101,10 @@ impl SoundBank {
 
     fn load_path(&self, path: &str) -> Result<SoundData> {
         let bytes = self.source.read(path).ok_or_else(|| AudioError::NotFound(path.to_string()))?;
-        let mut decoded =
-            decode::decode(&bytes).map_err(|source| AudioError::Decode { path: path.to_string(), source })?;
+        // (The battle's sounds keep a mono Ogg or FLAC mono, so that it pans; spoken lines
+        // elsewhere, the tutorial's, play at both speakers as before.)
+        let mut decoded = decode::decode_with(&bytes, path.starts_with("sounds/"))
+            .map_err(|source| AudioError::Decode { path: path.to_string(), source })?;
         if decoded.format != decode::SourceFormat::Wav(decode::WavCodec::Pcm { bits: 8 }) {
             log::debug!("{path}: {}", decoded.format);
         }

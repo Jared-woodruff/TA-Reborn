@@ -186,7 +186,11 @@ original game's).
   sounds; features to their models, the animations the game draws (the animation, the burning
   one and the shadow; not TA's burn shadow, death and reclaim animations, which it never reads)
   and replacements; sound categories to their sounds, by the keys the game plays (`select1`,
-  `ok2`… `count0` to `count9`; a repeated key's last value; not `load` and the like); build menus (`download/` menus, and the production pages the
+  `ok2`… `count0` to `count9`, TA Reborn's `death`, `moveloop`…; a repeated key's last value; not
+  `load` and the like), the sound add-ons' (`gamedata/sound_<name>.tdf`) laid over TA's table as
+  the game lays them, a name naming a sound set to the set and the set to its files (a set that
+  plays nothing, or a key of it not read as written: `sound.set`), a category's `base` and a
+  side's `alerts` to their categories (docs/MODDING.md, "Sounds"); build menus (`download/` menus, and the production pages the
   game reads: a builder's `guis/<name>1.gui`, 2, 3… to the first missing page; a builder being a
   unit with build power, `WorkerTime`, whatever its Builder flag, as the game has it: the mods'
   silos list missile buttons for their computer players, which build nothing) and the computer

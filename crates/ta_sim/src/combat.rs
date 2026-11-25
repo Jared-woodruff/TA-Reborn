@@ -1645,7 +1645,10 @@ impl Sim {
             hits: Vec::new(),
             dead: false,
         });
-        self.events.push(SimEvent::WeaponFired { unit: id, weapon: w.id, pos: muzzle, target: tp });
+        // (Whether it is its burst's first shot: for the sound a burst plays once. Read, never
+        // changed: display only.)
+        let burst_start = self.unit(id).is_none_or(|u| u.weapons[slot].burst_left == 0);
+        self.events.push(SimEvent::WeaponFired { unit: id, weapon: w.id, pos: muzzle, target: tp, burst_start });
         // A stun that goes off round its unit as it fires (`paralyzeonfire`: the Chrono Dampener).
         if w.stun.is_some_and(|s| s.on_fire)
             && let Some(at) = self.unit(id).map(|u| u.pos)
@@ -1689,7 +1692,7 @@ impl Sim {
     /// [`Sim::explode`], `when` (0 to 1) through the tick: where a projectile met what it hit.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn explode_at(&mut self, w: &WeaponType, pos: FxVec3, source: UnitId, source_player: Option<u8>, direct: Option<UnitId>, water: bool, spare_flyers: bool, spare_side: Option<u8>, when: Fx) {
-        self.events.push(SimEvent::Explosion { weapon: w.id, pos, water, when, player: source_player });
+        self.events.push(SimEvent::Explosion { weapon: w.id, pos, water, when, player: source_player, death_of: None });
         let r = w.aoe_radius;
         let mut near = std::mem::take(&mut self.scratch);
         self.grid.query(pos, r + self.types.collision_reach, &mut near);
@@ -1921,9 +1924,14 @@ impl Sim {
                     (true, _) => &t.def.explode_as,
                 };
                 if let Some(w) = weapons.by_name(boom) {
+                    let at = self.events.len();
                     self.explode(w, pos + FxVec3::new(Fx::ZERO, Fx::from_int(4), Fx::ZERO), id, None, false, in_flight, None);
+                    // (Whose death it is, for its own death sound: display only.)
+                    if let Some(SimEvent::Explosion { death_of, .. }) = self.events.get_mut(at) {
+                        *death_of = Some(t.id);
+                    }
                 } else {
-                    self.events.push(SimEvent::UnitExploded { id, pos, big: t.footprint.0 * t.footprint.1 >= 9 });
+                    self.events.push(SimEvent::UnitExploded { id, pos, big: t.footprint.0 * t.footprint.1 >= 9, type_id: t.id });
                 }
                 // Builders working on this unit stop; factories release it.
                 self.stop_builders_of(id, &jobs);

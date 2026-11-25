@@ -24,6 +24,7 @@
 //! # Ok(()) }
 //! ```
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::thread::JoinHandle;
@@ -32,7 +33,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::Result;
 use crate::bank::{SoundBank, sound_path};
-use crate::categories::{SoundCategory, SoundEvent};
+use crate::categories::{SoundCategory, SoundEvent, SoundSets};
 use crate::mixer::{Command, DECKS, Event, MixBus, Mixer, MixerStats};
 use crate::music::{Mood, MusicAction, MusicConfig, MusicPlayer};
 use crate::output::{self, DeviceOutput, OutputInfo};
@@ -118,6 +119,13 @@ pub struct PlayParams {
     pub merge: bool,
     /// What the sound is, for the log of what plays ([`AudioEngine::take_log`]).
     pub kind: SoundKind,
+    /// How far it is heard, against an ordinary sound's 1 ([`crate::spatialize_within`]).
+    pub radius: f32,
+    /// The sound set it was played through (its [`crate::SoundSet::group`]; 0: none): its
+    /// requests merge with each other whichever variant they play, and at most `cap` of them are
+    /// heard at once (0: no cap).
+    pub group: u32,
+    pub cap: u16,
 }
 
 impl Default for PlayParams {
@@ -131,8 +139,22 @@ impl Default for PlayParams {
             looping: false,
             merge: true,
             kind: SoundKind::World,
+            radius: 1.0,
+            group: 0,
+            cap: 0,
         }
     }
+}
+
+/// What a request played: its handle, and the level and rate it plays at (a sound set's picked
+/// among its ranges, times the request's), for a loop the game then changes as it goes on.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Played {
+    pub handle: SoundHandle,
+    pub volume: f32,
+    pub pitch: f32,
+    /// Seconds it fades out over when stopped ([`crate::SoundSet::fade_out`]; 0: the engine's).
+    pub fade_out: f32,
 }
 
 impl PlayParams {
@@ -173,6 +195,10 @@ impl PlayParams {
 
     pub fn kind(self, kind: SoundKind) -> PlayParams {
         PlayParams { kind, ..self }
+    }
+
+    pub fn radius(self, radius: f32) -> PlayParams {
+        PlayParams { radius, ..self }
     }
 }
 
@@ -387,6 +413,10 @@ pub struct AudioEngine {
     clock: f64,
     next_reopen: f64,
     rng: Rng,
+    /// The sound sets names play through ([`AudioEngine::set_sound_sets`]), and the variant each
+    /// played last (by its group: `norepeat`).
+    sets: Arc<SoundSets>,
+    last_variant: HashMap<u32, usize>,
 }
 
 impl std::fmt::Debug for AudioEngine {
@@ -461,6 +491,8 @@ impl AudioEngine {
             clock: 0.0,
             next_reopen: 0.0,
             rng: Rng::from_time(),
+            sets: Arc::new(SoundSets::default()),
+            last_variant: HashMap::new(),
         }
     }
 
@@ -512,15 +544,69 @@ impl AudioEngine {
         &self.listener
     }
 
-    /// Plays a sound by TA name (`"xplolrg1"`) or VFS path. Returns [`SoundHandle::NONE`] when
-    /// nothing plays: the engine is silent, the sound is missing, it would be inaudible, or
-    /// every voice is taken by more important sounds. A request merged by the anti-spam rule
-    /// returns the handle of the voice it joined.
+    /// The sound sets names play through from now on (the sound tables',
+    /// [`crate::SoundCategories::sets`]): a name naming one plays one of its variants as it says,
+    /// any other a file, as in TA.
+    pub fn set_sound_sets(&mut self, sets: Arc<SoundSets>) {
+        self.sets = sets;
+        self.last_variant.clear();
+    }
+
+    pub fn sound_sets(&self) -> &Arc<SoundSets> {
+        &self.sets
+    }
+
+    /// Plays a sound by TA name (`"xplolrg1"`), VFS path or sound set's name. Returns
+    /// [`SoundHandle::NONE`] when nothing plays: the engine is silent, the sound is missing, it
+    /// would be inaudible, or every voice is taken by more important sounds. A request merged
+    /// by the anti-spam rule returns the handle of the voice it joined.
     pub fn play(&mut self, name: &str, params: PlayParams) -> SoundHandle {
+        self.play_detailed(name, params).handle
+    }
+
+    /// [`AudioEngine::play`], with the level and rate it plays at: a sound set's (one of its
+    /// variants, picked by its weights with the engine's own random numbers, never the one before
+    /// with `norepeat`; a level and rate within its ranges, its priority, radius and cap) times
+    /// the request's.
+    pub fn play_detailed(&mut self, name: &str, params: PlayParams) -> Played {
+        let (file, params, fade_out) = self.resolve(name, params);
+        let handle = self.play_file(&file, params);
+        Played { handle, volume: params.volume, pitch: params.pitch, fade_out }
+    }
+
+    /// The file a name plays and how: through its sound set where it names one.
+    fn resolve(&mut self, name: &str, mut params: PlayParams) -> (String, PlayParams, f32) {
+        let Some(set) = self.sets.get(name) else { return (name.to_string(), params, 0.0) };
+        let last = self.last_variant.get(&set.group).copied();
+        let Some(pick) = set.pick(self.rng.next_u64() as u32, last) else { return (String::new(), params, 0.0) };
+        self.last_variant.insert(set.group, pick);
+        let unit = |r: &mut Rng| (r.next_u64() >> 40) as f32 / (1u64 << 24) as f32;
+        params.volume *= set.volume_at(unit(&mut self.rng));
+        params.pitch *= set.pitch_at(unit(&mut self.rng));
+        if let Some(priority) = set.priority {
+            params.priority = priority;
+        }
+        params.radius *= set.radius;
+        params.group = set.group;
+        params.cap = set.max_playing;
+        (set.variants[pick].0.clone(), params, set.fade_out)
+    }
+
+    fn play_file(&mut self, name: &str, params: PlayParams) -> SoundHandle {
         let Some(active) = self.backend.as_mut() else { return SoundHandle::NONE };
+        if name.is_empty() {
+            return SoundHandle::NONE;
+        }
         let Some(sound) = self.bank.get(name) else { return SoundHandle::NONE };
         let path = sound_path(name);
         self.voices.play(&path, sound, params, &self.listener, &self.settings.spatial, &mut active.commands)
+    }
+
+    /// A variant of `event` from `category`, picked with the engine's own random numbers (none
+    /// where it has none).
+    pub fn pick(&mut self, category: &SoundCategory, event: SoundEvent) -> Option<String> {
+        let random = self.rng.next_u64() as u32;
+        category.pick(event, random).map(str::to_string)
     }
 
     /// Interface sound (clicks, alerts): non-positional, never displaced by effects.
@@ -560,12 +646,17 @@ impl AudioEngine {
 
     /// Stops a sound with a short fade.
     pub fn stop(&mut self, handle: SoundHandle) {
+        self.stop_with_fade(handle, 0.0);
+    }
+
+    /// Stops a sound fading out over `seconds` (at least the engine's own short fade).
+    pub fn stop_with_fade(&mut self, handle: SoundHandle, seconds: f32) {
         let mut discard = Vec::new();
         let sink: &mut dyn CommandSink = match self.backend.as_mut() {
             Some(a) => &mut a.commands,
             None => &mut discard,
         };
-        self.voices.stop(handle, sink);
+        self.voices.stop_fading(handle, seconds as f64, sink);
     }
 
     /// Stops every sound effect and voice (music continues).
@@ -955,6 +1046,91 @@ mod tests {
         let many = rms(&render(&mut spam, 0.3));
         assert!((many / one - 1.5).abs() < 0.05, "merged level {}", many / one);
         assert_eq!(spam.stats().voices.merged, 49);
+    }
+
+    /// The sets of a table, as the game gives them to its engine.
+    fn with_sets(e: &mut AudioEngine, table: &str) {
+        let sets = crate::SoundCategories::parse(table.as_bytes()).sets().clone();
+        e.set_sound_sets(sets);
+    }
+
+    /// A set's name plays one of its files, at a level and rate within its ranges; any other
+    /// name a file, as in TA; a set with no variants nothing.
+    #[test]
+    fn a_sets_name_plays_one_of_its_variants() {
+        let mut e = engine();
+        e.set_logging(true);
+        with_sets(&mut e, "[SOUNDSETS]\n{\n[SHOT]\n{\nsound1=laser;\nsound2=click;\nvolume=0.5 0.6;\npitch=1.5 2;\nnorepeat=1;\n}\n[EMPTY]\n{\nvolume=1;\n}\n}\n");
+        let mut files = std::collections::BTreeSet::new();
+        for i in 0..12 {
+            let played = e.play_detailed("shot", PlayParams::at([1000.0 + 20.0 * i as f32, 0.0, 1000.0], 1.0).merge(false));
+            assert!(!played.handle.is_none());
+            assert!((0.5..=0.6).contains(&played.volume) && (1.5..=2.0).contains(&played.pitch), "{played:?}");
+            render(&mut e, 0.25);
+        }
+        for event in e.take_log() {
+            if let PlayEvent::Start(s) = event {
+                files.insert(s.path);
+            }
+        }
+        assert_eq!(files.into_iter().collect::<Vec<_>>(), ["sounds/click.wav", "sounds/laser.wav"], "both variants, never one twice running");
+        assert!(!e.play_at("boom", [1000.0, 0.0, 1000.0], 1.0).is_none(), "a file");
+        assert!(e.play_at("empty", [1000.0, 0.0, 1000.0], 1.0).is_none(), "a set of no variants plays nothing");
+    }
+
+    /// A set's cap: as many as it says heard at once, a nearer one taking the farthest's place
+    /// and a farther one not played; its loops past the cap parked, back when one stops.
+    #[test]
+    fn a_sets_cap_keeps_its_nearest() {
+        let mut e = engine();
+        with_sets(&mut e, "[SOUNDSETS]\n{\n[BANG]\n{\nsound=boom;\nmaxplaying=2;\n}\n[HUM]\n{\nsound=boom;\nmaxplaying=1;\n}\n}\n");
+        let at = |x: f32| PlayParams::at([1000.0 + x, 0.0, 1000.0], 1.0).merge(false);
+        let near = e.play("bang", at(0.0));
+        let mid = e.play("bang", at(500.0));
+        assert!(!near.is_none() && !mid.is_none());
+        assert!(e.play("bang", at(800.0)).is_none(), "farther than both: not played");
+        let nearer = e.play("bang", at(100.0));
+        assert!(!nearer.is_none() && !e.is_playing(mid), "the farthest gave way");
+        assert_eq!(e.stats().voices.stolen, 1);
+        assert!(!e.play("boom", at(800.0)).is_none(), "the file itself is no set: no cap");
+        let first = e.play("hum", at(0.0).looping(true));
+        let second = e.play("hum", at(300.0).looping(true));
+        assert!(e.is_audible(first) && e.is_playing(second) && !e.is_audible(second), "parked past the cap");
+        e.stop(first);
+        render(&mut e, 0.05);
+        assert!(e.is_audible(second), "back once there is room");
+    }
+
+    /// A set's requests merge whichever variant each picks; its radius carries it farther.
+    #[test]
+    fn a_set_merges_as_one_sound_and_carries_by_its_radius() {
+        let mut e = engine();
+        with_sets(&mut e, "[SOUNDSETS]\n{\n[VOLLEY]\n{\nsound1=laser;\nsound2=click;\n}\n[FAR]\n{\nsound=boom;\nradius=3;\n}\n}\n");
+        let handles: Vec<SoundHandle> = (0..20).map(|i| e.play_at("volley", [1000.0 + i as f32, 0.0, 1000.0], 1.0)).collect();
+        assert!(handles.windows(2).all(|w| w[0] == w[1]), "one sound");
+        assert_eq!(e.stats().voices.merged, 19);
+        assert!(e.play_at("boom", [3000.0, 0.0, 1000.0], 1.0).is_none(), "out of earshot");
+        assert!(!e.play_at("far", [3000.0, 0.0, 1000.0], 1.0).is_none(), "heard three times as far");
+    }
+
+    /// A loop stopped with a fade fades out over it (in the log too); a plain stop, a moment.
+    #[test]
+    fn a_stop_fades_out_over_its_time() {
+        let mut e = engine();
+        e.set_logging(true);
+        let hum = e.play("boom", PlayParams::ui(0.5).looping(true));
+        render(&mut e, 0.05);
+        e.stop_with_fade(hum, 0.3);
+        let click = e.play("boom", PlayParams::ui(0.5).looping(true));
+        e.stop(click);
+        let fades: Vec<f32> = e.take_log().into_iter().filter_map(|ev| match ev {
+            PlayEvent::Stop { fade, .. } => Some(fade),
+            _ => None,
+        }).collect();
+        assert_eq!(fades, [0.3, 0.01]);
+        assert!(rms(&render(&mut e, 0.1)) > 0.01, "still fading");
+        render(&mut e, 0.25);
+        assert_eq!(rms(&render(&mut e, 0.1)), 0.0, "faded out");
     }
 
     #[test]

@@ -478,14 +478,14 @@ Paths are read in any case.
 | `unitpics/` | `<unitname>.pcx` build pictures | |
 | `weapons/` | `*.tdf` weapon definitions, any number to a file | Top level only |
 | `features/` | `*.tdf` feature definitions | Any depth; a subfolder names the world (`features/<world>/`) |
-| `gamedata/` | `sidedata.tdf` (sides, `[CANBUILD]`), `sidedata_<name>.tdf` ([side add-ons](#sides-of-a-mods-own)), `moveinfo.tdf` (movement classes), `sound.tdf` (sound categories) | |
+| `gamedata/` | `sidedata.tdf` (sides, `[CANBUILD]`), `sidedata_<name>.tdf` ([side add-ons](#sides-of-a-mods-own)), `moveinfo.tdf` (movement classes), `sound.tdf` (sound categories), `sound_<name>.tdf` ([sound add-ons](#sounds): categories and sound sets) | |
 | `guis/` | `*.gui` pages: builders' menus (`<builder><n>.gui`), the side panel's | Top level only |
 | `download/` | `*.tdf` entries putting units on builders' menus | Top level only |
 | `anims/` | `*.gaf`: effects, explosions, build buttons' art, sides' emblems ([`logogaf`](#sides-of-a-mods-own)) | |
 | `textures/` | `*.gaf` textures the models paint with; the `*.dds` textures surfaces name (anywhere) | |
 | `maps/` | `<map>.ota` with its `<map>.tnt` | Top level only; a map without its `.tnt` is left out |
 | `camps/` | Campaigns and their missions | |
-| `sounds/` | `*.wav` sounds | |
+| `sounds/` | `*.wav` sounds (`*.ogg` and `*.flac` too: [sounds](#sounds)) | Any depth: a name with a folder is a path |
 | `music/` | Music tracks | A track named as the install names its own (`music/7.mp3` in GOG's copy) replaces it |
 | `palettes/`, `fonts/`, `bitmaps/` | The palette, fonts, interface pictures | |
 
@@ -914,6 +914,106 @@ are found by their names. Where the entry named is not there, a side has TA's by
 for a name beginning ARM, Core's for one beginning COR), else TA's plain square of the player's
 colour (`32xlogos`). The Supreme Commander factions name theirs in their mod's own GAF
 (`logogaf=supcomlogos; logo=UEF32Lt;`).
+
+#### Sounds
+
+A unit's `SoundCategory` names a section of the **sound tables**: TA's `gamedata/sound.tdf`, and
+after it the **sound add-ons**, `gamedata/sound_<name>.tdf` (any name after `sound_`), read in the
+order of their paths. An add-on adds categories without taking TA's table from the other mods:
+a category of a name before it is laid over that one key by key (its keys in place of those of
+their names, the others kept), so an add-on may give TA's `ARM_TANK` a `death` and leave its
+replies alone. A mod's own `gamedata/sound.tdf` still takes the place of TA's whole table.
+
+A category's keys, each with or without a variant number (`select1`, `select2`: one picked at
+random each time):
+
+| Key | When it plays | Where |
+| --- | --- | --- |
+| `select`, `ok`, `arrived`, `cant` | The player selects the unit, gives it an order, it ends a move order it was given (near where it was sent), it cannot do as told. UNIT REPLIES off silences them | Over the battle (voice) |
+| `underattack` | One of the player's units under fire (at most one alert every ten seconds) | Over the battle (an alert) |
+| `build`, `repair`, `working` | It starts building, mending, reclaiming | Where it is |
+| `activate`, `deactivate` | The player switches it on or off | Where it is |
+| `unitcomplete` | A factory's unit of the player's done | Over the battle (voice) |
+| `cloak`, `uncloak`, `capture` | Its cloak takes effect or drops; the player's commander captures a unit | Over the battle (voice) |
+| `count5` … `count0`, `canceldestruct` | Its self-destruct countdown, and the countdown called off | Over the battle (voice) |
+| `death` | It dies: in place of its blast's sound (its `ExplodeAs` weapon's `soundhit`, or TA's generic blast without one) | Where it is |
+| `crash`, `sink`, `collapse` | What is left of it hits the ground falling out of the sky, starts to sink, a building comes down (TA's `xplomed2` / `xplolrg1`, `xplosml2`, `xplobld1` without them) | Where it is |
+| `startmove`, `stopmove`, `moveloop` | It sets off, comes to a stop, and on its way: a loop, louder and higher the faster it goes. An aircraft's loop plays while it flies | Following it |
+| `takeoff`, `landing` | An aircraft leaves the ground, sets down (`startmove` and `stopmove` where it gives neither) | Where it is |
+| `buildloop`, `reclaimloop`, `captureloop` | While it builds (a factory too), reclaims, captures: a loop | Following it |
+| `buildstop`, `reclaimstop`, `capturestop` | As it stops that work | Where it is |
+| `donebuilt` | It is done, anyone's in sight | Where it is |
+| `activeloop`, `open`, `close` | While it is on and at work (finished, its upkeep paid): a loop; as it comes on and goes off | Where it is |
+| `shieldon`, `shieldoff` | Its shield comes up and goes down (none yet: TA Reborn plays no shields) | Where it is |
+| `base` | The category it takes every key it does not give from (and that one's `base`, in turn): a unit of its own sounds keeps TA's replies and countdown with `base=ARM_TANK;` | |
+
+The loops play for the units nearest the view alone (eight moving, six at work, six buildings at
+work), at a low priority, so that a battle of a thousand units leaves the voices to its guns and
+blasts; each stops as its unit dies, goes out of sight or out of earshot, and with the scene.
+
+A **sound set** is a section of a sound table's `[SOUNDSETS]` section. Its name goes wherever a
+sound's file name does (a category's keys, a weapon's sound keys, a script's sounds): it plays one
+of its variants, as the set says. A name no set has names a file, as in TA (`sounds/<name>.wav`;
+a name with a folder is a path from the top of the game's files). A set's variants are files.
+
+```text
+[SOUNDSETS]
+	{
+	[TANK_FIRE]
+		{
+		sound1=tank_fire1;        // its variants: sounds/tank_fire1.wav...
+		sound2=tank_fire2;
+		weight2=2;                // a variant's chance against the others' (1 where not given)
+		volume=0.7 1;             // its level, or a level at random between two (1: as recorded)
+		pitch=0.95 1.05;          // its playback rate, or one at random between two (2: an octave up)
+		priority=normal;          // low, normal or high: when voices run out, the lower give way
+		radius=1.5;               // how far it is heard, against an ordinary sound's 1
+		maxplaying=3;             // at most this many heard at once
+		norepeat=1;               // never the same variant twice running
+		fadeout=0.3;              // a loop of it fades out over so many seconds as it stops
+		}
+	}
+```
+
+A set's requests in one moment and place are one sound, as a file's are (twenty tanks firing in
+one tick make one shot's sound, a little louder), whichever variants they pick. Past
+`maxplaying`, a new one takes the place of the weakest of the set's (the farthest, the quietest)
+where it is louder, and does not play otherwise; a loop past it waits silent for room. A set of
+a name before it, in the same table or an earlier one, is replaced whole.
+
+A weapon's sound keys:
+
+| Key | What it plays |
+| --- | --- |
+| `soundstart` | As a shot leaves: every shot, or once a burst, as its first shot leaves, with `soundtrigger=1` (TA's own EMGs: their sound holds the burst) |
+| `soundstartwater` | In place of `soundstart` for a shot leaving from under the water |
+| `soundloop`, `soundstop` | On from its first shot while the shots keep coming (a beam's hum, a gatling's barrels), stopped once none has come for its reload and a moment more, or as its unit dies; `soundstop` as it stops |
+| `soundhit`, `soundwater` | Where its shot lands, on land and on the water |
+
+A unit's script plays a sound with `play-sound`: its number among the script's sounds, the table
+TA: Kingdoms' scripts (COB version 6) carry after the pieces'; TA's own scripts have none. Each
+is a sound's name (a set's or a file's), played where the unit is.
+
+**A side's announcer.** A side's alerts are a sound category, named in its side section
+(`alerts=MY_ALERTS;`) or, where it names none, the category `ALERTS_<side name>` (`ALERTS_UEF`)
+of the sound tables: a sound add-on may give TA's sides theirs. Its keys, played over the battle
+for the player of that side: `commanderattacked` (their commander under fire, in place of its
+`underattack`) and `nuclearlaunch` (a strategic missile launched by anyone, at most once every
+five seconds). TA's sides have none and keep their sounds.
+
+**Formats.** A sound is a RIFF WAVE file (PCM of 8 to 32 bits, float, IMA or Microsoft ADPCM,
+A-law or µ-law), an Ogg Vorbis file or a FLAC file; a mono Ogg or FLAC sound of `sounds/` stays
+mono, so it pans with where it plays (TA's own are all mono WAVs). The check judges each as the
+game's decoder reads it.
+
+**Online,** the sound tables and the sounds are no part of what the players' computers compare:
+a mod of sounds alone keeps nobody out of a battle. (A weapon's file holds its sound keys with
+its figures: those are compared, as before.)
+
+The check reads the sound add-ons as the game lays them over TA's table: a name naming a set
+reaches the set and the set its files; a set that plays nothing (no `sound1=`, every weight 0),
+or a key of it the game does not read as written, is told (`sound.set`); so are a category's
+`base` and a side's `alerts` that name no category.
 
 #### Campaigns and missions
 
@@ -1602,6 +1702,7 @@ names the mod's folder (an absolute path, with its `mod.toml`):
 | Layers, archive precedence, renamed folders | `crates/ta_vfs/src/lib.rs` |
 | Installing packages | `crates/ta_vfs/src/package.rs` |
 | Units, weapons, features, sides, build menus | `crates/ta_data/src/lib.rs`, `crates/ta_data/src/unit.rs` |
+| Sound tables, add-ons, sets and keys; the engine's caps and reach; units heard as they go | `crates/ta_audio/src/categories.rs`, `crates/ta_audio/src/voices.rs`, `apps/ta_game/src/audio.rs`, `apps/ta_game/src/audio/units.rs` |
 | The mod check | `crates/ta_data/src/validation.rs`, `apps/ta_launcher/src/validation.rs` |
 | A mod's presentation: its pictures, preview and links, and their check | `crates/ta_vfs/src/mods.rs` (`Media`), `apps/ta_launcher/src/mod_media.rs`, `crates/ta_data/src/presentation.rs` |
 | A mod's interface theme: the palette, applying it in battle (the HUD alone: `hud`, `reborn`), its check | `crates/ta_vfs/src/mods.rs` (`Theme`), `crates/ta_ui/src/theme.rs` (`Palette`, `hud`), `apps/ta_game/src/mod_theme.rs`, `apps/ta_game/src/hud_skin.rs`, `crates/ta_data/src/presentation.rs` |

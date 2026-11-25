@@ -26,6 +26,8 @@ pub struct MusicDecoder {
     sample_rate: u32,
     time_base: Option<TimeBase>,
     total_frames: Option<u64>,
+    /// The channels the file holds, as its stream says (none said: as decoded).
+    channels: Option<usize>,
     buffer: Option<SampleBuffer<f32>>,
     /// Corrupt packets skipped so far.
     skipped_packets: u32,
@@ -97,9 +99,15 @@ impl MusicDecoder {
             sample_rate,
             time_base: params.time_base,
             total_frames: params.n_frames,
+            channels: params.channels.map(|c| c.count()),
             buffer: None,
             skipped_packets: 0,
         })
+    }
+
+    /// The channels the file holds, where its stream says (1: mono).
+    pub fn channels(&self) -> Option<usize> {
+        self.channels
     }
 
     pub fn sample_rate(&self) -> u32 {
@@ -182,6 +190,19 @@ impl MusicDecoder {
             return Ok(true);
         }
     }
+}
+
+/// Decodes a whole short sound of a format music comes in (Ogg Vorbis, FLAC) at its native
+/// sample rate: as stereo, or, `keep_mono` and the file mono, as mono (a sound of the battle that
+/// pans where it is).
+pub fn decode_sound(bytes: Vec<u8>, extension: Option<&str>, keep_mono: bool) -> Result<SoundData, AudioError> {
+    let mono = keep_mono && MusicDecoder::open(bytes.clone(), extension).is_ok_and(|d| d.channels() == Some(1));
+    let stereo = decode_music(bytes, extension)?;
+    if !mono {
+        return Ok(stereo);
+    }
+    let left: Vec<f32> = stereo.samples().as_chunks::<2>().0.iter().map(|f| f[0]).collect();
+    SoundData::new(stereo.sample_rate(), 1, left).map_err(|e| AudioError::Music(e.to_string()))
 }
 
 /// Decodes a whole music file to stereo PCM at its native sample rate.

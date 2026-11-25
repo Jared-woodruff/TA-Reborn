@@ -606,6 +606,7 @@ mod tests {
             pieces: names.iter().map(|n| n.to_string()).collect(),
             code,
             static_var_count: 0,
+            sounds: Vec::new(),
         };
         ta_sim::cob::CobProgram::new(script, &names.iter().map(|n| n.to_string()).collect::<Vec<_>>())
     }

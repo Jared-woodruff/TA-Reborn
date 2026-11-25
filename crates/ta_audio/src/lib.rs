@@ -14,10 +14,16 @@
 //!   `gamedata/sound.tdf` (120 sections) holding `select1`, `ok1`, `arrived1`, `cant1`,
 //!   `underattack`, `build`, `repair`, `working`, `activate`, `deactivate`, `unitcomplete`,
 //!   `cloak`, `uncloak`, `capture`, `count0`..`count5` (self-destruct countdown) and
-//!   `canceldestruct`. See [`categories`].
+//!   `canceldestruct`. TA Reborn reads more: sound add-ons (`gamedata/sound_<name>.tdf`) laid over
+//!   that table, keys of its own (a unit's death, moves, work loops, alerts...) and sound sets
+//!   ([`SoundSet`]: variants, ranges of level and pitch, a reach and a cap), which the engine
+//!   plays wherever a name names one ([`AudioEngine::set_sound_sets`]). See [`categories`] and
+//!   docs/MODDING.md, "Sounds".
 //! * **Interface sounds**: `gamedata/allsound.tdf` maps UI events to `sound=` names.
 //! * **Weapons**: `soundstart` (fire), `soundhit` (impact), `soundwater` (water impact) and
-//!   `soundtrigger=1` (repeat the fire sound for every shot of a burst).
+//!   `soundtrigger=1` (the fire sound once a burst, as its first shot leaves: the EMGs' sound,
+//!   `armsml2`, holds their whole burst); TA Reborn's `soundloop`, `soundstop` and
+//!   `soundstartwater`.
 //! * **Music**: `music/0.mp3` .. `music/17.mp3` in the install folder, MPEG-1 layer III,
 //!   44.1 kHz stereo, 320 kbit/s (tracks 9 and 10 are byte-identical copies of 0 and 1).
 //!   TA's own music menu (`guis/music.gui`) classified tracks as
@@ -62,13 +68,13 @@ pub mod tags;
 mod voices;
 
 pub use bank::{MemorySource, SoundBank, SoundSource, sound_path};
-pub use categories::{SoundCategories, SoundCategory, SoundEvent, UiSounds, WeaponSounds};
+pub use categories::{SoundCategories, SoundCategory, SoundEvent, SoundSet, SoundSets, UiSounds, WeaponSounds, is_sound_add_on, is_sound_table};
 pub use decode::{DecodeError, SoundData};
-pub use engine::{AudioEngine, AudioSettings, AudioStats, Bus, PlayParams, Priority, SoundHandle};
+pub use engine::{AudioEngine, AudioSettings, AudioStats, Bus, PlayParams, Played, Priority, SoundHandle};
 pub use music::{Arrangement, Mood, MusicConfig, MusicPlayer};
 pub use output::OutputInfo;
 pub use playlog::{PlayEvent, PlayStart, SoundKind};
-pub use spatial::{Listener, Spatial, SpatialSettings, distance_gain, pan_gains, spatialize};
+pub use spatial::{Listener, Spatial, SpatialSettings, distance_gain, pan_gains, spatialize, spatialize_within};
 pub use voices::VoiceStats;
 
 thread_local! {

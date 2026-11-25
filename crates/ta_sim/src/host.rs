@@ -361,6 +361,11 @@ impl CobHost for UnitHost<'_> {
             self.events.push(SimEvent::Sfx { unit: self.unit.id, pos, kind });
         }
     }
+
+    /// `play-sound`: the script's sound, told for the speakers (nothing of the battle changes).
+    fn play_sound(&mut self, sound: i32) {
+        self.events.push(SimEvent::ScriptSound { unit: self.unit.id, sound });
+    }
 }
 
 /// The host of a function tried on a copy of a unit's script ([`CobInstance::trial`]): it answers

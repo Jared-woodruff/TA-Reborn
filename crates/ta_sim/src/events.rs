@@ -24,14 +24,18 @@ pub enum SimEvent {
     NanoSpray { builder: UnitId, target: UnitId },
     /// An order could not be carried out (e.g. build site blocked).
     OrderFailed { unit: UnitId, reason: &'static str },
-    WeaponFired { unit: UnitId, weapon: usize, pos: FxVec3, target: FxVec3 },
+    /// (`burst_start`: the first shot of its burst, for the sound a burst plays once,
+    /// `soundtrigger`: display only, never read by the simulation.)
+    WeaponFired { unit: UnitId, weapon: usize, pos: FxVec3, target: FxVec3, burst_start: bool },
     /// A projectile or death explosion went off; `when`: how far through the tick (0 to 1) a
     /// projectile met what it hit (0 for the others), so the client can set it off as the
     /// projectile it draws gets there; `player`: whose weapon or unit it was (none for a staged
-    /// blast).
-    Explosion { weapon: usize, pos: FxVec3, water: bool, when: Fx, player: Option<u8> },
-    /// A unit died without an `ExplodeAs` weapon (generic blast).
-    UnitExploded { id: UnitId, pos: FxVec3, big: bool },
+    /// blast); `death_of`: the type of the unit whose death blast it is (its `ExplodeAs`), for
+    /// the speakers to play that unit's own death sound in its place: display only.
+    Explosion { weapon: usize, pos: FxVec3, water: bool, when: Fx, player: Option<u8>, death_of: Option<usize> },
+    /// A unit died without an `ExplodeAs` weapon (generic blast); `type_id` its type (display
+    /// only: its own death sound in the blast's place).
+    UnitExploded { id: UnitId, pos: FxVec3, big: bool, type_id: usize },
     /// (`wreck_of`: the unit whose death left it, its wreck or heap, when a death did.)
     FeatureCreated { index: usize, wreck_of: Option<UnitId> },
     FeatureDestroyed { index: usize, pos: FxVec3 },
@@ -71,4 +75,7 @@ pub enum SimEvent {
     UnitEnhanced { id: UnitId, index: u16, on: bool },
     /// A unit's weapon toggle switched on (its `[TOGGLE]`'s weapons) or off (its own).
     UnitToggled { id: UnitId, on: bool },
+    /// COB `play-sound`: the unit's script plays its sound `sound` (the number of one of its
+    /// script's sounds, `CobScript::sounds`). Display only.
+    ScriptSound { unit: UnitId, sound: i32 },
 }

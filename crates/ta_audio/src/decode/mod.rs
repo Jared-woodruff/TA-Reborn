@@ -8,14 +8,16 @@
 //!   leftover file in TA (`sounds/sing.wav`),
 //! * headerless unsigned 8-bit PCM at 11 025 Hz, accepted only when the bytes look like audio
 //!   (`sounds/honk.wav`),
-//! * Ogg Vorbis, through [`music`]'s decoder (TA Reborn's own spoken lines: the tutorial's).
+//! * Ogg Vorbis and FLAC, through [`music`]'s decoder (TA Reborn's own spoken lines: the
+//!   tutorial's; a mod's sounds): as stereo, or a mono file of the `sounds` folder as mono
+//!   ([`decode_with`]), so that it pans where it plays.
 //!
 //! Streaming formats for music (MP3, Ogg Vorbis) are decoded by [`music`] through symphonia.
 
 pub mod music;
 pub mod wav;
 
-pub use music::{MusicDecoder, decode_music};
+pub use music::{MusicDecoder, decode_music, decode_sound};
 pub use wav::WavCodec;
 
 use thiserror::Error;
@@ -165,8 +167,10 @@ pub enum SourceFormat {
     HumongousDigi,
     /// Headerless unsigned 8-bit PCM, assumed to be 11 025 Hz mono.
     RawPcm8,
-    /// Ogg Vorbis (decoded whole, as stereo).
+    /// Ogg Vorbis (decoded whole: as stereo, or as mono, kept so).
     OggVorbis,
+    /// FLAC (decoded whole, as Ogg Vorbis is).
+    Flac,
 }
 
 impl std::fmt::Display for SourceFormat {
@@ -176,6 +180,7 @@ impl std::fmt::Display for SourceFormat {
             SourceFormat::HumongousDigi => f.write_str("Humongous DIGI (8-bit PCM)"),
             SourceFormat::RawPcm8 => f.write_str("headerless 8-bit PCM"),
             SourceFormat::OggVorbis => f.write_str("Ogg Vorbis"),
+            SourceFormat::Flac => f.write_str("FLAC"),
         }
     }
 }
@@ -199,20 +204,33 @@ pub enum DecodeError {
     UnsupportedBits(u16, &'static str),
     #[error("undecodable Ogg Vorbis: {0}")]
     Vorbis(String),
+    #[error("undecodable FLAC: {0}")]
+    Flac(String),
 }
 
 /// Sample rate TA used for all of its 8-bit effects; assumed for headerless data.
 pub const TA_SAMPLE_RATE: u32 = 11_025;
 
-/// Decodes a complete sound file held in memory.
+/// Decodes a complete sound file held in memory (an Ogg or FLAC file as stereo).
 pub fn decode(bytes: &[u8]) -> Result<Decoded, DecodeError> {
+    decode_with(bytes, false)
+}
+
+/// [`decode`], a mono Ogg or FLAC file kept mono where `keep_mono` (a sound of the battle's,
+/// `sounds/`: mono, it pans as TA's WAVs do; stereo, it would play at both speakers wherever it
+/// is).
+pub fn decode_with(bytes: &[u8], keep_mono: bool) -> Result<Decoded, DecodeError> {
     if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WAVE" {
         let (sound, codec) = wav::decode(bytes)?;
         return Ok(Decoded { sound, format: SourceFormat::Wav(codec) });
     }
     if bytes.len() >= 4 && &bytes[0..4] == b"OggS" {
-        let sound = decode_music(bytes.to_vec(), Some("ogg")).map_err(|e| DecodeError::Vorbis(e.to_string()))?;
+        let sound = decode_sound(bytes.to_vec(), Some("ogg"), keep_mono).map_err(|e| DecodeError::Vorbis(e.to_string()))?;
         return Ok(Decoded { sound, format: SourceFormat::OggVorbis });
+    }
+    if bytes.len() >= 4 && &bytes[0..4] == b"fLaC" {
+        let sound = decode_sound(bytes.to_vec(), Some("flac"), keep_mono).map_err(|e| DecodeError::Flac(e.to_string()))?;
+        return Ok(Decoded { sound, format: SourceFormat::Flac });
     }
     if bytes.len() >= 8 && (&bytes[0..4] == b"DIGI" || &bytes[0..4] == b"TALK") {
         return Ok(Decoded { sound: decode_digi(bytes)?, format: SourceFormat::HumongousDigi });
@@ -295,6 +313,69 @@ mod tests {
         // Cut short: refused, never a crash.
         assert!(matches!(decode(&bytes[..bytes.len() / 3]), Err(DecodeError::Vorbis(_)) | Ok(_)));
         assert!(matches!(decode(b"OggS but nothing else"), Err(DecodeError::Vorbis(_))));
+    }
+
+    /// A mono Ogg kept mono when asked (a battle's sound, so that it pans), stereo otherwise.
+    #[test]
+    fn a_mono_ogg_stays_mono_where_asked() {
+        let bytes = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/data/tone_440hz_quarter_second.ogg")).unwrap();
+        let mono = decode_with(&bytes, true).unwrap().sound;
+        let stereo = decode_with(&bytes, false).unwrap().sound;
+        assert_eq!((mono.channels(), stereo.channels()), (1, 2));
+        assert_eq!(mono.frames(), stereo.frames());
+        assert_eq!(mono.samples()[100], stereo.samples()[200], "the same samples");
+    }
+
+    /// A FLAC file of 16-bit samples, one frame of `samples` (at most 256) kept verbatim, as an
+    /// encoder writes one: its stream information, its frame with its checksums.
+    pub(crate) fn flac(rate: u32, samples: &[i16]) -> Vec<u8> {
+        let crc8 = |bytes: &[u8]| bytes.iter().fold(0u8, |mut c, &b| {
+            c ^= b;
+            for _ in 0..8 {
+                c = if c & 0x80 != 0 { (c << 1) ^ 0x07 } else { c << 1 };
+            }
+            c
+        });
+        let crc16 = |bytes: &[u8]| bytes.iter().fold(0u16, |mut c, &b| {
+            c ^= (b as u16) << 8;
+            for _ in 0..8 {
+                c = if c & 0x8000 != 0 { (c << 1) ^ 0x8005 } else { c << 1 };
+            }
+            c
+        });
+        let n = samples.len() as u64;
+        let mut out = b"fLaC\x80\0\0\x22".to_vec();
+        out.extend_from_slice(&(n as u16).to_be_bytes());
+        out.extend_from_slice(&(n as u16).to_be_bytes());
+        out.extend_from_slice(&[0; 6]);
+        out.extend_from_slice(&(((rate as u64) << 44) | (15 << 36) | n).to_be_bytes());
+        out.extend_from_slice(&[0; 16]);
+        // (Its block size after the header; the rate and size the stream information's.)
+        let mut frame = vec![0xFF, 0xF8, 0x60, 0x08, 0x00, (n - 1) as u8];
+        frame.push(crc8(&frame));
+        frame.push(0x02);
+        for s in samples {
+            frame.extend_from_slice(&s.to_be_bytes());
+        }
+        let crc = crc16(&frame);
+        frame.extend_from_slice(&crc.to_be_bytes());
+        out.extend_from_slice(&frame);
+        out
+    }
+
+    /// A short FLAC sound decodes as Ogg's do: its samples, mono kept mono where asked.
+    #[test]
+    fn decodes_a_short_flac_sound() {
+        let samples: Vec<i16> = (0..200).map(|i| ((i as f32 * 0.3).sin() * 12_000.0) as i16).collect();
+        let bytes = flac(8_000, &samples);
+        let decoded = decode_with(&bytes, true).unwrap();
+        assert_eq!(decoded.format, SourceFormat::Flac);
+        assert_eq!((decoded.sound.channels(), decoded.sound.sample_rate(), decoded.sound.frames()), (1, 8_000, 200));
+        for (a, b) in decoded.sound.samples().iter().zip(&samples) {
+            assert!((a - *b as f32 / 32768.0).abs() < 1e-4, "{a} against {b}");
+        }
+        assert_eq!(decode(&bytes).unwrap().sound.channels(), 2, "as music otherwise");
+        assert!(matches!(decode(b"fLaC and nothing more"), Err(DecodeError::Flac(_))));
     }
 
     #[test]

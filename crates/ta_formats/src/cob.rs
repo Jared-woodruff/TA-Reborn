@@ -4,7 +4,10 @@
 //! Each unit has a script that animates pieces and answers engine queries (aiming, build
 //! positions, ...). Header (TA = version 4, 11 × i32): version, script count, piece count,
 //! code length (in u32 words), static variable count, 0, script code-offset table ptr,
-//! script name-ptr table ptr, piece name-ptr table ptr, code ptr, 0.
+//! script name-ptr table ptr, piece name-ptr table ptr, code ptr, 0. Version 6 (TA: Kingdoms',
+//! as the Spring engine reads it) adds two: the sound name-ptr table ptr and the sound count, the
+//! names `play-sound` plays by their numbers ([`CobScript::sounds`]; a script with sounds is
+//! written so).
 
 use crate::bin::{Budget, cstr_at, i32_at, u32_at, table};
 use crate::{FormatError, Result};
@@ -22,6 +25,8 @@ pub struct CobScript {
     pub pieces: Vec<String>,
     pub code: Vec<u32>,
     pub static_var_count: u32,
+    /// The sounds `play-sound` names by their numbers (version 6's table; none in TA's own).
+    pub sounds: Vec<String>,
 }
 
 impl CobScript {
@@ -69,7 +74,27 @@ impl CobScript {
         for i in 0..piece_count {
             pieces.push(cstr_at(data, i32_at(data, pieces_ptr + i * 4)? as usize)?);
         }
-        Ok(CobScript { functions, pieces, code, static_var_count })
+        // (Version 6's sounds, where its header has room for their table: a table that does not
+        // read leaves the script without sounds, never unread.)
+        let mut sounds = Vec::new();
+        if version == 6 && data.len() >= 52 {
+            let (sounds_ptr, sound_count) = (i32_at(data, 44)?, i32_at(data, 48)?);
+            if sounds_ptr > 0 && (1..=4096).contains(&sound_count) && table(data, sounds_ptr as usize, sound_count as usize, 4).is_ok() {
+                for i in 0..sound_count as usize {
+                    match i32_at(data, sounds_ptr as usize + i * 4).ok().and_then(|at| cstr_at(data, at.max(0) as usize).ok()) {
+                        Some(name) => {
+                            budget.take(name.len() + 24, "COB")?;
+                            sounds.push(name);
+                        }
+                        None => {
+                            sounds.clear();
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(CobScript { functions, pieces, code, static_var_count, sounds })
     }
 
     /// Case-insensitive function lookup.
@@ -77,16 +102,18 @@ impl CobScript {
         self.functions.iter().position(|f| f.name.eq_ignore_ascii_case(name))
     }
 
-    /// The script as a COB file of version 4, as [`CobScript::parse`] reads one: the header,
-    /// the code, the functions' entry points, the pointers to their names and to the pieces',
-    /// then the names.
+    /// The script as a COB file of version 4 (6 with sounds, their table after the pieces'), as
+    /// [`CobScript::parse`] reads one: the header, the code, the functions' entry points, the
+    /// pointers to their names and to the pieces' (and the sounds'), then the names.
     pub fn to_bytes(&self) -> Vec<u8> {
-        let header = 44usize;
+        let with_sounds = !self.sounds.is_empty();
+        let header = if with_sounds { 52usize } else { 44 };
         let code_at = header;
         let offsets_at = code_at + self.code.len() * 4;
         let names_at = offsets_at + self.functions.len() * 4;
         let pieces_at = names_at + self.functions.len() * 4;
-        let strings_at = pieces_at + self.pieces.len() * 4;
+        let sounds_at = pieces_at + self.pieces.len() * 4;
+        let strings_at = sounds_at + self.sounds.len() * 4;
         let mut strings: Vec<u8> = Vec::new();
         let mut string = |s: &str| -> u32 {
             let at = (strings_at + strings.len()) as u32;
@@ -96,9 +123,14 @@ impl CobScript {
         };
         let names: Vec<u32> = self.functions.iter().map(|f| string(&f.name)).collect();
         let pieces: Vec<u32> = self.pieces.iter().map(|p| string(p)).collect();
+        let sounds: Vec<u32> = self.sounds.iter().map(|s| string(s)).collect();
         let mut out = Vec::with_capacity(strings_at + strings.len());
-        for v in [4, self.functions.len(), self.pieces.len(), self.code.len(), self.static_var_count as usize, 0, offsets_at, names_at, pieces_at, code_at, 0] {
+        for v in [if with_sounds { 6 } else { 4 }, self.functions.len(), self.pieces.len(), self.code.len(), self.static_var_count as usize, 0, offsets_at, names_at, pieces_at, code_at, 0] {
             out.extend_from_slice(&(v as u32).to_le_bytes());
+        }
+        if with_sounds {
+            out.extend_from_slice(&(sounds_at as u32).to_le_bytes());
+            out.extend_from_slice(&(self.sounds.len() as u32).to_le_bytes());
         }
         for w in &self.code {
             out.extend_from_slice(&w.to_le_bytes());
@@ -106,7 +138,7 @@ impl CobScript {
         for f in &self.functions {
             out.extend_from_slice(&f.offset.to_le_bytes());
         }
-        for at in names.iter().chain(&pieces) {
+        for at in names.iter().chain(&pieces).chain(&sounds) {
             out.extend_from_slice(&at.to_le_bytes());
         }
         out.extend_from_slice(&strings);
@@ -222,6 +254,11 @@ impl Function {
     pub fn hide(&mut self, piece: u32) -> &mut Self {
         self.emit(&[op::HIDE, piece])
     }
+    /// `play-sound` of the script's sound `sound` (its number, [`Assembler::sound`]): nothing
+    /// taken from the stack, as TA Reborn's engine runs it.
+    pub fn play_sound(&mut self, sound: u32) -> &mut Self {
+        self.emit(&[op::PLAY_SOUND, sound])
+    }
     /// `emit-sfx <kind> from <piece>`: the kind on the stack.
     pub fn emit_sfx(&mut self, piece: u32) -> &mut Self {
         self.emit(&[op::EMIT_SFX, piece])
@@ -271,6 +308,7 @@ pub struct Assembler {
     names: Vec<String>,
     bodies: Vec<Option<Function>>,
     statics: u32,
+    sounds: Vec<String>,
 }
 
 impl Assembler {
@@ -281,6 +319,17 @@ impl Assembler {
     /// A piece's number (any case).
     pub fn piece(&self, name: &str) -> Option<u32> {
         self.pieces.iter().position(|p| p.eq_ignore_ascii_case(name)).map(|i| i as u32)
+    }
+
+    /// A sound's number for `play-sound` (any case), named in the script if it is not yet.
+    pub fn sound(&mut self, name: &str) -> u32 {
+        match self.sounds.iter().position(|s| s.eq_ignore_ascii_case(name)) {
+            Some(i) => i as u32,
+            None => {
+                self.sounds.push(name.to_string());
+                (self.sounds.len() - 1) as u32
+            }
+        }
     }
 
     /// A new static variable (its number).
@@ -331,7 +380,7 @@ impl Assembler {
             code.extend_from_slice(&body.code);
             functions.push(CobFunction { name, offset: base });
         }
-        CobScript { functions, pieces: self.pieces, code, static_var_count: self.statics }
+        CobScript { functions, pieces: self.pieces, code, static_var_count: self.statics, sounds: self.sounds }
     }
 }
 
@@ -538,6 +587,32 @@ mod tests {
         let target = back.code[jump + 1] as usize;
         assert_eq!(&back.code[target..target + 3], &[op::PUSH_CONSTANT, 1, op::RETURN]);
         assert!(disassemble(&back).contains("AimPrimary:"));
+        assert!(back.sounds.is_empty() && script.to_bytes()[0] == 4, "TA's version without sounds");
+    }
+
+    /// A script's sounds (version 6's table, as TA: Kingdoms' scripts carry theirs): numbered as
+    /// first named, any case, written and read back with its play-sounds.
+    #[test]
+    fn a_scripts_sounds_are_written_and_read_back() {
+        let mut asm = Assembler::new(vec!["base".into()]);
+        let open = asm.sound("Doors_Open");
+        let close = asm.sound("doors_close");
+        assert_eq!((open, close, asm.sound("DOORS_OPEN")), (0, 1, 0));
+        let mut f = Function::new(0);
+        f.play_sound(close).play_sound(open).ret(0);
+        asm.define("Activate", f);
+        let script = asm.finish();
+        let bytes = script.to_bytes();
+        assert_eq!(bytes[0], 6);
+        let back = CobScript::parse(&bytes).unwrap();
+        assert_eq!(back.sounds, ["Doors_Open", "doors_close"]);
+        assert_eq!(back.pieces, ["base"]);
+        assert_eq!(&back.code[..4], &[op::PLAY_SOUND, 1, op::PLAY_SOUND, 0]);
+        assert!(disassemble(&back).contains("play-sound"));
+        // (A table that does not read leaves the script without sounds.)
+        let mut broken = bytes.clone();
+        broken[44..48].copy_from_slice(&(bytes.len() as u32 + 64).to_le_bytes());
+        assert!(CobScript::parse(&broken).unwrap().sounds.is_empty());
     }
 
     /// A function never runs on into the next one's code: one whose last word only looks like a
