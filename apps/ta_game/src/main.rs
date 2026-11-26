@@ -59,6 +59,8 @@ mod loading;
 mod lore;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(any(target_os = "macos", test))]
+mod pointer_refresh;
 mod map_list;
 mod map_preview;
 mod menu;

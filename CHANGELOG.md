@@ -257,6 +257,12 @@
   Multiplayer and replays need everyone on this build.
 
 ### Fixed
+- On a Mac, clicks in the game's menus and battles took a second or two to come, and one followed
+  at once by a move of the pointer was lost (issue #154): the game made the window's pointer again
+  once a second (to keep macOS's arrow off TA's pointer in full screen), which held its mouse and
+  keyboard input back. It now does so only as the window comes into view, takes the keyboard or
+  changes size, and a few times in the two seconds after. The game's log now tells of a long wait
+  between frames that is not the game's own work.
 - The Options page's list of settings stopped short of its panel's foot where the list's column is
   too narrow for its title (in the game, at most sizes): it now reaches it, level with the
   categories beside it, showing more settings at once.
