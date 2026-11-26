@@ -290,6 +290,10 @@ struct State {
     benchmark: Option<crate::benchmark::Benchmark>,
     /// The last frame's time as it was (not held to the game's longest step): the benchmark's.
     frame_ms: f32,
+    /// How long the last frame took itself (its update, preparing and drawing), and when a long wait
+    /// between frames was last logged: see `log_held_up`.
+    frame_work_ms: f32,
+    held_up_logged: Option<Instant>,
     /// The map overlay uploaded last, and what it was built from (redrawn when that changes).
     overlay_key: Option<(crate::overlay::Overlay, u64)>,
     /// `--demo gallery` with `TA_GALLERY_TOUR`: units to photograph one by one, where the
@@ -1341,8 +1345,9 @@ impl ApplicationHandler<egui_winit::accesskit_winit::Event> for App {
             let main = self.active_load.as_ref().map(|load| &load.window).or_else(|| self.state.as_ref().map(|state| &state.window));
             if let Some(window) = main.filter(|window| window.id() == id) {
                 crate::macos::keep_dock_and_menu_bar_away(window.fullscreen().is_some());
-                // (And the pointer the window wants set again: see macos.rs.)
-                crate::macos::refresh_cursor(window);
+                // (And the pointer the window wants set again, now and a few times as the change
+                // settles: see macos.rs.)
+                crate::macos::refresh_cursor_soon(window);
             }
         }
         // The companion screen's window: its own (closing it closes only it).
@@ -1534,6 +1539,9 @@ impl ApplicationHandler<egui_winit::accesskit_winit::Event> for App {
         }
     }
 }
+
+/// A wait between frames, outside their own work, that the log tells of (`State::log_held_up`).
+const HELD_UP_MS: f32 = 500.0;
 
 /// The time between frames in the background (minimised, or with another window in front and
 /// power saved): thirty a second.
@@ -2437,6 +2445,8 @@ impl State {
             stage: None,
             benchmark,
             frame_ms: 0.0,
+            frame_work_ms: 0.0,
+            held_up_logged: None,
             overlay_key: None,
             tour: Vec::new(),
             tour_dir: None,
@@ -3379,6 +3389,21 @@ impl State {
     /// front.
     fn focused(&self) -> bool {
         self.window.has_focus() || self.companion.as_ref().is_some_and(|c| c.window.has_focus())
+    }
+
+    /// A long wait between two frames that the last frame's own work does not account for, with the
+    /// window shown and in front: the game held up outside its frames (by the system, as a Mac's
+    /// input was, issue #154) rather than slow in them. Logged, at most once a minute, so that it
+    /// shows in a player's log. (Not while capturing or benchmarking, minimised, or behind another
+    /// window.)
+    fn log_held_up(&mut self, now: Instant) {
+        let outside = self.frame_ms - self.frame_work_ms;
+        let watched = self.window_shown && self.focused() && self.window.is_minimized() != Some(true)
+            && self.screenshot_path.is_none() && self.benchmark.is_none() && self.film.is_none();
+        if outside > HELD_UP_MS && watched && self.held_up_logged.is_none_or(|t| now.duration_since(t) >= std::time::Duration::from_secs(60)) {
+            log::warn!("frames: {outside:.0} ms between two frames outside the game's own work (the last frame took {work:.0} ms): held up by something else", work = self.frame_work_ms);
+            self.held_up_logged = Some(now);
+        }
     }
 
     fn keyboard_pointer_available(&self) -> bool {
@@ -5438,7 +5463,9 @@ impl State {
         let dt = self.film.as_ref().map(|f| f.dt()).or_else(|| self.capture_dt()).unwrap_or_else(|| (now - self.last_frame).as_secs_f32().min(0.1));
         self.frame_ms = (now - self.last_frame).as_secs_f32() * 1000.0;
         self.dev.meter.tick(self.frame_ms);
+        self.log_held_up(now);
         self.last_frame = now;
+        let frame_start = now;
         self.game.paced = self.film.is_none() && self.capture_dt().is_none() && self.benchmark.is_none();
         self.dev.fps = self.dev.fps * 0.95 + (1.0 / dt.max(1e-4)) * 0.05;
         // A benchmark: Escape or the quit key stops it (with no report: the launcher says so);
@@ -6589,10 +6616,10 @@ impl State {
             platform.cursor_icon = egui::CursorIcon::None;
         }
         self.egui.state.handle_platform_output(&self.window, platform);
-        // (A Mac's system pointer kept off TA's: the pointer the window wants set again now and
-        // then, see macos.rs.)
+        // (A Mac's system pointer kept off TA's: the pointer the window wants set again a few times
+        // after the window changed, see macos.rs.)
         #[cfg(target_os = "macos")]
-        crate::macos::refresh_cursor_now_and_then(&self.window);
+        crate::macos::refresh_cursor_when_due(&self.window);
         let ppp = output.pixels_per_point;
         let mut prims = self.egui.ctx.tessellate(output.shapes, ppp);
         // (The menus in their theme's colours, and the battle.)
@@ -7047,6 +7074,7 @@ impl State {
             None => self.renderer.render(&self.camera, ui_pass),
         }
         let t_end = Instant::now();
+        self.frame_work_ms = (t_end - frame_start).as_secs_f32() * 1000.0;
         self.dev.times.push(dt * 1000.0, (t_prepare - t_update).as_secs_f32() * 1000.0, (t_render - t_prepare).as_secs_f32() * 1000.0, (t_end - t_render).as_secs_f32() * 1000.0);
         if self.dev.gpu_timing_on {
             self.dev.times.push_gpu(self.renderer.gpu_timings_frame(), self.renderer.gpu_timings());

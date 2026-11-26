@@ -17,11 +17,17 @@
 //! rectangles are made again. Where macOS puts its arrow back with the pointer already inside (a
 //! full screen opening, the presentation options changing), it stayed, over TA's pointer: in full
 //! screen the pointer never leaves the window to come back in (it used to, into the Dock). So the
-//! rectangles are made again whenever the options are set, and once a second while the window has
-//! the keyboard (`refresh_cursor_now_and_then`): AppKit then sets the pointer the window wants.
+//! rectangles are made again whenever the options are set, and a few times over the next two
+//! seconds (`refresh_cursor_soon`, `refresh_cursor_when_due`: the arrow can come back as the full
+//! screen's animation ends, after its event): AppKit then sets the pointer the window wants.
+//!
+//! Never steadily: making them again once a second, all the time (1.0.3 to 1.0.9), held the
+//! window's mouse and keyboard input back on a Mac (issue #154: clicks taking a second or two to
+//! come, or lost when the pointer moved on), as setting the pointer every frame has done to other
+//! games since macOS 14.2.
 
 use std::cell::Cell;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use objc2::MainThreadMarker;
 use objc2_app_kit::{NSApplication, NSApplicationPresentationOptions as Options, NSView};
@@ -63,20 +69,29 @@ pub fn refresh_cursor(window: &Window) {
     }
 }
 
-/// [`refresh_cursor`] once a second at most, while the window has the keyboard: called every frame.
-pub fn refresh_cursor_now_and_then(window: &Window) {
-    thread_local! {
-        static LAST: Cell<Option<Instant>> = const { Cell::new(None) };
-    }
+thread_local! {
+    /// The last event [`refresh_cursor_soon`] was told of, and how many of its follow-ups are done.
+    static SOON: Cell<Option<(Instant, usize)>> = const { Cell::new(None) };
+}
+
+/// [`refresh_cursor`] now, and again a few times as the change settles (`refresh_cursor_when_due`,
+/// on `pointer_refresh`'s schedule): as the window comes into view, takes the keyboard or changes
+/// size, whatever macOS's arrow comes back with.
+pub fn refresh_cursor_soon(window: &Window) {
+    refresh_cursor(window);
+    SOON.with(|soon| soon.set(Some((Instant::now(), 0))));
+}
+
+/// The follow-ups of [`refresh_cursor_soon`] that are due, while the window has the keyboard (one
+/// at most a frame): called every frame, it does nothing once they are done.
+pub fn refresh_cursor_when_due(window: &Window) {
     if !window.has_focus() {
         return;
     }
-    let now = Instant::now();
-    let due = LAST.with(|last| {
-        let due = last.get().is_none_or(|t| now.duration_since(t) >= Duration::from_secs(1));
-        if due {
-            last.set(Some(now));
-        }
+    let due = SOON.with(|soon| {
+        let Some((since, done)) = soon.get() else { return false };
+        let (due, next) = crate::pointer_refresh::follow_up(since.elapsed(), done);
+        soon.set(next.map(|done| (since, done)));
         due
     });
     if due {
